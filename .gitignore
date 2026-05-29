@@ -1,0 +1,22 @@
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Database & Scan Results
+scan_history.db
+scan_result.txt
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Scratch & Temporary Files
+scratch/
+.idea/
+.vscode/
+.DS_Store
+*.log
