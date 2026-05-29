@@ -1,6 +1,7 @@
 import os
 import requests
 import time
+import json
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import threading
@@ -27,22 +28,65 @@ def init_db():
             PRIMARY KEY (date, ticker)
         )
     ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS breadth_history (
-            date TEXT,
-            time TEXT,
-            advances INTEGER,
-            declines INTEGER,
-            unchanged INTEGER,
-            pct_sma21 REAL,
-            pct_sma50 REAL,
-            pct_52high REAL,
-            avg_recommend REAL,
-            regime_score INTEGER,
-            regime_band TEXT,
-            PRIMARY KEY (date, time)
-        )
-    ''')
+    
+    # Check if table breadth_history exists and what its PK is
+    c.execute("PRAGMA table_info(breadth_history)")
+    columns = c.fetchall()
+    
+    needs_recreate = False
+    if columns:
+        pk_count = sum(1 for col in columns if col[5] > 0)
+        if pk_count > 1:
+            needs_recreate = True
+            
+    if needs_recreate:
+        print("Migrating breadth_history to unique date primary key...")
+        c.execute("SELECT * FROM breadth_history ORDER BY date ASC, time ASC")
+        all_rows = c.fetchall()
+        
+        unique_date_rows = {}
+        for row in all_rows:
+            date_val = row[0]
+            unique_date_rows[date_val] = row
+            
+        c.execute("DROP TABLE breadth_history")
+        c.execute('''
+            CREATE TABLE breadth_history (
+                date TEXT PRIMARY KEY,
+                time TEXT,
+                advances INTEGER,
+                declines INTEGER,
+                unchanged INTEGER,
+                pct_sma21 REAL,
+                pct_sma50 REAL,
+                pct_52high REAL,
+                avg_recommend REAL,
+                regime_score INTEGER,
+                regime_band TEXT
+            )
+        ''')
+        
+        for row in unique_date_rows.values():
+            c.execute(
+                "INSERT INTO breadth_history VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                row
+            )
+    else:
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS breadth_history (
+                date TEXT PRIMARY KEY,
+                time TEXT,
+                advances INTEGER,
+                declines INTEGER,
+                unchanged INTEGER,
+                pct_sma21 REAL,
+                pct_sma50 REAL,
+                pct_52high REAL,
+                avg_recommend REAL,
+                regime_score INTEGER,
+                regime_band TEXT
+            )
+        ''')
     conn.commit()
     conn.close()
 
@@ -428,25 +472,34 @@ def classify_setup(stock, sector_meta=None):
     if is_leader: tags.append("Sector Leader")
     if is_cont: tags.append("Momentum Continuation")
     
-    if is_breakout:
-        primary_label = "Breakout Ready"
-        confidence = 90
-    elif is_pullback:
-        primary_label = "Pullback to MA"
-        confidence = 80
-    elif is_coil:
-        primary_label = "Inside Bar Coil"
-        confidence = 85
-    elif is_leader:
-        primary_label = "Sector Leader"
-        confidence = 75
-    elif is_cont:
-        primary_label = "Momentum Continuation"
-        confidence = 80
+    # Overlay Screener Intelligence pattern name if detected
+    pat_name = stock.get("pattern_name")
+    pat_grade = stock.get("pattern_grade")
+    
+    if pat_name and pat_name != "Trend Continuation":
+        primary_label = f"{pat_name} [{pat_grade}]"
+        confidence = 95 if "A+" in pat_grade else 90 if "A" in pat_grade else 85
+        tags.insert(0, pat_name)
     else:
-        primary_label = "Early Watch"
-        tags.append("Early Watch")
-        confidence = 50
+        if is_breakout:
+            primary_label = "Breakout Ready"
+            confidence = 90
+        elif is_pullback:
+            primary_label = "Pullback to MA"
+            confidence = 80
+        elif is_coil:
+            primary_label = "Inside Bar Coil"
+            confidence = 85
+        elif is_leader:
+            primary_label = "Sector Leader"
+            confidence = 75
+        elif is_cont:
+            primary_label = "Momentum Continuation"
+            confidence = 80
+        else:
+            primary_label = "Early Watch"
+            tags.append("Early Watch")
+            confidence = 50
         
     stock["setupLabel"] = primary_label
     stock["setupTags"] = tags
@@ -584,6 +637,423 @@ def compute_vol_dryup(stock):
     )
     stock["volDryUp"] = vol_dryup
     return stock
+
+# -----------------------------------------------------------------------------
+# Screener Intelligence: Chart Fetching & Pattern Recognition Engine
+# -----------------------------------------------------------------------------
+
+def fetch_historical_prices(ticker):
+    """
+    Fetch 6 months of daily OHLCV data for a ticker from Yahoo Finance.
+    Returns list of dicts.
+    """
+    import urllib.request
+    import json
+    symbol = ticker
+    if not symbol.endswith(".NS") and not symbol.endswith(".BO") and not symbol.startswith("^"):
+        symbol = f"{symbol}.NS"
+        
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=6mo"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=6) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            
+        if not data.get('chart') or not data['chart'].get('result') or not data['chart']['result']:
+            return []
+            
+        result = data['chart']['result'][0]
+        timestamps = result.get('timestamp')
+        if not timestamps:
+            return []
+            
+        indicators = result['indicators']['quote'][0]
+        opens = indicators.get('open', [])
+        highs = indicators.get('high', [])
+        lows = indicators.get('low', [])
+        closes = indicators.get('close', [])
+        volumes = indicators.get('volume', [])
+        
+        cleaned_data = []
+        for i in range(len(timestamps)):
+            if (i < len(closes) and closes[i] is not None and 
+                i < len(highs) and highs[i] is not None and 
+                i < len(lows) and lows[i] is not None and 
+                i < len(volumes) and volumes[i] is not None):
+                cleaned_data.append({
+                    "date": datetime.fromtimestamp(timestamps[i]).strftime('%Y-%m-%d'),
+                    "open": float(opens[i] if i < len(opens) and opens[i] is not None else closes[i]),
+                    "high": float(highs[i]),
+                    "low": float(lows[i]),
+                    "close": float(closes[i]),
+                    "volume": int(volumes[i])
+                })
+        return cleaned_data
+    except Exception as e:
+        print(f"Error fetching chart for {ticker}: {e}")
+        return []
+
+def classify_technical_pattern(history):
+    """
+    Analyzes daily prices to detect high-probability technical setups:
+    1. High Tight Flag Breakout
+    2. VCP (Volatility Contraction Pattern) Breakout (3T)
+    3. Cup & Handle Breakout
+    4. Long Base Breakout
+    """
+    if len(history) < 40:
+        return {
+            "pattern": "Trend Continuation",
+            "grade": "B",
+            "description": "Bullish structure. Price above aligned moving averages with positive daily momentum."
+        }
+        
+    closes = [day["close"] for day in history]
+    highs = [day["high"] for day in history]
+    lows = [day["low"] for day in history]
+    volumes = [day["volume"] for day in history]
+    
+    current_close = closes[-1]
+    current_volume = volumes[-1]
+    avg_volume_50 = sum(volumes[-50:]) / 50 if len(volumes) >= 50 else sum(volumes) / len(volumes)
+    vol_ratio = current_volume / avg_volume_50 if avg_volume_50 > 0 else 1.0
+    
+    # 1. High Tight Flag (HTF)
+    if len(closes) >= 45:
+        # momentum pole (days -45 to -10)
+        pole_start = closes[-45]
+        pole_end = max(highs[-15:-5]) if len(highs[-15:-5]) > 0 else closes[-10]
+        pole_gain = ((pole_end - pole_start) / pole_start) * 100
+        
+        # tight flag range (last 10 days)
+        flag_high = max(highs[-10:])
+        flag_low = min(lows[-10:])
+        flag_range = (flag_high - flag_low) / flag_high * 100
+        
+        if pole_gain >= 65.0 and flag_range <= 15.0:
+            is_breakout = current_close >= flag_high * 0.98 and vol_ratio >= 1.5
+            desc = f"Vigorous pole run of {pole_gain:.1f}% followed by a tight sideways consolidation of {flag_range:.1f}%."
+            if is_breakout:
+                return {
+                    "pattern": "High Tight Flag Breakout",
+                    "grade": "A+" if pole_gain >= 85.0 else "A",
+                    "description": f"{desc} Confirmed breakout today on {vol_ratio:.1f}x average volume."
+                }
+            else:
+                return {
+                    "pattern": "High Tight Flag Setup",
+                    "grade": "B+",
+                    "description": f"{desc} Consolidating inside the flag range. Watching for volume breakout."
+                }
+
+    # 2. VCP (Volatility Contraction Pattern)
+    if len(closes) >= 80:
+        # Check last 80 trading days divided into 3 contraction periods
+        p1_highs = highs[-80:-50]
+        p1_lows = lows[-80:-50]
+        p2_highs = highs[-50:-25]
+        p2_lows = lows[-50:-25]
+        p3_highs = highs[-25:]
+        p3_lows = lows[-25:]
+        
+        if p1_highs and p2_highs and p3_highs:
+            d1 = (max(p1_highs) - min(p1_lows)) / max(p1_highs) * 100
+            d2 = (max(p2_highs) - min(p2_lows)) / max(p2_highs) * 100
+            d3 = (max(p3_highs) - min(p3_lows)) / max(p3_highs) * 100
+            
+            if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
+                is_breakout = current_close >= max(p3_highs) * 0.98 and vol_ratio >= 1.4
+                desc = f"Volatility contraction detected with 3 shrinking contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
+                if is_breakout:
+                    return {
+                        "pattern": "VCP Breakout (3T)",
+                        "grade": "A+" if d3 <= 5.0 else "A",
+                        "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
+                    }
+                else:
+                    return {
+                        "pattern": "VCP Consolidation (3T)",
+                        "grade": "A" if d3 <= 5.0 else "B+",
+                        "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
+                    }
+
+    # 3. Cup & Handle
+    if len(closes) >= 70:
+        # Cup left peak (days -70 to -25)
+        cup_left_high = max(highs[-70:-25])
+        cup_idx = highs[-70:-25].index(cup_left_high) + (len(highs) - 70)
+        
+        # Cup bottom (lowest low inside rounding bottom)
+        cup_bottom = min(lows[cup_idx:-12])
+        cup_depth = (cup_left_high - cup_bottom) / cup_left_high * 100
+        
+        # Handle (consolidation in last 12 days)
+        handle_high = max(highs[-12:])
+        handle_low = min(lows[-12:])
+        handle_depth = (handle_high - handle_low) / handle_high * 100
+        
+        if 10.0 <= cup_depth <= 35.0 and handle_depth <= 9.0 and cup_left_high >= handle_high * 0.95:
+            is_breakout = current_close >= handle_high * 0.98 and vol_ratio >= 1.4
+            desc = f"Symmetrical Cup & Handle pattern (Cup depth: {cup_depth:.1f}%, Handle depth: {handle_depth:.1f}%)."
+            if is_breakout:
+                return {
+                    "pattern": "Cup & Handle Breakout",
+                    "grade": "A" if handle_depth <= 5.0 else "B+",
+                    "description": f"{desc} Breaking above the handle pivot on {vol_ratio:.1f}x volume."
+                }
+            else:
+                return {
+                    "pattern": "Cup & Handle Setup",
+                    "grade": "B+",
+                    "description": f"{desc} Handle forming tightly under key pivot. Watching for breakout."
+                }
+
+    # 4. Long Base Breakout
+    if len(closes) >= 35:
+        base_high = max(highs[-35:-1])
+        base_low = min(lows[-35:-1])
+        base_range = (base_high - base_low) / base_high * 100
+        
+        if base_range <= 12.0:
+            is_breakout = current_close >= base_high * 0.99 and vol_ratio >= 1.8
+            desc = f"Tight horizontal base channel of {base_range:.1f}% range over 35 trading days."
+            if is_breakout:
+                return {
+                    "pattern": "Long Base Breakout",
+                    "grade": "A" if base_range <= 8.0 else "B+",
+                    "description": f"{desc} Broken out above the base boundary on {vol_ratio:.1f}x volume."
+                }
+            elif current_close >= base_high * 0.96:
+                return {
+                    "pattern": "Long Base Setup",
+                    "grade": "B+",
+                    "description": f"{desc} Sideways consolidation. Price has drifted to the upper base resistance."
+                }
+
+    return {
+        "pattern": "Trend Continuation",
+        "grade": "B",
+        "description": "Stock is in standard bullish breakout alignment (SMA 10 > 21 > 50). No specialized pattern detected."
+    }
+
+def analyze_single_stock(stock):
+    try:
+        ticker = stock["clean_ticker"]
+        history = fetch_historical_prices(ticker)
+        if history:
+            result = classify_technical_pattern(history)
+            stock["pattern_name"] = result["pattern"]
+            stock["pattern_grade"] = result["grade"]
+            stock["pattern_desc"] = result["description"]
+        else:
+            stock["pattern_name"] = "Trend Continuation"
+            stock["pattern_grade"] = "B"
+            stock["pattern_desc"] = "Price in standard swing configuration. Historical daily data fetch not available."
+    except Exception as e:
+        stock["pattern_name"] = "Trend Continuation"
+        stock["pattern_grade"] = "B"
+        stock["pattern_desc"] = f"Analysis error: {e}"
+
+def populate_screener_intelligence(stocks_list):
+    if not stocks_list:
+        return
+    # Analyze the top 50 momentum stocks (sorted by swing score and relative volume)
+    stocks_to_analyze = sorted(
+        stocks_list, 
+        key=lambda x: (x.get("swing_score", 0), x.get("relative_volume", 0)), 
+        reverse=True
+    )[:50]
+    
+    with ThreadPoolExecutor(max_workers=25) as executor:
+        executor.map(analyze_single_stock, stocks_to_analyze)
+        
+    analyzed_tickers = {s["clean_ticker"] for s in stocks_to_analyze}
+    for stock in stocks_list:
+        if stock["clean_ticker"] not in analyzed_tickers:
+            stock["pattern_name"] = "Trend Continuation"
+            stock["pattern_grade"] = "B"
+            stock["pattern_desc"] = "Stock qualifies for momentum trend. Setup analysis limited to top 50 matches."
+
+@app.route('/api/setup-analysis', methods=['GET'])
+def get_setup_analysis():
+    from flask import request
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return jsonify(error="Ticker is required"), 400
+        
+    # Strip any prefix like NSE:
+    if ticker.startswith("NSE:"):
+        ticker = ticker[4:]
+        
+    history = fetch_historical_prices(ticker)
+    if not history:
+        return jsonify(
+            ticker=ticker,
+            pattern="Trend Continuation",
+            grade="B",
+            description="Unable to retrieve daily chart history from Yahoo Finance.",
+            indicators={}
+        )
+        
+    result = classify_technical_pattern(history)
+    
+    # Calculate indicators checklist
+    closes = [day["close"] for day in history]
+    highs = [day["high"] for day in history]
+    lows = [day["low"] for day in history]
+    volumes = [day["volume"] for day in history]
+    
+    current_close = closes[-1]
+    current_volume = volumes[-1]
+    avg_volume_50 = sum(volumes[-50:]) / 50 if len(volumes) >= 50 else sum(volumes) / len(volumes)
+    vol_ratio = current_volume / avg_volume_50 if avg_volume_50 > 0 else 1.0
+    
+    sma21_val = sum(closes[-21:]) / 21 if len(closes) >= 21 else current_close
+    sma50_val = sum(closes[-50:]) / 50 if len(closes) >= 50 else current_close
+    
+    indicators = {
+        "price_above_21_sma": bool(current_close > sma21_val),
+        "price_above_50_sma": bool(current_close > sma50_val),
+        "vol_dryup_last_10d": bool(sum(volumes[-10:]) / 10 < avg_volume_50 * 0.9),
+        "volume_expansion_today": bool(vol_ratio >= 1.4),
+        "tightness_last_15d": bool((max(highs[-15:]) - min(lows[-15:])) / max(highs[-15:]) * 100 <= 10.0),
+        "vol_ratio": round(vol_ratio, 2)
+    }
+    
+    return jsonify(
+        ticker=ticker,
+        pattern=result["pattern"],
+        grade=result["grade"],
+        description=result["description"],
+        indicators=indicators,
+        chart_data=[{"date": d["date"], "close": d["close"], "volume": d["volume"]} for d in history[-60:]]
+    )
+SECTOR_INDEX_MAP = {
+    "Health Technology": "NIFTY_HLTHCARE.NS",
+    "Health Services": "NIFTY_HLTHCARE.NS",
+    "Finance": "NIFTY_FIN_SERVICE.NS",
+    "Technology Services": "^CNXIT",
+    "Electronic Technology": "^CNXIT",
+    "Communications": "^CNXIT",
+    "Retail Trade": "^CNXCONSUM",
+    "Consumer Services": "^CNXCONSUM",
+    "Consumer Durables": "^CNXCONSUM",
+    "Consumer Non-Durables": "^CNXFMCG",
+    "Process Industries": "^CNXMETAL",
+    "Producer Manufacturing": "^CNXMETAL",
+    "Non-Energy Minerals": "^CNXMETAL",
+    "Utilities": "^CNXENERGY",
+    "Energy Minerals": "^CNXENERGY",
+    "Transportation": "^CNXINFRA",
+    "Commercial Services": "^CNXINFRA",
+    "Industrial Services": "^CNXINFRA"
+}
+
+@app.route('/api/rrg-history', methods=['GET'])
+def get_rrg_history():
+    from flask import request
+    view = request.args.get('view', 'sectors').strip().lower()
+    
+    # Define benchmark index (Nifty 50)
+    bench_ticker = "^NSEI"
+    bench_history = fetch_historical_prices(bench_ticker)
+    if not bench_history or len(bench_history) < 30:
+        return jsonify(error="Unable to fetch benchmark Nifty 50 history"), 500
+        
+    bench_closes = [d["close"] for d in bench_history]
+    bench_dates = [d["date"] for d in bench_history]
+    
+    # Identify tickers to scan
+    assets = []
+    if view == 'sectors':
+        for sec_name, ticker in SECTOR_INDEX_MAP.items():
+            # Keep unique sector-index pairs
+            if not any(a["label"] == sec_name for a in assets):
+                assets.append({"label": sec_name, "ticker": ticker})
+    else:
+        # Load tickers from query param
+        tickers_str = request.args.get('tickers', '').strip()
+        if tickers_str:
+            tickers = [t.strip().upper() for t in tickers_str.split(',') if t.strip()]
+        else:
+            tickers = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "LT", "ITC"]
+            
+        for t in tickers:
+            assets.append({"label": t, "ticker": t})
+            
+    # Calculate 20-day trail points relative to Benchmark
+    def calculate_asset_trail(asset):
+        ticker = asset["ticker"]
+        label = asset["label"]
+        history = fetch_historical_prices(ticker)
+        if not history or len(history) < 30:
+            return None
+            
+        history_map = {d["date"]: d["close"] for d in history}
+        
+        # Match dates against benchmark
+        valid_indices = []
+        for idx in range(len(bench_dates)):
+            if idx >= 21:
+                date = bench_dates[idx]
+                if date in history_map:
+                    valid_indices.append(idx)
+                    
+        # Grab last 20 matching dates
+        target_indices = valid_indices[-20:]
+        
+        trail_points = []
+        for idx in target_indices:
+            date = bench_dates[idx]
+            close = history_map[date]
+            bench_close = bench_closes[idx]
+            
+            # Weekly performance (5 days ago)
+            prev_date_w = bench_dates[idx - 5]
+            close_w = history_map.get(prev_date_w, close)
+            bench_close_w = bench_closes[idx - 5]
+            
+            # Monthly performance (21 days ago)
+            prev_date_m = bench_dates[idx - 21]
+            close_m = history_map.get(prev_date_m, close)
+            bench_close_m = bench_closes[idx - 21]
+            
+            stock_w = (close - close_w) / close_w * 100 if close_w > 0 else 0
+            stock_m = (close - close_m) / close_m * 100 if close_m > 0 else 0
+            bench_w = (bench_close - bench_close_w) / bench_close_w * 100 if bench_close_w > 0 else 0
+            bench_m = (bench_close - bench_close_m) / bench_close_m * 100 if bench_close_m > 0 else 0
+            
+            x = stock_m - bench_m
+            y = stock_w - bench_w
+            
+            trail_points.append({
+                "date": date,
+                "x": round(x, 2),
+                "y": round(y, 2)
+            })
+            
+        return {
+            "label": label,
+            "ticker": ticker,
+            "trail": trail_points
+        }
+        
+    results = []
+    # Calculate in parallel to keep scan fast
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for res in executor.map(calculate_asset_trail, assets):
+            if res:
+                results.append(res)
+                
+    dates_timeline = [bench_dates[i] for i in range(len(bench_dates)) if i >= 21][-20:]
+    
+    return jsonify(
+        view=view,
+        dates=dates_timeline,
+        data=results
+    )
 
 @app.route("/")
 def index():
@@ -831,6 +1301,9 @@ def scan_stocks():
                 stock["days_in_scan"] = 0
                 stock["re_entry"] = False
                 
+        # Run parallel Screener Intelligence setup pattern scanning
+        populate_screener_intelligence(filtered_stocks)
+        
         for stock in filtered_stocks:
             classify_setup(stock)
             compute_vol_dryup(stock)

@@ -1824,7 +1824,8 @@ function filterAndRender() {
     
     filteredStocks = stocksData.filter(stock => {
         const matchesSearch = stock.clean_ticker.toLowerCase().includes(searchVal) || 
-                              stock.description.toLowerCase().includes(searchVal);
+                              stock.description.toLowerCase().includes(searchVal) ||
+                              (stock.setupLabel && stock.setupLabel.toLowerCase().includes(searchVal));
         const matchesSector = sectorVal === 'all' || stock.sector === sectorVal;
         
         // RVOL Range
@@ -1898,6 +1899,9 @@ function filterAndRender() {
                 matchesSetup = swingStrong && !imsStrong;
             } else if (currentSetupFilter === 'vol_coil') {
                 matchesSetup = stock.volDryUp === true;
+            } else if (currentSetupFilter === 'intel-high-grade') {
+                const label = (stock.setupLabel || '').toUpperCase();
+                matchesSetup = label.includes('[A]') || label.includes('[A+]');
             } else {
                 matchesSetup = stock.setupLabel === currentSetupFilter || (stock.setupTags && stock.setupTags.includes(currentSetupFilter));
             }
@@ -2156,11 +2160,15 @@ function renderTable() {
                 const conf = stock.setupConfidence || 0;
                 let pillClass = 'setup-pill-early';
                 let icon = '';
-                if (label === 'Breakout Ready') { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
-                else if (label === 'Pullback to MA') { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
-                else if (label === 'Inside Bar Coil') { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
-                else if (label === 'Sector Leader') { pillClass = 'setup-pill-leader'; icon = '👑 '; }
-                else if (label === 'Momentum Continuation') { pillClass = 'setup-pill-cont'; icon = '📈 '; }
+                if (label.includes('VCP')) { pillClass = 'setup-pill-vcp'; icon = '🌀 '; }
+                else if (label.includes('Cup & Handle')) { pillClass = 'setup-pill-cup'; icon = '🍺 '; }
+                else if (label.includes('High Tight Flag')) { pillClass = 'setup-pill-flag'; icon = '🚩 '; }
+                else if (label.includes('Long Base')) { pillClass = 'setup-pill-base'; icon = '🧱 '; }
+                else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
+                else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
+                else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
+                else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
+                else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
                 
                 const tagsStr = (stock.setupTags || []).join(', ');
                 const titleStr = tagsStr ? `Tags: ${tagsStr}\nConfidence: ${conf}%` : `Confidence: ${conf}%`;
@@ -4532,7 +4540,11 @@ function openTradeDrawer(ticker) {
     const label = stock.setupLabel || 'Early Watch';
     let pillClass = 'setup-pill-early';
     let icon = '';
-    if (label === 'Breakout Ready') { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
+    if (label.includes('VCP')) { pillClass = 'setup-pill-vcp'; icon = '🌀 '; }
+    else if (label.includes('Cup & Handle')) { pillClass = 'setup-pill-cup'; icon = '🍺 '; }
+    else if (label.includes('High Tight Flag')) { pillClass = 'setup-pill-flag'; icon = '🚩 '; }
+    else if (label.includes('Long Base')) { pillClass = 'setup-pill-base'; icon = '🧱 '; }
+    else if (label === 'Breakout Ready') { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
     else if (label === 'Pullback to MA') { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
     else if (label === 'Inside Bar Coil') { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
     else if (label === 'Sector Leader') { pillClass = 'setup-pill-leader'; icon = '👑 '; }
@@ -4676,6 +4688,83 @@ function openTradeDrawer(ticker) {
             addToWatchlist(stock.clean_ticker, e);
             // Optionally close drawer or just let them know
         };
+    }
+
+    // Screener Intelligence AI Setup Analysis fetch
+    const intelSection = document.getElementById('drawer-intelligence-section');
+    if (intelSection) {
+        intelSection.style.display = 'block';
+        document.getElementById('drawer-intel-pattern').textContent = 'Analyzing Pattern...';
+        document.getElementById('drawer-intel-grade').textContent = '-';
+        document.getElementById('drawer-intel-desc').textContent = 'Running pattern recognition scans on daily chart history...';
+        document.getElementById('drawer-intel-checklist').innerHTML = '';
+        
+        const canvas = document.getElementById('drawer-intel-chart');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        fetch(`/api/setup-analysis?ticker=${encodeURIComponent(stock.clean_ticker)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('drawer-intel-pattern').textContent = 'Analysis Unavailable';
+                    document.getElementById('drawer-intel-desc').textContent = `Could not analyze: ${data.error}`;
+                    return;
+                }
+                
+                document.getElementById('drawer-intel-pattern').textContent = data.pattern;
+                document.getElementById('drawer-intel-grade').textContent = data.grade;
+                document.getElementById('drawer-intel-desc').textContent = data.description;
+                
+                const gradeBadge = document.getElementById('drawer-intel-grade');
+                if (gradeBadge) {
+                    if (data.grade.includes('A')) {
+                        gradeBadge.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                        gradeBadge.style.color = '#4ade80';
+                        gradeBadge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                    } else if (data.grade.includes('B')) {
+                        gradeBadge.style.backgroundColor = 'rgba(168, 85, 247, 0.15)';
+                        gradeBadge.style.color = '#c084fc';
+                        gradeBadge.style.borderColor = 'rgba(168, 85, 247, 0.3)';
+                    } else {
+                        gradeBadge.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                        gradeBadge.style.color = 'var(--color-text-muted)';
+                        gradeBadge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                    }
+                }
+                
+                const checklistEl = document.getElementById('drawer-intel-checklist');
+                if (checklistEl && data.indicators) {
+                    const checkItems = [
+                        { label: 'Price > 21 SMA', val: data.indicators.price_above_21_sma },
+                        { label: 'Price > 50 SMA', val: data.indicators.price_above_50_sma },
+                        { label: 'Volume Dryup', val: data.indicators.vol_dryup_last_10d },
+                        { label: 'Breakout Vol', val: data.indicators.volume_expansion_today },
+                        { label: 'Tight Consol (<10%)', val: data.indicators.tightness_last_15d }
+                    ];
+                    
+                    checklistEl.innerHTML = checkItems.map(item => `
+                        <div style="display: flex; align-items: center; gap: 0.3rem;">
+                            <span>${item.val ? '🟢' : '❌'}</span>
+                            <span style="color: ${item.val ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}">${item.label}</span>
+                        </div>
+                    `).join('');
+                }
+                
+                if (canvas && data.chart_data && data.chart_data.length > 0) {
+                    const closes = data.chart_data.map(d => d.close);
+                    const isPositive = closes[closes.length - 1] >= closes[0];
+                    canvas.width = canvas.parentElement.clientWidth || 300;
+                    canvas.height = 60;
+                    renderSparkline(canvas, closes, isPositive);
+                }
+            })
+            .catch(err => {
+                document.getElementById('drawer-intel-pattern').textContent = 'Error';
+                document.getElementById('drawer-intel-desc').textContent = `Pattern scan failed: ${err}`;
+            });
     }
 }
 
