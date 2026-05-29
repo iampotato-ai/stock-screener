@@ -270,6 +270,87 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup Watchlist state
     initWatchlist();
 
+    // Primary Workspace Navigation Tabs
+    const workspaceTabs = document.querySelectorAll('.workspace-tab');
+    const workspaceViews = document.querySelectorAll('.workspace-view');
+    const slidingCap = document.querySelector('.workspace-sliding-cap');
+
+    function updateSlidingCap(activeTab) {
+        if (!slidingCap || !activeTab) return;
+        slidingCap.style.left = `${activeTab.offsetLeft}px`;
+        slidingCap.style.width = `${activeTab.offsetWidth}px`;
+    }
+
+    function switchWorkspace(viewName) {
+        workspaceTabs.forEach(tab => {
+            if (tab.dataset.view === viewName) {
+                tab.classList.add('active');
+                updateSlidingCap(tab);
+            } else {
+                tab.classList.remove('active');
+            }
+        });
+
+        workspaceViews.forEach(view => {
+            if (view.id === `view-${viewName}`) {
+                view.classList.add('active');
+            } else {
+                view.classList.remove('active');
+            }
+        });
+
+        // Trigger rendering or data updates on tab entry
+        if (viewName === 'watchlist') {
+            const jc = document.getElementById('journal-container');
+            if (jc) jc.style.display = 'flex';
+            if (typeof renderJournal === 'function') renderJournal();
+        } else if (viewName === 'rrg') {
+            const rc = document.getElementById('rrg-container');
+            if (rc) rc.style.display = 'flex';
+            if (typeof renderRRG === 'function') renderRRG();
+        } else if (viewName === 'screener') {
+            // Redirect from sub-tabs promoted to top-level views
+            if (currentTab === 'rrg' || currentTab === 'journal') {
+                const overviewBtn = document.querySelector('.tab-btn[data-tab="overview"]');
+                if (overviewBtn) {
+                    overviewBtn.click();
+                } else {
+                    currentTab = 'overview';
+                    const mainContainer = document.getElementById('main-table-container');
+                    const tableFooter = document.getElementById('table-footer');
+                    if (mainContainer) mainContainer.style.display = 'block';
+                    if (tableFooter) tableFooter.style.display = 'flex';
+                    filterAndRender();
+                }
+            }
+        }
+        
+        localStorage.setItem('momentum_active_workspace', viewName);
+    }
+
+    if (workspaceTabs.length > 0) {
+        workspaceTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                switchWorkspace(tab.dataset.view);
+            });
+        });
+
+        // Restore cached workspace selection or default to dashboard
+        const cachedWorkspace = localStorage.getItem('momentum_active_workspace') || 'dashboard';
+        switchWorkspace(cachedWorkspace);
+
+        window.addEventListener('resize', () => {
+            const activeTab = document.querySelector('.workspace-tab.active');
+            updateSlidingCap(activeTab);
+        });
+
+        // Initial delay positioning to allow CSS animations and flex layouts to compute width
+        setTimeout(() => {
+            const activeTab = document.querySelector('.workspace-tab.active');
+            updateSlidingCap(activeTab);
+        }, 200);
+    }
+
     // Theme toggle logic
     const themeBtn = document.getElementById('btn-theme-toggle');
     if (themeBtn) {
@@ -558,23 +639,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // Watchlist Toggle Button Event Listener
-    const btnToggleWatchlist = document.getElementById('btn-toggle-watchlist');
-    const dashboardGrid = document.querySelector('.dashboard-grid');
+    // Compact Mode Density Toggle Listener
+    const densityBtn = document.getElementById('btn-toggle-density');
+    const densityLabel = document.getElementById('density-label');
     
-    if (btnToggleWatchlist && dashboardGrid) {
-        const watchlistCollapsed = localStorage.getItem('tv_watchlist_collapsed') === 'true';
-        if (watchlistCollapsed) {
-            dashboardGrid.classList.add('watchlist-collapsed');
-            btnToggleWatchlist.classList.remove('active');
+    function applyDensity(isCompact) {
+        if (isCompact) {
+            document.body.classList.add('compact-mode');
+            if (densityLabel) densityLabel.textContent = 'Comfortable';
         } else {
-            btnToggleWatchlist.classList.add('active');
+            document.body.classList.remove('compact-mode');
+            if (densityLabel) densityLabel.textContent = 'Compact';
         }
-        
-        btnToggleWatchlist.addEventListener('click', () => {
-            const isCollapsed = dashboardGrid.classList.toggle('watchlist-collapsed');
-            btnToggleWatchlist.classList.toggle('active', !isCollapsed);
-            localStorage.setItem('tv_watchlist_collapsed', isCollapsed);
+        localStorage.setItem('momentum_table_density', isCompact ? 'compact' : 'comfortable');
+    }
+    
+    if (densityBtn) {
+        densityBtn.addEventListener('click', () => {
+            const isCurrentlyCompact = document.body.classList.contains('compact-mode');
+            applyDensity(!isCurrentlyCompact);
         });
+        
+        // Restore cached density preference
+        const cachedDensity = localStorage.getItem('momentum_table_density') === 'compact';
+        applyDensity(cachedDensity);
     }
     
     // Column preferences and reordering setup
@@ -770,18 +858,24 @@ async function runScan() {
     scanSpinner.classList.remove('hidden');
     
     const visibleCount = columnsConfig.filter(c => c.isVisible).length;
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="${visibleCount}" class="table-loading-state">
-                <div class="loading-pulse-container">
-                    <div class="pulse-bubble"></div>
-                    <div class="pulse-bubble"></div>
-                    <div class="pulse-bubble"></div>
-                </div>
-                <p>Querying TradingView & screening NSE India stocks...</p>
-            </td>
-        </tr>
-    `;
+    let skeletonHtml = '';
+    for (let r = 0; r < 5; r++) {
+        skeletonHtml += `
+            <tr class="skeleton-row">
+                ${columnsConfig.filter(c => c.isVisible).map(col => {
+                    const widthPercent = (col.field === 'ticker' || col.field === 'change') 
+                        ? '60%' 
+                        : `${Math.floor(Math.random() * 40) + 40}%`;
+                    return `
+                        <td>
+                            <div class="skeleton-bar" style="width: ${widthPercent};"></div>
+                        </td>
+                    `;
+                }).join('')}
+            </tr>
+        `;
+    }
+    tableBody.innerHTML = skeletonHtml;
     
     // Reset stats
     if (window.valScanned) valScanned.textContent = "-";
@@ -1169,11 +1263,14 @@ function renderBreadthPanel() {
   const heatmap = document.getElementById('breadth-sector-heatmap');
   if (heatmap) {
     heatmap.innerHTML = (b.allBreadthSectors || []).map(sec => {
-      const tone = sec.breadthPct >= 60 ? 'strong' : sec.breadthPct >= 40 ? 'mixed' : 'weak';
+      const tone = sec.breadthPct >= 60 ? 'strong' : sec.breadthPct >= 40 ? 'mixed' : sec.breadthPct >= 25 ? 'weak' : 'danger';
       return `
         <button class="sector-pill sector-pill--${tone}" onclick="selectSector('${sec.name}')" title="Filter to ${sec.name}">
-          <span>${sec.name}</span>
-          <span>${sec.breadthPct}%</span>
+          <span class="sector-pill-name">${sec.name}</span>
+          <span class="sector-pill-pct">${sec.breadthPct}%</span>
+          <div class="sector-pill-progress-track">
+            <div class="sector-pill-progress-bar" style="width: ${sec.breadthPct}%"></div>
+          </div>
         </button>`;
     }).join('');
   }
@@ -1202,9 +1299,20 @@ function renderRegimeWarning() {
   }
   el.className = `regime-banner regime-banner--${msg.type}`;
   el.innerHTML = `
-    <span class="regime-banner-icon">${marketBreadth.regimeEmoji}</span>
-    <span class="regime-banner-text">${msg.text}</span>
-    <span class="regime-banner-score">Score: ${marketBreadth.regimeScore}/100</span>
+    <div class="regime-banner-left">
+      <span class="regime-banner-icon">${marketBreadth.regimeEmoji}</span>
+      <div class="regime-banner-content">
+        <span class="regime-banner-title">${marketBreadth.regimeBand.toUpperCase()} REGIME ACTIVE</span>
+        <span class="regime-banner-text">${msg.text}</span>
+      </div>
+    </div>
+    <div class="regime-banner-right">
+      <div class="regime-banner-score-badge">
+        <span class="score-label">SCORE</span>
+        <span class="score-value">${marketBreadth.regimeScore}</span>
+        <span class="score-max">/100</span>
+      </div>
+    </div>
   `;
 }
 

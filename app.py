@@ -1701,6 +1701,7 @@ def save_breadth_snapshot():
 
 @app.route('/api/breadth-history', methods=['GET'])
 def get_breadth_history():
+    from flask import request
     try:
         limit = int(request.args.get('limit', 30))
         conn = sqlite3.connect('scan_history.db')
