@@ -4397,6 +4397,21 @@ body[data-theme="light"] .intraday-item:hover {
   flex-shrink: 0;
 }
 
+.bm-label-wrap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.metric-spark {
+  display: block;
+  opacity: 0.85;
+  flex-shrink: 0;
+  max-width: 40px;
+  max-height: 16px;
+}
+
 .breadth-metric {
   display: flex;
   flex-direction: column;
@@ -4594,5 +4609,52 @@ body[data-theme="light"] .intraday-item:hover {
 .sector-pill--strong { background: oklch(0.5 0.15 145 / 0.12); color: var(--color-success); border-color: oklch(0.5 0.15 145 / 0.2); }
 .sector-pill--mixed  { background: oklch(0.7 0.12 75 / 0.12); color: var(--accent-amber); border-color: oklch(0.7 0.12 75 / 0.2); }
 .sector-pill--weak   { background: oklch(0.6 0.15 30 / 0.12); color: var(--accent-orange); border-color: oklch(0.6 0.15 30 / 0.2); }
+
+.breadth-action-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 120ms ease;
+  line-height: 1.2;
+}
+.breadth-action-btn:hover {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+  transform: translateY(-0.5px);
+}
+
+.regime-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+.regime-history-table th {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  padding: 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.regime-history-table td {
+  padding: 0.65rem 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: var(--color-text-secondary);
+}
+.regime-history-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-primary);
+}
 
 

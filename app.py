@@ -1702,14 +1702,15 @@ def save_breadth_snapshot():
 @app.route('/api/breadth-history', methods=['GET'])
 def get_breadth_history():
     try:
+        limit = int(request.args.get('limit', 30))
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
         c.execute("SELECT date,time,advances,declines,pct_sma21,pct_sma50,"
-                  "pct_52high,regime_score,regime_band FROM breadth_history "
-                  "ORDER BY date DESC, time DESC LIMIT 50")
+                  "pct_52high,regime_score,regime_band,avg_recommend FROM breadth_history "
+                  "ORDER BY date DESC, time DESC LIMIT ?", (limit,))
         rows = c.fetchall(); conn.close()
         cols = ['date','time','advances','declines','pctAboveSMA21',
-                'pctAboveSMA50','pctNear52High','regimeScore','regimeBand']
+                'pctAboveSMA50','pctNear52High','regimeScore','regimeBand','avgRecommend']
         return jsonify(history=[dict(zip(cols, r)) for r in rows])
     except Exception as e:
         return jsonify(error=str(e)), 500

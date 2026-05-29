@@ -30,6 +30,7 @@ Positioned at the top of the dashboard, this panel gives traders a quick pulse o
 * **TV Sentiment**: Aggregated TradingView recommendation score.
 * **Top Breadth Sectors**: Heatmap list of sectors sorted by the strongest internal A/D ratios.
 * **Sector Rotation Heatmap Pills**: A full row of interactive, color-coded sector pills rendered beneath the breadth bar showing the breadth strength percentage of every sector. Clicking any pill instantly filters the screener table.
+* **Regime History Modal**: A visual overlay modal loaded by clicking the "History" badge. It fetches and displays the last 30 snapshots with historical timestamps, regime bands (color-coded), composite scores, SMA breadth, and 52W high percentages.
 
 ---
 

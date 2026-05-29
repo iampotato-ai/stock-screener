@@ -608,6 +608,24 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Regime history modal listeners
+    const btnOpenHistory = document.getElementById('open-regime-history');
+    const btnCloseHistory = document.getElementById('close-regime-history');
+    const historyModal = document.getElementById('regime-history-modal');
+    if (btnOpenHistory) {
+        btnOpenHistory.addEventListener('click', openRegimeHistoryModal);
+    }
+    if (btnCloseHistory && historyModal) {
+        btnCloseHistory.addEventListener('click', () => {
+            historyModal.classList.add('hidden');
+        });
+        historyModal.addEventListener('click', (e) => {
+            if (e.target === historyModal) {
+                historyModal.classList.add('hidden');
+            }
+        });
+    }
+
     // Tab switching event listeners
     const screenerTabs = document.getElementById('screener-tabs');
     if (screenerTabs) {
@@ -1211,13 +1229,68 @@ function getRegimeDelta(history) {
   return { value: 0, label: '• 0', cls: 'flat' };
 }
 
+async function openRegimeHistoryModal() {
+  try {
+    const res = await fetch('/api/breadth-history?limit=30');
+    const data = await res.json();
+    const body = document.getElementById('regime-history-body');
+    if (!body) return;
+
+    const getBandClass = (band) => {
+      const b = (band || '').toLowerCase().replace(' ', '-');
+      if (b === 'bull-run' || b === 'bullish') return 'val-up';
+      if (b === 'neutral') return 'bm-unch';
+      if (b === 'bearish' || b === 'bear-market') return 'val-down';
+      return '';
+    };
+
+    body.innerHTML = `
+      <table class="regime-history-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Regime Band</th>
+            <th style="text-align:right;">Score</th>
+            <th style="text-align:right;">SMA21</th>
+            <th style="text-align:right;">SMA50</th>
+            <th style="text-align:right;">52W H</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(data.history || []).map(r => `
+            <tr>
+              <td>${r.date}</td>
+              <td>${r.time}</td>
+              <td class="${getBandClass(r.regimeBand)}" style="font-weight:600;">${r.regimeBand}</td>
+              <td style="text-align:right; font-weight:700; color:var(--color-text-primary);">${r.regimeScore}</td>
+              <td style="text-align:right;">${r.pctAboveSMA21}%</td>
+              <td style="text-align:right;">${r.pctAboveSMA50}%</td>
+              <td style="text-align:right;">${r.pctNear52High}%</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    document.getElementById('regime-history-modal')?.classList.remove('hidden');
+  } catch (_) {}
+}
+
+async function getBreadthHistory(limit = 20) {
+  try {
+    const res = await fetch(`/api/breadth-history?limit=${limit}`);
+    const data = await res.json();
+    return data.history || [];
+  } catch (err) {
+    console.error('Error fetching breadth history:', err);
+    return [];
+  }
+}
+
 async function renderBreadthTrendSparkline() {
   try {
-    const res  = await fetch('/api/breadth-history');
-    const data = await res.json();
-    if (!data.history || data.history.length < 2) return;
+    const history = await getBreadthHistory(20);
+    if (!history || history.length < 2) return;
 
-    const delta = getRegimeDelta(data.history);
+    const delta = getRegimeDelta(history);
     const deltaEl = document.getElementById('regime-score-delta');
     if (deltaEl) {
       deltaEl.textContent = delta.label;
@@ -1225,12 +1298,45 @@ async function renderBreadthTrendSparkline() {
     }
 
     const today    = new Date().toISOString().slice(0, 10);
-    const todayPts = data.history.filter(h => h.date === today).reverse().map(h => h.regimeScore);
-    if (todayPts.length < 2) return;
+    const todayPts = history.filter(h => h.date === today).reverse().map(h => h.regimeScore);
     const canvas = document.getElementById('breadth-trend-canvas');
-    if (!canvas) return;
-    renderSparkline(canvas, todayPts, todayPts[todayPts.length - 1] >= todayPts[0]);
-  } catch (_) {}
+    if (canvas && todayPts.length >= 2) {
+      renderSparkline(canvas, todayPts, todayPts[todayPts.length - 1] >= todayPts[0]);
+    }
+
+    // Chronological points for sparkline trends (oldest to newest)
+    const chronologicalHist = [...history].reverse();
+
+    // 1. A/D Ratio Sparkline
+    const adSeries = chronologicalHist.map(h => ((h.advances || 0) / Math.max((h.advances || 0) + (h.declines || 0), 1)) * 100);
+    const adCanvas = document.getElementById('spark-ad');
+    if (adCanvas && adSeries.length >= 2) {
+      renderSparkline(adCanvas, adSeries, adSeries[adSeries.length - 1] >= adSeries[0]);
+    }
+
+    // 2. MA Breadth Sparkline
+    const maSeries = chronologicalHist.map(h => (((h.pctAboveSMA21 || 0) + (h.pctAboveSMA50 || 0)) / 2));
+    const maCanvas = document.getElementById('spark-ma');
+    if (maCanvas && maSeries.length >= 2) {
+      renderSparkline(maCanvas, maSeries, maSeries[maSeries.length - 1] >= maSeries[0]);
+    }
+
+    // 3. 52W High Breadth Sparkline
+    const hiSeries = chronologicalHist.map(h => h.pctNear52High || 0);
+    const hiCanvas = document.getElementById('spark-52w');
+    if (hiCanvas && hiSeries.length >= 2) {
+      renderSparkline(hiCanvas, hiSeries, hiSeries[hiSeries.length - 1] >= hiSeries[0]);
+    }
+
+    // 4. TV Sentiment Sparkline
+    const seSeries = chronologicalHist.map(h => h.avgRecommend || 0);
+    const seCanvas = document.getElementById('spark-sent');
+    if (seCanvas && seSeries.length >= 2) {
+      renderSparkline(seCanvas, seSeries, seSeries[seSeries.length - 1] >= seSeries[0]);
+    }
+  } catch (err) {
+    console.error('Error rendering sparklines:', err);
+  }
 }
 
 // Global sector strength scores cache

@@ -74,7 +74,10 @@
           <div class="breadth-regime" id="breadth-regime-badge" data-regime="neutral">
             <span class="regime-emoji" id="regime-emoji">⚖️</span>
             <div class="regime-text">
-              <span class="regime-label">Market Regime</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="regime-label">Market Regime</span>
+                <button class="breadth-action-btn" id="open-regime-history" title="View historical snapshots">History</button>
+              </div>
               <span class="regime-band" id="regime-band">Neutral</span>
             </div>
             <div class="regime-score-wrap">
@@ -108,7 +111,10 @@
           <div class="breadth-divider"></div>
 
           <div class="breadth-metric">
-            <span class="bm-label">A / D Ratio</span>
+            <div class="bm-label-wrap">
+              <span class="bm-label">A / D Ratio</span>
+              <canvas id="spark-ad" class="metric-spark" width="40" height="16"></canvas>
+            </div>
             <div class="ad-bar-wrap">
               <div class="ad-bar-adv" id="ad-bar-adv" style="width:50%"></div>
               <div class="ad-bar-dec" id="ad-bar-dec" style="width:50%"></div>
@@ -123,7 +129,10 @@
           <div class="breadth-divider"></div>
 
           <div class="breadth-metric">
-            <span class="bm-label">% Above MA</span>
+            <div class="bm-label-wrap">
+              <span class="bm-label">% Above MA</span>
+              <canvas id="spark-ma" class="metric-spark" width="40" height="16"></canvas>
+            </div>
             <div class="bm-dual">
               <div class="bm-dual-item"><span class="bm-dual-label">SMA21</span><span class="bm-dual-val" id="bm-sma21">--%</span></div>
               <div class="bm-dual-item"><span class="bm-dual-label">SMA50</span><span class="bm-dual-val" id="bm-sma50">--%</span></div>
@@ -134,7 +143,10 @@
           <div class="breadth-divider"></div>
 
           <div class="breadth-metric">
-            <span class="bm-label">Near 52W High</span>
+            <div class="bm-label-wrap">
+              <span class="bm-label">Near 52W High</span>
+              <canvas id="spark-52w" class="metric-spark" width="40" height="16"></canvas>
+            </div>
             <span class="bm-big-val" id="bm-52high-val">--%</span>
             <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
           </div>
@@ -152,7 +164,10 @@
           <div class="breadth-divider"></div>
 
           <div class="breadth-metric">
-            <span class="bm-label">TV Sentiment</span>
+            <div class="bm-label-wrap">
+              <span class="bm-label">TV Sentiment</span>
+              <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
+            </div>
             <span class="bm-big-val" id="bm-sent-val">--</span>
             <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
           </div>
@@ -724,6 +739,28 @@
                     </div>
                 </div>
             </div>
+    </div>
+
+    <!-- Regime History Modal -->
+    <div class="modal-overlay hidden" id="regime-history-modal">
+        <div class="modal-container glass-panel" style="max-width: 650px; height: auto; max-height: 85%;">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem 1.5rem;">
+                <div class="modal-title-area">
+                    <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
+                        <span>⏳</span> Regime Breadth History
+                    </h3>
+                    <p style="margin: 0.2rem 0 0 0; font-size: 0.75rem; color: var(--color-text-muted);">
+                        Last 30 snapshots recorded from scan runs
+                    </p>
+                </div>
+                <button class="modal-close-btn" id="close-regime-history" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" id="regime-history-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 450px;">
+                <!-- populated dynamically -->
+            </div>
+        </div>
     </div>
 
     <!-- Save Preset Modal -->
