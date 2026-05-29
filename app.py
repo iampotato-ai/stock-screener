@@ -928,7 +928,14 @@ def get_setup_analysis():
         grade=result["grade"],
         description=result["description"],
         indicators=indicators,
-        chart_data=[{"date": d["date"], "close": d["close"], "volume": d["volume"]} for d in history[-60:]]
+        chart_data=[{
+            "date": d["date"],
+            "open": d["open"],
+            "high": d["high"],
+            "low": d["low"],
+            "close": d["close"],
+            "volume": d["volume"]
+        } for d in history[-120:]]
     )
 SECTOR_INDEX_MAP = {
     "Health Technology": "NIFTY_HLTHCARE.NS",

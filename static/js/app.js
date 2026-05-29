@@ -22,6 +22,8 @@ let currentPage = 1;
 const itemsPerPage = 50;
 let activeIntradayFilter = null;
 let activeStatFilter = null;
+let activeDrawerChart = null;
+let activeOverlayChart = null;
 
 // ── Stat card previous-value store ──
 const statCardPrev = {
@@ -359,6 +361,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const newTheme = currentTheme === 'light' ? 'dark' : 'light';
             document.body.setAttribute('data-theme', newTheme);
             localStorage.setItem('app-theme', newTheme);
+            
+            // Sync active TradingView chart
+            if (activeDrawerChart) {
+                const themeOpts = getChartThemeOptions(newTheme);
+                activeDrawerChart.applyOptions({
+                    layout: themeOpts.layout,
+                    grid: themeOpts.grid,
+                    crosshair: themeOpts.crosshair,
+                });
+            }
+            if (activeOverlayChart) {
+                const themeOpts = getChartThemeOptions(newTheme);
+                activeOverlayChart.applyOptions({
+                    layout: themeOpts.layout,
+                    grid: themeOpts.grid,
+                    crosshair: themeOpts.crosshair,
+                });
+            }
         });
     }
 
@@ -713,6 +733,42 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Chart overlay modal listeners
+    const drawerChartContainer = document.getElementById('drawer-tv-chart-container');
+    const closeChartModalBtn = document.getElementById('close-chart-modal');
+    const chartOverlayModal = document.getElementById('chart-overlay-modal');
+    
+    if (drawerChartContainer) {
+        drawerChartContainer.addEventListener('click', () => {
+            if (window.currentDrawerChartData && window.currentTradeStock) {
+                if (chartOverlayModal) {
+                    chartOverlayModal.classList.remove('hidden');
+                    document.getElementById('overlay-chart-title').innerHTML = `📈 ${window.currentTradeStock.clean_ticker} - Daily Chart`;
+                    setTimeout(() => {
+                        createOverlayChart('overlay-tv-chart', window.currentDrawerChartData);
+                    }, 50);
+                }
+            }
+        });
+    }
+
+    if (closeChartModalBtn) {
+        closeChartModalBtn.addEventListener('click', closeChartOverlay);
+    }
+    if (chartOverlayModal) {
+        chartOverlayModal.addEventListener('click', (e) => {
+            if (e.target === chartOverlayModal) {
+                closeChartOverlay();
+            }
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeChartOverlay();
+        }
+    });
 
     // Tab switching event listeners
     const screenerTabs = document.getElementById('screener-tabs');
@@ -4699,10 +4755,13 @@ function openTradeDrawer(ticker) {
         document.getElementById('drawer-intel-desc').textContent = 'Running pattern recognition scans on daily chart history...';
         document.getElementById('drawer-intel-checklist').innerHTML = '';
         
-        const canvas = document.getElementById('drawer-intel-chart');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (activeDrawerChart) {
+            try {
+                activeDrawerChart.remove();
+            } catch (e) {
+                console.error("Error removing chart:", e);
+            }
+            activeDrawerChart = null;
         }
         
         fetch(`/api/setup-analysis?ticker=${encodeURIComponent(stock.clean_ticker)}`)
@@ -4753,12 +4812,9 @@ function openTradeDrawer(ticker) {
                     `).join('');
                 }
                 
-                if (canvas && data.chart_data && data.chart_data.length > 0) {
-                    const closes = data.chart_data.map(d => d.close);
-                    const isPositive = closes[closes.length - 1] >= closes[0];
-                    canvas.width = canvas.parentElement.clientWidth || 300;
-                    canvas.height = 60;
-                    renderSparkline(canvas, closes, isPositive);
+                if (data.chart_data && data.chart_data.length > 0) {
+                    window.currentDrawerChartData = data.chart_data;
+                    createTradeDrawerChart('drawer-tv-chart', data.chart_data);
                 }
             })
             .catch(err => {
@@ -4897,6 +4953,14 @@ function closeTradeDrawer() {
     if (overlay) overlay.classList.remove('open');
     if (drawer) drawer.classList.remove('open');
     window.currentTradeStock = null;
+    if (activeDrawerChart) {
+        try {
+            activeDrawerChart.remove();
+        } catch (e) {
+            console.error("Error removing chart:", e);
+        }
+        activeDrawerChart = null;
+    }
 }
 
 window.openTradeDrawer = openTradeDrawer;
@@ -5916,3 +5980,411 @@ window.updateJournalLivePrices = async function(event) {
         }
     }
 };
+
+/**
+ * Calculates Simple Moving Average (SMA) client-side.
+ * @param {Object[]} data - Array of OHLCV daily bars.
+ * @param {number} period - SMA period.
+ * @returns {Object[]} Array of { time, value } pairs.
+ */
+function calculateSMA(data, period) {
+    const sma = [];
+    for (let i = 0; i < data.length; i++) {
+        if (i < period - 1) continue;
+        let sum = 0;
+        for (let j = 0; j < period; j++) {
+            sum += data[i - j].close;
+        }
+        sma.push({
+            time: data[i].date,
+            value: sum / period
+        });
+    }
+    return sma;
+}
+
+/**
+ * Returns configuration options for TradingView Lightweight Charts based on the theme.
+ * @param {string} theme - 'dark' or 'light'
+ * @returns {Object} Chart options.
+ */
+function getChartThemeOptions(theme) {
+    const isDark = theme !== 'light';
+    return {
+        layout: {
+            background: {
+                type: 'solid',
+                color: isDark ? '#0b0e14' : '#ffffff'
+            },
+            textColor: isDark ? '#94a3b8' : '#475569',
+        },
+        grid: {
+            vertLines: {
+                color: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)'
+            },
+            horzLines: {
+                color: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)'
+            }
+        },
+        crosshair: {
+            vertLine: {
+                color: isDark ? '#334155' : '#cbd5e1',
+                width: 1,
+                style: 3, // dashed
+            },
+            horzLine: {
+                color: isDark ? '#334155' : '#cbd5e1',
+                width: 1,
+                style: 3, // dashed
+            }
+        }
+    };
+}
+
+/**
+ * Initializes and renders TradingView Lightweight Charts inside the specified container.
+ * @param {string} containerId - ID of target div element.
+ * @param {Object[]} rawData - Array of daily bars with open, high, low, close, volume, date.
+ */
+function createTradeDrawerChart(containerId, rawData) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (activeDrawerChart) {
+        try {
+            activeDrawerChart.remove();
+        } catch (e) {
+            console.error("Error removing chart:", e);
+        }
+        activeDrawerChart = null;
+    }
+
+    const theme = document.body.getAttribute('data-theme') || 'dark';
+    const themeOpts = getChartThemeOptions(theme);
+
+    // Initialize Chart
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth || 360,
+        height: 200,
+        layout: themeOpts.layout,
+        grid: themeOpts.grid,
+        crosshair: themeOpts.crosshair,
+        timeScale: {
+            borderVisible: false,
+            timeVisible: false,
+            secondsVisible: false,
+        },
+        rightPriceScale: {
+            borderVisible: false,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.25, // room for volume at bottom
+            },
+        },
+    });
+
+    activeDrawerChart = chart;
+
+    // 1. Candlestick Series
+    const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        borderVisible: false,
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
+    });
+
+    const formattedCandles = rawData.map(d => ({
+        time: d.date,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+    }));
+    candleSeries.setData(formattedCandles);
+
+    // 2. Volume Series Overlay
+    const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
+        color: '#26a69a',
+        priceFormat: {
+            type: 'volume',
+        },
+        priceScaleId: '', // overlay
+        scaleMargins: {
+            top: 0.8, // lower 20%
+            bottom: 0,
+        },
+    });
+
+    const formattedVolume = rawData.map(d => {
+        const isUp = d.close >= d.open;
+        return {
+            time: d.date,
+            value: d.volume,
+            color: isUp ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+        };
+    });
+    volumeSeries.setData(formattedVolume);
+
+    // 3. Line Series for SMAs
+    const sma10Data = calculateSMA(rawData, 10);
+    const sma21Data = calculateSMA(rawData, 21);
+    const sma50Data = calculateSMA(rawData, 50);
+
+    const sma10Series = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#fbbf24', // Amber/Yellow
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    sma10Series.setData(sma10Data);
+
+    const sma21Series = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#06b6d4', // Cyan
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    sma21Series.setData(sma21Data);
+
+    const sma50Series = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#a855f7', // Purple
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    sma50Series.setData(sma50Data);
+
+    // 4. Markers for Inside Bars and Breakouts
+    const markers = [];
+    for (let i = 0; i < rawData.length; i++) {
+        const bar = rawData[i];
+        if (i > 0) {
+            const prevBar = rawData[i - 1];
+            
+            // Inside Bar: High <= PrevHigh and Low >= PrevLow
+            if (bar.high <= prevBar.high && bar.low >= prevBar.low) {
+                markers.push({
+                    time: bar.date,
+                    position: 'aboveBar',
+                    color: '#f59e0b',
+                    shape: 'circle',
+                });
+            }
+
+            // Breakout: Close > Highest High of past 10 bars AND Volume expansion (Vol >= 1.4 * 50-day average Volume)
+            const prevHighs = [];
+            for (let k = Math.max(0, i - 10); k < i; k++) {
+                prevHighs.push(rawData[k].high);
+            }
+            const highestHighOfPreceding = Math.max(...prevHighs);
+
+            const volValues = [];
+            for (let k = Math.max(0, i - 50); k < i; k++) {
+                volValues.push(rawData[k].volume);
+            }
+            const avgVol = volValues.reduce((sumVal, v) => sumVal + v, 0) / volValues.length;
+
+            if (bar.close > highestHighOfPreceding && bar.volume >= avgVol * 1.4) {
+                markers.push({
+                    time: bar.date,
+                    position: 'belowBar',
+                    color: '#10b981',
+                    shape: 'arrowUp',
+                });
+            }
+        }
+    }
+    LightweightCharts.createSeriesMarkers(candleSeries, markers);
+
+    // Auto Resize Support
+    const resizeObserver = new ResizeObserver(entries => {
+        if (entries.length === 0 || !entries[0].contentRect) return;
+        const { width, height } = entries[0].contentRect;
+        chart.resize(width, height);
+    });
+    resizeObserver.observe(container);
+    container.resizeObserver = resizeObserver;
+}
+
+/**
+ * Closes the full screen chart overlay modal and destroys the activeOverlayChart instance.
+ */
+function closeChartOverlay() {
+    const modal = document.getElementById('chart-overlay-modal');
+    if (modal) modal.classList.add('hidden');
+    if (activeOverlayChart) {
+        try {
+            activeOverlayChart.remove();
+        } catch (e) {
+            console.error("Error removing overlay chart:", e);
+        }
+        activeOverlayChart = null;
+    }
+}
+
+/**
+ * Renders an expanded TradingView chart inside the modal overlay.
+ * @param {string} containerId - Target container ID.
+ * @param {Object[]} rawData - Historical chart data bars.
+ */
+function createOverlayChart(containerId, rawData) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (activeOverlayChart) {
+        try {
+            activeOverlayChart.remove();
+        } catch (e) {
+            console.error("Error removing overlay chart:", e);
+        }
+        activeOverlayChart = null;
+    }
+
+    const theme = document.body.getAttribute('data-theme') || 'dark';
+    const themeOpts = getChartThemeOptions(theme);
+
+    // Initialize Chart
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth || 800,
+        height: 400,
+        layout: themeOpts.layout,
+        grid: themeOpts.grid,
+        crosshair: themeOpts.crosshair,
+        timeScale: {
+            borderVisible: true,
+            timeVisible: true,
+            secondsVisible: false,
+        },
+        rightPriceScale: {
+            borderVisible: true,
+            scaleMargins: {
+                top: 0.1,
+                bottom: 0.25, // room for volume at bottom
+            },
+        },
+    });
+
+    activeOverlayChart = chart;
+
+    // 1. Candlestick Series
+    const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+        upColor: '#10b981',
+        downColor: '#ef4444',
+        borderVisible: false,
+        wickUpColor: '#10b981',
+        wickDownColor: '#ef4444',
+    });
+
+    const formattedCandles = rawData.map(d => ({
+        time: d.date,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+    }));
+    candleSeries.setData(formattedCandles);
+
+    // 2. Volume Series Overlay
+    const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
+        color: '#26a69a',
+        priceFormat: {
+            type: 'volume',
+        },
+        priceScaleId: '', // overlay
+        scaleMargins: {
+            top: 0.8, // lower 20%
+            bottom: 0,
+        },
+    });
+
+    const formattedVolume = rawData.map(d => {
+        const isUp = d.close >= d.open;
+        return {
+            time: d.date,
+            value: d.volume,
+            color: isUp ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+        };
+    });
+    volumeSeries.setData(formattedVolume);
+
+    // 3. Line Series for SMAs
+    const sma10Data = calculateSMA(rawData, 10);
+    const sma21Data = calculateSMA(rawData, 21);
+    const sma50Data = calculateSMA(rawData, 50);
+
+    const sma10Series = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#fbbf24', // Amber/Yellow
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    sma10Series.setData(sma10Data);
+
+    const sma21Series = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#06b6d4', // Cyan
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    sma21Series.setData(sma21Data);
+
+    const sma50Series = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#a855f7', // Purple
+        lineWidth: 1.5,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    sma50Series.setData(sma50Data);
+
+    // 4. Markers for Inside Bars and Breakouts
+    const markers = [];
+    for (let i = 0; i < rawData.length; i++) {
+        const bar = rawData[i];
+        if (i > 0) {
+            const prevBar = rawData[i - 1];
+            
+            // Inside Bar
+            if (bar.high <= prevBar.high && bar.low >= prevBar.low) {
+                markers.push({
+                    time: bar.date,
+                    position: 'aboveBar',
+                    color: '#f59e0b',
+                    shape: 'circle',
+                });
+            }
+
+            // Breakout
+            const prevHighs = [];
+            for (let k = Math.max(0, i - 10); k < i; k++) {
+                prevHighs.push(rawData[k].high);
+            }
+            const highestHighOfPreceding = Math.max(...prevHighs);
+
+            const volValues = [];
+            for (let k = Math.max(0, i - 50); k < i; k++) {
+                volValues.push(rawData[k].volume);
+            }
+            const avgVol = volValues.reduce((sumVal, v) => sumVal + v, 0) / volValues.length;
+
+            if (bar.close > highestHighOfPreceding && bar.volume >= avgVol * 1.4) {
+                markers.push({
+                    time: bar.date,
+                    position: 'belowBar',
+                    color: '#10b981',
+                    shape: 'arrowUp',
+                });
+            }
+        }
+    }
+    LightweightCharts.createSeriesMarkers(candleSeries, markers);
+
+    // Auto Resize Support
+    const resizeObserver = new ResizeObserver(entries => {
+        if (entries.length === 0 || !entries[0].contentRect) return;
+        const { width, height } = entries[0].contentRect;
+        chart.resize(width, height);
+    });
+    resizeObserver.observe(container);
+    container.resizeObserver = resizeObserver;
+}

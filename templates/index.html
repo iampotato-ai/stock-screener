@@ -27,6 +27,8 @@
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- CSS stylesheet -->
@@ -802,6 +804,27 @@
         </div>
     </div>
 
+    <!-- Expanded Daily Chart Overlay Modal -->
+    <div class="modal-overlay hidden" id="chart-overlay-modal">
+        <div class="modal-container glass-panel" style="max-width: 900px; width: 90vw; height: auto; max-height: 85%;">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem 1.5rem;">
+                <div class="modal-title-area">
+                    <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);" id="overlay-chart-title">
+                        Daily Chart
+                    </h3>
+                </div>
+                <button class="modal-close-btn" id="close-chart-modal" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" id="chart-overlay-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 500px;">
+                <div id="overlay-tv-chart-container" style="height: 400px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.15);">
+                    <div id="overlay-tv-chart" style="width: 100%; height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Save Preset Modal -->
     <div class="modal-overlay hidden" id="preset-modal-overlay">
         <div class="modal" id="preset-modal" style="max-width: 400px; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: var(--radius-md);">
@@ -1000,11 +1023,11 @@
                         </div>
                     </div>
                     
-                    <!-- 60-Day Trend Chart -->
+                    <!-- 120-Day Interactive Daily Chart -->
                     <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
-                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">60-Day Trend Chart</div>
-                        <div style="height: 60px; width: 100%; position: relative;">
-                            <canvas id="drawer-intel-chart" style="width: 100%; height: 60px;"></canvas>
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">120-Day Daily Chart</div>
+                        <div id="drawer-tv-chart-container" style="height: 200px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.1); cursor: pointer;" title="Click to expand chart to full screen overlay">
+                            <div id="drawer-tv-chart" style="width: 100%; height: 200px;"></div>
                         </div>
                     </div>
                 </div>
