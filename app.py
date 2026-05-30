@@ -695,8 +695,10 @@ def compute_vol_dryup(stock):
 # Screener Intelligence: Chart Fetching & Pattern Recognition Engine
 # -----------------------------------------------------------------------------
 
-_historical_prices_cache = {}  # {(ticker, range_str): (timestamp, data)}
+from collections import OrderedDict
+_historical_prices_cache = OrderedDict()  # {(ticker, range_str): (timestamp, data)}
 _HIST_CACHE_TTL = 15 * 60     # 15 minutes
+_MAX_HIST_CACHE = 500         # Cap at 500 unique ticker/range combinations
 
 def fetch_historical_prices(ticker, range_str="6mo"):
     """
@@ -754,6 +756,8 @@ def fetch_historical_prices(ticker, range_str="6mo"):
                     "close": float(closes[i]),
                     "volume": int(volumes[i])
                 })
+        if len(_historical_prices_cache) >= _MAX_HIST_CACHE:
+            _historical_prices_cache.popitem(last=False)  # evict oldest
         _historical_prices_cache[cache_key] = (time.time(), cleaned_data)
         return cleaned_data
     except Exception as e:
