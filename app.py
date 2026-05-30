@@ -128,6 +128,16 @@ def init_db():
             notes TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS kronos_forecasts (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker      TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            pred_len    INTEGER NOT NULL,
+            forecast_json TEXT NOT NULL,
+            last_close  REAL NOT NULL
+        )
+    ''')
     
     conn.commit()
     conn.close()
@@ -1210,10 +1220,10 @@ def get_setup_analysis():
                     # [TWEAK 1] Expose T_val and weighted_score in log
                     print(
                         f"[Kronos] {ticker} | T={T_val:.2f} | "
-                        f"ret={m1_return_pct:+.1f}% ({normalised_return:+.1f}σ) "
+                        f"ret={m1_return_pct:+.1f}% ({normalised_return:+.1f}std) "
                         f"split={m2_split_pct:+.1f}% cons={m3_consistency_pct:.0f}% "
                         f"brkout={m4_breakout} dd={m5_drawdown_pct:.1f}% flat={is_flat_forecast} "
-                        f"→ score={weighted_score:+.3f} → {ai_forecast_bias} | conf={ai_confidence_score}%"
+                        f"-> score={weighted_score:+.3f} -> {ai_forecast_bias} | conf={ai_confidence_score}%"
                     )
 
                     # [TWEAK 4] Log raw forecast closes so path differences are visible per stock
@@ -1244,6 +1254,268 @@ def get_setup_analysis():
             "volume": d["volume"]
         } for d in history]
     )
+
+@app.route('/api/kronos-forecast', methods=['GET'])
+def get_kronos_forecast():
+    from flask import request
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime
+    import json
+    
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return jsonify(error="Ticker is required"), 400
+        
+    if ticker.startswith("NSE:"):
+        ticker = ticker[4:]
+        
+    pred_len = int(request.args.get('pred_len', 5))
+    if pred_len not in [3, 5, 10]:
+        pred_len = 5
+        
+    sample_count = int(request.args.get('sample_count', 20))
+    
+    # 1. Fetch historical prices (120 bars for calculation of ATR%)
+    history = fetch_historical_prices(ticker, range_str="6mo")
+    if not history or len(history) < 10:
+        return jsonify(error="Insufficient price history"), 400
+        
+    last_date_str = history[-1]["date"]
+    
+    # Check database to see if we already have it stored for today
+    conn = sqlite3.connect("scan_history.db")
+    c = conn.cursor()
+    c.execute(
+        "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? ORDER BY id DESC LIMIT 1",
+        (ticker, pred_len)
+    )
+    db_row = c.fetchone()
+    
+    # If the database record matches today's generated date, use it
+    if db_row:
+        stored_forecast_json, last_close, generated_at_str = db_row
+        gen_date = generated_at_str.split('T')[0]
+        if gen_date == last_date_str:
+            conn.close()
+            return jsonify(
+                ticker=ticker,
+                pred_len=pred_len,
+                forecast=json.loads(stored_forecast_json),
+                last_close=last_close,
+                generated_at=generated_at_str
+            )
+            
+    # Load predictor
+    predictor = get_kronos_predictor()
+    if not predictor:
+        conn.close()
+        return jsonify(error="Kronos predictor not loaded"), 500
+        
+    try:
+        # Prepare inputs using the last 60 bars for fast inference context
+        history_slice = history[-60:]
+        df_input = pd.DataFrame([{
+            "open": float(d["open"]),
+            "high": float(d["high"]),
+            "low": float(d["low"]),
+            "close": float(d["close"]),
+            "volume": float(d["volume"])
+        } for d in history_slice])
+        df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
+        
+        x_timestamps = pd.to_datetime([d["date"] for d in history_slice])
+        y_timestamps = generate_next_trading_days(last_date_str, pred_len)
+        
+        # Calculate ATR% from the full history (up to 15 bars)
+        atr_pct = 5.0
+        if len(history) >= 15:
+            tr_list = []
+            for i in range(len(history) - 14, len(history)):
+                h_val = float(history[i]["high"])
+                l_val = float(history[i]["low"])
+                p_close = float(history[i-1]["close"])
+                tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
+                tr_list.append(tr)
+            atr = sum(tr_list) / 14
+            curr_close_val = float(history[-1]["close"])
+            if curr_close_val > 0:
+                atr_pct = (atr / curr_close_val) * 100
+                
+        # Scaled temperature continuously:
+        T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
+        
+        # Call model with return_samples=True to compute bands
+        # Shape returned is (sample_count, pred_len, features)
+        raw_samples = predictor.predict(
+            df=df_input,
+            x_timestamp=pd.Series(x_timestamps),
+            y_timestamp=y_timestamps,
+            pred_len=pred_len,
+            T=T_val,
+            top_p=0.8,
+            sample_count=sample_count,
+            verbose=False,
+            return_samples=True
+        )
+        
+        # raw_samples has shape (sample_count, pred_len, 6)
+        mean_pred = raw_samples.mean(axis=0)
+        p10 = np.percentile(raw_samples, 10, axis=0)
+        p90 = np.percentile(raw_samples, 90, axis=0)
+        
+        dates = [d.strftime("%Y-%m-%d") for d in y_timestamps]
+        forecast_list = []
+        for i in range(pred_len):
+            forecast_list.append({
+                "date": dates[i],
+                "open": round(float(mean_pred[i, 0]), 2),
+                "high": round(float(mean_pred[i, 1]), 2),
+                "low": round(float(mean_pred[i, 2]), 2),
+                "close": round(float(mean_pred[i, 3]), 2),
+                "volume": int(mean_pred[i, 4]),
+                "p10_close": round(float(p10[i, 3]), 2),
+                "p90_close": round(float(p90[i, 3]), 2)
+            })
+            
+        # Store in SQLite database
+        generated_at = datetime.now().isoformat()
+        last_close = float(history[-1]["close"])
+        forecast_json_str = json.dumps(forecast_list)
+        
+        c.execute(
+            "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close) VALUES (?, ?, ?, ?, ?)",
+            (ticker, generated_at, pred_len, forecast_json_str, last_close)
+        )
+        conn.commit()
+        conn.close()
+        
+        return jsonify(
+            ticker=ticker,
+            pred_len=pred_len,
+            forecast=forecast_list,
+            last_close=last_close,
+            generated_at=generated_at
+        )
+    except Exception as e:
+        conn.close()
+        print(f"Error generating Kronos forecast: {e}")
+        return jsonify(error=f"Prediction error: {str(e)}"), 500
+
+@app.route('/api/kronos-backtest', methods=['GET'])
+def get_kronos_backtest():
+    from flask import request
+    import sqlite3
+    import json
+    
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return jsonify(error="Ticker is required"), 400
+        
+    if ticker.startswith("NSE:"):
+        ticker = ticker[4:]
+        
+    # Fetch historical prices to match against forecasts (2 years history to cover older forecasts)
+    history = fetch_historical_prices(ticker, range_str="2y")
+    if not history:
+        return jsonify(error="No historical data found to run backtest"), 404
+        
+    actual_closes = {}
+    for i, d in enumerate(history):
+        actual_closes[d["date"]] = {
+            "close": float(d["close"]),
+            "prev_close": float(history[i-1]["close"]) if i > 0 else None
+        }
+        
+    # Retrieve all stored forecasts for this ticker
+    conn = sqlite3.connect("scan_history.db")
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, generated_at, pred_len, forecast_json, last_close FROM kronos_forecasts WHERE ticker = ? ORDER BY id DESC",
+        (ticker,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    
+    backtest_runs = []
+    
+    for row in rows:
+        fid, generated_at_str, pred_len, forecast_json_str, last_close = row
+        forecast_data = json.loads(forecast_json_str)
+        
+        comparison_points = []
+        abs_errors = []
+        pct_errors = []
+        direction_correct = 0
+        band_hits = 0
+        
+        for idx, item in enumerate(forecast_data):
+            f_date = item["date"]
+            f_close = float(item["close"])
+            p10 = float(item["p10_close"])
+            p90 = float(item["p90_close"])
+            
+            if f_date in actual_closes:
+                act = actual_closes[f_date]
+                act_close = act["close"]
+                
+                # Accuracy metrics
+                err = abs(f_close - act_close)
+                abs_errors.append(err)
+                pct_errors.append(err / (act_close + 1e-5))
+                
+                # Band check
+                if p10 <= act_close <= p90:
+                    band_hits += 1
+                    
+                # Direction check
+                if idx == 0:
+                    f_dir = f_close > last_close
+                    prev_act_close = act["prev_close"] if act["prev_close"] is not None else last_close
+                    a_dir = act_close > prev_act_close
+                else:
+                    prev_f_close = float(forecast_data[idx-1]["close"])
+                    f_dir = f_close > prev_f_close
+                    prev_act_close = actual_closes[forecast_data[idx-1]["date"]]["close"] if forecast_data[idx-1]["date"] in actual_closes else act["prev_close"]
+                    a_dir = act_close > (prev_act_close if prev_act_close is not None else last_close)
+                    
+                if f_dir == a_dir:
+                    direction_correct += 1
+                    
+                comparison_points.append({
+                    "date": f_date,
+                    "forecast_close": f_close,
+                    "actual_close": act_close,
+                    "p10_close": p10,
+                    "p90_close": p90,
+                    "in_band": p10 <= act_close <= p90
+                })
+                
+        total_days = len(comparison_points)
+        if total_days > 0:
+            mae = sum(abs_errors) / total_days
+            mape = (sum(pct_errors) / total_days) * 100
+            dir_acc = (direction_correct / total_days) * 100
+            hit_rate = (band_hits / total_days) * 100
+            
+            backtest_runs.append({
+                "id": fid,
+                "generated_at": generated_at_str,
+                "pred_len": pred_len,
+                "last_close": last_close,
+                "mae": round(mae, 2),
+                "mape": round(mape, 2),
+                "direction_accuracy": round(dir_acc, 1),
+                "band_hit_rate": round(hit_rate, 1),
+                "total_comparisons": total_days,
+                "comparison_points": comparison_points
+            })
+            
+    return jsonify(
+        ticker=ticker,
+        backtest_runs=backtest_runs[:5]
+    )
+
 SECTOR_INDEX_MAP = {
     "Health Technology": "NIFTY_HLTHCARE.NS",
     "Health Services": "NIFTY_HLTHCARE.NS",

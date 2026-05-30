@@ -88,6 +88,10 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
                     <span>RRG Rotation</span>
                 </button>
+                <button class="workspace-tab" data-view="ai-forecast">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"></path><path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"></path></svg>
+                    <span>AI Forecast</span>
+                </button>
                 <div class="workspace-sliding-cap"></div>
             </div>
         </nav>
@@ -689,6 +693,45 @@
         </div>
     </div>
 
+    <!-- Workspace View: AI Forecast -->
+    <div class="workspace-view" id="view-ai-forecast">
+        <div class="ai-forecast-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column;">
+            <!-- Stock search to pick a symbol -->
+            <div class="ai-forecast-header" style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">🔮 Kronos AI Price Predictor</h3>
+                <div style="flex-grow: 1;"></div>
+                <input id="kronos-ticker-input" placeholder="Enter NSE ticker (e.g. RELIANCE)..." class="search-input" style="max-width: 250px; padding: 0.5rem 1rem; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;" />
+                <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
+                    <button class="kronos-len-btn" data-len="3" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
+                    <button class="kronos-len-btn active" data-len="5" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
+                    <button class="kronos-len-btn" data-len="10" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
+                </div>
+                <button id="btn-run-kronos" class="btn btn-primary" style="padding: 0.5rem 1.25rem; font-weight: 600;">Run Forecast</button>
+            </div>
+
+            <!-- Full-size chart container -->
+            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                <div id="kronos-full-chart" style="height: 380px; width: 100%;"></div>
+            </div>
+
+            <!-- Forecast + backtest table -->
+            <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
+
+            <!-- Forecast vs Actual section (shown after actuals arrive) -->
+            <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+                <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin-top: 0; margin-bottom: 1rem; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                        <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
+                        <!-- Metrics will go here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
         <!-- News Source Modal -->
         <div class="modal-overlay hidden" id="news-source-modal">
             <div class="modal-container glass-panel" style="max-width: 650px; height: auto; max-height: 85%;">
@@ -1039,6 +1082,50 @@
                         <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>
                         <div id="drawer-intel-checklist" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.78rem;">
                             <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Kronos AI Forecast Details Section -->
+                    <div id="drawer-kronos-section" style="display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                        <div class="drawer-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                🔮 Interactive AI Forecast
+                            </span>
+                            <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
+                                <button class="kronos-len-btn" data-len="3" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
+                                <button class="kronos-len-btn active" data-len="5" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
+                                <button class="kronos-len-btn" data-len="10" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
+                            </div>
+                            <span id="kronos-confidence-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
+                        </div>
+
+                        <!-- Mini forecast candle chart -->
+                        <div id="drawer-kronos-chart" style="height: 160px; width: 100%; background: rgba(0,0,0,0.1); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.6rem; overflow: hidden;"></div>
+
+                        <!-- Forecast table -->
+                        <div style="overflow-x: auto; max-height: 150px;">
+                            <table id="drawer-kronos-table" class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                        <th style="text-align: left; padding: 4px; color: var(--color-text-muted);">Date</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Open</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">High</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Low</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Close</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Vol</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Band (P10–P90)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="drawer-kronos-tbody"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Forecast vs Actual toggle (shown only when actuals exist) -->
+                        <div id="kronos-backtest-row" style="display: none; margin-top: 0.6rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 0.5rem;">
+                            <button id="btn-kronos-backtest" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: auto;">
+                                📊 Show Backtest History
+                            </button>
+                            <span id="kronos-mae-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
                         </div>
                     </div>
                     

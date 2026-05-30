@@ -24,6 +24,9 @@ let activeIntradayFilter = null;
 let activeStatFilter = null;
 let activeDrawerChart = null;
 let activeOverlayChart = null;
+let activeKronosChart = null;
+let activeKronosFullChart = null;
+let activeKronosBacktestChart = null;
 let journalData = [];
 
 // ── Stat card previous-value store ──
@@ -311,6 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const rc = document.getElementById('rrg-container');
             if (rc) rc.style.display = 'flex';
             if (typeof renderRRG === 'function') renderRRG();
+        } else if (viewName === 'ai-forecast') {
+            if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
             if (currentTab === 'rrg' || currentTab === 'journal') {
@@ -5052,6 +5057,31 @@ function openTradeDrawer(ticker) {
                     window.currentDrawerForecastData = data.forecast_data || [];
                     createTradeDrawerChart('drawer-tv-chart', data.chart_data, data.forecast_data || []);
                 }
+
+                // Reset interactive Kronos section
+                const kronosSection = document.getElementById('drawer-kronos-section');
+                if (kronosSection) {
+                    kronosSection.style.display = 'none';
+                    const tbody = document.getElementById('drawer-kronos-tbody');
+                    if (tbody) tbody.innerHTML = '';
+                    destroyKronosChart();
+                }
+
+                // Fetch interactive Kronos details (sample_count = 20 for envelope calculation)
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=5&sample_count=20`)
+                    .then(res => res.json())
+                    .then(kdata => {
+                        if (kdata.error) {
+                            console.error("Kronos forecast API error:", kdata.error);
+                            return;
+                        }
+                        if (window.currentTradeStock && window.currentTradeStock.clean_ticker === kdata.ticker) {
+                            renderKronosForecastPanel(kdata);
+                        }
+                    })
+                    .catch(err => {
+                        console.error("Kronos forecast fetch error:", err);
+                    });
             })
             .catch(err => {
                 document.getElementById('drawer-intel-pattern').textContent = 'Error';
@@ -5197,6 +5227,9 @@ function closeTradeDrawer() {
         }
         activeDrawerChart = null;
     }
+    destroyKronosChart();
+    const kronosSection = document.getElementById('drawer-kronos-section');
+    if (kronosSection) kronosSection.style.display = 'none';
 }
 
 window.openTradeDrawer = openTradeDrawer;
@@ -5229,6 +5262,50 @@ document.addEventListener('DOMContentLoaded', () => {
             updateTradeParams();
         });
     }
+
+    // Kronos Workspace tab setup
+    const btnRunKronos = document.getElementById('btn-run-kronos');
+    if (btnRunKronos) {
+        btnRunKronos.addEventListener('click', () => {
+            renderAIForecastWorkspace();
+        });
+    }
+
+    const kronosTickerInput = document.getElementById('kronos-ticker-input');
+    if (kronosTickerInput) {
+        kronosTickerInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                renderAIForecastWorkspace();
+            }
+        });
+    }
+
+    // Toggle button clicks for pred len in AI Forecast Workspace
+    document.querySelectorAll('.workspace-view#view-ai-forecast .kronos-len-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.workspace-view#view-ai-forecast .kronos-len-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderAIForecastWorkspace();
+        });
+    });
+
+    // Toggle button clicks for pred len in Trade Drawer
+    document.querySelectorAll('#drawer-kronos-section .kronos-len-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#drawer-kronos-section .kronos-len-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const len = parseInt(btn.dataset.len);
+            if (window.currentTradeStock) {
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=20`)
+                    .then(res => res.json())
+                    .then(kdata => {
+                        if (!kdata.error) {
+                            renderKronosForecastPanel(kdata);
+                        }
+                    });
+            }
+        });
+    });
 });
 
 // -----------------------------------------------------------------------------
@@ -6788,3 +6865,406 @@ function createOverlayChart(containerId, rawData, forecastData = []) {
     resizeObserver.observe(container);
     container.resizeObserver = resizeObserver;
 }
+
+// -----------------------------------------------------------------------------
+// Kronos AI Panel Helper Functions
+// -----------------------------------------------------------------------------
+
+function destroyKronosChart() {
+    if (activeKronosChart) {
+        try {
+            activeKronosChart.remove();
+        } catch(e) {
+            console.error("Error removing activeKronosChart:", e);
+        }
+        activeKronosChart = null;
+    }
+}
+
+function destroyKronosFullChart() {
+    if (activeKronosFullChart) {
+        try {
+            activeKronosFullChart.remove();
+        } catch(e) {
+            console.error("Error removing activeKronosFullChart:", e);
+        }
+        activeKronosFullChart = null;
+    }
+}
+
+function destroyKronosBacktestChart() {
+    if (activeKronosBacktestChart) {
+        try {
+            activeKronosBacktestChart.remove();
+        } catch(e) {
+            console.error("Error removing activeKronosBacktestChart:", e);
+        }
+        activeKronosBacktestChart = null;
+    }
+}
+
+function renderKronosForecastPanel(data) {
+    const section = document.getElementById('drawer-kronos-section');
+    if (!section || !data || !data.forecast) return;
+    section.style.display = 'block';
+
+    const lastClose = data.last_close;
+    const finalClose = data.forecast[data.forecast.length - 1].close;
+    const movePct = ((finalClose - lastClose) / lastClose * 100).toFixed(2);
+    const badge = document.getElementById('kronos-confidence-badge');
+    if (badge) {
+        badge.textContent = `${movePct >= 0 ? '▲' : '▼'} ${Math.abs(movePct)}% (${data.pred_len}D)`;
+        badge.style.backgroundColor = movePct >= 0
+            ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+        badge.style.color = movePct >= 0 ? '#10b981' : '#ef4444';
+        badge.style.border = movePct >= 0
+            ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(239,68,68,0.3)';
+    }
+
+    const tbody = document.getElementById('drawer-kronos-tbody');
+    if (tbody) {
+        tbody.innerHTML = data.forecast.map(row => {
+            const closeClass = row.close >= lastClose ? 'val-up' : 'val-down';
+            const band = `₹${row.p10_close.toFixed(2)} – ₹${row.p90_close.toFixed(2)}`;
+            return `
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                <td style="text-align: left; padding: 4px;">${row.date}</td>
+                <td style="text-align: right; padding: 4px;">₹${row.open.toFixed(2)}</td>
+                <td style="text-align: right; padding: 4px;">₹${row.high.toFixed(2)}</td>
+                <td style="text-align: right; padding: 4px;">₹${row.low.toFixed(2)}</td>
+                <td class="${closeClass}" style="text-align: right; padding: 4px; font-weight:700;">₹${row.close.toFixed(2)}</td>
+                <td style="text-align: right; padding: 4px;">${formatVolume(row.volume)}</td>
+                <td style="text-align: right; padding: 4px; font-size:0.7rem; color:var(--color-text-secondary);">${band}</td>
+              </tr>`;
+        }).join('');
+    }
+
+    destroyKronosChart();
+    const container = document.getElementById('drawer-kronos-chart');
+    if (!container || typeof LightweightCharts === 'undefined') return;
+
+    const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+    const isDark = currentTheme === 'dark';
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 160,
+        layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#94a3b8' : '#475569'
+        },
+        grid: {
+            vertLines: { visible: false },
+            horzLines: { color: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }
+        },
+        timeScale: { borderVisible: false },
+        rightPriceScale: { borderVisible: false },
+    });
+    activeKronosChart = chart;
+
+    const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+        upColor: '#6366f1', downColor: '#a78bfa',
+        borderUpColor: '#6366f1', borderDownColor: '#a78bfa',
+        wickUpColor: '#6366f1', wickDownColor: '#a78bfa',
+    });
+    candleSeries.setData(data.forecast.map(r => ({
+        time: r.date,
+        open: r.open, high: r.high, low: r.low, close: r.close,
+    })));
+
+    const bandLow = chart.addSeries(LightweightCharts.AreaSeries, {
+        lineColor: 'rgba(99,102,241,0.2)', topColor: 'rgba(99,102,241,0.05)',
+        bottomColor: 'transparent', lineWidth: 1,
+    });
+    bandLow.setData(data.forecast.map(r => ({ time: r.date, value: r.p10_close })));
+
+    const bandHigh = chart.addSeries(LightweightCharts.AreaSeries, {
+        lineColor: 'rgba(99,102,241,0.2)', topColor: 'transparent',
+        bottomColor: 'rgba(99,102,241,0.05)', lineWidth: 1,
+    });
+    bandHigh.setData(data.forecast.map(r => ({ time: r.date, value: r.p90_close })));
+
+    chart.timeScale().fitContent();
+    
+    const backtestRow = document.getElementById('kronos-backtest-row');
+    if (backtestRow) {
+        backtestRow.style.display = 'flex';
+        const backtestBtn = document.getElementById('btn-kronos-backtest');
+        if (backtestBtn) {
+            backtestBtn.onclick = () => {
+                switchWorkspace('ai-forecast');
+                const searchInput = document.getElementById('kronos-ticker-input');
+                if (searchInput) {
+                    searchInput.value = data.ticker;
+                    renderAIForecastWorkspace(data.ticker);
+                }
+            };
+        }
+        
+        fetch(`/api/kronos-backtest?ticker=${encodeURIComponent(data.ticker)}`)
+            .then(res => res.json())
+            .then(bdata => {
+                const badge = document.getElementById('kronos-mae-badge');
+                if (badge && bdata.backtest_runs && bdata.backtest_runs.length > 0) {
+                    const latest = bdata.backtest_runs[0];
+                    badge.textContent = `Latest Accuracy: Dir ${latest.direction_accuracy}%, Hit Rate ${latest.band_hit_rate}%`;
+                    badge.style.backgroundColor = latest.direction_accuracy >= 55 ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)';
+                    badge.style.color = latest.direction_accuracy >= 55 ? '#10b981' : '#f59e0b';
+                } else if (badge) {
+                    badge.textContent = 'No past backtest runs yet';
+                    badge.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                    badge.style.color = 'var(--color-text-secondary)';
+                }
+            });
+    }
+}
+
+function renderAIForecastWorkspace(ticker) {
+    const searchInput = document.getElementById('kronos-ticker-input');
+    const symbol = ticker || (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
+    if (!symbol) return;
+
+    if (searchInput) {
+        searchInput.value = symbol;
+    }
+
+    const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+    const predLen = activeBtn ? parseInt(activeBtn.dataset.len) : 5;
+
+    const runBtn = document.getElementById('btn-run-kronos');
+    if (runBtn) {
+        runBtn.disabled = true;
+        runBtn.textContent = 'Running...';
+    }
+
+    fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=20`)
+        .then(res => res.json())
+        .then(data => {
+            if (runBtn) {
+                runBtn.disabled = false;
+                runBtn.textContent = 'Run Forecast';
+            }
+            if (data.error) {
+                alert("Error running forecast: " + data.error);
+                return;
+            }
+
+            destroyKronosFullChart();
+            const container = document.getElementById('kronos-full-chart');
+            if (container && typeof LightweightCharts !== 'undefined') {
+                const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+                const isDark = currentTheme === 'dark';
+                const chart = LightweightCharts.createChart(container, {
+                    width: container.clientWidth,
+                    height: 380,
+                    layout: {
+                        background: { color: 'transparent' },
+                        textColor: isDark ? '#94a3b8' : '#475569'
+                    },
+                    grid: {
+                        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+                        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+                    },
+                    timeScale: { borderVisible: false },
+                    rightPriceScale: { borderVisible: false },
+                });
+                activeKronosFullChart = chart;
+
+                const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+                    upColor: '#6366f1', downColor: '#a78bfa',
+                    borderUpColor: '#6366f1', borderDownColor: '#a78bfa',
+                    wickUpColor: '#6366f1', wickDownColor: '#a78bfa',
+                });
+                candleSeries.setData(data.forecast.map(r => ({
+                    time: r.date,
+                    open: r.open, high: r.high, low: r.low, close: r.close,
+                })));
+
+                const bandLow = chart.addSeries(LightweightCharts.AreaSeries, {
+                    lineColor: 'rgba(99,102,241,0.25)', topColor: 'rgba(99,102,241,0.06)',
+                    bottomColor: 'transparent', lineWidth: 1.5,
+                });
+                bandLow.setData(data.forecast.map(r => ({ time: r.date, value: r.p10_close })));
+
+                const bandHigh = chart.addSeries(LightweightCharts.AreaSeries, {
+                    lineColor: 'rgba(99,102,241,0.25)', topColor: 'transparent',
+                    bottomColor: 'rgba(99,102,241,0.06)', lineWidth: 1.5,
+                });
+                bandHigh.setData(data.forecast.map(r => ({ time: r.date, value: r.p90_close })));
+
+                chart.timeScale().fitContent();
+
+                // Add resize listener support
+                const resizeObserver = new ResizeObserver(entries => {
+                    if (entries.length === 0 || !entries[0].contentRect) return;
+                    const { width, height } = entries[0].contentRect;
+                    chart.resize(width, height);
+                });
+                resizeObserver.observe(container);
+                container.resizeObserver = resizeObserver;
+            }
+
+            const tableWrap = document.getElementById('kronos-full-table-wrap');
+            if (tableWrap) {
+                const lastClose = data.last_close;
+                tableWrap.innerHTML = `
+                    <table class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
+                                <th style="text-align: left; padding: 8px; color: var(--color-text-muted);">Forecast Date</th>
+                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Open</th>
+                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">High</th>
+                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Low</th>
+                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Predicted Close</th>
+                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Predicted Volume</th>
+                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Monte Carlo Band (P10–P90)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.forecast.map(row => {
+                                const closeClass = row.close >= lastClose ? 'val-up' : 'val-down';
+                                const band = `₹${row.p10_close.toFixed(2)} – ₹${row.p90_close.toFixed(2)}`;
+                                return `
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                        <td style="text-align: left; padding: 8px;">${row.date}</td>
+                                        <td style="text-align: right; padding: 8px;">₹${row.open.toFixed(2)}</td>
+                                        <td style="text-align: right; padding: 8px;">₹${row.high.toFixed(2)}</td>
+                                        <td style="text-align: right; padding: 8px;">₹${row.low.toFixed(2)}</td>
+                                        <td class="${closeClass}" style="text-align: right; padding: 8px; font-weight: 700;">₹${row.close.toFixed(2)}</td>
+                                        <td style="text-align: right; padding: 8px;">${formatVolume(row.volume)}</td>
+                                        <td style="text-align: right; padding: 8px; color: var(--color-text-secondary); font-size: 0.8rem;">${band}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            loadBacktestingMetrics(symbol);
+        })
+        .catch(err => {
+            if (runBtn) {
+                runBtn.disabled = false;
+                runBtn.textContent = 'Run Forecast';
+            }
+            console.error("Kronos full forecast run error:", err);
+        });
+}
+
+function loadBacktestingMetrics(symbol) {
+    const backtestSection = document.getElementById('kronos-backtest-section');
+    const metricsContainer = document.getElementById('kronos-accuracy-metrics');
+    if (!backtestSection || !metricsContainer) return;
+
+    fetch(`/api/kronos-backtest?ticker=${encodeURIComponent(symbol)}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error || !data.backtest_runs || data.backtest_runs.length === 0) {
+                backtestSection.style.display = 'none';
+                return;
+            }
+
+            backtestSection.style.display = 'block';
+            const latest = data.backtest_runs[0];
+
+            const dirColor = latest.direction_accuracy >= 55 ? '#10b981' : '#f59e0b';
+            const hitColor = latest.band_hit_rate >= 70 ? '#10b981' : '#f59e0b';
+            metricsContainer.innerHTML = `
+                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1rem; color: #fff; margin-bottom: 0.5rem;">Latest Model Performance</div>
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.4rem;">
+                    <span style="color:var(--color-text-secondary); font-size: 0.85rem;">Directional Accuracy</span>
+                    <span style="font-weight: 700; color:${dirColor};">${latest.direction_accuracy}%</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.4rem;">
+                    <span style="color:var(--color-text-secondary); font-size: 0.85rem;">Band Hit Rate (P10-P90)</span>
+                    <span style="font-weight: 700; color:${hitColor};">${latest.band_hit_rate}%</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 0.4rem;">
+                    <span style="color:var(--color-text-secondary); font-size: 0.85rem;">Mean Absolute Error (MAE)</span>
+                    <span style="font-weight: 700; color:#c084fc;">₹${latest.mae.toFixed(2)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; padding-bottom: 0.4rem;">
+                    <span style="color:var(--color-text-secondary); font-size: 0.85rem;">Mean Abs Pct Error (MAPE)</span>
+                    <span style="font-weight: 700; color:#c084fc;">${latest.mape.toFixed(2)}%</span>
+                </div>
+                <div style="font-size:0.75rem; color:var(--color-text-muted); margin-top:0.5rem; line-height: 1.3;">
+                    Based on ${latest.total_comparisons} matching daily candles since the forecast generated on ${new Date(latest.generated_at).toLocaleDateString()}.
+                </div>
+            `;
+
+            destroyKronosBacktestChart();
+            const bContainer = document.getElementById('kronos-backtest-chart');
+            if (bContainer && typeof LightweightCharts !== 'undefined') {
+                const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+                const isDark = currentTheme === 'dark';
+                const chart = LightweightCharts.createChart(bContainer, {
+                    width: bContainer.clientWidth,
+                    height: 280,
+                    layout: {
+                        background: { color: 'transparent' },
+                        textColor: isDark ? '#94a3b8' : '#475569'
+                    },
+                    grid: {
+                        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+                        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+                    },
+                    timeScale: { borderVisible: false },
+                    rightPriceScale: { borderVisible: false },
+                });
+                activeKronosBacktestChart = chart;
+
+                const fSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: '#6366f1',
+                    lineWidth: 2.5,
+                    title: 'Forecast',
+                });
+                fSeries.setData(latest.comparison_points.map(p => ({
+                    time: p.date,
+                    value: p.forecast_close
+                })));
+
+                const aSeries = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: '#10b981',
+                    lineWidth: 2.5,
+                    title: 'Actual',
+                });
+                aSeries.setData(latest.comparison_points.map(p => ({
+                    time: p.date,
+                    value: p.actual_close
+                })));
+
+                const bLow = chart.addSeries(LightweightCharts.AreaSeries, {
+                    lineColor: 'rgba(99,102,241,0.15)', topColor: 'rgba(99,102,241,0.03)',
+                    bottomColor: 'transparent', lineWidth: 1,
+                });
+                bLow.setData(latest.comparison_points.map(p => ({ time: p.date, value: p.p10_close })));
+
+                const bHigh = chart.addSeries(LightweightCharts.AreaSeries, {
+                    lineColor: 'rgba(99,102,241,0.15)', topColor: 'transparent',
+                    bottomColor: 'rgba(99,102,241,0.03)', lineWidth: 1,
+                });
+                bHigh.setData(latest.comparison_points.map(p => ({ time: p.date, value: p.p90_close })));
+
+                chart.timeScale().fitContent();
+
+                // Add resize listener support
+                const resizeObserver = new ResizeObserver(entries => {
+                    if (entries.length === 0 || !entries[0].contentRect) return;
+                    const { width, height } = entries[0].contentRect;
+                    chart.resize(width, height);
+                });
+                resizeObserver.observe(bContainer);
+                bContainer.resizeObserver = resizeObserver;
+            }
+        })
+        .catch(err => {
+            console.error("Backtest loading error:", err);
+        });
+}
+
+// Export to window
+window.renderAIForecastWorkspace = renderAIForecastWorkspace;
+window.renderKronosForecastPanel = renderKronosForecastPanel;
+window.destroyKronosChart = destroyKronosChart;
+window.destroyKronosFullChart = destroyKronosFullChart;
+window.destroyKronosBacktestChart = destroyKronosBacktestChart;

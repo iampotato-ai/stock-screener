@@ -5042,4 +5042,47 @@ body[data-theme="light"] .sector-pill-progress-track {
   }
 }
 
+/* Kronos AI panel styling */
+.kronos-forecast-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 0.5rem;
+}
+.kronos-forecast-table th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    padding: 0.35rem 0.5rem;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.kronos-forecast-table th:first-child,
+.kronos-forecast-table td:first-child { text-align: left; }
+.kronos-forecast-table td {
+    padding: 0.35rem 0.5rem;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.kronos-forecast-table tr:last-child td { border-bottom: none; }
+
+/* Pred-len toggle */
+.kronos-pred-len-toggle { display: flex; gap: 0.25rem; }
+.kronos-len-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--color-text-secondary);
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.kronos-len-btn.active,
+.kronos-len-btn:hover {
+    background: rgba(99,102,241,0.2);
+    color: var(--color-text-primary);
+    border-color: rgba(99,102,241,0.4);
+}
+
+
 
