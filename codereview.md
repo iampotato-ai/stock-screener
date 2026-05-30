@@ -116,3 +116,235 @@ if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = 'var(--color-text
 | 6 | Column toggle color not reset on error | 🟡 Medium |
 | 2 | `alert()` used for error feedback | 🟡 Medium |
 | 4 | `pred_len` hardcoded | 🟢 Low |
+
+---
+
+---
+
+# Code Review — FEAT-004: Sector Rotation Timeline (RRG)
+
+**Branch:** `feature/workspace-ui`  
+**Scope:** `app.py` (RRG backend), `app.js` (RRG canvas renderer)  
+**Reviewed on:** 2026-05-30
+
+> Overall the implementation is solid — the animated trail canvas, playback controls, and dynamic scaling work well together. Suggestions below are grouped by priority.
+
+---
+
+## 🔴 High Priority
+
+### 1. Backfill Uses Interpolated / Simulated Data, Not Real History
+
+**File:** `app.py` → `rrg_backfill()`
+
+The `/api/rrg/backfill` endpoint generates fake historical weekly data using linear interpolation + a `sin()` wave. This produces misleading trails the first time users view the rotation timeline.
+
+```python
+# Current — fabricated sine-wave fluctuation
+val += math.sin(offset * math.pi / 2.0) * 0.25
+```
+
+**Suggested Fix:**  
+Replace with real rolling history by calling `fetch_historical_prices` for each ticker in `SECTOR_INDEX_MAP` and computing true 4-week rolling returns per week. Alternatively, schedule `snapshot_rrg_week` via `APScheduler` every Friday at market close to accumulate real weekly data going forward.
+
+```python
+# Example: schedule with APScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(trigger_weekly_rrg_snap, 'cron', day_of_week='fri', hour=16, minute=5)
+scheduler.start()
+```
+
+---
+
+### 2. `snapshot_rrg_week` Uses Raw Delta for RS-Momentum
+
+**File:** `app.py` → `snapshot_rrg_week()`
+
+The current momentum calculation is a simple week-over-week delta, not a smoothed JdK RS-Momentum as used in the original Bloomberg RRG methodology. This causes noisy, jumpy momentum values.
+
+```python
+# Current
+rs_momentum = jdk_rs - prev_rs  # raw delta — highly sensitive to weekly noise
+```
+
+**Suggested Fix:**  
+Maintain a short rolling buffer (3 weeks) of `jdk_rs` per sector in the DB and compute momentum as the rate-of-change over that window:
+
+```python
+# Fetch last 3 weeks of jdk_rs
+cursor.execute(
+    'SELECT jdk_rs FROM rrg_history WHERE sector = ? ORDER BY snapped_at DESC LIMIT 3',
+    (sector,)
+)
+rows = cursor.fetchall()
+if len(rows) >= 2:
+    rs_momentum = jdk_rs - rows[1][0]   # 1-week ROC
+else:
+    rs_momentum = 0.0
+```
+
+---
+
+## 🟡 Medium Priority
+
+### 3. Fragile SQL Date Arithmetic in `get_rrg_history_timeline`
+
+**File:** `app.py` → `get_rrg_history_timeline()`
+
+The query uses string concatenation to build a `datetime('now', ? || ' days')` filter. While it works in SQLite, it's brittle and bypasses the intent of parameterized queries.
+
+```python
+# Current — string concat inside SQL
+cursor.execute(query, (str(-weeks * 7),))
+```
+
+**Suggested Fix:**  
+Compute the cutoff date in Python and pass it as a clean ISO string parameter:
+
+```python
+cutoff = (datetime.utcnow() - timedelta(weeks=weeks)).isoformat()
+cursor.execute(
+    "SELECT week, sector, jdk_rs, jdk_rs_momentum, score, quadrant "
+    "FROM rrg_history WHERE snapped_at >= ? ORDER BY week ASC, sector ASC",
+    (cutoff,)
+)
+```
+
+---
+
+### 4. No Response-Level Cache on `/api/rrg-history`
+
+**File:** `app.py` → `get_rrg_history()`
+
+The endpoint calls `fetch_historical_prices` for every asset (~18 sector index tickers) in parallel on every request. While `_historical_prices_cache` (15-min TTL) covers repeat fetches, cold-start requests still fan out to Yahoo Finance simultaneously.
+
+**Suggested Fix:**  
+Add a coarse response-level cache keyed on `(view, tickers_hash)` with a 10-minute TTL:
+
+```python
+_rrg_response_cache = {}
+_RRG_RESPONSE_TTL = 10 * 60  # 10 minutes
+
+@app.route('/api/rrg-history', methods=['GET'])
+def get_rrg_history():
+    cache_key = f"{view}:{hash(tickers_str)}"
+    cached = _rrg_response_cache.get(cache_key)
+    if cached and (time.time() - cached['ts']) < _RRG_RESPONSE_TTL:
+        return jsonify(cached['data'])
+    # ... compute results ...
+    _rrg_response_cache[cache_key] = {'ts': time.time(), 'data': result}
+    return jsonify(result)
+```
+
+---
+
+### 5. Playback Slider Not Debounced (Canvas Repaint Jank)
+
+**File:** `app.js` → RRG slider `input` handler
+
+Rapid scrubbing of the week slider triggers a full canvas repaint on every `input` event. With 12+ weeks × 15+ sectors, this can cause visible jank.
+
+**Suggested Fix:**  
+Gate repaints to one per animation frame:
+
+```javascript
+let _rrgRafPending = false;
+
+sliderEl.addEventListener('input', () => {
+    currentWeekIndex = parseInt(sliderEl.value);
+    if (!_rrgRafPending) {
+        _rrgRafPending = true;
+        requestAnimationFrame(() => {
+            drawRRGFrame(currentWeekIndex);
+            _rrgRafPending = false;
+        });
+    }
+});
+```
+
+---
+
+### 6. Cluster Tooltip Doesn't Surface Sector Ranking
+
+**File:** `app.js` → RRG hover tooltip logic
+
+When multiple sectors converge in the same quadrant (visible in the W21 screenshot — the center cluster), the tooltip shows raw coordinates that are hard to parse.
+
+**Suggested Fix:**  
+On hover over a cluster (proximity < 20px), show a ranked mini-list ordered by `score` descending:
+
+```javascript
+// Example tooltip content for a cluster
+const sorted = nearbyPoints.sort((a, b) => b.score - a.score);
+tooltipHtml = sorted.map(p =>
+    `<div>${p.sector} <span class="score">${p.score}</span> · ${p.quadrant}</div>`
+).join('');
+```
+
+---
+
+## 🔵 Low Priority / Code Quality
+
+### 7. `Stocks` RRG View Has No Visible Dot Labels
+
+**File:** `app.js` → RRG stocks canvas renderer
+
+In the Stocks view, dots have no visible labels — only hover tooltips. With 20+ dots this makes cluster identification difficult at a glance.
+
+**Suggested Fix:**  
+Render a short label (≤ 5 chars) next to each dot when the total dot count is ≤ 25:
+
+```javascript
+if (assets.length <= 25) {
+    ctx.fillStyle = '#a0f0c0';
+    ctx.font = '10px Inter';
+    ctx.fillText(asset.label.substring(0, 5), dotX + 6, dotY - 4);
+}
+```
+
+---
+
+### 8. `wc_intensity` and Growth CAGRs Are Simulated in Production
+
+**File:** `app.py` → `compute_extra_fields()`
+
+The function uses `hash(ticker) % 100` to generate deterministic but fake working capital and CAGR values. These look real to users but are not backed by actual financial data.
+
+```python
+h = hash(ticker) % 100  # deterministic but fake
+stock["wc_intensity"] = round(25.0 + (h % 20), 2)  # ← simulated
+```
+
+**Suggested Fix:**  
+The `growth_data_source: "simulated"` flag is already emitted in the API response. Surface a visible disclaimer badge (e.g., `~` prefix or an info icon) next to all simulated fields in the Fundamental tab.
+
+---
+
+### 9. `_rrg_snapped_today` Guard Resets on App Restart
+
+**File:** `app.py` → `snapshot_rrg_week()`
+
+The in-memory guard `_rrg_snapped_today` resets to `None` on every app restart. If the app restarts mid-day, it will re-snap immediately. This is low-risk because the `ON CONFLICT ... DO UPDATE` handles idempotency in SQL, but worth a comment:
+
+```python
+# NOTE: _rrg_snapped_today is in-memory only. App restarts will trigger
+# a re-snap, but the DB INSERT uses ON CONFLICT DO UPDATE so data is safe.
+_rrg_snapped_today = None
+```
+
+---
+
+## Summary Table
+
+| # | Area | Severity | Effort |
+|---|------|----------|--------|
+| 1 | Backfill uses fake interpolated data | 🔴 High | Medium |
+| 2 | RS-Momentum is unsmoothed raw delta | 🔴 High | Low |
+| 3 | Fragile SQL date arithmetic | 🟡 Medium | Low |
+| 4 | No response cache on `/api/rrg-history` | 🟡 Medium | Low |
+| 5 | Slider repaint not debounced | 🟡 Medium | Low |
+| 6 | Cluster tooltip lacks sector ranking | 🟡 Medium | Low |
+| 7 | No dot labels in Stocks RRG view | 🔵 Low | Low |
+| 8 | Simulated growth data has no UI flag | 🔵 Low | Low |
+| 9 | `_rrg_snapped_today` resets on restart | 🔵 Low | Trivial |
