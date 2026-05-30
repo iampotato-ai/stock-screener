@@ -2913,6 +2913,50 @@ let activeNewsFilter = 'all'; // 'all' or ticker symbol
 let showWatchlistKronosColumns = false;
 let watchlistKronosRankings = {};
 let isKronosBatchSorting = false;
+const KRONOS_PRED_LEN = 5;
+
+// Toast system for styled notification messages
+function showToast(message, type = 'info') {
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.cssText = 'position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10000;';
+        document.body.appendChild(toastContainer);
+    }
+    
+    const toast = document.createElement('div');
+    toast.className = 'glass-panel';
+    const borderCol = type === 'error' ? 'rgba(239, 68, 68, 0.4)' : type === 'success' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)';
+    const textCol = type === 'error' ? '#f87171' : type === 'success' ? '#34d399' : 'var(--color-text-primary)';
+    const icon = type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️';
+    
+    toast.style.cssText = `
+        padding: 0.8rem 1.2rem;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid ${borderCol};
+        border-radius: var(--radius-md, 8px);
+        color: ${textCol};
+        font-size: 0.85rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(12px);
+        animation: fadeSlideIn 0.3s ease-out forwards;
+        min-width: 250px;
+        max-width: 380px;
+    `;
+    
+    toast.innerHTML = `<span>${icon}</span><span style="flex-grow:1;">${message}</span>`;
+    toastContainer.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'fadeOut 0.5s ease-out forwards';
+        setTimeout(() => toast.remove(), 500);
+    }, 4000);
+}
 
 function fetchWatchlistFromBackend() {
     fetch('/api/watchlist')
@@ -3048,19 +3092,23 @@ function initWatchlist() {
             e.stopPropagation();
             if (isKronosBatchSorting) return;
 
+            // 1. Immediately disable and set loading state to prevent double clicks
+            btnKronosBatchSort.disabled = true;
             isKronosBatchSorting = true;
             showWatchlistKronosColumns = true;
+            
+            // 2. Clear old rankings cache to prevent stale items persisting
+            watchlistKronosRankings = {};
             
             if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = '#f59e0b';
             
             const originalSortBtnHtml = btnKronosBatchSort.innerHTML;
-            btnKronosBatchSort.disabled = true;
-            btnKronosBatchSort.innerHTML = `<span class="btn-spinner" style="display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span>`;
+            btnKronosBatchSort.innerHTML = `<span class="btn-spinner"></span>`;
             
             renderWatchlist();
 
             try {
-                const response = await fetch('/api/watchlist/kronos-ranking?pred_len=5');
+                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_PRED_LEN}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch rankings: ${response.statusText}`);
                 }
@@ -3086,13 +3134,24 @@ function initWatchlist() {
                         }
                     });
 
-                    if (typeof saveWatchlistSections === 'function') {
-                        saveWatchlistSections();
+                    saveWatchlistSections();
+                    
+                    // Show last sorted timestamp suggestion
+                    const lastSortedEl = document.getElementById('kronos-last-sorted');
+                    if (lastSortedEl) {
+                        const now = new Date();
+                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        lastSortedEl.textContent = `Last sorted: ${timeStr}`;
+                        lastSortedEl.style.display = 'block';
                     }
                 }
             } catch (err) {
                 console.error("Kronos batch sorting error:", err);
-                alert("Error during Kronos AI sorting: " + err.message);
+                showToast("Error during Kronos AI sorting: " + err.message, "error");
+                
+                // Reset toggle and column visibility state on error
+                showWatchlistKronosColumns = false;
+                if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = 'var(--color-text-secondary)';
             } finally {
                 isKronosBatchSorting = false;
                 btnKronosBatchSort.disabled = false;
@@ -3855,10 +3914,10 @@ function renderWatchlist() {
                             </td>`;
                         }
                     } else if (isKronosBatchSorting) {
-                        rankHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
-                        aiReturnHtml = `<td class="watchlist-cell-right"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
-                        biasHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
-                        confidenceHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        rankHtml = `<td class="watchlist-cell-center"><span class="small-spinner"></span></td>`;
+                        aiReturnHtml = `<td class="watchlist-cell-right"><span class="small-spinner"></span></td>`;
+                        biasHtml = `<td class="watchlist-cell-center"><span class="small-spinner"></span></td>`;
+                        confidenceHtml = `<td class="watchlist-cell-center"><span class="small-spinner"></span></td>`;
                     }
 
                     if (showWatchlistKronosColumns) {
@@ -3951,10 +4010,10 @@ function renderWatchlist() {
                             </td>`;
                         }
                     } else if (isKronosBatchSorting) {
-                        rankHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
-                        aiReturnHtml = `<td class="watchlist-cell-right"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
-                        biasHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
-                        confidenceHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        rankHtml = `<td class="watchlist-cell-center"><span class="small-spinner"></span></td>`;
+                        aiReturnHtml = `<td class="watchlist-cell-right"><span class="small-spinner"></span></td>`;
+                        biasHtml = `<td class="watchlist-cell-center"><span class="small-spinner"></span></td>`;
+                        confidenceHtml = `<td class="watchlist-cell-center"><span class="small-spinner"></span></td>`;
                     }
 
                     if (showWatchlistKronosColumns) {
@@ -5322,7 +5381,7 @@ function openTradeDrawer(ticker) {
                 }
 
                 // Fetch interactive Kronos details (sample_count = 20 for envelope calculation)
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=5&sample_count=20`)
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_PRED_LEN}&sample_count=20`)
                     .then(res => res.json())
                     .then(kdata => {
                         if (kdata.error) {
@@ -7298,7 +7357,7 @@ function renderAIForecastWorkspace(ticker) {
                 runBtn.textContent = 'Run Forecast';
             }
             if (data.error) {
-                alert("Error running forecast: " + data.error);
+                showToast("Error running forecast: " + data.error, "error");
                 return;
             }
 

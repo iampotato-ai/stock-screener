@@ -607,9 +607,12 @@
             <!-- Right Area: Watchlist Sidebar -->
             <aside class="watchlist-column glass-panel" id="watchlist-panel">
                 <div class="watchlist-header">
-                    <div class="watchlist-title-area">
-                        <h2>Watchlist</h2>
-                        <span class="watchlist-count" id="watchlist-count">0 / 50</span>
+                    <div class="watchlist-title-area" style="display: flex; flex-direction: column; gap: 2px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <h2>Watchlist</h2>
+                            <span class="watchlist-count" id="watchlist-count">0 / 50</span>
+                        </div>
+                        <span id="kronos-last-sorted" style="font-size: 0.65rem; color: var(--color-text-muted); display: none;"></span>
                     </div>
                     <div class="watchlist-actions" style="display: flex; gap: 0.4rem; align-items: center;">
                         <button class="btn-icon" id="btn-kronos-column-toggle" title="Toggle AI Forecast Columns" style="color: var(--color-text-secondary);">
