@@ -972,11 +972,13 @@ kronos_load_lock = threading.Lock()
 import time as _time
 from collections import OrderedDict
 _kronos_cache = OrderedDict()       # {ticker: (timestamp, bias, score, forecast_list, forecast_metrics)}
+_kronos_cache_lock = threading.Lock()
 _KRONOS_TTL   = 4 * 3600 # 4 hours
 _MAX_KRONOS_CACHE = 200
 
 def _get_kronos_cache(ticker):
-    entry = _kronos_cache.get(ticker)
+    with _kronos_cache_lock:
+        entry = _kronos_cache.get(ticker)
     if entry and (_time.time() - entry[0]) < _KRONOS_TTL:
         if len(entry) <= 4:
             print(f"[Kronos Cache] Old cache entry for {ticker} - metrics unavailable")
@@ -984,9 +986,10 @@ def _get_kronos_cache(ticker):
     return None
 
 def _set_kronos_cache(ticker, bias, score, forecast_list, forecast_metrics):
-    if len(_kronos_cache) >= _MAX_KRONOS_CACHE:
-        _kronos_cache.popitem(last=False)  # evict oldest
-    _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list), dict(forecast_metrics))
+    with _kronos_cache_lock:
+        if len(_kronos_cache) >= _MAX_KRONOS_CACHE:
+            _kronos_cache.popitem(last=False)  # evict oldest
+        _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list), dict(forecast_metrics))
 
 def get_kronos_predictor():
     global kronos_predictor
@@ -1073,6 +1076,125 @@ def generate_next_trading_days(last_date_str, num_days=10):
         if current_date.weekday() < 5 and date_str not in holidays:  # Mon-Fri, not a holiday
             trading_days.append(current_date)
     return pd.Series(trading_days)
+
+def compute_forecast_metrics(forecast_list, last_close, history):
+    """
+    Computes forecast scoring metrics, forecast bias, and confidence score.
+    Returns: (ai_forecast_bias, ai_confidence_score, forecast_metrics)
+    """
+    if not forecast_list:
+        return None, 0, {}
+
+    import numpy as np
+
+    forecast_closes = [r["close"] for r in forecast_list]
+    forecast_highs  = [r["high"] for r in forecast_list]
+    current_close   = last_close
+
+    # ── M1: Endpoint Return % ──────────────────────────────────────────
+    m1_return_pct = (forecast_closes[-1] - current_close) / (current_close + 1e-5) * 100
+
+    # ── M2: Momentum Split (early vs late 3 bars) ──────────────────────
+    early_len = min(3, len(forecast_closes))
+    late_len = min(3, len(forecast_closes))
+    early_avg = np.mean(forecast_closes[:early_len]) if early_len > 0 else current_close
+    late_avg  = np.mean(forecast_closes[-late_len:]) if late_len > 0 else current_close
+    m2_split_pct = (late_avg - early_avg) / (current_close + 1e-5) * 100
+
+    # ── M3: Day-by-Day Consistency % ──────────────────────────────────
+    if len(forecast_closes) > 1:
+        up_days = sum(
+            1 for i in range(1, len(forecast_closes))
+            if forecast_closes[i] > forecast_closes[i-1]
+        )
+        m3_consistency_pct = up_days / (len(forecast_closes) - 1) * 100
+    else:
+        m3_consistency_pct = 50.0
+
+    # ── M4: Breakout Above 20d Recent High ────────────────────────────
+    highs = [day["high"] for day in history]
+    recent_20d_high = max(highs[-21:-1]) if len(highs) >= 21 else max(highs)
+    m4_breakout = max(forecast_highs) > recent_20d_high
+
+    # ── M5: Max Drawdown During Forecast Window ────────────────────────
+    m5_drawdown_pct = (min(forecast_closes) - current_close) / (current_close + 1e-5) * 100
+
+    # ── [TWEAK 2] Realised return std from history ──────────────
+    hist_closes = [float(d["close"]) for d in history]
+    realised_returns = []
+    horizon = len(forecast_list)
+    for i in range(horizon, len(hist_closes)):
+        r = (hist_closes[i] - hist_closes[i - horizon]) / (hist_closes[i - horizon] + 1e-5) * 100
+        realised_returns.append(r)
+    realised_std = float(np.std(realised_returns)) if len(realised_returns) >= 5 else 5.0
+    normalised_return = m1_return_pct / (realised_std + 1e-5)
+
+    # ── Weighted Score [-1, +1] ────────────────────────────────────────
+    def _norm(val, lo, hi):
+        """Linearly map val from [lo, hi] to [-1, +1], clamped."""
+        return float(np.clip((val - lo) / ((hi - lo) / 2 + 1e-9) - 1, -1, 1))
+
+    s1 = _norm(m1_return_pct,     -10,  10)   # endpoint direction  (30%)
+    s2 = _norm(m2_split_pct,       -5,   5)   # momentum quality    (25%)
+    s3 = _norm(m3_consistency_pct,  30,  70)  # day consistency     (20%)
+    s4 = 1.0 if m4_breakout else -0.2         # breakout signal     (15%)
+    s5 = _norm(-m5_drawdown_pct,   -8,   0)   # inverse of drawdown (10%)
+
+    weighted_score = (0.30 * s1 + 0.25 * s2 + 0.20 * s3
+                      + 0.15 * s4 + 0.10 * s5)
+
+    # ── 5-Label Bias ───────────────────────────────────────────────────
+    if weighted_score > 0.40:
+        ai_forecast_bias = "Strong Breakout"
+    elif weighted_score > 0.15:
+        ai_forecast_bias = "Bullish Continuation"
+    elif weighted_score > -0.15:
+        ai_forecast_bias = "Sideways Consolidation"
+    elif weighted_score > -0.40:
+        ai_forecast_bias = "Bearish Pressure"
+    else:
+        ai_forecast_bias = "Strong Downtrend"
+
+    # ── [TWEAK 3] Dampened cv_score for flat forecasts ─────────────────
+    atr_pct = compute_atr_pct(history)
+    fc_mean = np.mean(forecast_closes)
+    fc_std  = np.std(forecast_closes)
+    cv      = fc_std / (fc_mean + 1e-5)
+    forecast_range_pct = (max(forecast_closes) - min(forecast_closes)) / (current_close + 1e-5) * 100
+    is_flat_forecast   = forecast_range_pct < atr_pct          # less than 1 ATR of movement
+    cv_weight = 0.20 if is_flat_forecast else 0.40             # dampen cv on flat names
+
+    cv_score   = float(np.clip(1.0 - cv * 10, 0, 1))
+    
+    if weighted_score > 0:
+        cons_score = float(np.clip((m3_consistency_pct - 50) / 50, 0.0, 1.0))
+    elif weighted_score < 0:
+        cons_score = float(np.clip((50 - m3_consistency_pct) / 50, 0.0, 1.0))
+    else:
+        cons_score = 0.0
+        
+    mag_score  = abs(weighted_score)
+    cons_weight = 0.50 if is_flat_forecast else 0.40
+    mag_weight  = 0.30 if is_flat_forecast else 0.20
+    ai_confidence_score = int(np.clip(
+        (cv_weight * cv_score + cons_weight * cons_score + mag_weight * mag_score) * 100,
+        25, 92
+    ))
+
+    forecast_metrics = {
+        "return_pct":         round(m1_return_pct,    2),
+        "momentum_split":     round(m2_split_pct,     2),
+        "consistency_pct":    round(m3_consistency_pct, 1),
+        "breakout_signal":    bool(m4_breakout),
+        "max_drawdown_pct":   round(m5_drawdown_pct,  2),
+        "weighted_score":     round(weighted_score,   3),
+        "normalised_return":  round(normalised_return, 2),
+        "realised_std_10d":   round(realised_std,      2),
+        "forecast_range_pct": round(forecast_range_pct, 2),
+        "is_flat_forecast":   bool(is_flat_forecast),
+    }
+
+    return ai_forecast_bias, ai_confidence_score, forecast_metrics
 
 @app.route('/api/setup-analysis', methods=['GET'])
 def get_setup_analysis():
@@ -1180,127 +1302,22 @@ def get_setup_analysis():
                     })
 
                 if forecast_list:
-                    forecast_closes = [r["close"]  for r in forecast_list]
-                    forecast_highs  = [r["high"]   for r in forecast_list]
-
-                    # ── M1: Endpoint Return % ──────────────────────────────────────────
-                    m1_return_pct = (forecast_closes[-1] - current_close) / (current_close + 1e-5) * 100
-
-                    # ── M2: Momentum Split (early vs late 3 bars) ──────────────────────
-                    early_avg = np.mean(forecast_closes[:3])
-                    late_avg  = np.mean(forecast_closes[-3:])
-                    m2_split_pct = (late_avg - early_avg) / (current_close + 1e-5) * 100
-
-                    # ── M3: Day-by-Day Consistency % ──────────────────────────────────
-                    up_days = sum(
-                        1 for i in range(1, len(forecast_closes))
-                        if forecast_closes[i] > forecast_closes[i-1]
+                    ai_forecast_bias, ai_confidence_score, forecast_metrics = compute_forecast_metrics(
+                        forecast_list, current_close, history
                     )
-                    m3_consistency_pct = up_days / (len(forecast_closes) - 1) * 100
-
-                    # ── M4: Breakout Above 20d Recent High ────────────────────────────
-                    recent_20d_high = max(highs[-21:-1]) if len(highs) >= 21 else max(highs)
-                    m4_breakout = max(forecast_highs) > recent_20d_high
-
-                    # ── M5: Max Drawdown During Forecast Window ────────────────────────
-                    m5_drawdown_pct = (min(forecast_closes) - current_close) / (current_close + 1e-5) * 100
-
-                    # ── [TWEAK 2] Realised 10-day return std from history ──────────────
-                    # Judges forecast move relative to the stock's OWN historical volatility.
-                    # A +4% forecast is big for a low-vol stock but normal for a high-vol one.
-                    hist_closes = [float(d["close"]) for d in history]
-                    realised_10d_returns = []
-                    for i in range(10, len(hist_closes)):
-                        r10 = (hist_closes[i] - hist_closes[i - 10]) / (hist_closes[i - 10] + 1e-5) * 100
-                        realised_10d_returns.append(r10)
-                    realised_std = float(np.std(realised_10d_returns)) if len(realised_10d_returns) >= 5 else 5.0
-                    # How many std-devs does the forecast move represent? >1 = noteworthy, >2 = extreme
-                    normalised_return = m1_return_pct / (realised_std + 1e-5)
-
-                    # ── Weighted Score [-1, +1] ────────────────────────────────────────
-                    def _norm(val, lo, hi):
-                        """Linearly map val from [lo, hi] to [-1, +1], clamped."""
-                        return float(np.clip((val - lo) / ((hi - lo) / 2 + 1e-9) - 1, -1, 1))
-
-                    s1 = _norm(m1_return_pct,     -10,  10)   # endpoint direction  (30%)
-                    s2 = _norm(m2_split_pct,       -5,   5)   # momentum quality    (25%)
-                    s3 = _norm(m3_consistency_pct,  30,  70)  # day consistency     (20%)
-                    s4 = 1.0 if m4_breakout else -0.2         # breakout signal     (15%)
-                    s5 = _norm(-m5_drawdown_pct,   -8,   0)   # inverse of drawdown (10%)
-
-                    weighted_score = (0.30 * s1 + 0.25 * s2 + 0.20 * s3
-                                      + 0.15 * s4 + 0.10 * s5)
-
-                    # ── 5-Label Bias ───────────────────────────────────────────────────
-                    if weighted_score > 0.40:
-                        ai_forecast_bias = "Strong Breakout"
-                    elif weighted_score > 0.15:
-                        ai_forecast_bias = "Bullish Continuation"
-                    elif weighted_score > -0.15:
-                        ai_forecast_bias = "Sideways Consolidation"
-                    elif weighted_score > -0.40:
-                        ai_forecast_bias = "Bearish Pressure"
-                    else:
-                        ai_forecast_bias = "Strong Downtrend"
-
-                    # ── [TWEAK 3] Dampened cv_score for flat forecasts ─────────────────
-                    # Problem: a flat, sideways forecast has low CV → high cv_score, even
-                    # though the model is just saying "nothing happens."  Fix: if the total
-                    # forecast price range is smaller than 1× ATR%, treat it as genuinely
-                    # flat and halve cv_score's contribution so confidence stays modest.
-                    fc_mean = np.mean(forecast_closes)
-                    fc_std  = np.std(forecast_closes)
-                    cv      = fc_std / (fc_mean + 1e-5)
-                    forecast_range_pct = (max(forecast_closes) - min(forecast_closes)) / (current_close + 1e-5) * 100
-                    is_flat_forecast   = forecast_range_pct < atr_pct          # less than 1 ATR of movement
-                    cv_weight = 0.20 if is_flat_forecast else 0.40             # dampen cv on flat names
-
-                    cv_score   = float(np.clip(1.0 - cv * 10, 0, 1))
-                    
-                    # Directional consistency score: favors dominance in forecasted direction
-                    if weighted_score > 0:
-                        cons_score = float(np.clip((m3_consistency_pct - 50) / 50, 0.0, 1.0))
-                    elif weighted_score < 0:
-                        cons_score = float(np.clip((50 - m3_consistency_pct) / 50, 0.0, 1.0))
-                    else:
-                        cons_score = 0.0
-                        
-                    mag_score  = abs(weighted_score)
-                    # Reallocate the freed cv weight equally to cons + mag when flat
-                    cons_weight = 0.50 if is_flat_forecast else 0.40
-                    mag_weight  = 0.30 if is_flat_forecast else 0.20
-                    ai_confidence_score = int(np.clip(
-                        (cv_weight * cv_score + cons_weight * cons_score + mag_weight * mag_score) * 100,
-                        25, 92
-                    ))
-
-                    # ── Build metrics dict (returned to frontend & cached) ─────────────
-                    forecast_metrics = {
-                        "return_pct":         round(m1_return_pct,    2),
-                        "momentum_split":     round(m2_split_pct,     2),
-                        "consistency_pct":    round(m3_consistency_pct, 1),
-                        "breakout_signal":    bool(m4_breakout),
-                        "max_drawdown_pct":   round(m5_drawdown_pct,  2),
-                        "weighted_score":     round(weighted_score,   3),
-                        "normalised_return":  round(normalised_return, 2),   # [TWEAK 2]
-                        "realised_std_10d":   round(realised_std,      2),   # [TWEAK 2]
-                        "forecast_range_pct": round(forecast_range_pct, 2), # [TWEAK 3]
-                        "is_flat_forecast":   bool(is_flat_forecast),        # [TWEAK 3]
-                    }
-
-                    # ── Cache & log ────────────────────────────────────────────────────
                     _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics)
 
-                    # [TWEAK 1] Expose T_val and weighted_score in log
+                    # Expose T_val and weighted_score in log
                     print(
                         f"[Kronos] {ticker} | T={T_val:.2f} | "
-                        f"ret={m1_return_pct:+.1f}% ({normalised_return:+.1f}std) "
-                        f"split={m2_split_pct:+.1f}% cons={m3_consistency_pct:.0f}% "
-                        f"brkout={m4_breakout} dd={m5_drawdown_pct:.1f}% flat={is_flat_forecast} "
-                        f"-> score={weighted_score:+.3f} -> {ai_forecast_bias} | conf={ai_confidence_score}%"
+                        f"ret={forecast_metrics['return_pct']:+.1f}% ({forecast_metrics['normalised_return']:+.1f}std) "
+                        f"split={forecast_metrics['momentum_split']:+.1f}% cons={forecast_metrics['consistency_pct']:.0f}% "
+                        f"brkout={forecast_metrics['breakout_signal']} dd={forecast_metrics['max_drawdown_pct']:.1f}% flat={forecast_metrics['is_flat_forecast']} "
+                        f"-> score={forecast_metrics['weighted_score']:+.3f} -> {ai_forecast_bias} | conf={ai_confidence_score}%"
                     )
 
-                    # [TWEAK 4] Log raw forecast closes so path differences are visible per stock
+                    # Log raw forecast closes so path differences are visible per stock
+                    forecast_closes = [r["close"] for r in forecast_list]
                     fc_str = " ".join(f"{c:.1f}" for c in forecast_closes)
                     print(f"[Kronos] {ticker} closes: [{fc_str}]")
 
@@ -2986,6 +3003,225 @@ def get_watchlist():
         conn.close()
         return jsonify(result)
     except Exception as e:
+        return jsonify(error=str(e)), 500
+
+def build_ranking_entry(ticker, bias, score, metrics, cache_hit):
+    return {
+        "ticker": ticker,
+        "rank": None,  # assigned post-sort
+        "predicted_return_pct": metrics.get("return_pct") if metrics else None,
+        "ai_forecast_bias": bias,
+        "ai_confidence_score": score,
+        "forecast_metrics": metrics or {},
+        "cache_hit": cache_hit
+    }
+
+def _run_kronos_for_ticker(ticker, pred_len):
+    """
+    Runs Kronos forecast for a single ticker. Checks memory cache and SQLite db cache first.
+    Returns: build_ranking_entry(ticker, bias, score, metrics, cache_hit)
+    """
+    try:
+        import sqlite3
+        import json
+        import pandas as pd
+        import numpy as np
+        from datetime import datetime
+
+        # Load history first (uses 15-minute global TTL cache inside fetch_historical_prices)
+        history = fetch_historical_prices(ticker, range_str="6mo")
+        if not history or len(history) < 10:
+            return build_ranking_entry(ticker, None, 0, {}, cache_hit=False)
+
+        last_close = float(history[-1]["close"])
+        last_date_str = history[-1]["date"]
+
+        # 1. Check memory cache (from setup-analysis, which is 10 days)
+        mem_cached = _get_kronos_cache(ticker)
+        if mem_cached:
+            bias, score, forecast_list, forecast_metrics = mem_cached
+            if len(forecast_list) >= pred_len:
+                sliced_forecast = forecast_list[:pred_len]
+                # Recompute metrics for the specific pred_len
+                b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history)
+                return build_ranking_entry(ticker, b, s, m, cache_hit=True)
+
+        # 2. Check Database Cache
+        conn = sqlite3.connect("scan_history.db")
+        c = conn.cursor()
+        c.execute(
+            "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? ORDER BY id DESC LIMIT 1",
+            (ticker, pred_len)
+        )
+        db_row = c.fetchone()
+        
+        if db_row:
+            stored_forecast_json, db_last_close, generated_at_str = db_row
+            gen_date = generated_at_str.split('T')[0]
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            if gen_date == today_str:
+                conn.close()
+                forecast_list = json.loads(stored_forecast_json)
+                b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history)
+                return build_ranking_entry(ticker, b, s, m, cache_hit=True)
+
+        # 3. Live Inference
+        predictor = get_kronos_predictor()
+        if not predictor:
+            if db_row: # Fallback to stale db cache if available
+                conn.close()
+                forecast_list = json.loads(stored_forecast_json)
+                b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history)
+                return build_ranking_entry(ticker, b, s, m, cache_hit=True)
+            conn.close()
+            return build_ranking_entry(ticker, None, 0, {}, cache_hit=False)
+
+        # Prepare inputs using the last 60 bars for fast inference context
+        history_slice = history[-60:]
+        df_input = pd.DataFrame([{
+            "open": float(d["open"]),
+            "high": float(d["high"]),
+            "low": float(d["low"]),
+            "close": float(d["close"]),
+            "volume": float(d["volume"])
+        } for d in history_slice])
+        df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
+
+        x_timestamps = pd.to_datetime([d["date"] for d in history_slice])
+        y_timestamps = generate_next_trading_days(last_date_str, pred_len)
+
+        atr_pct = compute_atr_pct(history)
+        T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
+
+        raw_samples = predictor.predict(
+            df=df_input,
+            x_timestamp=pd.Series(x_timestamps),
+            y_timestamp=y_timestamps,
+            pred_len=pred_len,
+            T=T_val,
+            top_p=0.8,
+            sample_count=10,
+            verbose=False,
+            return_samples=True
+        )
+
+        mean_pred = raw_samples.mean(axis=0)
+        p10 = np.percentile(raw_samples, 10, axis=0)
+        p90 = np.percentile(raw_samples, 90, axis=0)
+
+        dates = [d.strftime("%Y-%m-%d") for d in y_timestamps]
+        forecast_list = []
+        for i in range(pred_len):
+            forecast_list.append({
+                "date": dates[i],
+                "open": round(float(mean_pred[i, 0]), 2),
+                "high": round(float(mean_pred[i, 1]), 2),
+                "low": round(float(mean_pred[i, 2]), 2),
+                "close": round(float(mean_pred[i, 3]), 2),
+                "volume": int(mean_pred[i, 4]),
+                "p10_close": round(float(p10[i, 3]), 2),
+                "p90_close": round(float(p90[i, 3]), 2)
+            })
+
+        # Save to database
+        generated_at = datetime.now().isoformat()
+        forecast_json_str = json.dumps(forecast_list)
+        c.execute(
+            "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close) VALUES (?, ?, ?, ?, ?)",
+            (ticker, generated_at, pred_len, forecast_json_str, last_close)
+        )
+        conn.commit()
+        conn.close()
+
+        # Compute metrics
+        b, s, m = compute_forecast_metrics(forecast_list, last_close, history)
+        return build_ranking_entry(ticker, b, s, m, cache_hit=False)
+
+    except Exception as ex:
+        print(f"[Kronos Batch] Live forecast error for {ticker}: {ex}")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return build_ranking_entry(ticker, None, 0, {}, cache_hit=False)
+
+@app.route('/api/watchlist/kronos-ranking', methods=['GET'])
+def get_watchlist_kronos_ranking():
+    from flask import request
+    import sqlite3
+    from datetime import datetime
+    from concurrent.futures import ThreadPoolExecutor
+
+    section_id = request.args.get('section_id', '').strip()
+    pred_len = request.args.get('pred_len', '5').strip()
+    try:
+        pred_len = int(pred_len)
+    except ValueError:
+        pred_len = 5
+
+    if pred_len not in [3, 5, 10]:
+        pred_len = 5
+
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        # 1. Fetch the sections and tickers
+        if section_id:
+            c.execute("SELECT id, name FROM watchlist_sections WHERE id = ?", (section_id,))
+            sections = c.fetchall()
+            if not sections:
+                conn.close()
+                return jsonify(error="Section not found"), 404
+        else:
+            c.execute("SELECT id, name FROM watchlist_sections")
+            sections = c.fetchall()
+
+        result_sections = []
+        for sec_id, sec_name in sections:
+            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ?", (sec_id,))
+            tickers = [r[0] for r in c.fetchall()]
+            
+            # If no tickers in this section, append empty rankings
+            if not tickers:
+                result_sections.append({
+                    "id": sec_id,
+                    "name": sec_name,
+                    "rankings": []
+                })
+                continue
+
+            # Run parallel forecasts (capped at 8 workers)
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                rankings = list(executor.map(lambda t: _run_kronos_for_ticker(t, pred_len), tickers))
+
+            # Sort rankings: highest predicted_return_pct first, None/failed at the bottom
+            rankings.sort(key=lambda x: x["predicted_return_pct"] if x["predicted_return_pct"] is not None else -9999, reverse=True)
+
+            # Assign rank
+            for idx, item in enumerate(rankings):
+                item["rank"] = idx + 1
+
+            result_sections.append({
+                "id": sec_id,
+                "name": sec_name,
+                "rankings": rankings
+            })
+
+        conn.close()
+        
+        return jsonify({
+            "generated_at": datetime.now().isoformat(),
+            "pred_len": pred_len,
+            "sections": result_sections
+        })
+
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        print(f"[Kronos Batch Route] Error: {e}")
         return jsonify(error=str(e)), 500
 
 @app.route('/api/watchlist/sections', methods=['POST'])

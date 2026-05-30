@@ -2910,6 +2910,9 @@ let watchlistDataMap = {};
 let watchlistCurrentPage = 1;
 const watchlistItemsPerPage = 5;
 let activeNewsFilter = 'all'; // 'all' or ticker symbol
+let showWatchlistKronosColumns = false;
+let watchlistKronosRankings = {};
+let isKronosBatchSorting = false;
 
 function fetchWatchlistFromBackend() {
     fetch('/api/watchlist')
@@ -3023,6 +3026,78 @@ function initWatchlist() {
             watchlistAddBox.classList.toggle('hidden');
             if (!watchlistAddBox.classList.contains('hidden')) {
                 watchlistManualInput.focus();
+            }
+        });
+    }
+
+    // Toggle AI columns button
+    const btnKronosColumnToggle = document.getElementById('btn-kronos-column-toggle');
+    if (btnKronosColumnToggle) {
+        btnKronosColumnToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showWatchlistKronosColumns = !showWatchlistKronosColumns;
+            btnKronosColumnToggle.style.color = showWatchlistKronosColumns ? '#f59e0b' : 'var(--color-text-secondary)';
+            renderWatchlist();
+        });
+    }
+
+    // Kronos batch sort button
+    const btnKronosBatchSort = document.getElementById('btn-kronos-batch-sort');
+    if (btnKronosBatchSort) {
+        btnKronosBatchSort.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (isKronosBatchSorting) return;
+
+            isKronosBatchSorting = true;
+            showWatchlistKronosColumns = true;
+            
+            if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = '#f59e0b';
+            
+            const originalSortBtnHtml = btnKronosBatchSort.innerHTML;
+            btnKronosBatchSort.disabled = true;
+            btnKronosBatchSort.innerHTML = `<span class="btn-spinner" style="display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span>`;
+            
+            renderWatchlist();
+
+            try {
+                const response = await fetch('/api/watchlist/kronos-ranking?pred_len=5');
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch rankings: ${response.statusText}`);
+                }
+                const data = await response.json();
+                
+                if (data && data.sections) {
+                    data.sections.forEach(sec => {
+                        sec.rankings.forEach(r => {
+                            watchlistKronosRankings[r.ticker] = {
+                                rank: r.rank,
+                                predicted_return_pct: r.predicted_return_pct,
+                                ai_forecast_bias: r.ai_forecast_bias,
+                                ai_confidence_score: r.ai_confidence_score,
+                                cache_hit: r.cache_hit
+                            };
+                        });
+
+                        const section = watchlistSections.find(s => s.id === sec.id);
+                        if (section && sec.rankings.length > 0) {
+                            const apiOrder = sec.rankings.map(r => r.ticker);
+                            const remaining = section.stocks.filter(s => !apiOrder.includes(s));
+                            section.stocks = [...apiOrder, ...remaining];
+                        }
+                    });
+
+                    if (typeof saveWatchlistSections === 'function') {
+                        saveWatchlistSections();
+                    }
+                }
+            } catch (err) {
+                console.error("Kronos batch sorting error:", err);
+                alert("Error during Kronos AI sorting: " + err.message);
+            } finally {
+                isKronosBatchSorting = false;
+                btnKronosBatchSort.disabled = false;
+                btnKronosBatchSort.innerHTML = originalSortBtnHtml;
+                renderWatchlist();
             }
         });
     }
@@ -3615,15 +3690,30 @@ function renderWatchlist() {
             
             // Add missing table headers
             const thead = document.createElement('thead');
-            thead.innerHTML = `
-                <tr>
-                    <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Symbol</th>
-                    <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">CMP</th>
-                    <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Change%</th>
-                    <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Vol</th>
-                    <th style="width: 24px;"></th>
-                </tr>
-            `;
+            if (showWatchlistKronosColumns) {
+                thead.innerHTML = `
+                    <tr>
+                        <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem; min-width: 60px;">Symbol</th>
+                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;"># Rank</th>
+                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">AI Return</th>
+                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Bias</th>
+                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Conf.</th>
+                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">CMP</th>
+                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Change%</th>
+                        <th style="width: 24px;"></th>
+                    </tr>
+                `;
+            } else {
+                thead.innerHTML = `
+                    <tr>
+                        <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Symbol</th>
+                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">CMP</th>
+                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Change%</th>
+                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Vol</th>
+                        <th style="width: 24px;"></th>
+                    </tr>
+                `;
+            }
             table.appendChild(thead);
             
             const tbody = document.createElement('tbody');
@@ -3710,32 +3800,191 @@ function renderWatchlist() {
                         }
                     }
                     
-                    tr.innerHTML = `
-                        <td class="watchlist-symbol" onclick="event.stopPropagation(); openTradingView('${symbol}')" title="Open in TradingView (New Tab)" style="cursor: pointer;">
-                            <div style="display: flex; align-items: center;"><span style="text-decoration: underline;">${symbol}</span>${sectorDotHtml}${insideBarDotHtml}${volDryUpDotHtml}${maFlirtingDotHtml}${divergenceDotHtml}${imsBadgeHtml}</div>
-                            ${dealsBadgeHtml}
-                        </td>
-                        <td class="watchlist-cell-right" style="font-weight:700; color:var(--color-text-primary);">${priceFormatted}</td>
-                        <td class="watchlist-cell-right ${changeClass}">${changeSign}${stock.change.toFixed(2)}%</td>
-                        <td class="watchlist-cell-right" style="color:var(--color-text-secondary);">${volumeFormatted}</td>
-                        <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
-                            <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                            </button>
-                        </td>
-                    `;
+                    let rankHtml = '<td class="watchlist-cell-center" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+                    let aiReturnHtml = '<td class="watchlist-cell-right" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+                    let biasHtml = '<td class="watchlist-cell-center" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+                    let confidenceHtml = '<td class="watchlist-cell-center" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+
+                    const rankData = watchlistKronosRankings[symbol];
+                    if (rankData) {
+                        const rankVal = rankData.rank != null ? `#${rankData.rank}` : '—';
+                        const originBadge = rankData.cache_hit ? 
+                            `<span style="font-size:0.55rem; padding:0 2px; border-radius:2px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:var(--color-text-muted); margin-left:2px;" title="Cached Forecast">C</span>` : 
+                            `<span style="font-size:0.55rem; padding:0 2px; border-radius:2px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); color:#f59e0b; margin-left:2px;" title="Live Forecast">L</span>`;
+
+                        rankHtml = `<td class="watchlist-cell-center" style="font-weight:600; color:var(--color-text-primary); font-size:0.7rem;">
+                            <span style="background:rgba(255,255,255,0.04); padding:1px 4px; border-radius:2px;">${rankVal}</span>
+                        </td>`;
+                        
+                        if (rankData.predicted_return_pct != null) {
+                            const retSign = rankData.predicted_return_pct >= 0 ? '+' : '';
+                            const retColor = rankData.predicted_return_pct >= 0 ? '#4ade80' : '#f87171';
+                            aiReturnHtml = `<td class="watchlist-cell-right" style="font-weight:700; color:${retColor}; font-size:0.7rem;">${retSign}${rankData.predicted_return_pct.toFixed(2)}%${originBadge}</td>`;
+                        }
+                        
+                        if (rankData.ai_forecast_bias) {
+                            const bias = rankData.ai_forecast_bias;
+                            const biasStyles = {
+                                'Strong Breakout':        { bg: 'rgba(16,185,129,0.1)',    color: '#10b981', border: 'rgba(16,185,129,0.2)' },
+                                'Bullish Continuation':   { bg: 'rgba(52,211,153,0.08)',   color: '#34d399', border: 'rgba(52,211,153,0.15)' },
+                                'Sideways Consolidation': { bg: 'rgba(148,163,184,0.08)',  color: '#94a3b8', border: 'rgba(148,163,184,0.15)' },
+                                'Bearish Pressure':       { bg: 'rgba(248,113,113,0.08)',  color: '#f87171', border: 'rgba(248,113,113,0.15)' },
+                                'Strong Downtrend':       { bg: 'rgba(239,68,68,0.1)',     color: '#ef4444', border: 'rgba(239,68,68,0.2)' }
+                            };
+                            const style = biasStyles[bias] || biasStyles['Sideways Consolidation'];
+                            const shortBias = bias === 'Strong Breakout' ? 'Str Break' : 
+                                              bias === 'Bullish Continuation' ? 'Bullish' : 
+                                              bias === 'Sideways Consolidation' ? 'Sideways' : 
+                                              bias === 'Bearish Pressure' ? 'Bearish' : 'Str Down';
+                            
+                            biasHtml = `<td class="watchlist-cell-center" style="font-size:0.6rem;">
+                                <span style="background:${style.bg}; color:${style.color}; border:1px solid ${style.border}; padding:1px 3px; border-radius:2px; font-weight:500; white-space:nowrap;">
+                                    ${shortBias}
+                                </span>
+                            </td>`;
+                        }
+                        
+                        if (rankData.ai_confidence_score) {
+                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600; color:var(--color-text-secondary);">
+                                <div style="display:flex; flex-direction:column; align-items:center; gap:2px; min-width:30px; margin:0 auto;">
+                                    <span>${rankData.ai_confidence_score}%</span>
+                                    <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
+                                        <div style="width:${rankData.ai_confidence_score}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
+                                    </div>
+                                </div>
+                            </td>`;
+                        }
+                    } else if (isKronosBatchSorting) {
+                        rankHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        aiReturnHtml = `<td class="watchlist-cell-right"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        biasHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        confidenceHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                    }
+
+                    if (showWatchlistKronosColumns) {
+                        tr.innerHTML = `
+                            <td class="watchlist-symbol" onclick="event.stopPropagation(); openTradingView('${symbol}')" title="Open in TradingView (New Tab)" style="cursor: pointer;">
+                                <div style="display: flex; align-items: center;"><span style="text-decoration: underline;">${symbol}</span>${sectorDotHtml}${insideBarDotHtml}${volDryUpDotHtml}${maFlirtingDotHtml}${divergenceDotHtml}${imsBadgeHtml}</div>
+                                ${dealsBadgeHtml}
+                            </td>
+                            ${rankHtml}
+                            ${aiReturnHtml}
+                            ${biasHtml}
+                            ${confidenceHtml}
+                            <td class="watchlist-cell-right" style="font-weight:700; color:var(--color-text-primary);">${priceFormatted}</td>
+                            <td class="watchlist-cell-right ${changeClass}">${changeSign}${stock.change.toFixed(2)}%</td>
+                            <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
+                                <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </button>
+                            </td>
+                        `;
+                    } else {
+                        tr.innerHTML = `
+                            <td class="watchlist-symbol" onclick="event.stopPropagation(); openTradingView('${symbol}')" title="Open in TradingView (New Tab)" style="cursor: pointer;">
+                                <div style="display: flex; align-items: center;"><span style="text-decoration: underline;">${symbol}</span>${sectorDotHtml}${insideBarDotHtml}${volDryUpDotHtml}${maFlirtingDotHtml}${divergenceDotHtml}${imsBadgeHtml}</div>
+                                ${dealsBadgeHtml}
+                            </td>
+                            <td class="watchlist-cell-right" style="font-weight:700; color:var(--color-text-primary);">${priceFormatted}</td>
+                            <td class="watchlist-cell-right ${changeClass}">${changeSign}${stock.change.toFixed(2)}%</td>
+                            <td class="watchlist-cell-right" style="color:var(--color-text-secondary);">${volumeFormatted}</td>
+                            <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
+                                <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </button>
+                            </td>
+                        `;
+                    }
                 } else {
-                    tr.innerHTML = `
-                        <td class="watchlist-symbol" onclick="event.stopPropagation(); openTradingView('${symbol}')" title="Open in TradingView (New Tab)" style="text-decoration: underline; cursor: pointer;">${symbol}</td>
-                        <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
-                        <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
-                        <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
-                        <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
-                            <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                            </button>
-                        </td>
-                    `;
+                    let rankHtml = '<td class="watchlist-cell-center" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+                    let aiReturnHtml = '<td class="watchlist-cell-right" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+                    let biasHtml = '<td class="watchlist-cell-center" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+                    let confidenceHtml = '<td class="watchlist-cell-center" style="color:var(--color-text-muted); font-size:0.7rem;">—</td>';
+
+                    const rankData = watchlistKronosRankings[symbol];
+                    if (rankData) {
+                        const rankVal = rankData.rank != null ? `#${rankData.rank}` : '—';
+                        const originBadge = rankData.cache_hit ? 
+                            `<span style="font-size:0.55rem; padding:0 2px; border-radius:2px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:var(--color-text-muted); margin-left:2px;" title="Cached Forecast">C</span>` : 
+                            `<span style="font-size:0.55rem; padding:0 2px; border-radius:2px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); color:#f59e0b; margin-left:2px;" title="Live Forecast">L</span>`;
+
+                        rankHtml = `<td class="watchlist-cell-center" style="font-weight:600; color:var(--color-text-primary); font-size:0.7rem;">
+                            <span style="background:rgba(255,255,255,0.04); padding:1px 4px; border-radius:2px;">${rankVal}</span>
+                        </td>`;
+                        
+                        if (rankData.predicted_return_pct != null) {
+                            const retSign = rankData.predicted_return_pct >= 0 ? '+' : '';
+                            const retColor = rankData.predicted_return_pct >= 0 ? '#4ade80' : '#f87171';
+                            aiReturnHtml = `<td class="watchlist-cell-right" style="font-weight:700; color:${retColor}; font-size:0.7rem;">${retSign}${rankData.predicted_return_pct.toFixed(2)}%${originBadge}</td>`;
+                        }
+                        
+                        if (rankData.ai_forecast_bias) {
+                            const bias = rankData.ai_forecast_bias;
+                            const biasStyles = {
+                                'Strong Breakout':        { bg: 'rgba(16,185,129,0.1)',    color: '#10b981', border: 'rgba(16,185,129,0.2)' },
+                                'Bullish Continuation':   { bg: 'rgba(52,211,153,0.08)',   color: '#34d399', border: 'rgba(52,211,153,0.15)' },
+                                'Sideways Consolidation': { bg: 'rgba(148,163,184,0.08)',  color: '#94a3b8', border: 'rgba(148,163,184,0.15)' },
+                                'Bearish Pressure':       { bg: 'rgba(248,113,113,0.08)',  color: '#f87171', border: 'rgba(248,113,113,0.15)' },
+                                'Strong Downtrend':       { bg: 'rgba(239,68,68,0.1)',     color: '#ef4444', border: 'rgba(239,68,68,0.2)' }
+                            };
+                            const style = biasStyles[bias] || biasStyles['Sideways Consolidation'];
+                            const shortBias = bias === 'Strong Breakout' ? 'Str Break' : 
+                                              bias === 'Bullish Continuation' ? 'Bullish' : 
+                                              bias === 'Sideways Consolidation' ? 'Sideways' : 
+                                              bias === 'Bearish Pressure' ? 'Bearish' : 'Str Down';
+                            
+                            biasHtml = `<td class="watchlist-cell-center" style="font-size:0.6rem;">
+                                <span style="background:${style.bg}; color:${style.color}; border:1px solid ${style.border}; padding:1px 3px; border-radius:2px; font-weight:500; white-space:nowrap;">
+                                    ${shortBias}
+                                </span>
+                            </td>`;
+                        }
+                        
+                        if (rankData.ai_confidence_score) {
+                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600; color:var(--color-text-secondary);">
+                                <div style="display:flex; flex-direction:column; align-items:center; gap:2px; min-width:30px; margin:0 auto;">
+                                    <span>${rankData.ai_confidence_score}%</span>
+                                    <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
+                                        <div style="width:${rankData.ai_confidence_score}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
+                                    </div>
+                                </div>
+                            </td>`;
+                        }
+                    } else if (isKronosBatchSorting) {
+                        rankHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        aiReturnHtml = `<td class="watchlist-cell-right"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        biasHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                        confidenceHtml = `<td class="watchlist-cell-center"><span style="display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.2); border-top-color:#f59e0b; border-radius:50%; animation:spin 0.8s linear infinite;"></span></td>`;
+                    }
+
+                    if (showWatchlistKronosColumns) {
+                        tr.innerHTML = `
+                            <td class="watchlist-symbol" onclick="event.stopPropagation(); openTradingView('${symbol}')" title="Open in TradingView (New Tab)" style="text-decoration: underline; cursor: pointer;">${symbol}</td>
+                            ${rankHtml}
+                            ${aiReturnHtml}
+                            ${biasHtml}
+                            ${confidenceHtml}
+                            <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
+                            <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
+                            <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
+                                <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </button>
+                            </td>
+                        `;
+                    } else {
+                        tr.innerHTML = `
+                            <td class="watchlist-symbol" onclick="event.stopPropagation(); openTradingView('${symbol}')" title="Open in TradingView (New Tab)" style="text-decoration: underline; cursor: pointer;">${symbol}</td>
+                            <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
+                            <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
+                            <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
+                            <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
+                                <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                </button>
+                            </td>
+                        `;
+                    }
                 }
                 
                 tbody.appendChild(tr);
