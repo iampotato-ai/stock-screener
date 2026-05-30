@@ -2034,7 +2034,8 @@ function filterAndRender() {
     currentPage = 1;
     sortStocks();
     
-    if (currentTab === 'rrg') {
+    const activeWorkspace = document.querySelector('.workspace-tab.active')?.dataset.view;
+    if (activeWorkspace === 'rrg') {
         if (typeof renderRRG === 'function') renderRRG();
     } else if (currentTab === 'intraday') {
         if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
@@ -4909,6 +4910,11 @@ function renderRRG() {
         stopRRGAnimation();
         renderStaticStocksRRG();
     }
+    
+    // Render sector heatmap
+    if (typeof renderSectorHeatmap === 'function') {
+        renderSectorHeatmap();
+    }
 }
 
 function renderStaticStocksRRG() {
@@ -5343,10 +5349,17 @@ document.getElementById('btn-rrg-play')?.addEventListener('click', startRRGAnima
 document.getElementById('btn-rrg-pause')?.addEventListener('click', stopRRGAnimation);
 document.getElementById('btn-rrg-reset')?.addEventListener('click', resetRRGAnimation);
 
+let rrgScrubberPending = false;
 document.getElementById('rrg-timeline-scrubber')?.addEventListener('input', e => {
     stopRRGAnimation();
     rrgCurrentFrame = parseInt(e.target.value);
-    renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+    if (!rrgScrubberPending) {
+        rrgScrubberPending = true;
+        requestAnimationFrame(() => {
+            renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+            rrgScrubberPending = false;
+        });
+    }
 });
 
 document.getElementById('rrg-weeks-select')?.addEventListener('change', e => {
@@ -5529,14 +5542,20 @@ function renderSectorHeatmap() {
 }
 
 window.filterBySectorHeatmap = function(sectorName) {
-    // Switch to Momentum Tab
-    const screenerTabs = document.querySelector('.screener-tabs');
-    if (screenerTabs) {
-        const momentumBtn = screenerTabs.querySelector('[data-tab="momentum"]');
-        if (momentumBtn) momentumBtn.click();
+    // Switch RRG View Mode to stocks
+    rrgViewMode = 'stocks';
+    
+    // Update the toggles UI state
+    const btnSectors = document.getElementById('btn-rrg-sectors');
+    const btnStocks = document.getElementById('btn-rrg-stocks');
+    if (btnSectors && btnStocks) {
+        btnSectors.classList.remove('active', 'btn-primary');
+        btnSectors.classList.add('btn-secondary');
+        btnStocks.classList.add('active', 'btn-primary');
+        btnStocks.classList.remove('btn-secondary');
     }
     
-    // Set the filter (this also calls filterAndRender)
+    // Set the filter (this also calls filterAndRender, which will trigger renderRRG)
     if (typeof selectSector === 'function') {
         selectSector(sectorName);
     }
