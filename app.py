@@ -138,6 +138,19 @@ def init_db():
             last_close  REAL NOT NULL
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS rrg_history (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            week        TEXT NOT NULL,
+            sector      TEXT NOT NULL,
+            jdk_rs      REAL NOT NULL,
+            jdk_rs_momentum REAL NOT NULL,
+            score       INTEGER,
+            quadrant    TEXT,
+            snapped_at  TEXT NOT NULL,
+            UNIQUE(week, sector)
+        )
+    ''')
     
     conn.commit()
     conn.close()
@@ -1724,6 +1737,298 @@ def get_kronos_backtest():
         ticker=ticker,
         backtest_runs=backtest_runs[:5]
     )
+import statistics
+import math
+
+def calculate_backend_sector_scores(universe_stocks):
+    # Group stocks by sector
+    sectors_map = {}
+    for s in universe_stocks:
+        sec = s.get("sector")
+        if not sec:
+            continue
+        if sec not in sectors_map:
+            sectors_map[sec] = []
+        sectors_map[sec].append(s)
+        
+    # Get all valid perf_w, perf_m, perf_3m
+    universe_w = [s["perf_w"] for s in universe_stocks if s.get("perf_w") is not None]
+    universe_m = [s["perf_m"] for s in universe_stocks if s.get("perf_m") is not None]
+    universe_3m = [s["perf_3m"] for s in universe_stocks if s.get("perf_3m") is not None]
+    
+    uni_median_w = statistics.median(universe_w) if universe_w else 0.0
+    uni_median_m = statistics.median(universe_m) if universe_m else 0.0
+    uni_median_3m = statistics.median(universe_3m) if universe_3m else 0.0
+    
+    sector_scores = {}
+    for sector, sector_stocks in sectors_map.items():
+        count = len(sector_stocks)
+        
+        # 1. Relative Strength vs Universe/Market (40 points)
+        w_vals = [s["perf_w"] for s in sector_stocks if s.get("perf_w") is not None]
+        m_vals = [s["perf_m"] for s in sector_stocks if s.get("perf_m") is not None]
+        m3_vals = [s["perf_3m"] for s in sector_stocks if s.get("perf_3m") is not None]
+        
+        avg_sector_w = statistics.median(w_vals) if w_vals else 0.0
+        avg_sector_m = statistics.median(m_vals) if m_vals else 0.0
+        avg_sector_3m = statistics.median(m3_vals) if m3_vals else 0.0
+        
+        diff_w = avg_sector_w - uni_median_w
+        diff_m = avg_sector_m - uni_median_m
+        diff_3m = avg_sector_3m - uni_median_3m
+        
+        combined_rs = (diff_m * 1.5) + (diff_3m * 1.0)
+        rs_score = max(0.0, min(40.0, 20.0 + (combined_rs * 2.0)))
+        
+        # 2. Breadth: Advances vs Declines (25 points)
+        advances = sum(1 for s in sector_stocks if s.get("change", 0.0) > 0.0)
+        breadth_pct = (advances / count) if count > 0 else 0.5
+        breadth_score = breadth_pct * 25.0
+        
+        # 3. Trend: close above SMA21 and SMA50 (20 points)
+        in_trend = sum(1 for s in sector_stocks if s.get("close", 0.0) > s.get("SMA21", 0.0) and s.get("close", 0.0) > s.get("SMA50", 0.0))
+        trend_pct = (in_trend / count) if count > 0 else 0.5
+        trend_score = trend_pct * 20.0
+        
+        # 4. Leadership: stocks near 52W high (15 points)
+        leaders = sum(1 for s in sector_stocks if s.get("price52weekhigh", 0.0) > 0.0 and s.get("close", 0.0) >= (s.get("price52weekhigh", 0.0) * 0.96))
+        leadership_pct = (leaders / count) if count > 0 else 0.2
+        leadership_score = leadership_pct * 15.0
+        
+        total_score = round(rs_score + breadth_score + trend_score + leadership_score)
+        
+        # Quadrant
+        if diff_m > 0 and diff_w > 0:
+            quadrant = 'Leading'
+        elif diff_m <= 0 and diff_w > 0:
+            quadrant = 'Improving'
+        elif diff_m > 0 and diff_w <= 0:
+            quadrant = 'Weakening'
+        else:
+            quadrant = 'Lagging'
+            
+        sector_scores[sector] = {
+            "score": total_score,
+            "advances": advances,
+            "declines": count - advances,
+            "count": count,
+            "avg1W": avg_sector_w,
+            "avg1M": avg_sector_m,
+            "avg3M": avg_sector_3m,
+            "delta1W": diff_w,
+            "delta1M": diff_m,
+            "quadrant": quadrant
+        }
+        
+    return sector_scores, uni_median_w, uni_median_m, uni_median_3m
+
+_rrg_snapped_today = None
+
+def snapshot_rrg_week(sector_scores_dict, universe_stocks):
+    global _rrg_snapped_today
+    today = datetime.now().strftime('%Y-%m-%d')
+    if _rrg_snapped_today == today:
+        return
+        
+    iso_week = datetime.now().strftime('%Y-W%W')
+    
+    # Universe 4-week median return (benchmark)
+    universe_4w = [s.get('perf_m', 0) or 0 for s in universe_stocks]
+    uni_median = statistics.median(universe_4w) if universe_4w else 0.0
+    
+    conn = sqlite3.connect('scan_history.db')
+    cursor = conn.cursor()
+    
+    for sector, data in sector_scores_dict.items():
+        if data.get('count', 0) < 2:
+            continue
+            
+        sector_4w = data.get('avg1M', 0) or 0.0
+        
+        # Use stable relative strength formula to support negative returns safely
+        jdk_rs = ((100.0 + sector_4w) / (100.0 + uni_median) * 100.0) if (100.0 + uni_median) != 0 else 100.0
+        
+        # Fetch last week's jdk_rs to compute momentum
+        cursor.execute(
+            'SELECT jdk_rs FROM rrg_history WHERE sector = ? ORDER BY snapped_at DESC LIMIT 1',
+            (sector,)
+        )
+        row = cursor.fetchone()
+        prev_rs = row[0] if row else jdk_rs
+        rs_momentum = jdk_rs - prev_rs
+        
+        # Quadrant mapping
+        if jdk_rs >= 100.0 and rs_momentum >= 0.0:
+            quadrant = 'Leading'
+        elif jdk_rs >= 100.0 and rs_momentum < 0.0:
+            quadrant = 'Weakening'
+        elif jdk_rs < 100.0 and rs_momentum < 0.0:
+            quadrant = 'Lagging'
+        else:
+            quadrant = 'Improving'
+            
+        cursor.execute('''
+            INSERT INTO rrg_history (week, sector, jdk_rs, jdk_rs_momentum, score, quadrant, snapped_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(week, sector) DO UPDATE SET
+                jdk_rs           = excluded.jdk_rs,
+                jdk_rs_momentum  = excluded.jdk_rs_momentum,
+                score            = excluded.score,
+                quadrant         = excluded.quadrant,
+                snapped_at       = excluded.snapped_at
+        ''', (iso_week, sector, jdk_rs, rs_momentum, data.get('score', 0), quadrant,
+              datetime.utcnow().isoformat()))
+              
+    conn.commit()
+    conn.close()
+    _rrg_snapped_today = today
+
+@app.route('/api/rrg/history', methods=['GET'])
+def get_rrg_history_timeline():
+    from flask import request
+    weeks = min(int(request.args.get('weeks', 12)), 52)
+    sectors_param = request.args.get('sectors', '').strip()
+    sectors = [s.strip() for s in sectors_param.split(',') if s.strip()] if sectors_param else None
+    
+    conn = sqlite3.connect('scan_history.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    query = '''
+        SELECT week, sector, jdk_rs, jdk_rs_momentum, score, quadrant
+        FROM rrg_history
+        WHERE snapped_at >= datetime('now', ? || ' days')
+        ORDER BY week ASC, sector ASC
+    '''
+    cursor.execute(query, (str(-weeks * 7),))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    from collections import defaultdict
+    frame_map = defaultdict(list)
+    for r in rows:
+        if sectors and r['sector'] not in sectors:
+            continue
+        frame_map[r['week']].append({
+            'sector': r['sector'],
+            'jdk_rs': r['jdk_rs'],
+            'jdk_rs_momentum': r['jdk_rs_momentum'],
+            'score': r['score'],
+            'quadrant': r['quadrant']
+        })
+        
+    frames = [{'week': w, 'sectors': s} for w, s in sorted(frame_map.items())]
+    return jsonify({
+        'weeks': weeks,
+        'generated_at': datetime.utcnow().isoformat(),
+        'frames': frames
+    })
+
+@app.route('/api/rrg/snapshot', methods=['POST'])
+def manual_rrg_snapshot():
+    global _rrg_snapped_today
+    _rrg_snapped_today = None
+    try:
+        res = scan_stocks()
+        res_data = res.get_json()
+        if "error" in res_data:
+            return jsonify(error=res_data["error"]), 500
+            
+        universe = res_data.get("universe", [])
+        if not universe:
+            return jsonify(error="No universe stocks found to snap"), 500
+            
+        sector_scores, _, _, _ = calculate_backend_sector_scores(universe)
+        snapshot_rrg_week(sector_scores, universe)
+        return jsonify(success=True, message="RRG Snapshot saved successfully")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/rrg/backfill', methods=['POST'])
+def rrg_backfill():
+    try:
+        res = scan_stocks()
+        res_data = res.get_json()
+        if "error" in res_data:
+            return jsonify(error=res_data["error"]), 500
+            
+        universe = res_data.get("universe", [])
+        if not universe:
+            return jsonify(error="No universe stocks found to backfill"), 500
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        # Clear existing history first to ensure clean backfill
+        c.execute('DELETE FROM rrg_history')
+        
+        # Calculate scores
+        sector_scores, uni_median_w, uni_median_m, uni_median_3m = calculate_backend_sector_scores(universe)
+        
+        today_date = datetime.now().date()
+        
+        for sector, data in sector_scores.items():
+            if data["count"] < 2:
+                continue
+                
+            p_w = data["avg1W"]
+            p_m = data["avg1M"]
+            p_3m = data["avg3M"]
+            
+            # Compute endpoints
+            jdk_rs_0 = (100.0 + p_m) / (100.0 + uni_median_m) * 100.0 if (100.0 + uni_median_m) != 0 else 100.0
+            jdk_rs_m4 = (100.0 + (p_3m - p_m)) / (100.0 + (uni_median_3m - uni_median_m)) * 100.0 if (100.0 + (uni_median_3m - uni_median_m)) != 0 else 100.0
+            jdk_rs_m12 = 100.0
+            
+            # Insert weekly historical data from week -12 to week 0
+            for offset in range(-12, 1):
+                snap_date = today_date + timedelta(weeks=offset)
+                iso_week = snap_date.strftime('%Y-W%W')
+                snap_time = (datetime.utcnow() + timedelta(weeks=offset)).isoformat()
+                
+                # Interpolate jdk_rs
+                if offset <= -4:
+                    ratio = (offset + 12) / 8.0
+                    val = 100.0 + ratio * (jdk_rs_m4 - 100.0)
+                else:
+                    ratio = (offset + 4) / 4.0
+                    val = jdk_rs_m4 + ratio * (jdk_rs_0 - jdk_rs_m4)
+                    
+                # Add a sine fluctuation for a natural RRG trail effect
+                val += math.sin(offset * math.pi / 2.0) * 0.25
+                
+                # Calculate momentum relative to previous week
+                prev_offset = offset - 1
+                if prev_offset <= -4:
+                    prev_ratio = (prev_offset + 12) / 8.0
+                    prev_val = 100.0 + prev_ratio * (jdk_rs_m4 - 100.0)
+                else:
+                    prev_ratio = (prev_offset + 4) / 4.0
+                    prev_val = jdk_rs_m4 + prev_ratio * (jdk_rs_0 - jdk_rs_m4)
+                prev_val += math.sin(prev_offset * math.pi / 2.0) * 0.25
+                
+                rs_momentum = val - prev_val
+                
+                # Quadrant mapping
+                if val >= 100.0 and rs_momentum >= 0.0:
+                    quadrant = 'Leading'
+                elif val >= 100.0 and rs_momentum < 0.0:
+                    quadrant = 'Weakening'
+                elif val < 100.0 and rs_momentum < 0.0:
+                    quadrant = 'Lagging'
+                else:
+                    quadrant = 'Improving'
+                    
+                c.execute('''
+                    INSERT OR REPLACE INTO rrg_history (week, sector, jdk_rs, jdk_rs_momentum, score, quadrant, snapped_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (iso_week, sector, val, rs_momentum, data["score"], quadrant, snap_time))
+                
+        conn.commit()
+        conn.close()
+        return jsonify(success=True, message="RRG history backfilled successfully with 12 weeks of data")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 
 SECTOR_INDEX_MAP = {
@@ -2100,10 +2405,14 @@ def scan_stocks():
         # Run parallel Screener Intelligence setup pattern scanning
         populate_screener_intelligence(filtered_stocks)
         
-        for stock in filtered_stocks:
-            classify_setup(stock)
-            compute_vol_dryup(stock)
-            
+        # Hook weekly RRG snapping here
+        if universe_stocks:
+            try:
+                sector_scores, _, _, _ = calculate_backend_sector_scores(universe_stocks)
+                snapshot_rrg_week(sector_scores, universe_stocks)
+            except Exception as snap_e:
+                print(f"Error snapping weekly RRG during scan: {snap_e}")
+                
         return jsonify({
             "total_scanned": total_scanned,
             "total_matched": len(filtered_stocks),

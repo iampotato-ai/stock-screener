@@ -1595,7 +1595,7 @@ function calculateSectorScores(stocks) {
         let leaders = 0;
         sectorStocks.forEach(s => {
             const close = parseFloat(s.close) || 0;
-            const high52 = parseFloat(s.price_52_week_high) || 0;
+            const high52 = parseFloat(s.price_52_week_high || s.price52weekhigh) || 0;
             if (high52 > 0 && close >= (high52 * 0.96)) {
                 leaders++;
             }
@@ -4817,7 +4817,62 @@ function getMedian(values) {
     return (values[half - 1] + values[half]) / 2.0;
 }
 
+const RRG_SECTOR_COLORS = {
+  'Capital Goods':     '#6366f1',
+  'Metals':            '#f59e0b',
+  'Industrial':        '#10b981',
+  'Financial Services':'#3b82f6',
+  'IT':                '#8b5cf6',
+  'Healthcare':        '#ec4899',
+  'Consumer':          '#f97316',
+  'Energy':            '#14b8a6',
+  'Infrastructure':    '#84cc16',
+  'Auto':              '#ef4444',
+  'Finance':           '#3b82f6',
+  'Technology Services':'#8b5cf6',
+  'Health Technology': '#ec4899',
+  'Health Services':   '#ec4899',
+  'Electronic Technology':'#8b5cf6',
+  'Retail Trade':      '#f97316',
+  'Producer Manufacturing':'#6366f1',
+  'Process Industries': '#f59e0b',
+  'Consumer Services': '#f97316',
+  'Non-Energy Minerals':'#f59e0b',
+  'Utilities':         '#14b8a6',
+  'Transportation':    '#84cc16',
+  'Commercial Services':'#84cc16'
+};
+const RRG_DEFAULT_COLOR = '#94a3b8';
+
+let rrgHistoryFrames = [];     // All frames from /api/rrg/history
+let rrgCurrentFrame  = 0;      // Currently displayed frame index
+let rrgAnimTimer     = null;   // setInterval handle
+const RRG_ANIM_INTERVAL_MS = 600; // ms per frame during auto-play
+
 function renderRRG() {
+    const timelineBar = document.getElementById('rrg-timeline-bar');
+    const rrgCanvas = document.getElementById('rrg-canvas');
+    const rrgChart = document.getElementById('rrgChart');
+    
+    if (rrgViewMode === 'sectors') {
+        if (timelineBar) timelineBar.style.display = 'flex';
+        if (rrgCanvas) rrgCanvas.style.display = 'block';
+        if (rrgChart) rrgChart.style.display = 'none';
+        
+        const weeksSelect = document.getElementById('rrg-weeks-select');
+        const weeks = weeksSelect ? parseInt(weeksSelect.value) : 12;
+        loadRRGHistory(weeks);
+    } else {
+        if (timelineBar) timelineBar.style.display = 'none';
+        if (rrgCanvas) rrgCanvas.style.display = 'none';
+        if (rrgChart) rrgChart.style.display = 'block';
+        
+        stopRRGAnimation();
+        renderStaticStocksRRG();
+    }
+}
+
+function renderStaticStocksRRG() {
     if (!universeData || universeData.length === 0) return;
     
     // Calculate Benchmark (Median of all universe stocks)
@@ -4827,66 +4882,29 @@ function renderRRG() {
     const benchW = getMedian(validW);
     const benchM = getMedian(validM);
     
-    let datasets = [];
+    const dataPoints = filteredStocks.map(s => {
+        return {
+            x: ((s.perf_m || 0) - benchM),
+            y: ((s.perf_w || 0) - benchW),
+            label: s.clean_ticker || s.ticker
+        };
+    });
     
-    if (rrgViewMode === 'sectors') {
-        // Group by sector
-        const sectorGroups = {};
-        universeData.forEach(s => {
-            if (!s.sector) return;
-            if (!sectorGroups[s.sector]) sectorGroups[s.sector] = { w: [], m: [] };
-            if (s.perf_w !== null) sectorGroups[s.sector].w.push(s.perf_w);
-            if (s.perf_m !== null) sectorGroups[s.sector].m.push(s.perf_m);
-        });
-        
-        const dataPoints = [];
-        for (const [sector, data] of Object.entries(sectorGroups)) {
-            if (data.w.length < 3 || data.m.length < 3) continue; // skip tiny sectors
-            const avgW = getMedian(data.w);
-            const avgM = getMedian(data.m);
-            dataPoints.push({
-                x: avgM - benchM, // RS-Ratio (Long term)
-                y: avgW - benchW, // RS-Momentum (Short term)
-                label: sector
-            });
-        }
-        
-        datasets = [{
-            label: 'Sectors',
-            data: dataPoints,
-            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            borderColor: '#3b82f6',
-            borderWidth: 2,
-            pointRadius: 6,
-            pointHoverRadius: 8
-        }];
-    } else {
-        // Stocks view (Filtered Stocks)
-        const dataPoints = filteredStocks.map(s => {
-            return {
-                x: ((s.perf_m || 0) - benchM),
-                y: ((s.perf_w || 0) - benchW),
-                label: s.clean_ticker || s.ticker
-            };
-        });
-        
-        datasets = [{
-            label: 'Stocks',
-            data: dataPoints,
-            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            borderColor: '#10b981',
-            borderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6
-        }];
-    }
+    const datasets = [{
+        label: 'Stocks',
+        data: dataPoints,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        borderColor: '#10b981',
+        borderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6
+    }];
     
     const canvas = document.getElementById('rrgChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (rrgChartInstance) rrgChartInstance.destroy();
     
-    // Draw quadrants plugin
     const quadrantPlugin = {
         id: 'quadrants',
         beforeDraw: (chart) => {
@@ -4953,10 +4971,282 @@ function renderRRG() {
         },
         plugins: [quadrantPlugin]
     });
-    
-    // Render the Heatmap tiles
-    renderSectorHeatmap();
 }
+
+function renderRRGTimeline(frames, frameIdx) {
+    const canvas = document.getElementById('rrg-canvas');
+    if (!canvas || !frames.length) return;
+    
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    
+    const W = rect.width;
+    const H = rect.height;
+    const pad = 48;
+    const cx = W / 2;
+    const cy = H / 2;
+    
+    // Coordinate mappers: jdk_rs range 88-112, momentum range -6 to +6
+    const RS_MIN = 88, RS_MAX = 112;
+    const MO_MIN = -6, MO_MAX = 6;
+    const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+    const toX = rs  => pad + ((clamp(rs, RS_MIN, RS_MAX) - RS_MIN)  / (RS_MAX - RS_MIN))  * (W - pad * 2);
+    const toY = mom => (H - pad) - ((clamp(mom, MO_MIN, MO_MAX) - MO_MIN) / (MO_MAX - MO_MIN)) * (H - pad * 2);
+    
+    ctx.clearRect(0, 0, W, H);
+    
+    // --- Background quadrant fills ---
+    const quadrantFills = [
+        { x: cx, y: pad,  w: W - pad - cx, h: cy - pad,      color: 'rgba(16, 185, 129, 0.04)', label: 'Leading',   pos: [W - pad - 12, pad + 20] },
+        { x: cx, y: cy,   w: W - pad - cx, h: H - pad - cy,  color: 'rgba(239, 68, 68, 0.04)',  label: 'Weakening', pos: [W - pad - 12, H - pad - 16] },
+        { x: pad, y: cy,  w: cx - pad,     h: H - pad - cy,  color: 'rgba(234, 179, 8, 0.04)',  label: 'Lagging',   pos: [pad + 12, H - pad - 16] },
+        { x: pad, y: pad, w: cx - pad,     h: cy - pad,      color: 'rgba(59, 130, 246, 0.04)',  label: 'Improving', pos: [pad + 12, pad + 20] },
+    ];
+    quadrantFills.forEach(q => {
+        ctx.fillStyle = q.color;
+        ctx.fillRect(q.x, q.y, q.w, q.h);
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.font = 'bold 11px Outfit, sans-serif';
+        ctx.textAlign = q.pos[0] > cx ? 'right' : 'left';
+        ctx.fillText(q.label, q.pos[0], q.pos[1]);
+    });
+    
+    // --- Axis lines ---
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, cy); ctx.lineTo(W - pad, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, pad); ctx.lineTo(cx, H - pad); ctx.stroke();
+    
+    // --- Collect all unique sector names across frames ---
+    const allSectors = [...new Set(frames.flatMap(f => f.sectors.map(s => s.sector)))];
+    
+    allSectors.forEach(sectorName => {
+        const color = RRG_SECTOR_COLORS[sectorName] || RRG_DEFAULT_COLOR;
+        
+        // Build the position trail for this sector up to frameIdx
+        const trail = [];
+        for (let i = Math.max(0, frameIdx - 11); i <= frameIdx; i++) {
+            const frame = frames[i];
+            const entry = frame?.sectors.find(s => s.sector === sectorName);
+            if (entry) {
+                trail.push({ x: toX(entry.jdk_rs), y: toY(entry.jdk_rs_momentum), score: entry.score, week: frame.week });
+            }
+        }
+        if (!trail.length) return;
+        
+        // Draw trail lines (fading opacity older -> newer)
+        for (let i = 1; i < trail.length; i++) {
+            const alpha = 0.1 + (i / trail.length) * 0.5;
+            ctx.beginPath();
+            ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+            ctx.lineWidth = 1.5;
+            ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+            ctx.lineTo(trail[i].x, trail[i].y);
+            ctx.stroke();
+        }
+        
+        // Draw ghost dots (historical)
+        for (let i = 0; i < trail.length - 1; i++) {
+            const alpha = 0.12 + (i / trail.length) * 0.3;
+            const r = 4 + (trail[i].score / 100) * 3;
+            ctx.beginPath();
+            ctx.arc(trail[i].x, trail[i].y, r, 0, Math.PI * 2);
+            ctx.fillStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
+            ctx.fill();
+        }
+        
+        // Draw current dot (full opacity, larger)
+        const cur = trail[trail.length - 1];
+        const curR = 6 + (cur.score / 100) * 5;
+        ctx.beginPath();
+        ctx.arc(cur.x, cur.y, curR, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        // Label
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.font = 'bold 10px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(sectorName, cur.x + curR + 4, cur.y + 4);
+    });
+    
+    // --- Week label update ---
+    const weekLabel = document.getElementById('rrg-week-label');
+    if (weekLabel && frames[frameIdx]) weekLabel.textContent = `Week: ${frames[frameIdx].week}`;
+    
+    // --- Scrubber sync ---
+    const scrubber = document.getElementById('rrg-timeline-scrubber');
+    if (scrubber) scrubber.value = frameIdx;
+}
+
+function startRRGAnimation() {
+    if (rrgAnimTimer) return;
+    document.getElementById('btn-rrg-play')?.classList.add('hidden');
+    document.getElementById('btn-rrg-pause')?.classList.remove('hidden');
+    
+    rrgAnimTimer = setInterval(() => {
+        rrgCurrentFrame++;
+        if (rrgCurrentFrame >= rrgHistoryFrames.length) {
+            stopRRGAnimation();
+            rrgCurrentFrame = rrgHistoryFrames.length - 1;
+        }
+        renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+    }, RRG_ANIM_INTERVAL_MS);
+}
+
+function stopRRGAnimation() {
+    clearInterval(rrgAnimTimer);
+    rrgAnimTimer = null;
+    document.getElementById('btn-rrg-play')?.classList.remove('hidden');
+    document.getElementById('btn-rrg-pause')?.classList.add('hidden');
+}
+
+function resetRRGAnimation() {
+    stopRRGAnimation();
+    rrgCurrentFrame = 0;
+    renderRRGTimeline(rrgHistoryFrames, 0);
+}
+
+async function loadRRGHistory(weeks = 12) {
+    try {
+        const res = await fetch(`/api/rrg/history?weeks=${weeks}`);
+        const data = await res.json();
+        rrgHistoryFrames = data.frames || [];
+        
+        // Fallback if history is empty
+        if (rrgHistoryFrames.length === 0) {
+            const weekLabel = document.getElementById('rrg-week-label');
+            if (weekLabel) weekLabel.textContent = "Building history...";
+            return;
+        }
+        
+        rrgCurrentFrame  = Math.max(0, rrgHistoryFrames.length - 1);
+        
+        const scrubber = document.getElementById('rrg-timeline-scrubber');
+        if (scrubber) {
+            scrubber.max = Math.max(0, rrgHistoryFrames.length - 1);
+            scrubber.value = rrgCurrentFrame;
+        }
+        
+        renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+    } catch (err) {
+        console.error('RRG history load failed:', err);
+    }
+}
+
+// Add RRG Toggle Listeners
+document.getElementById('btn-rrg-sectors')?.addEventListener('click', (e) => {
+    rrgViewMode = 'sectors';
+    document.getElementById('btn-rrg-sectors')?.classList.add('btn-primary');
+    document.getElementById('btn-rrg-sectors')?.classList.remove('btn-secondary');
+    document.getElementById('btn-rrg-stocks')?.classList.remove('btn-primary');
+    document.getElementById('btn-rrg-stocks')?.classList.add('btn-secondary');
+    renderRRG();
+});
+document.getElementById('btn-rrg-stocks')?.addEventListener('click', (e) => {
+    rrgViewMode = 'stocks';
+    document.getElementById('btn-rrg-stocks')?.classList.add('btn-primary');
+    document.getElementById('btn-rrg-stocks')?.classList.remove('btn-secondary');
+    document.getElementById('btn-rrg-sectors')?.classList.remove('btn-primary');
+    document.getElementById('btn-rrg-sectors')?.classList.add('btn-secondary');
+    renderRRG();
+});
+
+// Playback Controls
+document.getElementById('btn-rrg-play')?.addEventListener('click', startRRGAnimation);
+document.getElementById('btn-rrg-pause')?.addEventListener('click', stopRRGAnimation);
+document.getElementById('btn-rrg-reset')?.addEventListener('click', resetRRGAnimation);
+
+document.getElementById('rrg-timeline-scrubber')?.addEventListener('input', e => {
+    stopRRGAnimation();
+    rrgCurrentFrame = parseInt(e.target.value);
+    renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+});
+
+document.getElementById('rrg-weeks-select')?.addEventListener('change', e => {
+    stopRRGAnimation();
+    loadRRGHistory(parseInt(e.target.value));
+});
+
+document.getElementById('btn-rrg-snapshot-now')?.addEventListener('click', () => {
+    const snapBtn = document.getElementById('btn-rrg-snapshot-now');
+    if (!snapBtn) return;
+    const originalHtml = snapBtn.innerHTML;
+    snapBtn.disabled = true;
+    snapBtn.innerHTML = '<span class="btn-spinner"></span>';
+    
+    fetch('/api/rrg/snapshot', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast("Snapshot saved successfully", "success");
+                const weeksSelect = document.getElementById('rrg-weeks-select');
+                const weeks = weeksSelect ? parseInt(weeksSelect.value) : 12;
+                loadRRGHistory(weeks);
+            } else {
+                showToast("Snapshot error: " + data.error, "error");
+            }
+        })
+        .catch(err => {
+            showToast("Failed to run RRG snapshot: " + err.message, "error");
+        })
+        .finally(() => {
+            snapBtn.disabled = false;
+            snapBtn.innerHTML = originalHtml;
+        });
+});
+
+document.getElementById('rrg-canvas')?.addEventListener('click', e => {
+    if (rrgHistoryFrames.length === 0) return;
+    const canvas  = e.currentTarget;
+    const rect    = canvas.getBoundingClientRect();
+    const mouseX  = e.clientX - rect.left;
+    const mouseY  = e.clientY - rect.top;
+    const frame   = rrgHistoryFrames[rrgCurrentFrame];
+    if (!frame) return;
+    
+    const W = rect.width;
+    const H = rect.height;
+    const pad = 48;
+    
+    const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+    const RS_MIN = 88, RS_MAX = 112, MO_MIN = -6, MO_MAX = 6;
+    const toX = rs  => pad + ((clamp(rs, RS_MIN, RS_MAX) - RS_MIN)  / (RS_MAX - RS_MIN))  * (W - pad * 2);
+    const toY = mom => (H - pad) - ((clamp(mom, MO_MIN, MO_MAX) - MO_MIN) / (MO_MAX - MO_MIN)) * (H - pad * 2);
+    
+    let clickedSector = null;
+    frame.sectors.forEach(s => {
+        const x = toX(s.jdk_rs);
+        const y = toY(s.jdk_rs_momentum);
+        const dx = mouseX - x;
+        const dy = mouseY - y;
+        const hitR = 6 + (s.score / 100) * 5 + 8; // generous hit area
+        if (Math.sqrt(dx * dx + dy * dy) <= hitR) {
+            clickedSector = s.sector;
+        }
+    });
+    
+    if (clickedSector) {
+        const screenerTabs = document.querySelector('.screener-tabs');
+        if (screenerTabs) {
+            const momentumBtn = screenerTabs.querySelector('[data-tab="momentum"]');
+            if (momentumBtn) momentumBtn.click();
+        }
+        
+        if (typeof selectSector === 'function') {
+            selectSector(clickedSector);
+            switchWorkspace('screener');
+        }
+    }
+});
 
 // --- Sector Heatmap ---
 function renderSectorHeatmap() {

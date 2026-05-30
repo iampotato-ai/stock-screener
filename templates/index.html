@@ -691,8 +691,40 @@
                         <button class="btn btn-secondary" id="btn-rrg-stocks" style="padding: 0.3rem 0.8rem; font-size: 0.8rem; height: auto;">Stocks</button>
                     </div>
                 </div>
+                <!-- RRG Timeline Bar -->
+                <div id="rrg-timeline-bar" class="rrg-timeline-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md, 8px); margin-bottom: 1rem; flex-wrap: wrap;">
+                    <div class="rrg-timeline-controls" style="display: flex; gap: 0.4rem;">
+                        <button id="btn-rrg-play" class="btn-icon" title="Play animation" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        </button>
+                        <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                        </button>
+                        <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+                        </button>
+                    </div>
+
+                    <input type="range" id="rrg-timeline-scrubber" min="0" max="11" value="11" step="1" class="rrg-scrubber" style="flex: 1; min-width: 120px; max-width: 320px; accent-color: #6366f1; cursor: pointer;" />
+
+                    <span id="rrg-week-label" class="rrg-week-label" style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); min-width: 100px;">Week: --</span>
+
+                    <div class="rrg-timeline-right" style="margin-left: auto; display: flex; gap: 0.5rem; align-items: center;">
+                        <select id="rrg-weeks-select" class="select-sm" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; outline: none; cursor: pointer;">
+                            <option value="4">4 weeks</option>
+                            <option value="8">8 weeks</option>
+                            <option value="12" selected>12 weeks</option>
+                            <option value="26">26 weeks</option>
+                        </select>
+                        <button id="btn-rrg-snapshot-now" class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; height: auto;" title="Save this week's snapshot manually">
+                            📸 Snap
+                        </button>
+                    </div>
+                </div>
+
                 <div style="height: 500px; position: relative;">
                     <canvas id="rrgChart"></canvas>
+                    <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
                 </div>
                 
 

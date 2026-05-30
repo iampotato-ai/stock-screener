@@ -5074,6 +5074,201 @@ body[data-theme="light"] .sector-pill-progress-track {
     border-radius: 4px;
     padding: 0.25rem 0.6rem;
     font-size: 0.75rem;
+    transform: translateY(0);
+  }
+}
+
+/* Glassmorphic Segmented Control Navigation */
+.workspace-nav-bar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+.workspace-tabs-container {
+  display: flex;
+  position: relative;
+  background: rgba(18, 24, 38, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 30px;
+  padding: 4px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+.workspace-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  padding: 8px 18px;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-radius: 20px;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 250ms ease;
+  white-space: nowrap;
+}
+.workspace-tab svg {
+  opacity: 0.65;
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+.workspace-tab:hover {
+  color: var(--color-text-primary);
+}
+.workspace-tab:hover svg {
+  opacity: 0.9;
+  transform: translateY(-0.5px);
+}
+.workspace-tab.active {
+  color: #ffffff;
+}
+.workspace-tab.active svg {
+  opacity: 1;
+  color: var(--accent-blue);
+}
+
+/* Sliding active indicator capsule */
+.workspace-sliding-cap {
+  position: absolute;
+  height: calc(100% - 8px);
+  top: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+  z-index: 1;
+  transition: left 240ms cubic-bezier(0.16, 1, 0.3, 1), width 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+/* single column dashboard-grid when watchlist is separated */
+.dashboard-grid.single-column {
+  grid-template-columns: 1fr;
+}
+.dashboard-grid.single-column .screener-column {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Watchlist & Journal Dedicated Split Workspace Grid */
+.watchlist-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 1.5rem;
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .watchlist-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.journal-workspace-column {
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* RRG Workspace full page wrapper */
+.rrg-workspace-wrapper {
+  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  width: 100%;
+}
+
+/* Table Compact Mode Density Classes */
+.compact-mode .screener-table th {
+  padding: 6px 10px;
+  font-size: 8px;
+}
+.compact-mode .screener-table td {
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  height: 32px;
+}
+.compact-mode .screener-table tr {
+  height: 32px;
+}
+.compact-mode .table-container {
+  max-height: calc(100vh - 270px);
+}
+.compact-mode .stat-card {
+  padding: 0.6rem 0.8rem;
+}
+.compact-mode .stat-card-value {
+  font-size: 1.15rem;
+}
+.compact-mode .stat-card-label {
+  font-size: 0.68rem;
+}
+
+/* Skeleton Shimmer Loaders */
+.skeleton-row td {
+  padding: 14px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+.compact-mode .skeleton-row td {
+  padding: 8px 10px;
+}
+.skeleton-bar {
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Kronos AI panel styling */
+.kronos-forecast-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 0.5rem;
+}
+.kronos-forecast-table th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    padding: 0.35rem 0.5rem;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.kronos-forecast-table th:first-child,
+.kronos-forecast-table td:first-child { text-align: left; }
+.kronos-forecast-table td {
+    padding: 0.35rem 0.5rem;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.kronos-forecast-table tr:last-child td { border-bottom: none; }
+
+/* Pred-len toggle */
+.kronos-pred-len-toggle { display: flex; gap: 0.25rem; }
+.kronos-len-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--color-text-secondary);
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
 }
@@ -5092,4 +5287,57 @@ body[data-theme="light"] .sector-pill-progress-track {
     border-top-color: var(--color-warning, #f59e0b);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+}
+
+/* RRG Timeline bar */
+.rrg-timeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-wrap: wrap;
+}
+
+.rrg-timeline-controls {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Scrubber range input */
+.rrg-scrubber {
+  flex: 1;
+  min-width: 120px;
+  max-width: 320px;
+  accent-color: #6366f1;
+  cursor: pointer;
+}
+
+.rrg-week-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  min-width: 100px;
+}
+
+.rrg-timeline-right {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Quadrant legend */
+.rrg-quadrant-legend {
+  display: flex;
+  gap: 1rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.75rem;
+}
+.rrg-legend-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
 }
