@@ -930,11 +930,11 @@ _KRONOS_TTL   = 4 * 3600 # 4 hours
 def _get_kronos_cache(ticker):
     entry = _kronos_cache.get(ticker)
     if entry and (_time.time() - entry[0]) < _KRONOS_TTL:
-        return entry[1], entry[2], entry[3]  # bias, score, forecast_list
+        return entry[1], entry[2], entry[3], entry[4] if len(entry) > 4 else {}  # bias, score, forecast_list, forecast_metrics
     return None
 
-def _set_kronos_cache(ticker, bias, score, forecast_list):
-    _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list))
+def _set_kronos_cache(ticker, bias, score, forecast_list, forecast_metrics):
+    _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list), dict(forecast_metrics))
 
 def get_kronos_predictor():
     global kronos_predictor
@@ -1030,11 +1030,12 @@ def get_setup_analysis():
     forecast_list = []
     ai_forecast_bias = None        # None = model did not run / errored; frontend shows 'Unavailable'
     ai_confidence_score = 0
+    forecast_metrics = {}
 
     # ── Check cache first — skip inference if result is fresh (< 4 hrs old) ──
     cached = _get_kronos_cache(ticker)
     if cached:
-        ai_forecast_bias, ai_confidence_score, forecast_list = cached
+        ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics = cached
         print(f"[Kronos] Cache HIT for {ticker}")
     else:
         predictor = get_kronos_predictor()
@@ -1171,7 +1172,15 @@ def get_setup_analysis():
                     cv_weight = 0.20 if is_flat_forecast else 0.40             # dampen cv on flat names
 
                     cv_score   = float(np.clip(1.0 - cv * 10, 0, 1))
-                    cons_score = abs(m3_consistency_pct - 50) / 50
+                    
+                    # Directional consistency score: favors dominance in forecasted direction
+                    if weighted_score > 0:
+                        cons_score = float(np.clip((m3_consistency_pct - 50) / 50, 0.0, 1.0))
+                    elif weighted_score < 0:
+                        cons_score = float(np.clip((50 - m3_consistency_pct) / 50, 0.0, 1.0))
+                    else:
+                        cons_score = 0.0
+                        
                     mag_score  = abs(weighted_score)
                     # Reallocate the freed cv weight equally to cons + mag when flat
                     cons_weight = 0.50 if is_flat_forecast else 0.40
@@ -1196,7 +1205,7 @@ def get_setup_analysis():
                     }
 
                     # ── Cache & log ────────────────────────────────────────────────────
-                    _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list)
+                    _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics)
 
                     # [TWEAK 1] Expose T_val and weighted_score in log
                     print(
@@ -1215,10 +1224,6 @@ def get_setup_analysis():
                 print(f"Kronos prediction execution error for {ticker}: {ex}")
                 forecast_metrics = {}
                 # ai_forecast_bias stays None → frontend will show 'Unavailable'
-            
-    # expose forecast_metrics (empty dict if model didn't run / errored)
-    if 'forecast_metrics' not in dir():
-        forecast_metrics = {}
 
     return jsonify(
         ticker=ticker,
