@@ -792,6 +792,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Switch tab
             currentTab = btn.dataset.tab;
             
+            const growthDisclaimer = document.getElementById('growth-disclaimer');
+            if (growthDisclaimer) {
+                growthDisclaimer.style.display = currentTab === 'growth' ? 'flex' : 'none';
+            }
+            
             const mainContainer = document.getElementById('main-table-container');
             const rrgContainer = document.getElementById('rrg-container');
             const intradayContainer = document.getElementById('intraday-container');

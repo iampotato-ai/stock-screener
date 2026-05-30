@@ -670,6 +670,7 @@ def compute_extra_fields(stock):
         stock["is_inside_bar"] = bool(is_inside_price and has_vol_compression)
     else:
         stock["is_inside_bar"] = False
+    stock["growth_data_source"] = "simulated"
 
 def compute_vol_dryup(stock):
     rvol = float(stock.get("relative_volume_10d_calc") or stock.get("relative_volume") or 0)
@@ -694,11 +695,22 @@ def compute_vol_dryup(stock):
 # Screener Intelligence: Chart Fetching & Pattern Recognition Engine
 # -----------------------------------------------------------------------------
 
+_historical_prices_cache = {}  # {(ticker, range_str): (timestamp, data)}
+_HIST_CACHE_TTL = 15 * 60     # 15 minutes
+
 def fetch_historical_prices(ticker, range_str="6mo"):
     """
     Fetch historical daily OHLCV data for a ticker from Yahoo Finance.
     Returns list of dicts.
     """
+    import time
+    cache_key = (ticker, range_str)
+    now = time.time()
+    if cache_key in _historical_prices_cache:
+        t_cached, cached_data = _historical_prices_cache[cache_key]
+        if now - t_cached < _HIST_CACHE_TTL:
+            return cached_data
+
     import urllib.request
     import json
     symbol = ticker
@@ -742,10 +754,26 @@ def fetch_historical_prices(ticker, range_str="6mo"):
                     "close": float(closes[i]),
                     "volume": int(volumes[i])
                 })
+        _historical_prices_cache[cache_key] = (time.time(), cleaned_data)
         return cleaned_data
     except Exception as e:
         print(f"Error fetching chart for {ticker}: {e}")
         return []
+
+def compute_atr_pct(history, window=14):
+    """Compute ATR as % of last close over `window` trading days."""
+    if len(history) < window + 1:
+        return 5.0  # default fallback
+    tr_list = []
+    for i in range(len(history) - window, len(history)):
+        h_val = float(history[i]["high"])
+        l_val = float(history[i]["low"])
+        p_close = float(history[i-1]["close"])
+        tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
+        tr_list.append(tr)
+    atr = sum(tr_list) / window
+    curr_close = float(history[-1]["close"])
+    return (atr / curr_close) * 100 if curr_close > 0 else 5.0
 
 def classify_technical_pattern(history):
     """
@@ -835,7 +863,9 @@ def classify_technical_pattern(history):
     if len(closes) >= 70:
         # Cup left peak (days -70 to -25)
         cup_left_high = max(highs[-70:-25])
-        cup_idx = highs[-70:-25].index(cup_left_high) + (len(highs) - 70)
+        slice_start = len(highs) - 70
+        local_idx = highs[slice_start:-25].index(cup_left_high)
+        cup_idx = slice_start + local_idx
         
         # Cup bottom (lowest low inside rounding bottom)
         cup_bottom = min(lows[cup_idx:-12])
@@ -900,10 +930,12 @@ def analyze_single_stock(stock):
             stock["pattern_grade"] = result["grade"]
             stock["pattern_desc"] = result["description"]
         else:
+            print(f"[Yahoo Finance] Fetch failed for {ticker} (silently falling back to Trend Continuation)")
             stock["pattern_name"] = "Trend Continuation"
             stock["pattern_grade"] = "B"
             stock["pattern_desc"] = "Price in standard swing configuration. Historical daily data fetch not available."
     except Exception as e:
+        print(f"[Yahoo Finance] Error analyzing setup for {ticker}: {e}")
         stock["pattern_name"] = "Trend Continuation"
         stock["pattern_grade"] = "B"
         stock["pattern_desc"] = f"Analysis error: {e}"
@@ -918,7 +950,7 @@ def populate_screener_intelligence(stocks_list):
         reverse=True
     )[:50]
     
-    with ThreadPoolExecutor(max_workers=25) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         executor.map(analyze_single_stock, stocks_to_analyze)
         
     analyzed_tickers = {s["clean_ticker"] for s in stocks_to_analyze}
@@ -934,16 +966,22 @@ kronos_load_lock = threading.Lock()
 
 # ── Kronos Result Cache (4hr TTL per ticker) ──
 import time as _time
-_kronos_cache = {}       # {ticker: (timestamp, bias, score, forecast_list)}
+from collections import OrderedDict
+_kronos_cache = OrderedDict()       # {ticker: (timestamp, bias, score, forecast_list, forecast_metrics)}
 _KRONOS_TTL   = 4 * 3600 # 4 hours
+_MAX_KRONOS_CACHE = 200
 
 def _get_kronos_cache(ticker):
     entry = _kronos_cache.get(ticker)
     if entry and (_time.time() - entry[0]) < _KRONOS_TTL:
+        if len(entry) <= 4:
+            print(f"[Kronos Cache] Old cache entry for {ticker} - metrics unavailable")
         return entry[1], entry[2], entry[3], entry[4] if len(entry) > 4 else {}  # bias, score, forecast_list, forecast_metrics
     return None
 
 def _set_kronos_cache(ticker, bias, score, forecast_list, forecast_metrics):
+    if len(_kronos_cache) >= _MAX_KRONOS_CACHE:
+        _kronos_cache.popitem(last=False)  # evict oldest
     _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list), dict(forecast_metrics))
 
 def get_kronos_predictor():
@@ -965,7 +1003,7 @@ def get_kronos_predictor():
                     print(f"Error loading Kronos model: {e}")
     return kronos_predictor
 
-# ── NSE Market Holidays 2025 (skip these in addition to weekends) ──
+# ── NSE Market Holidays (skip these in addition to weekends) ──
 _NSE_HOLIDAYS = {
     "2025-01-26", "2025-02-26", "2025-03-14", "2025-03-31",
     "2025-04-14", "2025-04-18", "2025-05-01", "2025-08-15",
@@ -977,14 +1015,58 @@ _NSE_HOLIDAYS = {
     "2026-10-02", "2026-10-20", "2026-11-25", "2026-12-25",
 }
 
+_loaded_nse_holidays = None
+
+def load_nse_holidays():
+    global _loaded_nse_holidays
+    if _loaded_nse_holidays is not None:
+        return _loaded_nse_holidays
+        
+    holidays = set(_NSE_HOLIDAYS)
+    try:
+        import urllib.request
+        import json
+        from datetime import datetime
+        url = "https://www.nseindia.com/api/holiday-master?type=trading"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.nseindia.com/"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            
+        if isinstance(data, dict) and "trading" in data:
+            for item in data["trading"]:
+                date_str = item.get("tradingDate", "")
+                if date_str:
+                    dt = None
+                    for fmt in ("%d-%b-%Y", "%Y-%m-%d"):
+                        try:
+                            dt = datetime.strptime(date_str, fmt)
+                            break
+                        except Exception:
+                            pass
+                    if dt:
+                        holidays.add(dt.strftime("%Y-%m-%d"))
+            print(f"[NSE Holidays] Successfully fetched {len(holidays) - len(_NSE_HOLIDAYS)} dynamic holidays from NSE API.")
+    except Exception as e:
+        print(f"[NSE Holidays] Failed to fetch dynamic holidays from NSE API (using static fallback): {e}")
+        
+    _loaded_nse_holidays = holidays
+    return _loaded_nse_holidays
+
 def generate_next_trading_days(last_date_str, num_days=10):
     import pandas as pd
     current_date = pd.to_datetime(last_date_str)
     trading_days = []
+    holidays = load_nse_holidays()
     while len(trading_days) < num_days:
         current_date += pd.Timedelta(days=1)
         date_str = current_date.strftime("%Y-%m-%d")
-        if current_date.weekday() < 5 and date_str not in _NSE_HOLIDAYS:  # Mon–Fri, not a holiday
+        if current_date.weekday() < 5 and date_str not in holidays:  # Mon-Fri, not a holiday
             trading_days.append(current_date)
     return pd.Series(trading_days)
 
@@ -1067,21 +1149,9 @@ def get_setup_analysis():
                 y_timestamps = generate_next_trading_days(last_date_str_inner, 10)
 
                 # Compute 14-day ATR% to dynamically tune temperature for conservative vs volatile setups
-                atr_pct = 5.0
-                if len(history) >= 15:
-                    tr_list = []
-                    for i in range(len(history) - 14, len(history)):
-                        h_val = float(history[i]["high"])
-                        l_val = float(history[i]["low"])
-                        p_close = float(history[i-1]["close"])
-                        tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
-                        tr_list.append(tr)
-                    atr = sum(tr_list) / 14
-                    curr_close_val = float(history[-1]["close"])
-                    if curr_close_val > 0:
-                        atr_pct = (atr / curr_close_val) * 100
+                atr_pct = compute_atr_pct(history)
 
-                # Keep temperature in 0.5–0.8 range — below 0.5 causes mode collapse toward bearish
+                # Keep temperature in 0.5-0.8 range - below 0.5 causes mode collapse toward bearish
                 T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
 
                 pred_df = predictor.predict(
@@ -1296,7 +1366,8 @@ def get_kronos_forecast():
     if db_row:
         stored_forecast_json, last_close, generated_at_str = db_row
         gen_date = generated_at_str.split('T')[0]
-        if gen_date == last_date_str:
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        if gen_date == today_str:
             conn.close()
             return jsonify(
                 ticker=ticker,
@@ -1328,19 +1399,7 @@ def get_kronos_forecast():
         y_timestamps = generate_next_trading_days(last_date_str, pred_len)
         
         # Calculate ATR% from the full history (up to 15 bars)
-        atr_pct = 5.0
-        if len(history) >= 15:
-            tr_list = []
-            for i in range(len(history) - 14, len(history)):
-                h_val = float(history[i]["high"])
-                l_val = float(history[i]["low"])
-                p_close = float(history[i-1]["close"])
-                tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
-                tr_list.append(tr)
-            atr = sum(tr_list) / 14
-            curr_close_val = float(history[-1]["close"])
-            if curr_close_val > 0:
-                atr_pct = (atr / curr_close_val) * 100
+        atr_pct = compute_atr_pct(history)
                 
         # Scaled temperature continuously:
         T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
@@ -1535,19 +1594,7 @@ def get_kronos_backtest():
             y_timestamps = pd.Series(pd.to_datetime([d["date"] for d in target_history]))
             
             # Adaptive temperature using ATR% over context
-            atr_pct = 5.0
-            if len(context_history) >= 15:
-                tr_list = []
-                for i in range(len(context_history) - 14, len(context_history)):
-                    h_val = float(context_history[i]["high"])
-                    l_val = float(context_history[i]["low"])
-                    p_close = float(context_history[i-1]["close"])
-                    tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
-                    tr_list.append(tr)
-                atr = sum(tr_list) / 14
-                curr_close_val = float(context_history[-1]["close"])
-                if curr_close_val > 0:
-                    atr_pct = (atr / curr_close_val) * 100
+            atr_pct = compute_atr_pct(context_history)
             
             T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
             
@@ -2138,9 +2185,6 @@ def backtest_summary():
             "max_close": max_close,
             "max_gain": round(max_gain, 2)
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -2828,6 +2872,7 @@ def fetch_google_news(ticker):
             
             for item in items:
                 pub_date = item.find('pubDate').text if item.find('pubDate') is not None else ''
+                dt = datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
                 
                 # Filter out news older than 30 days
                 if pub_date:
@@ -2849,7 +2894,7 @@ def fetch_google_news(ticker):
                     'link': link,
                     'pub_date': pub_date,
                     'source': source,
-                    '_dt': dt if 'dt' in locals() else datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+                    '_dt': dt
                 })
                 
                 if len(news_list) >= 8:
