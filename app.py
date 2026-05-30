@@ -87,6 +87,48 @@ def init_db():
                 regime_band TEXT
             )
         ''')
+    # Enable foreign keys
+    c.execute("PRAGMA foreign_keys = ON;")
+    
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS watchlist_sections (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS watchlist_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_id TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            UNIQUE(section_id, ticker),
+            FOREIGN KEY(section_id) REFERENCES watchlist_sections(id) ON DELETE CASCADE
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS trade_journal (
+            id TEXT PRIMARY KEY,
+            ticker TEXT NOT NULL,
+            name TEXT NOT NULL,
+            date TEXT NOT NULL,
+            setupLabel TEXT NOT NULL,
+            swingband TEXT NOT NULL,
+            entry REAL NOT NULL,
+            stop REAL NOT NULL,
+            target1 REAL NOT NULL,
+            target2 REAL NOT NULL,
+            target3 REAL NOT NULL,
+            riskAmount REAL NOT NULL,
+            qty INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            exitPrice REAL,
+            exitDate TEXT,
+            pnl REAL,
+            rAchieved REAL,
+            notes TEXT
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -642,9 +684,9 @@ def compute_vol_dryup(stock):
 # Screener Intelligence: Chart Fetching & Pattern Recognition Engine
 # -----------------------------------------------------------------------------
 
-def fetch_historical_prices(ticker):
+def fetch_historical_prices(ticker, range_str="6mo"):
     """
-    Fetch 6 months of daily OHLCV data for a ticker from Yahoo Finance.
+    Fetch historical daily OHLCV data for a ticker from Yahoo Finance.
     Returns list of dicts.
     """
     import urllib.request
@@ -653,7 +695,7 @@ def fetch_historical_prices(ticker):
     if not symbol.endswith(".NS") and not symbol.endswith(".BO") and not symbol.startswith("^"):
         symbol = f"{symbol}.NS"
         
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=6mo"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
@@ -841,7 +883,7 @@ def classify_technical_pattern(history):
 def analyze_single_stock(stock):
     try:
         ticker = stock["clean_ticker"]
-        history = fetch_historical_prices(ticker)
+        history = fetch_historical_prices(ticker, range_str="6mo")
         if history:
             result = classify_technical_pattern(history)
             stock["pattern_name"] = result["pattern"]
@@ -862,7 +904,7 @@ def populate_screener_intelligence(stocks_list):
     # Analyze the top 50 momentum stocks (sorted by swing score and relative volume)
     stocks_to_analyze = sorted(
         stocks_list, 
-        key=lambda x: (x.get("swing_score", 0), x.get("relative_volume", 0)), 
+        key=lambda x: (x.get("swingscore", 0), x.get("relative_volume", 0)), 
         reverse=True
     )[:50]
     
@@ -876,9 +918,71 @@ def populate_screener_intelligence(stocks_list):
             stock["pattern_grade"] = "B"
             stock["pattern_desc"] = "Stock qualifies for momentum trend. Setup analysis limited to top 50 matches."
 
+# ── Kronos AI Predictor Loading ──
+kronos_predictor = None
+kronos_load_lock = threading.Lock()
+
+# ── Kronos Result Cache (4hr TTL per ticker) ──
+import time as _time
+_kronos_cache = {}       # {ticker: (timestamp, bias, score, forecast_list)}
+_KRONOS_TTL   = 4 * 3600 # 4 hours
+
+def _get_kronos_cache(ticker):
+    entry = _kronos_cache.get(ticker)
+    if entry and (_time.time() - entry[0]) < _KRONOS_TTL:
+        return entry[1], entry[2], entry[3]  # bias, score, forecast_list
+    return None
+
+def _set_kronos_cache(ticker, bias, score, forecast_list):
+    _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list))
+
+def get_kronos_predictor():
+    global kronos_predictor
+    if kronos_predictor is None:
+        with kronos_load_lock:
+            if kronos_predictor is None:
+                try:
+                    import pandas as pd
+                    import numpy as np
+                    import torch
+                    torch.set_num_threads(1)
+                    from model import Kronos, KronosTokenizer, KronosPredictor
+                    tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
+                    model = Kronos.from_pretrained("NeoQuasar/Kronos-small")
+                    kronos_predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=2048)
+                    print("Kronos-small loaded successfully on CPU.")
+                except Exception as e:
+                    print(f"Error loading Kronos model: {e}")
+    return kronos_predictor
+
+# ── NSE Market Holidays 2025 (skip these in addition to weekends) ──
+_NSE_HOLIDAYS = {
+    "2025-01-26", "2025-02-26", "2025-03-14", "2025-03-31",
+    "2025-04-14", "2025-04-18", "2025-05-01", "2025-08-15",
+    "2025-10-02", "2025-10-21", "2025-10-22", "2025-10-28",
+    "2025-11-05", "2025-12-25",
+    # 2026 holidays (preliminary)
+    "2026-01-26", "2026-03-03", "2026-03-19", "2026-04-02",
+    "2026-04-03", "2026-04-14", "2026-05-01", "2026-08-15",
+    "2026-10-02", "2026-10-20", "2026-11-25", "2026-12-25",
+}
+
+def generate_next_trading_days(last_date_str, num_days=10):
+    import pandas as pd
+    current_date = pd.to_datetime(last_date_str)
+    trading_days = []
+    while len(trading_days) < num_days:
+        current_date += pd.Timedelta(days=1)
+        date_str = current_date.strftime("%Y-%m-%d")
+        if current_date.weekday() < 5 and date_str not in _NSE_HOLIDAYS:  # Mon–Fri, not a holiday
+            trading_days.append(current_date)
+    return pd.Series(trading_days)
+
 @app.route('/api/setup-analysis', methods=['GET'])
 def get_setup_analysis():
     from flask import request
+    import pandas as pd
+    import numpy as np
     ticker = request.args.get('ticker', '').strip().upper()
     if not ticker:
         return jsonify(error="Ticker is required"), 400
@@ -887,7 +991,7 @@ def get_setup_analysis():
     if ticker.startswith("NSE:"):
         ticker = ticker[4:]
         
-    history = fetch_historical_prices(ticker)
+    history = fetch_historical_prices(ticker, range_str="6mo")
     if not history:
         return jsonify(
             ticker=ticker,
@@ -922,12 +1026,210 @@ def get_setup_analysis():
         "vol_ratio": round(vol_ratio, 2)
     }
     
+    # --- Kronos AI Predictor Logic ---
+    forecast_list = []
+    ai_forecast_bias = None        # None = model did not run / errored; frontend shows 'Unavailable'
+    ai_confidence_score = 0
+
+    # ── Check cache first — skip inference if result is fresh (< 4 hrs old) ──
+    cached = _get_kronos_cache(ticker)
+    if cached:
+        ai_forecast_bias, ai_confidence_score, forecast_list = cached
+        print(f"[Kronos] Cache HIT for {ticker}")
+    else:
+        predictor = get_kronos_predictor()
+        if predictor and len(history) >= 10:
+            try:
+                # Use last 120 bars for richer context (Kronos-small was trained on long sequences)
+                df_input = pd.DataFrame([{
+                    "open": float(d["open"]),
+                    "high": float(d["high"]),
+                    "low": float(d["low"]),
+                    "close": float(d["close"]),
+                    "volume": float(d["volume"])
+                } for d in history[-120:]])
+                # Compute amount = volume * avg_price so the model's 6th feature is meaningful
+                df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
+
+                x_timestamps = pd.to_datetime([d["date"] for d in history[-120:]])
+                last_date_str_inner = history[-1]["date"]
+                y_timestamps = generate_next_trading_days(last_date_str_inner, 10)
+
+                # Compute 14-day ATR% to dynamically tune temperature for conservative vs volatile setups
+                atr_pct = 5.0
+                if len(history) >= 15:
+                    tr_list = []
+                    for i in range(len(history) - 14, len(history)):
+                        h_val = float(history[i]["high"])
+                        l_val = float(history[i]["low"])
+                        p_close = float(history[i-1]["close"])
+                        tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
+                        tr_list.append(tr)
+                    atr = sum(tr_list) / 14
+                    curr_close_val = float(history[-1]["close"])
+                    if curr_close_val > 0:
+                        atr_pct = (atr / curr_close_val) * 100
+
+                # Keep temperature in 0.5–0.8 range — below 0.5 causes mode collapse toward bearish
+                T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
+
+                pred_df = predictor.predict(
+                    df=df_input,
+                    x_timestamp=pd.Series(x_timestamps),
+                    y_timestamp=y_timestamps,
+                    pred_len=10,
+                    T=T_val,
+                    top_p=0.8,
+                    sample_count=10,
+                    verbose=False
+                )
+
+                for idx, row in pred_df.iterrows():
+                    forecast_list.append({
+                        "date": idx.strftime("%Y-%m-%d"),
+                        "open": float(row["open"]),
+                        "high": float(row["high"]),
+                        "low": float(row["low"]),
+                        "close": float(row["close"]),
+                        "volume": float(row["volume"])
+                    })
+
+                if forecast_list:
+                    forecast_closes = [r["close"]  for r in forecast_list]
+                    forecast_highs  = [r["high"]   for r in forecast_list]
+
+                    # ── M1: Endpoint Return % ──────────────────────────────────────────
+                    m1_return_pct = (forecast_closes[-1] - current_close) / (current_close + 1e-5) * 100
+
+                    # ── M2: Momentum Split (early vs late 3 bars) ──────────────────────
+                    early_avg = np.mean(forecast_closes[:3])
+                    late_avg  = np.mean(forecast_closes[-3:])
+                    m2_split_pct = (late_avg - early_avg) / (current_close + 1e-5) * 100
+
+                    # ── M3: Day-by-Day Consistency % ──────────────────────────────────
+                    up_days = sum(
+                        1 for i in range(1, len(forecast_closes))
+                        if forecast_closes[i] > forecast_closes[i-1]
+                    )
+                    m3_consistency_pct = up_days / (len(forecast_closes) - 1) * 100
+
+                    # ── M4: Breakout Above 20d Recent High ────────────────────────────
+                    recent_20d_high = max(highs[-21:-1]) if len(highs) >= 21 else max(highs)
+                    m4_breakout = max(forecast_highs) > recent_20d_high
+
+                    # ── M5: Max Drawdown During Forecast Window ────────────────────────
+                    m5_drawdown_pct = (min(forecast_closes) - current_close) / (current_close + 1e-5) * 100
+
+                    # ── [TWEAK 2] Realised 10-day return std from history ──────────────
+                    # Judges forecast move relative to the stock's OWN historical volatility.
+                    # A +4% forecast is big for a low-vol stock but normal for a high-vol one.
+                    hist_closes = [float(d["close"]) for d in history]
+                    realised_10d_returns = []
+                    for i in range(10, len(hist_closes)):
+                        r10 = (hist_closes[i] - hist_closes[i - 10]) / (hist_closes[i - 10] + 1e-5) * 100
+                        realised_10d_returns.append(r10)
+                    realised_std = float(np.std(realised_10d_returns)) if len(realised_10d_returns) >= 5 else 5.0
+                    # How many std-devs does the forecast move represent? >1 = noteworthy, >2 = extreme
+                    normalised_return = m1_return_pct / (realised_std + 1e-5)
+
+                    # ── Weighted Score [-1, +1] ────────────────────────────────────────
+                    def _norm(val, lo, hi):
+                        """Linearly map val from [lo, hi] to [-1, +1], clamped."""
+                        return float(np.clip((val - lo) / ((hi - lo) / 2 + 1e-9) - 1, -1, 1))
+
+                    s1 = _norm(m1_return_pct,     -10,  10)   # endpoint direction  (30%)
+                    s2 = _norm(m2_split_pct,       -5,   5)   # momentum quality    (25%)
+                    s3 = _norm(m3_consistency_pct,  30,  70)  # day consistency     (20%)
+                    s4 = 1.0 if m4_breakout else -0.2         # breakout signal     (15%)
+                    s5 = _norm(-m5_drawdown_pct,   -8,   0)   # inverse of drawdown (10%)
+
+                    weighted_score = (0.30 * s1 + 0.25 * s2 + 0.20 * s3
+                                      + 0.15 * s4 + 0.10 * s5)
+
+                    # ── 5-Label Bias ───────────────────────────────────────────────────
+                    if weighted_score > 0.40:
+                        ai_forecast_bias = "Strong Breakout"
+                    elif weighted_score > 0.15:
+                        ai_forecast_bias = "Bullish Continuation"
+                    elif weighted_score > -0.15:
+                        ai_forecast_bias = "Sideways Consolidation"
+                    elif weighted_score > -0.40:
+                        ai_forecast_bias = "Bearish Pressure"
+                    else:
+                        ai_forecast_bias = "Strong Downtrend"
+
+                    # ── [TWEAK 3] Dampened cv_score for flat forecasts ─────────────────
+                    # Problem: a flat, sideways forecast has low CV → high cv_score, even
+                    # though the model is just saying "nothing happens."  Fix: if the total
+                    # forecast price range is smaller than 1× ATR%, treat it as genuinely
+                    # flat and halve cv_score's contribution so confidence stays modest.
+                    fc_mean = np.mean(forecast_closes)
+                    fc_std  = np.std(forecast_closes)
+                    cv      = fc_std / (fc_mean + 1e-5)
+                    forecast_range_pct = (max(forecast_closes) - min(forecast_closes)) / (current_close + 1e-5) * 100
+                    is_flat_forecast   = forecast_range_pct < atr_pct          # less than 1 ATR of movement
+                    cv_weight = 0.20 if is_flat_forecast else 0.40             # dampen cv on flat names
+
+                    cv_score   = float(np.clip(1.0 - cv * 10, 0, 1))
+                    cons_score = abs(m3_consistency_pct - 50) / 50
+                    mag_score  = abs(weighted_score)
+                    # Reallocate the freed cv weight equally to cons + mag when flat
+                    cons_weight = 0.50 if is_flat_forecast else 0.40
+                    mag_weight  = 0.30 if is_flat_forecast else 0.20
+                    ai_confidence_score = int(np.clip(
+                        (cv_weight * cv_score + cons_weight * cons_score + mag_weight * mag_score) * 100,
+                        25, 92
+                    ))
+
+                    # ── Build metrics dict (returned to frontend & cached) ─────────────
+                    forecast_metrics = {
+                        "return_pct":         round(m1_return_pct,    2),
+                        "momentum_split":     round(m2_split_pct,     2),
+                        "consistency_pct":    round(m3_consistency_pct, 1),
+                        "breakout_signal":    bool(m4_breakout),
+                        "max_drawdown_pct":   round(m5_drawdown_pct,  2),
+                        "weighted_score":     round(weighted_score,   3),
+                        "normalised_return":  round(normalised_return, 2),   # [TWEAK 2]
+                        "realised_std_10d":   round(realised_std,      2),   # [TWEAK 2]
+                        "forecast_range_pct": round(forecast_range_pct, 2), # [TWEAK 3]
+                        "is_flat_forecast":   bool(is_flat_forecast),        # [TWEAK 3]
+                    }
+
+                    # ── Cache & log ────────────────────────────────────────────────────
+                    _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list)
+
+                    # [TWEAK 1] Expose T_val and weighted_score in log
+                    print(
+                        f"[Kronos] {ticker} | T={T_val:.2f} | "
+                        f"ret={m1_return_pct:+.1f}% ({normalised_return:+.1f}σ) "
+                        f"split={m2_split_pct:+.1f}% cons={m3_consistency_pct:.0f}% "
+                        f"brkout={m4_breakout} dd={m5_drawdown_pct:.1f}% flat={is_flat_forecast} "
+                        f"→ score={weighted_score:+.3f} → {ai_forecast_bias} | conf={ai_confidence_score}%"
+                    )
+
+                    # [TWEAK 4] Log raw forecast closes so path differences are visible per stock
+                    fc_str = " ".join(f"{c:.1f}" for c in forecast_closes)
+                    print(f"[Kronos] {ticker} closes: [{fc_str}]")
+
+            except Exception as ex:
+                print(f"Kronos prediction execution error for {ticker}: {ex}")
+                forecast_metrics = {}
+                # ai_forecast_bias stays None → frontend will show 'Unavailable'
+            
+    # expose forecast_metrics (empty dict if model didn't run / errored)
+    if 'forecast_metrics' not in dir():
+        forecast_metrics = {}
+
     return jsonify(
         ticker=ticker,
         pattern=result["pattern"],
         grade=result["grade"],
         description=result["description"],
         indicators=indicators,
+        ai_forecast_bias=ai_forecast_bias,
+        ai_confidence_score=ai_confidence_score,
+        forecast_metrics=forecast_metrics,
+        forecast_data=forecast_list,
         chart_data=[{
             "date": d["date"],
             "open": d["open"],
@@ -935,7 +1237,7 @@ def get_setup_analysis():
             "low": d["low"],
             "close": d["close"],
             "volume": d["volume"]
-        } for d in history[-120:]]
+        } for d in history]
     )
 SECTOR_INDEX_MAP = {
     "Health Technology": "NIFTY_HLTHCARE.NS",
@@ -2193,6 +2495,258 @@ def get_breadth_history():
         cols = ['date','time','advances','declines','pctAboveSMA21',
                 'pctAboveSMA50','pctNear52High','regimeScore','regimeBand','avgRecommend']
         return jsonify(history=[dict(zip(cols, r)) for r in rows])
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist', methods=['GET'])
+def get_watchlist():
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("SELECT id, name FROM watchlist_sections")
+        sections = c.fetchall()
+        
+        result = []
+        for sec_id, sec_name in sections:
+            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ?", (sec_id,))
+            tickers = [r[0] for r in c.fetchall()]
+            result.append({
+                "id": sec_id,
+                "name": sec_name,
+                "stocks": tickers
+            })
+        conn.close()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/sections', methods=['POST'])
+def create_watchlist_section():
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        sec_id = data.get('id')
+        sec_name = data.get('name')
+        if not sec_id or not sec_name:
+            return jsonify(error="id and name are required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/sections/<sec_id>', methods=['PUT'])
+def rename_watchlist_section(sec_id):
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        sec_name = data.get('name')
+        if not sec_name:
+            return jsonify(error="name is required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("UPDATE watchlist_sections SET name = ? WHERE id = ?", (sec_name, sec_id))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/sections/<sec_id>', methods=['DELETE'])
+def delete_watchlist_section(sec_id):
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        conn.execute("PRAGMA foreign_keys = ON;")
+        c = conn.cursor()
+        c.execute("DELETE FROM watchlist_sections WHERE id = ?", (sec_id,))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/items', methods=['POST'])
+def add_watchlist_item():
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        sec_id = data.get('section_id')
+        ticker = data.get('ticker')
+        if not sec_id or not ticker:
+            return jsonify(error="section_id and ticker are required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        conn.execute("PRAGMA foreign_keys = ON;")
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker) VALUES (?, ?)", (sec_id, ticker.upper()))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/items', methods=['DELETE'])
+def delete_watchlist_item():
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        sec_id = data.get('section_id')
+        ticker = data.get('ticker')
+        if not sec_id or not ticker:
+            return jsonify(error="section_id and ticker are required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM watchlist_items WHERE section_id = ? AND ticker = ?", (sec_id, ticker.upper()))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/journal', methods=['GET'])
+def get_journal():
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, ticker, name, date, setupLabel, swingband, entry, stop, 
+                   target1, target2, target3, riskAmount, qty, status, 
+                   exitPrice, exitDate, pnl, rAchieved, notes 
+            FROM trade_journal 
+            ORDER BY id DESC
+        """)
+        rows = c.fetchall()
+        conn.close()
+        
+        cols = ['id', 'ticker', 'name', 'date', 'setupLabel', 'swingband', 'entry', 'stop', 
+                'target1', 'target2', 'target3', 'riskAmount', 'qty', 'status', 
+                'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes']
+        trades = [dict(zip(cols, r)) for r in rows]
+        return jsonify(trades)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/journal', methods=['POST'])
+def create_journal_entry():
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        trade_id = data.get('id')
+        if not trade_id:
+            return jsonify(error="id is required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("""
+            INSERT OR REPLACE INTO trade_journal (
+                id, ticker, name, date, setupLabel, swingband, entry, stop, 
+                target1, target2, target3, riskAmount, qty, status, 
+                exitPrice, exitDate, pnl, rAchieved, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            trade_id, data.get('ticker'), data.get('name'), data.get('date'),
+            data.get('setupLabel'), data.get('swingband'), data.get('entry', 0.0),
+            data.get('stop', 0.0), data.get('target1', 0.0), data.get('target2', 0.0),
+            data.get('target3', 0.0), data.get('riskAmount', 0.0), data.get('qty', 0),
+            data.get('status', 'open'), data.get('exitPrice'), data.get('exitDate'),
+            data.get('pnl'), data.get('rAchieved'), data.get('notes', '')
+        ))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/journal/<trade_id>', methods=['PUT'])
+def update_journal_entry(trade_id):
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        fields = []
+        params = []
+        for key in ['status', 'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes', 'entry', 'stop', 'target1', 'target2', 'target3', 'riskAmount', 'qty', 'ticker', 'name', 'date', 'setupLabel', 'swingband']:
+            if key in data:
+                fields.append(f"{key} = ?")
+                params.append(data[key])
+                
+        if not fields:
+            return jsonify(error="No fields to update"), 400
+            
+        params.append(trade_id)
+        query = f"UPDATE trade_journal SET {', '.join(fields)} WHERE id = ?"
+        c.execute(query, tuple(params))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/journal/<trade_id>', methods=['DELETE'])
+def delete_journal_entry(trade_id):
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("DELETE FROM trade_journal WHERE id = ?", (trade_id,))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/migrate-local-data', methods=['POST'])
+def migrate_local_data():
+    from flask import request
+    try:
+        data = request.get_json() or {}
+        sections = data.get('watchlist_sections', [])
+        journal = data.get('journal', [])
+        
+        conn = sqlite3.connect('scan_history.db')
+        conn.execute("PRAGMA foreign_keys = ON;")
+        c = conn.cursor()
+        
+        # Migrate watchlists
+        for sec in sections:
+            sec_id = sec.get('id')
+            sec_name = sec.get('name')
+            if sec_id and sec_name:
+                c.execute("INSERT OR REPLACE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
+                stocks = sec.get('stocks', [])
+                for sym in stocks:
+                    if sym:
+                        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker) VALUES (?, ?)", (sec_id, sym.upper()))
+                        
+        # Migrate journal
+        for entry in journal:
+            trade_id = entry.get('id')
+            if trade_id:
+                c.execute("""
+                    INSERT OR REPLACE INTO trade_journal (
+                        id, ticker, name, date, setupLabel, swingband, entry, stop, 
+                        target1, target2, target3, riskAmount, qty, status, 
+                        exitPrice, exitDate, pnl, rAchieved, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    trade_id, entry.get('ticker'), entry.get('name'), entry.get('date'),
+                    entry.get('setupLabel'), entry.get('swingband'), entry.get('entry', 0.0),
+                    entry.get('stop', 0.0), entry.get('target1', 0.0), entry.get('target2', 0.0),
+                    entry.get('target3', 0.0), entry.get('riskAmount', 0.0), entry.get('qty', 0),
+                    entry.get('status', 'open'), entry.get('exitPrice'), entry.get('exitDate'),
+                    entry.get('pnl'), entry.get('rAchieved'), entry.get('notes', '')
+                ))
+                
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
     except Exception as e:
         return jsonify(error=str(e)), 500
 

@@ -24,6 +24,7 @@ let activeIntradayFilter = null;
 let activeStatFilter = null;
 let activeDrawerChart = null;
 let activeOverlayChart = null;
+let journalData = [];
 
 // ── Stat card previous-value store ──
 const statCardPrev = {
@@ -637,6 +638,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+
+
     // Initialize Auto Refresh
     if (autoRefreshCheckbox) {
         const saved = localStorage.getItem('tv_auto_refresh') === 'true';
@@ -746,7 +749,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     chartOverlayModal.classList.remove('hidden');
                     document.getElementById('overlay-chart-title').innerHTML = `📈 ${window.currentTradeStock.clean_ticker} - Daily Chart`;
                     setTimeout(() => {
-                        createOverlayChart('overlay-tv-chart', window.currentDrawerChartData);
+                        createOverlayChart('overlay-tv-chart', window.currentDrawerChartData, window.currentDrawerForecastData || []);
                     }, 50);
                 }
             }
@@ -1936,6 +1939,8 @@ function filterAndRender() {
         } else if (swingFilter === 'watch') {
             matchesSwing = swingBand === 'elite' || swingBand === 'strong' || swingBand === 'watch';
         }
+
+
         
         // Setup Filter
         let matchesSetup = true;
@@ -2246,6 +2251,7 @@ function renderTable() {
                         <span class="badge ${badgeClass}" title="${stock.mtfLabel || 'None'}">${label}</span>
                     </td>
                 `;
+
             } else if (col.id === 'description') {
                 html += `
                     <td data-column="description" style="font-weight: 600; color: var(--color-text-primary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 200px;" title="${escapeHtml(stock.description)}">
@@ -2895,38 +2901,104 @@ let watchlistCurrentPage = 1;
 const watchlistItemsPerPage = 5;
 let activeNewsFilter = 'all'; // 'all' or ticker symbol
 
+function fetchWatchlistFromBackend() {
+    fetch('/api/watchlist')
+        .then(res => res.json())
+        .then(data => {
+            if (Array.isArray(data)) {
+                const savedOrder = localStorage.getItem('tv_watchlist_sections_order');
+                if (savedOrder) {
+                    try {
+                        const orderArray = JSON.parse(savedOrder);
+                        data.sort((a, b) => {
+                            const idxA = orderArray.indexOf(a.id);
+                            const idxB = orderArray.indexOf(b.id);
+                            if (idxA === -1 && idxB === -1) return 0;
+                            if (idxA === -1) return 1;
+                            if (idxB === -1) return -1;
+                            return idxA - idxB;
+                        });
+                    } catch (e) {}
+                }
+                watchlistSections = data;
+                
+                if (watchlistSections.length === 0) {
+                    const defaultId = 'sec-main';
+                    watchlistSections = [{
+                        id: defaultId,
+                        name: 'Main Watchlist',
+                        stocks: [],
+                        collapsed: false
+                    }];
+                    fetch('/api/watchlist/sections', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: defaultId, name: 'Main Watchlist' })
+                    });
+                }
+                syncWatchlistStocksFlat();
+                renderWatchlist();
+                renderAnnouncements();
+            }
+        })
+        .catch(err => console.error("Error loading watchlist from backend:", err));
+}
+
+function fetchJournalFromBackend() {
+    fetch('/api/journal')
+        .then(res => res.json())
+        .then(data => {
+            if (Array.isArray(data)) {
+                journalData = data;
+                renderJournal();
+            }
+        })
+        .catch(err => console.error("Error loading journal from backend:", err));
+}
+
 function initWatchlist() {
-    const savedSections = localStorage.getItem('tv_watchlist_sections');
-    const savedStocksOld = localStorage.getItem('tv_watchlist_stocks');
-    
-    if (savedSections) {
-        try {
-            watchlistSections = JSON.parse(savedSections);
-        } catch (e) {
-            console.error("Error reading watchlist sections:", e);
-            watchlistSections = [];
+    // Check if migration to SQLite backend is complete
+    const migrationComplete = localStorage.getItem('tv_migration_complete');
+    if (!migrationComplete) {
+        const legacySections = localStorage.getItem('tv_watchlist_sections');
+        const legacyJournal = localStorage.getItem('tvTradeJournal');
+        
+        if (legacySections || legacyJournal) {
+            const payload = {
+                watchlist_sections: legacySections ? JSON.parse(legacySections) : [],
+                journal: legacyJournal ? JSON.parse(legacyJournal) : []
+            };
+            
+            fetch('/api/migrate-local-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(resData => {
+                if (resData.success) {
+                    localStorage.setItem('tv_migration_complete', 'true');
+                    localStorage.removeItem('tv_watchlist_sections');
+                    localStorage.removeItem('tv_watchlist_stocks');
+                    localStorage.removeItem('tvTradeJournal');
+                    console.log("Migration of watchlists and journals to SQLite database complete.");
+                }
+                fetchWatchlistFromBackend();
+                fetchJournalFromBackend();
+            })
+            .catch(err => {
+                console.error("Migration error:", err);
+                fetchWatchlistFromBackend();
+                fetchJournalFromBackend();
+            });
+        } else {
+            localStorage.setItem('tv_migration_complete', 'true');
+            fetchWatchlistFromBackend();
+            fetchJournalFromBackend();
         }
-    }
-    
-    // Migration logic
-    if (watchlistSections.length === 0) {
-        let oldStocks = [];
-        if (savedStocksOld) {
-            try {
-                oldStocks = JSON.parse(savedStocksOld);
-            } catch (e) {}
-        }
-        // Create default section
-        watchlistSections = [{
-            id: 'sec-main',
-            name: 'Main Watchlist',
-            stocks: Array.isArray(oldStocks) ? oldStocks : [],
-            collapsed: false
-        }];
-        saveWatchlistSections();
     } else {
-        // Sync watchlistStocks array
-        syncWatchlistStocksFlat();
+        fetchWatchlistFromBackend();
+        fetchJournalFromBackend();
     }
     
     // Setup manual add button toggles
@@ -3005,13 +3077,10 @@ function initWatchlist() {
             menu.remove();
         }
     });
-    
-    renderWatchlist();
-    renderAnnouncements();
 }
 
 function saveWatchlistSections() {
-    localStorage.setItem('tv_watchlist_sections', JSON.stringify(watchlistSections));
+    localStorage.setItem('tv_watchlist_sections_order', JSON.stringify(watchlistSections.map(s => s.id)));
     syncWatchlistStocksFlat();
 }
 
@@ -3032,16 +3101,30 @@ function submitGlobalSection() {
     const name = input.value.trim();
     if (!name) return;
     
+    const newSecId = 'sec-' + Date.now();
     const newSec = {
-        id: 'sec-' + Date.now(),
+        id: newSecId,
         name: name,
         stocks: [],
         collapsed: false
     };
     
-    watchlistSections.push(newSec);
-    saveWatchlistSections();
-    renderWatchlist();
+    fetch('/api/watchlist/sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: newSecId, name: name })
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            watchlistSections.push(newSec);
+            saveWatchlistSections();
+            renderWatchlist();
+        } else {
+            alert("Failed to create section: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error creating section:", err));
     
     input.value = '';
     const box = document.getElementById('global-add-section-box');
@@ -3053,19 +3136,46 @@ function deleteSection(sectionId) {
     if (!sec) return;
     
     if (confirm(`Are you sure you want to delete the section "${sec.name}"? All stocks in it will be removed from this section.`)) {
-        watchlistSections = watchlistSections.filter(s => s.id !== sectionId);
-        // If empty, auto create default
-        if (watchlistSections.length === 0) {
-            watchlistSections.push({
-                id: 'sec-main',
-                name: 'Main Watchlist',
-                stocks: [],
-                collapsed: false
-            });
-        }
-        saveWatchlistSections();
-        renderWatchlist();
-        renderAnnouncements();
+        fetch(`/api/watchlist/sections/${sectionId}`, {
+            method: 'DELETE'
+        })
+        .then(res => res.json())
+        .then(resData => {
+            if (resData.success) {
+                watchlistSections = watchlistSections.filter(s => s.id !== sectionId);
+                // If empty, auto create default
+                if (watchlistSections.length === 0) {
+                    const defaultId = 'sec-main';
+                    const defaultSec = {
+                        id: defaultId,
+                        name: 'Main Watchlist',
+                        stocks: [],
+                        collapsed: false
+                    };
+                    fetch('/api/watchlist/sections', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: defaultId, name: 'Main Watchlist' })
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success) {
+                            watchlistSections.push(defaultSec);
+                            saveWatchlistSections();
+                            renderWatchlist();
+                            renderAnnouncements();
+                        }
+                    });
+                } else {
+                    saveWatchlistSections();
+                    renderWatchlist();
+                    renderAnnouncements();
+                }
+            } else {
+                alert("Failed to delete section: " + resData.error);
+            }
+        })
+        .catch(err => console.error("Error deleting section:", err));
     }
 }
 
@@ -3121,10 +3231,29 @@ function startRenameSection(sectionId, element) {
         finished = true;
         const newName = input.value.trim();
         if (newName && newName !== sec.name) {
-            sec.name = newName;
-            saveWatchlistSections();
+            fetch(`/api/watchlist/sections/${sectionId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            })
+            .then(res => res.json())
+            .then(resData => {
+                if (resData.success) {
+                    sec.name = newName;
+                    saveWatchlistSections();
+                    renderWatchlist();
+                } else {
+                    alert("Failed to rename section: " + resData.error);
+                    renderWatchlist();
+                }
+            })
+            .catch(err => {
+                console.error("Error renaming section:", err);
+                renderWatchlist();
+            });
+        } else {
+            renderWatchlist();
         }
-        renderWatchlist();
     };
     
     input.addEventListener('blur', saveRename);
@@ -3204,13 +3333,26 @@ function addStockToSection(sectionId, ticker) {
         return;
     }
     
-    sec.stocks.push(ticker);
-    sec.collapsed = false;
-    saveWatchlistSections();
-    renderWatchlist();
-    selectWatchlistStock(ticker);
-    fetchWatchlistSingle(ticker);
-    renderAnnouncements();
+    fetch('/api/watchlist/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section_id: sectionId, ticker: ticker })
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            sec.stocks.push(ticker);
+            sec.collapsed = false;
+            saveWatchlistSections();
+            renderWatchlist();
+            selectWatchlistStock(ticker);
+            fetchWatchlistSingle(ticker);
+            renderAnnouncements();
+        } else {
+            alert("Failed to add stock: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error adding stock to watchlist:", err));
 }
 
 function removeStockFromSection(sectionId, ticker) {
@@ -3222,32 +3364,43 @@ function removeStockFromSection(sectionId, ticker) {
     const sec = watchlistSections.find(s => s.id === sectionId);
     if (!sec) return;
     
-    const originalLength = sec.stocks.length;
-    sec.stocks = sec.stocks.filter(s => s.toUpperCase() !== ticker.toUpperCase());
-    
-    // Only re-render if something was actually removed
-    if (sec.stocks.length !== originalLength) {
-        saveWatchlistSections();
-        
-        // Find the row and animate it out for better UX
-        const row = document.querySelector(`.watchlist-row[data-symbol="${ticker}"][data-section-id="${sectionId}"]`);
-        if (row) {
-            row.style.transition = 'all 0.3s ease';
-            row.style.opacity = '0';
-            row.style.transform = 'translateX(20px)';
-            setTimeout(() => {
-                renderWatchlist();
-            }, 250);
+    fetch('/api/watchlist/items', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section_id: sectionId, ticker: ticker })
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            const originalLength = sec.stocks.length;
+            sec.stocks = sec.stocks.filter(s => s.toUpperCase() !== ticker.toUpperCase());
+            
+            if (sec.stocks.length !== originalLength) {
+                saveWatchlistSections();
+                
+                const row = document.querySelector(`.watchlist-row[data-symbol="${ticker}"][data-section-id="${sectionId}"]`);
+                if (row) {
+                    row.style.transition = 'all 0.3s ease';
+                    row.style.opacity = '0';
+                    row.style.transform = 'translateX(20px)';
+                    setTimeout(() => {
+                        renderWatchlist();
+                    }, 250);
+                } else {
+                    renderWatchlist();
+                }
+                
+                if (activeNewsFilter === ticker) {
+                    resetWatchlistDetails();
+                } else {
+                    renderAnnouncements();
+                }
+            }
         } else {
-            renderWatchlist();
+            alert("Failed to remove stock: " + resData.error);
         }
-        
-        if (activeNewsFilter === ticker) {
-            resetWatchlistDetails();
-        } else {
-            renderAnnouncements();
-        }
-    }
+    })
+    .catch(err => console.error("Error removing stock from watchlist:", err));
 }
 
 async function updateWatchlistData() {
@@ -4755,6 +4908,17 @@ function openTradeDrawer(ticker) {
         document.getElementById('drawer-intel-desc').textContent = 'Running pattern recognition scans on daily chart history...';
         document.getElementById('drawer-intel-checklist').innerHTML = '';
         
+        // Reset Kronos elements
+        const kronosForecastRow = document.getElementById('drawer-kronos-forecast-row');
+        if (kronosForecastRow) {
+            kronosForecastRow.style.display = 'none';
+            document.getElementById('drawer-kronos-bias').textContent = '-';
+            document.getElementById('drawer-kronos-score').textContent = '0%';
+            document.getElementById('drawer-kronos-score-bar').style.width = '0%';
+            const metricsEl = document.getElementById('drawer-kronos-metrics');
+            if (metricsEl) { metricsEl.style.display = 'none'; metricsEl.innerHTML = ''; }
+        }
+        
         if (activeDrawerChart) {
             try {
                 activeDrawerChart.remove();
@@ -4794,6 +4958,77 @@ function openTradeDrawer(ticker) {
                     }
                 }
                 
+                // Populate Kronos AI Forecast elements
+                if (kronosForecastRow) {
+                    kronosForecastRow.style.display = 'block';
+                    const biasBadge = document.getElementById('drawer-kronos-bias');
+                    const bias = data.ai_forecast_bias;  // null = model errored / not run
+
+                    if (!bias) {
+                        // Model did not run or threw an error — show neutral grey Unavailable badge
+                        biasBadge.textContent = 'Unavailable';
+                        biasBadge.style.backgroundColor = 'rgba(148, 163, 184, 0.12)';
+                        biasBadge.style.color = '#94a3b8';
+                        biasBadge.style.border = '1px solid rgba(148, 163, 184, 0.25)';
+                        document.getElementById('drawer-kronos-score').textContent = '—';
+                        document.getElementById('drawer-kronos-score-bar').style.width = '0%';
+                    } else {
+                        biasBadge.textContent = bias;
+
+                        // 5-label badge colour mapping
+                        const biasStyles = {
+                            'Strong Breakout':      { bg: 'rgba(16, 185, 129, 0.25)',  color: '#34d399', border: 'rgba(16, 185, 129, 0.5)' },
+                            'Bullish Continuation': { bg: 'rgba(16, 185, 129, 0.12)',  color: '#4ade80', border: 'rgba(16, 185, 129, 0.3)' },
+                            'Sideways Consolidation':{ bg: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24', border: 'rgba(245, 158, 11, 0.3)' },
+                            'Bearish Pressure':     { bg: 'rgba(249, 115, 22, 0.15)',  color: '#fb923c', border: 'rgba(249, 115, 22, 0.35)' },
+                            'Strong Downtrend':     { bg: 'rgba(239, 68, 68, 0.20)',   color: '#f87171', border: 'rgba(239, 68, 68, 0.45)' },
+                        };
+                        const style = biasStyles[bias] || biasStyles['Sideways Consolidation'];
+                        biasBadge.style.backgroundColor = style.bg;
+                        biasBadge.style.color = style.color;
+                        biasBadge.style.border = `1px solid ${style.border}`;
+
+                        document.getElementById('drawer-kronos-score').textContent = data.ai_confidence_score + '%';
+
+                        // Smoothly animate progress bar
+                        setTimeout(() => {
+                            document.getElementById('drawer-kronos-score-bar').style.width = data.ai_confidence_score + '%';
+                        }, 50);
+
+                        // Render forecast metrics pills (return%, consistency%, drawdown%, breakout)
+                        const metricsEl = document.getElementById('drawer-kronos-metrics');
+                        const m = data.forecast_metrics;
+                        if (metricsEl && m && Object.keys(m).length > 0) {
+                            const retSign  = m.return_pct  >= 0 ? '+' : '';
+                            const ddSign   = m.max_drawdown_pct >= 0 ? '+' : '';
+                            const splSign  = m.momentum_split >= 0 ? '+' : '';
+                            const retColor = m.return_pct  >= 0 ? '#4ade80' : '#f87171';
+                            const ddColor  = m.max_drawdown_pct >= 0 ? '#4ade80' : '#f87171';
+                            const splColor = m.momentum_split >= 0 ? '#4ade80' : '#f87171';
+                            const brkColor = m.breakout_signal ? '#34d399' : '#94a3b8';
+                            const brkText  = m.breakout_signal ? '🚀 New High' : '⬛ No Breakout';
+                            metricsEl.innerHTML = `
+                                <span style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;font-size:0.68rem;color:${retColor}">
+                                    Return ${retSign}${m.return_pct}%
+                                </span>
+                                <span style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;font-size:0.68rem;color:var(--color-text-secondary)">
+                                    Consist ${m.consistency_pct}%
+                                </span>
+                                <span style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;font-size:0.68rem;color:${ddColor}">
+                                    DD ${ddSign}${m.max_drawdown_pct}%
+                                </span>
+                                <span style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;font-size:0.68rem;color:${splColor}">
+                                    Split ${splSign}${m.momentum_split}%
+                                </span>
+                                <span style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:1px 6px;font-size:0.68rem;color:${brkColor}">
+                                    ${brkText}
+                                </span>
+                            `;
+                            metricsEl.style.display = 'flex';
+                        }
+                    }
+                }
+                
                 const checklistEl = document.getElementById('drawer-intel-checklist');
                 if (checklistEl && data.indicators) {
                     const checkItems = [
@@ -4814,7 +5049,8 @@ function openTradeDrawer(ticker) {
                 
                 if (data.chart_data && data.chart_data.length > 0) {
                     window.currentDrawerChartData = data.chart_data;
-                    createTradeDrawerChart('drawer-tv-chart', data.chart_data);
+                    window.currentDrawerForecastData = data.forecast_data || [];
+                    createTradeDrawerChart('drawer-tv-chart', data.chart_data, data.forecast_data || []);
                 }
             })
             .catch(err => {
@@ -5487,21 +5723,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 
 function getJournalData() {
-    try {
-        const data = localStorage.getItem('tvTradeJournal');
-        return data ? JSON.parse(data) : [];
-    } catch (e) {
-        console.error("Error reading journal data", e);
-        return [];
-    }
+    return journalData || [];
 }
 
 function setJournalData(data) {
-    try {
-        localStorage.setItem('tvTradeJournal', JSON.stringify(data));
-    } catch (e) {
-        console.error("Error saving journal data", e);
-    }
+    journalData = data || [];
 }
 
 window.saveTradeToJournal = function() {
@@ -5544,11 +5770,22 @@ window.saveTradeToJournal = function() {
         notes: notesEl ? notesEl.value : ''
     };
     
-    const journal = getJournalData();
-    journal.unshift(trade); // Add to beginning
-    setJournalData(journal);
-    
-    alert(`Trade for ${trade.ticker} saved to Journal!`);
+    fetch('/api/journal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(trade)
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            journalData.unshift(trade);
+            renderJournal();
+            alert(`Trade for ${trade.ticker} saved to Journal!`);
+        } else {
+            alert("Failed to save trade: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error saving trade to journal:", err));
 }
 
 function renderJournal() {
@@ -5677,33 +5914,44 @@ function promptUpdateTrade(tradeId) {
     let exitPriceStr = prompt(`Enter exit price for ${trade.ticker} (Leave blank if keeping open):`, trade.exitPrice || trade.close || '');
     let exitPrice = parseFloat(exitPriceStr);
     
+    let updatedFields = {
+        status: newStatus.toLowerCase()
+    };
+    
     if (!isNaN(exitPrice)) {
-        trade.exitPrice = exitPrice;
-        trade.exitDate = new Date().toISOString().split('T')[0];
+        updatedFields.exitPrice = exitPrice;
+        updatedFields.exitDate = new Date().toISOString().split('T')[0];
+        updatedFields.pnl = (exitPrice - trade.entry) * trade.qty;
         
-        // Compute PnL
-        trade.pnl = (exitPrice - trade.entry) * trade.qty;
-        
-        // Compute R Achieved
         const riskPerShare = trade.entry - trade.stop;
         if (riskPerShare > 0) {
-            trade.rAchieved = (exitPrice - trade.entry) / riskPerShare;
+            updatedFields.rAchieved = (exitPrice - trade.entry) / riskPerShare;
         } else {
-            trade.rAchieved = 0;
+            updatedFields.rAchieved = 0;
         }
     } else if (newStatus.toLowerCase() === 'open') {
-        trade.exitPrice = null;
-        trade.exitDate = null;
-        trade.pnl = null;
-        trade.rAchieved = null;
+        updatedFields.exitPrice = null;
+        updatedFields.exitDate = null;
+        updatedFields.pnl = null;
+        updatedFields.rAchieved = null;
     }
     
-    trade.status = newStatus.toLowerCase();
-    
-    journal[tradeIndex] = trade;
-    setJournalData(journal);
-    renderJournal();
-};
+    fetch(`/api/journal/${tradeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            Object.assign(trade, updatedFields);
+            renderJournal();
+        } else {
+            alert("Failed to update trade: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error updating trade:", err));
+}
 
 window.renderJournal = renderJournal;
 
@@ -5758,10 +6006,19 @@ window.removeTradeFromJournal = function(tradeId) {
     if (!confirm("Are you sure you want to remove this trade entry from the Journal?")) {
         return;
     }
-    const journal = getJournalData();
-    const updatedJournal = journal.filter(t => t.id !== tradeId);
-    setJournalData(updatedJournal);
-    renderJournal();
+    fetch(`/api/journal/${tradeId}`, {
+        method: 'DELETE'
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            journalData = journalData.filter(t => t.id !== tradeId);
+            renderJournal();
+        } else {
+            alert("Failed to delete trade: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error deleting trade:", err));
 };
 
 window.openManualTradeModal = function() {
@@ -5828,12 +6085,22 @@ window.saveManualTrade = function() {
         notes: notes
     };
     
-    const journal = getJournalData();
-    journal.push(newTrade);
-    setJournalData(journal);
-    renderJournal();
-    
-    closeManualTradeModal();
+    fetch('/api/journal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTrade)
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            journalData.unshift(newTrade);
+            renderJournal();
+            closeManualTradeModal();
+        } else {
+            alert("Failed to save manual trade: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error saving manual trade:", err));
 };
 
 window.openEditTradeModal = function(tradeId) {
@@ -5878,50 +6145,75 @@ window.saveEditedTrade = function() {
         return;
     }
     
-    const journal = getJournalData();
-    const index = journal.findIndex(t => t.id === tradeId);
+    const index = journalData.findIndex(t => t.id === tradeId);
     if (index === -1) return;
     
-    const trade = journal[index];
-    trade.ticker = ticker;
-    trade.date = date;
-    trade.setupLabel = setup;
-    trade.entry = entry;
-    trade.stop = stop;
-    trade.qty = qty;
-    trade.status = status;
-    trade.notes = notes;
+    const trade = journalData[index];
     
-    // Recompute targets and risk dynamically if they were edited
     const riskPerShare = entry - stop;
+    let target1 = trade.target1;
+    let target2 = trade.target2;
+    let target3 = trade.target3;
     if (riskPerShare > 0) {
-        trade.target1 = entry + (riskPerShare * 1.5);
-        trade.target2 = entry + (riskPerShare * 2.0);
-        trade.target3 = entry + (riskPerShare * 3.0);
+        target1 = entry + (riskPerShare * 1.5);
+        target2 = entry + (riskPerShare * 2.0);
+        target3 = entry + (riskPerShare * 3.0);
     }
-    trade.riskAmount = riskPerShare * qty;
+    const riskAmount = riskPerShare * qty;
     
     const exitPrice = parseFloat(exitPriceStr);
+    let exitPriceVal = null;
+    let exitDateVal = null;
+    let pnlVal = null;
+    let rAchievedVal = null;
+    
     if (status !== 'open' && !isNaN(exitPrice)) {
-        trade.exitPrice = exitPrice;
-        if (!trade.exitDate) trade.exitDate = new Date().toISOString().split('T')[0];
-        trade.pnl = (exitPrice - entry) * qty;
+        exitPriceVal = exitPrice;
+        exitDateVal = trade.exitDate || new Date().toISOString().split('T')[0];
+        pnlVal = (exitPrice - entry) * qty;
         if (riskPerShare > 0) {
-            trade.rAchieved = (exitPrice - entry) / riskPerShare;
+            rAchievedVal = (exitPrice - entry) / riskPerShare;
         } else {
-            trade.rAchieved = 0;
+            rAchievedVal = 0;
         }
-    } else {
-        trade.exitPrice = null;
-        trade.exitDate = null;
-        trade.pnl = null;
-        trade.rAchieved = null;
     }
     
-    journal[index] = trade;
-    setJournalData(journal);
-    renderJournal();
-    closeEditTradeModal();
+    const updatedFields = {
+        ticker: ticker,
+        name: ticker,
+        date: date,
+        setupLabel: setup,
+        entry: entry,
+        stop: stop,
+        qty: qty,
+        status: status,
+        notes: notes,
+        target1: target1,
+        target2: target2,
+        target3: target3,
+        riskAmount: riskAmount,
+        exitPrice: exitPriceVal,
+        exitDate: exitDateVal,
+        pnl: pnlVal,
+        rAchieved: rAchievedVal
+    };
+    
+    fetch(`/api/journal/${tradeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+    })
+    .then(res => res.json())
+    .then(resData => {
+        if (resData.success) {
+            Object.assign(trade, updatedFields);
+            renderJournal();
+            closeEditTradeModal();
+        } else {
+            alert("Failed to save edited trade: " + resData.error);
+        }
+    })
+    .catch(err => console.error("Error saving edited trade:", err));
 };
 
 window.updateJournalLivePrices = async function(event) {
@@ -6045,8 +6337,9 @@ function getChartThemeOptions(theme) {
  * Initializes and renders TradingView Lightweight Charts inside the specified container.
  * @param {string} containerId - ID of target div element.
  * @param {Object[]} rawData - Array of daily bars with open, high, low, close, volume, date.
+ * @param {Object[]} [forecastData=[]] - Optional forecasted price bars.
  */
-function createTradeDrawerChart(containerId, rawData) {
+function createTradeDrawerChart(containerId, rawData, forecastData = []) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -6102,6 +6395,46 @@ function createTradeDrawerChart(containerId, rawData) {
         close: d.close,
     }));
     candleSeries.setData(formattedCandles);
+
+    // 1b. Forecast Candlestick Series & Path
+    if (forecastData && forecastData.length > 0) {
+        const forecastSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: 'rgba(168, 85, 247, 0.45)', // soft transparent purple
+            downColor: 'rgba(236, 72, 153, 0.45)', // soft transparent pink/crimson
+            borderUpColor: 'rgba(168, 85, 247, 0.7)',
+            borderDownColor: 'rgba(236, 72, 153, 0.7)',
+            wickUpColor: 'rgba(168, 85, 247, 0.7)',
+            wickDownColor: 'rgba(236, 72, 153, 0.7)',
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+
+        const formattedForecast = forecastData.map(d => ({
+            time: d.date,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+        }));
+        forecastSeries.setData(formattedForecast);
+
+        // Path Series (Connecting line)
+        const pathSeries = chart.addSeries(LightweightCharts.LineSeries, {
+            color: '#a855f7',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+
+        const pathData = [
+            { time: rawData[rawData.length - 1].date, value: rawData[rawData.length - 1].close }
+        ].concat(forecastData.map(d => ({
+            time: d.date,
+            value: d.close,
+        })));
+        pathSeries.setData(pathData);
+    }
 
     // 2. Volume Series Overlay
     const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
@@ -6197,6 +6530,19 @@ function createTradeDrawerChart(containerId, rawData) {
     }
     LightweightCharts.createSeriesMarkers(candleSeries, markers);
 
+    // Zoom view by default to focus on the last 120 bars + forecast bars
+    if (rawData && rawData.length > 0) {
+        const totalBars = rawData.length;
+        const startIdx = Math.max(0, totalBars - 120);
+        const startBarDate = rawData[startIdx].date;
+        const endBarDate = (forecastData && forecastData.length > 0) ? forecastData[forecastData.length - 1].date : rawData[totalBars - 1].date;
+        
+        chart.timeScale().setVisibleRange({
+            from: startBarDate,
+            to: endBarDate
+        });
+    }
+
     // Auto Resize Support
     const resizeObserver = new ResizeObserver(entries => {
         if (entries.length === 0 || !entries[0].contentRect) return;
@@ -6227,8 +6573,9 @@ function closeChartOverlay() {
  * Renders an expanded TradingView chart inside the modal overlay.
  * @param {string} containerId - Target container ID.
  * @param {Object[]} rawData - Historical chart data bars.
+ * @param {Object[]} [forecastData=[]] - Optional forecasted price bars.
  */
-function createOverlayChart(containerId, rawData) {
+function createOverlayChart(containerId, rawData, forecastData = []) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -6284,6 +6631,46 @@ function createOverlayChart(containerId, rawData) {
         close: d.close,
     }));
     candleSeries.setData(formattedCandles);
+
+    // 1b. Forecast Candlestick Series & Path
+    if (forecastData && forecastData.length > 0) {
+        const forecastSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: 'rgba(168, 85, 247, 0.45)', // soft transparent purple
+            downColor: 'rgba(236, 72, 153, 0.45)', // soft transparent pink/crimson
+            borderUpColor: 'rgba(168, 85, 247, 0.7)',
+            borderDownColor: 'rgba(236, 72, 153, 0.7)',
+            wickUpColor: 'rgba(168, 85, 247, 0.7)',
+            wickDownColor: 'rgba(236, 72, 153, 0.7)',
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+
+        const formattedForecast = forecastData.map(d => ({
+            time: d.date,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+        }));
+        forecastSeries.setData(formattedForecast);
+
+        // Path Series (Connecting line)
+        const pathSeries = chart.addSeries(LightweightCharts.LineSeries, {
+            color: '#a855f7',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            priceLineVisible: false,
+            lastValueVisible: false,
+        });
+
+        const pathData = [
+            { time: rawData[rawData.length - 1].date, value: rawData[rawData.length - 1].close }
+        ].concat(forecastData.map(d => ({
+            time: d.date,
+            value: d.close,
+        })));
+        pathSeries.setData(pathData);
+    }
 
     // 2. Volume Series Overlay
     const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
@@ -6378,6 +6765,19 @@ function createOverlayChart(containerId, rawData) {
         }
     }
     LightweightCharts.createSeriesMarkers(candleSeries, markers);
+
+    // Zoom view by default to focus on the last 120 bars + forecast bars
+    if (rawData && rawData.length > 0) {
+        const totalBars = rawData.length;
+        const startIdx = Math.max(0, totalBars - 120);
+        const startBarDate = rawData[startIdx].date;
+        const endBarDate = (forecastData && forecastData.length > 0) ? forecastData[forecastData.length - 1].date : rawData[totalBars - 1].date;
+        
+        chart.timeScale().setVisibleRange({
+            from: startBarDate,
+            to: endBarDate
+        });
+    }
 
     // Auto Resize Support
     const resizeObserver = new ResizeObserver(entries => {

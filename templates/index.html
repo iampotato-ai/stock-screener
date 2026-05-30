@@ -389,6 +389,7 @@
                 </div>
             </div>
             
+            
             <!-- Quick Sort Swing Button -->
             <button class="btn btn-primary" id="btn-quick-swing" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; background: var(--accent-blue); border-color: var(--accent-blue); color: #fff;" title="Sort by Swing Score then 1W Perf">
                 <span>🎯</span> Best Swing Setups
@@ -1015,6 +1016,24 @@
                         Running pattern recognition scans on daily chart history...
                     </p>
                     
+                    <!-- Kronos AI Forecast Block -->
+                    <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                🤖 Kronos AI Forecast (10d)
+                            </span>
+                            <span id="drawer-kronos-bias" class="badge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">-</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.6rem;">
+                            <div style="flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; position: relative;">
+                                <div id="drawer-kronos-score-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                            </div>
+                            <span id="drawer-kronos-score" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary); min-width: 32px; text-align: right;">0%</span>
+                        </div>
+                        <!-- Forecast metrics pills: populated by JS when prediction arrives -->
+                        <div id="drawer-kronos-metrics" style="display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                        </div>
+                    </div>
                     <!-- Technical Checklist -->
                     <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
                         <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>

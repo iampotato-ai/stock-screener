@@ -830,6 +830,9 @@ input:checked + .slider:before {
 .mtf-partial { background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); font-weight: 600; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; text-align: center; }
 .mtf-none { background: rgba(255, 255, 255, 0.05); color: var(--color-text-secondary); border: 1px solid rgba(255, 255, 255, 0.1); font-weight: 500; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; text-align: center; }
 
+
+
+
 /* Modal overlay & Modal */
 .modal-overlay {
     position: fixed;
@@ -2493,6 +2496,8 @@ body[data-theme="light"] .badge-fresh { background: rgba(16, 185, 129, 0.15); co
 body[data-theme="light"] .badge-persistent { background: rgba(249, 115, 22, 0.15); color: hsl(28, 90%, 40%); border-color: rgba(249, 115, 22, 0.3); }
 body[data-theme="light"] .badge-neutral { background: rgba(0, 0, 0, 0.05); color: var(--color-text-muted); border-color: rgba(0, 0, 0, 0.1); }
 body[data-theme="light"] .badge-earnings-soon { background: rgba(239, 68, 68, 0.15); color: hsl(0, 84%, 40%); border-color: rgba(239, 68, 68, 0.3); }
+
+
 
 /* Announcements Feed Badges Light Mode Contrast Overrides */
 body[data-theme="light"] .cat-dividend { color: hsl(45, 85%, 35%); }
