@@ -4849,6 +4849,41 @@ let rrgCurrentFrame  = 0;      // Currently displayed frame index
 let rrgAnimTimer     = null;   // setInterval handle
 const RRG_ANIM_INTERVAL_MS = 600; // ms per frame during auto-play
 
+let rrgScale = { rsMin: 88, rsMax: 112, moMin: -6, moMax: 6 };
+let rrgHoveredSector = null;
+let rrgMouseX = null;
+let rrgMouseY = null;
+
+function updateRRGScaleLimits(frames) {
+    if (!frames || !frames.length) {
+        rrgScale = { rsMin: 88, rsMax: 112, moMin: -6, moMax: 6 };
+        return;
+    }
+    let maxDevX = 2.0; // minimum default deviation
+    let maxDevY = 0.5; // minimum default deviation
+    
+    frames.forEach(f => {
+        if (!f.sectors) return;
+        f.sectors.forEach(s => {
+            const devX = Math.abs(s.jdk_rs - 100.0);
+            const devY = Math.abs(s.jdk_rs_momentum);
+            if (devX > maxDevX) maxDevX = devX;
+            if (devY > maxDevY) maxDevY = devY;
+        });
+    });
+    
+    // Add 20% padding
+    const deltaX = maxDevX * 1.20;
+    const deltaY = maxDevY * 1.20;
+    
+    rrgScale = {
+        rsMin: 100.0 - deltaX,
+        rsMax: 100.0 + deltaX,
+        moMin: -deltaY,
+        moMax: deltaY
+    };
+}
+
 function renderRRG() {
     const timelineBar = document.getElementById('rrg-timeline-bar');
     const rrgCanvas = document.getElementById('rrg-canvas');
@@ -4991,9 +5026,12 @@ function renderRRGTimeline(frames, frameIdx) {
     const cx = W / 2;
     const cy = H / 2;
     
-    // Coordinate mappers: jdk_rs range 88-112, momentum range -6 to +6
-    const RS_MIN = 88, RS_MAX = 112;
-    const MO_MIN = -6, MO_MAX = 6;
+    // Dynamic coordinate mappers based on computed limits
+    const RS_MIN = rrgScale.rsMin;
+    const RS_MAX = rrgScale.rsMax;
+    const MO_MIN = rrgScale.moMin;
+    const MO_MAX = rrgScale.moMax;
+    
     const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
     const toX = rs  => pad + ((clamp(rs, RS_MIN, RS_MAX) - RS_MIN)  / (RS_MAX - RS_MIN))  * (W - pad * 2);
     const toY = mom => (H - pad) - ((clamp(mom, MO_MIN, MO_MAX) - MO_MIN) / (MO_MAX - MO_MIN)) * (H - pad * 2);
@@ -5025,8 +5063,11 @@ function renderRRGTimeline(frames, frameIdx) {
     // --- Collect all unique sector names across frames ---
     const allSectors = [...new Set(frames.flatMap(f => f.sectors.map(s => s.sector)))];
     
+    const hasActiveHover = (rrgHoveredSector !== null);
+    
     allSectors.forEach(sectorName => {
         const color = RRG_SECTOR_COLORS[sectorName] || RRG_DEFAULT_COLOR;
+        const isHovered = (rrgHoveredSector === sectorName);
         
         // Build the position trail for this sector up to frameIdx
         const trail = [];
@@ -5039,12 +5080,15 @@ function renderRRGTimeline(frames, frameIdx) {
         }
         if (!trail.length) return;
         
+        // Apply alpha multiplier based on hover state
+        const opacityMult = hasActiveHover ? (isHovered ? 1.0 : 0.15) : 1.0;
+        
         // Draw trail lines (fading opacity older -> newer)
         for (let i = 1; i < trail.length; i++) {
-            const alpha = 0.1 + (i / trail.length) * 0.5;
+            const alpha = (0.1 + (i / trail.length) * 0.5) * opacityMult;
             ctx.beginPath();
             ctx.strokeStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = isHovered ? 3.0 : 1.5;
             ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
             ctx.lineTo(trail[i].x, trail[i].y);
             ctx.stroke();
@@ -5052,8 +5096,8 @@ function renderRRGTimeline(frames, frameIdx) {
         
         // Draw ghost dots (historical)
         for (let i = 0; i < trail.length - 1; i++) {
-            const alpha = 0.12 + (i / trail.length) * 0.3;
-            const r = 4 + (trail[i].score / 100) * 3;
+            const alpha = (0.12 + (i / trail.length) * 0.3) * opacityMult;
+            const r = (4 + (trail[i].score / 100) * 3) * (isHovered ? 1.25 : 1.0);
             ctx.beginPath();
             ctx.arc(trail[i].x, trail[i].y, r, 0, Math.PI * 2);
             ctx.fillStyle = color + Math.round(alpha * 255).toString(16).padStart(2, '0');
@@ -5062,21 +5106,122 @@ function renderRRGTimeline(frames, frameIdx) {
         
         // Draw current dot (full opacity, larger)
         const cur = trail[trail.length - 1];
-        const curR = 6 + (cur.score / 100) * 5;
+        const curR = (6 + (cur.score / 100) * 5) * (isHovered ? 1.3 : 1.0);
         ctx.beginPath();
         ctx.arc(cur.x, cur.y, curR, 0, Math.PI * 2);
-        ctx.fillStyle = color;
+        
+        if (isHovered) {
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = color;
+        }
+        
+        ctx.fillStyle = hasActiveHover && !isHovered ? color + "40" : color;
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        
+        if (isHovered) {
+            ctx.restore();
+        }
+        
+        ctx.strokeStyle = hasActiveHover && !isHovered ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.6)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
         
-        // Label
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.font = 'bold 10px Inter, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(sectorName, cur.x + curR + 4, cur.y + 4);
+        // Draw label with a pill container
+        // If there's an active hover, only render label for the hovered sector
+        if (!hasActiveHover || isHovered) {
+            ctx.save();
+            ctx.font = isHovered ? 'bold 11px Inter, sans-serif' : '9px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            
+            const textWidth = ctx.measureText(sectorName).width;
+            const bgW = textWidth + 8;
+            const bgH = isHovered ? 16 : 12;
+            const bgX = cur.x + curR + 3;
+            const bgY = cur.y - (bgH / 2);
+            
+            ctx.fillStyle = isHovered ? 'rgba(15, 23, 42, 0.85)' : 'rgba(15, 23, 42, 0.55)';
+            ctx.strokeStyle = isHovered ? color : 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = isHovered ? 1.0 : 0.5;
+            
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(bgX, bgY, bgW, bgH, 3);
+            } else {
+                ctx.rect(bgX, bgY, bgW, bgH);
+            }
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.fillStyle = isHovered ? '#ffffff' : 'rgba(255, 255, 255, 0.8)';
+            ctx.fillText(sectorName, bgX + 4, cur.y + (isHovered ? 4 : 3));
+            ctx.restore();
+        }
     });
+    
+    // --- Draw Floating Tooltip ---
+    if (rrgHoveredSector && rrgMouseX !== null && rrgMouseY !== null) {
+        const frame = frames[frameIdx];
+        const entry = frame?.sectors.find(s => s.sector === rrgHoveredSector);
+        if (entry) {
+            ctx.save();
+            const sectorColor = RRG_SECTOR_COLORS[rrgHoveredSector] || RRG_DEFAULT_COLOR;
+            const text1 = `${rrgHoveredSector}`;
+            const text2 = `Relative Strength (X): ${entry.jdk_rs.toFixed(2)}`;
+            const text3 = `Momentum (Y): ${entry.jdk_rs_momentum.toFixed(2)}`;
+            const text4 = `Score: ${entry.score} | ${entry.quadrant}`;
+            
+            ctx.font = '11px Inter, sans-serif';
+            const w1 = ctx.measureText(text1).width;
+            const w2 = ctx.measureText(text2).width;
+            const w3 = ctx.measureText(text3).width;
+            const w4 = ctx.measureText(text4).width;
+            const tooltipW = Math.max(w1, w2, w3, w4) + 16;
+            const tooltipH = 68;
+            
+            let tx = rrgMouseX + 12;
+            let ty = rrgMouseY + 12;
+            if (tx + tooltipW > W) tx = rrgMouseX - tooltipW - 12;
+            if (ty + tooltipH > H) ty = rrgMouseY - tooltipH - 12;
+            
+            // Tooltip drop shadow
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            
+            // Draw background
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+            ctx.strokeStyle = sectorColor;
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(tx, ty, tooltipW, tooltipH, 6) : ctx.rect(tx, ty, tooltipW, tooltipH);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0; // reset shadow
+            
+            // Draw details text
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.fillText(text1, tx + 8, ty + 16);
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.fillText(text2, tx + 8, ty + 30);
+            ctx.fillText(text3, tx + 8, ty + 42);
+            
+            let quadColor = '#94a3b8';
+            if (entry.quadrant === 'Leading') quadColor = '#10b981';
+            else if (entry.quadrant === 'Weakening') quadColor = '#ef4444';
+            else if (entry.quadrant === 'Lagging') quadColor = '#6366f1';
+            else if (entry.quadrant === 'Improving') quadColor = '#f59e0b';
+            
+            ctx.fillStyle = quadColor;
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.fillText(text4, tx + 8, ty + 56);
+            
+            ctx.restore();
+        }
+    }
     
     // --- Week label update ---
     const weekLabel = document.getElementById('rrg-week-label');
@@ -5127,6 +5272,9 @@ async function loadRRGHistory(weeks = 12) {
             if (weekLabel) weekLabel.textContent = "Building history...";
             return;
         }
+        
+        // Calculate dynamic limits based on the loaded frames
+        updateRRGScaleLimits(rrgHistoryFrames);
         
         rrgCurrentFrame  = Math.max(0, rrgHistoryFrames.length - 1);
         
@@ -5218,7 +5366,7 @@ document.getElementById('rrg-canvas')?.addEventListener('click', e => {
     const pad = 48;
     
     const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
-    const RS_MIN = 88, RS_MAX = 112, MO_MIN = -6, MO_MAX = 6;
+    const RS_MIN = rrgScale.rsMin, RS_MAX = rrgScale.rsMax, MO_MIN = rrgScale.moMin, MO_MAX = rrgScale.moMax;
     const toX = rs  => pad + ((clamp(rs, RS_MIN, RS_MAX) - RS_MIN)  / (RS_MAX - RS_MIN))  * (W - pad * 2);
     const toY = mom => (H - pad) - ((clamp(mom, MO_MIN, MO_MAX) - MO_MIN) / (MO_MAX - MO_MIN)) * (H - pad * 2);
     
@@ -5247,6 +5395,59 @@ document.getElementById('rrg-canvas')?.addEventListener('click', e => {
         }
     }
 });
+
+document.getElementById('rrg-canvas')?.addEventListener('mousemove', e => {
+    if (rrgHistoryFrames.length === 0) return;
+    const canvas  = e.currentTarget;
+    const rect    = canvas.getBoundingClientRect();
+    const mouseX  = e.clientX - rect.left;
+    const mouseY  = e.clientY - rect.top;
+    const frame   = rrgHistoryFrames[rrgCurrentFrame];
+    if (!frame) return;
+    
+    const W = rect.width;
+    const H = rect.height;
+    const pad = 48;
+    
+    const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
+    const RS_MIN = rrgScale.rsMin, RS_MAX = rrgScale.rsMax, MO_MIN = rrgScale.moMin, MO_MAX = rrgScale.moMax;
+    const toX = rs  => pad + ((clamp(rs, RS_MIN, RS_MAX) - RS_MIN)  / (RS_MAX - RS_MIN))  * (W - pad * 2);
+    const toY = mom => (H - pad) - ((clamp(mom, MO_MIN, MO_MAX) - MO_MIN) / (MO_MAX - MO_MIN)) * (H - pad * 2);
+    
+    let hovered = null;
+    frame.sectors.forEach(s => {
+        const x = toX(s.jdk_rs);
+        const y = toY(s.jdk_rs_momentum);
+        const dx = mouseX - x;
+        const dy = mouseY - y;
+        const hitR = 6 + (s.score / 100) * 5 + 8; // generous hit area
+        if (Math.sqrt(dx * dx + dy * dy) <= hitR) {
+            hovered = s.sector;
+        }
+    });
+    
+    const changed = (rrgHoveredSector !== hovered || rrgMouseX !== mouseX || rrgMouseY !== mouseY);
+    rrgHoveredSector = hovered;
+    rrgMouseX = mouseX;
+    rrgMouseY = mouseY;
+    
+    canvas.style.cursor = hovered ? 'pointer' : 'default';
+    
+    if (changed) {
+        renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+    }
+});
+
+document.getElementById('rrg-canvas')?.addEventListener('mouseleave', e => {
+    if (rrgHoveredSector !== null) {
+        rrgHoveredSector = null;
+        rrgMouseX = null;
+        rrgMouseY = null;
+        e.currentTarget.style.cursor = 'default';
+        renderRRGTimeline(rrgHistoryFrames, rrgCurrentFrame);
+    }
+});
+
 
 // --- Sector Heatmap ---
 function renderSectorHeatmap() {
