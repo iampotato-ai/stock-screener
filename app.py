@@ -1511,10 +1511,152 @@ def get_kronos_backtest():
                 "comparison_points": comparison_points
             })
             
+    # If no stored forecasts yielded backtest runs, run an on-the-fly historical backtest
+    if len(backtest_runs) == 0 and len(history) >= 20:
+        try:
+            import pandas as pd
+            import numpy as np
+            from datetime import datetime
+            
+            # Context period: up to 60 daily bars prior to the last 10 days
+            target_history = history[-10:]
+            context_history = history[:-10][-60:]
+            
+            df_input = pd.DataFrame([{
+                "open": float(d["open"]),
+                "high": float(d["high"]),
+                "low": float(d["low"]),
+                "close": float(d["close"]),
+                "volume": float(d["volume"])
+            } for d in context_history])
+            df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
+            
+            x_timestamps = pd.to_datetime([d["date"] for d in context_history])
+            y_timestamps = pd.Series(pd.to_datetime([d["date"] for d in target_history]))
+            
+            # Adaptive temperature using ATR% over context
+            atr_pct = 5.0
+            if len(context_history) >= 15:
+                tr_list = []
+                for i in range(len(context_history) - 14, len(context_history)):
+                    h_val = float(context_history[i]["high"])
+                    l_val = float(context_history[i]["low"])
+                    p_close = float(context_history[i-1]["close"])
+                    tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
+                    tr_list.append(tr)
+                atr = sum(tr_list) / 14
+                curr_close_val = float(context_history[-1]["close"])
+                if curr_close_val > 0:
+                    atr_pct = (atr / curr_close_val) * 100
+            
+            T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
+            
+            predictor = get_kronos_predictor()
+            if predictor:
+                raw_samples = predictor.predict(
+                    df=df_input,
+                    x_timestamp=pd.Series(x_timestamps),
+                    y_timestamp=y_timestamps,
+                    pred_len=10,
+                    T=T_val,
+                    top_p=0.8,
+                    sample_count=20,
+                    verbose=False,
+                    return_samples=True
+                )
+                
+                mean_pred = raw_samples.mean(axis=0)
+                p10 = np.percentile(raw_samples, 10, axis=0)
+                p90 = np.percentile(raw_samples, 90, axis=0)
+                
+                dates = [d["date"] for d in target_history]
+                forecast_list = []
+                for i in range(10):
+                    forecast_list.append({
+                        "date": dates[i],
+                        "open": round(float(mean_pred[i, 0]), 2),
+                        "high": round(float(mean_pred[i, 1]), 2),
+                        "low": round(float(mean_pred[i, 2]), 2),
+                        "close": round(float(mean_pred[i, 3]), 2),
+                        "volume": int(mean_pred[i, 4]),
+                        "p10_close": round(float(p10[i, 3]), 2),
+                        "p90_close": round(float(p90[i, 3]), 2)
+                    })
+                
+                last_close = float(context_history[-1]["close"])
+                
+                comparison_points = []
+                abs_errors = []
+                pct_errors = []
+                direction_correct = 0
+                band_hits = 0
+                
+                for idx, item in enumerate(forecast_list):
+                    f_date = item["date"]
+                    f_close = float(item["close"])
+                    p10_val = float(item["p10_close"])
+                    p90_val = float(item["p90_close"])
+                    
+                    act_day = target_history[idx]
+                    act_close = float(act_day["close"])
+                    
+                    err = abs(f_close - act_close)
+                    abs_errors.append(err)
+                    pct_errors.append(err / (act_close + 1e-5))
+                    
+                    if p10_val <= act_close <= p90_val:
+                        band_hits += 1
+                        
+                    if idx == 0:
+                        f_dir = f_close > last_close
+                        prev_act_close = float(context_history[-1]["close"])
+                        a_dir = act_close > prev_act_close
+                    else:
+                        prev_f_close = float(forecast_list[idx-1]["close"])
+                        f_dir = f_close > prev_f_close
+                        prev_act_close = float(target_history[idx-1]["close"])
+                        a_dir = act_close > prev_act_close
+                        
+                    if f_dir == a_dir:
+                        direction_correct += 1
+                        
+                    comparison_points.append({
+                        "date": f_date,
+                        "forecast_close": f_close,
+                        "actual_close": act_close,
+                        "p10_close": p10_val,
+                        "p90_close": p90_val,
+                        "in_band": p10_val <= act_close <= p90_val
+                    })
+                    
+                total_days = len(comparison_points)
+                if total_days > 0:
+                    mae = sum(abs_errors) / total_days
+                    mape = (sum(pct_errors) / total_days) * 100
+                    dir_acc = (direction_correct / total_days) * 100
+                    hit_rate = (band_hits / total_days) * 100
+                    
+                    otf_run = {
+                        "id": "otf_backtest",
+                        "generated_at": datetime.now().isoformat(),
+                        "pred_len": 10,
+                        "last_close": last_close,
+                        "mae": round(mae, 2),
+                        "mape": round(mape, 2),
+                        "direction_accuracy": round(dir_acc, 1),
+                        "band_hit_rate": round(hit_rate, 1),
+                        "total_comparisons": total_days,
+                        "comparison_points": comparison_points
+                    }
+                    backtest_runs.append(otf_run)
+        except Exception as e:
+            print(f"Error generating on-the-fly backtest fallback: {e}")
+            
     return jsonify(
         ticker=ticker,
         backtest_runs=backtest_runs[:5]
     )
+
 
 SECTOR_INDEX_MAP = {
     "Health Technology": "NIFTY_HLTHCARE.NS",
