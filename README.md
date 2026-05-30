@@ -7,11 +7,12 @@ A premium, high-performance Swing & Intraday Momentum stock screener for the Nat
 ## ⚡ Key Dashboard Highlights
 
 1. **Composite Market Regime Speedometer**: A live circular dial displaying market sentiment (0–100) computed from multi-dimensional breadth signals.
-2. **Interactive Watchlist Center**: Drag-and-drop stock organizing, renameable sections, ex-dates/announcements feed, bulk deal tracking, and **AI-powered batch sorting**.
-3. **TradingView Lightweight Charts**: Interactive candlestick charting inside the trade drawer and full-screen overlay modals, featuring overlay SMAs, volume bars, and pattern detection.
-4. **Kronos Candlestick AI Predictor**: Direct integration of the `Kronos-small` foundation model for generating multi-day price path predictions, trend bias, and Monte Carlo confidence intervals.
-5. **Advanced Risk-Calculator Drawer**: Automatically calculates target exits, shares, stop-loss lines, and position sizing guidelines tailored to current market conditions.
-6. **Trade Log Journal**: Direct log-to-journal database saving with live performance stats tracking (PnL, Win Rate, Average R) backed by a robust SQLite persistence layer.
+2. **Sector Rotation Timeline (RRG)**: An interactive, animated 12-week sector rotation timeline on a custom canvas showing momentum paths (Leading, Weakening, Lagging, Improving).
+3. **Interactive Watchlist Center**: Drag-and-drop stock organizing, renameable sections, ex-dates/announcements feed, bulk deal tracking, and **AI-powered batch sorting**.
+4. **TradingView Lightweight Charts**: Interactive candlestick charting inside the trade drawer and full-screen overlay modals, featuring overlay SMAs, volume bars, and pattern detection.
+5. **Kronos Candlestick AI Predictor**: Direct integration of the `Kronos-small` foundation model for generating multi-day price path predictions, trend bias, and Monte Carlo confidence intervals.
+6. **Advanced Risk-Calculator Drawer**: Automatically calculates target exits, shares, stop-loss lines, and position sizing guidelines tailored to current market conditions.
+7. **Trade Log Journal**: Direct log-to-journal database saving with live performance stats tracking (PnL, Win Rate, Average R) backed by a robust SQLite persistence layer.
 
 ---
 
@@ -40,7 +41,9 @@ Filter, sort, and search the NSE universe through dedicated analytical dimension
 * **Valuation Tab**: View fundamental value metrics like P/E, P/B, Debt/Equity, EV/EBITDA, and Quick Ratio.
 * **Quality Tab**: Evaluate capital efficiency via ROE, ROA, Gross/Operating/Net Margins, and basic financial health.
 * **Growth Tab**: Track short-term and long-term momentum through Quarterly and Yearly Revenue and Earnings Growth rates. Includes an active warning banner clarifying when simulated metrics are active.
-* **RRG (Relative Rotation Graph Proxy)**: A scatter plot mapping short-term (1W) vs. medium-term (1M) relative performance against the market median. Includes a dynamic **Sector Heatmap** grid.
+* **RRG (Relative Rotation Graph Proxy) & Animated Timeline**: A dual-view workspace featuring:
+  * **Stocks View**: A static scatter plot mapping individual stocks' short-term vs. medium-term relative performance.
+  * **Sectors View (Timeline)**: An animated 12-week rotation timeline on a high-DPI custom canvas displaying faded historical trails, playback controls (Play, Pause, Reset, Scrubber, Weeks Select), and click-to-filter sector hit testing that connects directly back to the screener.
 * **Intraday Pro Tab**: Track real-time day trading configurations including *Gap and Go*, *VWAP Reclaim*, *High RVOL Movers*, and *Confluence setups*.
 * **Journal Tab**: Logs and reviews executed trades, complete with metrics showing total trades, win rates, average risk-to-reward (R) achieved, and total PnL.
 
