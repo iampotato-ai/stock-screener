@@ -348,3 +348,168 @@ _rrg_snapped_today = None
 | 7 | No dot labels in Stocks RRG view | 🔵 Low | Low |
 | 8 | Simulated growth data has no UI flag | 🔵 Low | Low |
 | 9 | `_rrg_snapped_today` resets on restart | 🔵 Low | Trivial |
+
+---
+
+---
+
+# Post-Fix Review — FEAT-004: Sector Rotation Timeline (RRG)
+
+**Commit:** [`a94a7a2`](https://github.com/iampotato-ai/stock-screener/commit/a94a7a259246557c5ee005a2f7a859c9a6001ef1)  
+**Files Changed:** `app.py` (+103 / -50), `static/js/app.js` (+35 / -5)  
+**Reviewed on:** 2026-05-30
+
+> All 9 original suggestions have been addressed. The implementation is solid overall. The following issues were found during review of the fix commit and should be resolved before merging.
+
+---
+
+## ✅ What's Well Done
+
+- **Real-data backfill** — `rrg_backfill()` correctly fetches actual `^NSEI` benchmark history and maps it to weekly boundary dates. The JDK-RS formula `((100 + sector_R) / (100 + bench_R) * 100)` is mathematically sound and handles negative returns safely.
+- **Robust momentum** — `snapshot_rrg_week()` now queries `WHERE week != ?` to get the previous week's `jdk_rs` before computing `rs_momentum = jdk_rs - prev_rs`. Correct approach.
+- **Response caching** — `_rrg_response_cache` with 10-minute TTL is correctly implemented. Cache key `f"{view}:{tickers_str}"` is a good choice.
+- **`SECTOR_INDEX_MAP`** — Well-curated. The indices used (`NIFTY_FIN_SERVICE.NS`, `^CNXIT`, `^CNXMETAL`, etc.) are appropriate proxies for NSE sector indices.
+
+---
+
+## ⚠️ Issues & Suggestions
+
+### 1. 🔴 Backfill Deletes All History Without a Transaction
+
+**File:** `app.py` → `rrg_backfill()`
+
+```python
+c.execute('DELETE FROM rrg_history')
+```
+
+This is risky in production — if `scan_stocks()` fails mid-way, all historical RRG data is lost with no rollback. Wrap the entire operation in an explicit transaction:
+
+```python
+conn.execute('BEGIN')
+try:
+    c.execute('DELETE FROM rrg_history')
+    # ... all inserts ...
+    conn.commit()
+except:
+    conn.rollback()
+    raise
+```
+
+---
+
+### 2. 🔴 `ThreadPoolExecutor` in Backfill Has No Error Boundary
+
+**File:** `app.py` → `rrg_backfill()`
+
+```python
+for fut in futures:
+    sector_histories[futures[fut]] = fut.result()
+```
+
+`fut.result()` re-raises exceptions from the thread. If any sector ticker fails (e.g. `^CNXMETAL` returns empty), it aborts the entire backfill silently. Wrap with a per-future try/except:
+
+```python
+for fut in futures:
+    ticker = futures[fut]
+    try:
+        sector_histories[ticker] = fut.result()
+    except Exception as e:
+        print(f"[RRG Backfill] Failed for {ticker}: {e}")
+        sector_histories[ticker] = []
+```
+
+---
+
+### 3. 🟡 `manual_rrg_snapshot` Calls Heavy `scan_stocks()` — No Cooldown Guard
+
+**File:** `app.py` → `manual_rrg_snapshot()`
+
+```python
+_rrg_snapped_today = None  # resets guard
+res = scan_stocks()        # triggers full TradingView scan
+```
+
+If triggered accidentally (e.g. double-click in the UI), two expensive full scans can fire in parallel. Add a short per-endpoint cooldown (e.g. 60 seconds) or a lock:
+
+```python
+_last_snapshot_time = 0
+_SNAPSHOT_COOLDOWN = 60  # seconds
+
+@app.route('/api/rrg/snapshot', methods=['POST'])
+def manual_rrg_snapshot():
+    global _last_snapshot_time
+    if time.time() - _last_snapshot_time < _SNAPSHOT_COOLDOWN:
+        return jsonify(error="Snapshot cooldown active. Try again in a moment."), 429
+    _last_snapshot_time = time.time()
+    # ...
+```
+
+---
+
+### 4. 🟡 `weeks_dates` Only Keeps Last Boundary Per Week — Needs a Comment
+
+**File:** `app.py` → `rrg_backfill()`
+
+```python
+for idx, entry in enumerate(bench_history):
+    weeks_dates[week_str] = (entry["date"], idx)  # overwrites on every iteration
+```
+
+Since the loop is chronological, this correctly retains the **last trading day of each week (Friday)**. This is the right behaviour but is non-obvious. Add a comment:
+
+```python
+# Keeps the last trading day of each ISO week (i.e. Friday close)
+weeks_dates[week_str] = (entry["date"], idx)
+```
+
+---
+
+### 5. 🟡 No Guard for Insufficient Benchmark History in Backfill
+
+**File:** `app.py` → `rrg_backfill()`
+
+```python
+target_weeks = sorted_weeks[-14:]  # last 14 weeks → 13 momentum intervals
+```
+
+If `bench_history` has fewer than 2 distinct weeks (e.g. first run on a fresh DB), `target_weeks` produces fewer than 2 items and the momentum loop is silently skipped — no error is returned. Add a guard:
+
+```python
+if len(sorted_weeks) < 2:
+    conn.close()
+    return jsonify(error="Insufficient benchmark history for backfill (need ≥ 2 weeks)"), 400
+```
+
+---
+
+### 6. 🔵 `app.js` Debounce Delay Not Verified
+
+**File:** `static/js/app.js` → RRG slider repaint
+
+The commit message mentions "debounced repaints" (+35 lines in `app.js`). Ensure the debounce/RAF delay is ≥ 150ms or uses `requestAnimationFrame` correctly — anything shorter on a 20-sector canvas will still feel janky on slower machines.
+
+---
+
+### 7. 🔵 `growth_data_source = "simulated"` Has No Frontend Badge
+
+**File:** `app.py` → `compute_extra_fields()`
+
+```python
+stock["growth_data_source"] = "simulated"
+```
+
+This flag is already emitted in the API response, which is good for transparency. However, if the frontend doesn't yet surface a `simulated` badge or `~` prefix next to CAGR/WC fields in the Fundamental tab, users may interpret these as live data.
+
+---
+
+## Summary Table
+
+| # | Area | Severity | Action |
+|---|------|----------|--------|
+| 1 | Backfill deletes history without transaction safety | 🔴 High | Wrap in `BEGIN/ROLLBACK` |
+| 2 | ThreadPool exceptions abort entire backfill | 🔴 High | Per-future try/except |
+| 3 | Snapshot endpoint has no cooldown guard | 🟡 Medium | Add 60s cooldown / lock |
+| 4 | `weeks_dates` overwrite logic undocumented | 🟡 Medium | Add inline comment |
+| 5 | No guard for < 2 weeks of benchmark history | 🟡 Medium | Return 400 early |
+| 6 | Debounce delay in `app.js` unverified | 🔵 Low | Confirm ≥ 150ms or RAF |
+| 7 | Simulated growth fields have no UI badge | 🔵 Low | Surface `~` prefix or icon |
