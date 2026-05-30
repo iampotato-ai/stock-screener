@@ -2405,7 +2405,8 @@ function renderTable() {
                 html += `<td data-column="cfo_ebitda" class="text-right ${cfoEbClass}">${renderFundVal(stock.cfo_ebitda, 1, '%')}</td>`;
             } else if (col.id === 'wc_intensity') {
                 const wcClass = stock.wc_intensity != null ? (stock.wc_intensity <= 15 ? 'val-up' : stock.wc_intensity > 30 ? 'val-down' : '') : '';
-                html += `<td data-column="wc_intensity" class="text-right ${wcClass}">${renderFundVal(stock.wc_intensity, 1, '%')}</td>`;
+                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
+                html += `<td data-column="wc_intensity" class="text-right ${wcClass}">${simBadge}${renderFundVal(stock.wc_intensity, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_qoq') {
                 const qoqClass = stock.revenue_growth_qoq != null ? (stock.revenue_growth_qoq >= 4 ? 'val-up' : stock.revenue_growth_qoq < 1.5 ? 'val-down' : '') : '';
                 html += `<td data-column="revenue_growth_qoq" class="text-right ${qoqClass}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_qoq, 1, '%')}</td>`;
@@ -2414,13 +2415,16 @@ function renderTable() {
                 html += `<td data-column="revenue_growth_yoy" class="text-right ${yoyClass}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_yoy, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_3y') {
                 const y3Class = stock.revenue_growth_3y != null ? (stock.revenue_growth_3y >= 15 ? 'val-up' : stock.revenue_growth_3y < 8 ? 'val-down' : '') : '';
-                html += `<td data-column="revenue_growth_3y" class="text-right ${y3Class}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_3y, 1, '%')}</td>`;
+                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
+                html += `<td data-column="revenue_growth_3y" class="text-right ${y3Class}" style="font-weight:600;">${simBadge}${renderFundVal(stock.revenue_growth_3y, 1, '%')}</td>`;
             } else if (col.id === 'ebitda_cagr') {
                 const ecClass = stock.ebitda_cagr != null ? (stock.ebitda_cagr >= 15 ? 'val-up' : stock.ebitda_cagr < 8 ? 'val-down' : '') : '';
-                html += `<td data-column="ebitda_cagr" class="text-right ${ecClass}">${renderFundVal(stock.ebitda_cagr, 1, '%')}</td>`;
+                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
+                html += `<td data-column="ebitda_cagr" class="text-right ${ecClass}">${simBadge}${renderFundVal(stock.ebitda_cagr, 1, '%')}</td>`;
             } else if (col.id === 'eps_cagr') {
                 const epClass = stock.eps_cagr != null ? (stock.eps_cagr >= 15 ? 'val-up' : stock.eps_cagr < 8 ? 'val-down' : '') : '';
-                html += `<td data-column="eps_cagr" class="text-right ${epClass}" style="font-weight:600;">${renderFundVal(stock.eps_cagr, 1, '%')}</td>`;
+                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
+                html += `<td data-column="eps_cagr" class="text-right ${epClass}" style="font-weight:600;">${simBadge}${renderFundVal(stock.eps_cagr, 1, '%')}</td>`;
             } else if (col.id === 'bv_growth') {
                 const bvClass = stock.bv_growth != null ? (stock.bv_growth >= 12 ? 'val-up' : stock.bv_growth < 6 ? 'val-down' : '') : '';
                 html += `<td data-column="bv_growth" class="text-right ${bvClass}">${renderFundVal(stock.bv_growth, 1, '%')}</td>`;
@@ -4969,6 +4973,32 @@ function renderStaticStocksRRG() {
         }
     };
     
+    const labelsPlugin = {
+        id: 'labels',
+        afterDatasetsDraw: (chart) => {
+            const { ctx, data } = chart;
+            const dataset = data.datasets[0];
+            if (!dataset || dataset.data.length > 25) return;
+            
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+            ctx.font = 'bold 9px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            
+            const meta = chart.getDatasetMeta(0);
+            dataset.data.forEach((point, index) => {
+                const element = meta.data[index];
+                if (element && !element.hidden) {
+                    const x = element.x;
+                    const y = element.y;
+                    ctx.fillText(point.label.substring(0, 5), x + 6, y - 4);
+                }
+            });
+            ctx.restore();
+        }
+    };
+    
     rrgChartInstance = new Chart(ctx, {
         type: 'scatter',
         data: { datasets: datasets },
@@ -5004,7 +5034,7 @@ function renderStaticStocksRRG() {
                 }
             }
         },
-        plugins: [quadrantPlugin]
+        plugins: [quadrantPlugin, labelsPlugin]
     });
 }
 

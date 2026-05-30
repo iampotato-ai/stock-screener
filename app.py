@@ -1822,6 +1822,8 @@ def calculate_backend_sector_scores(universe_stocks):
         
     return sector_scores, uni_median_w, uni_median_m, uni_median_3m
 
+# NOTE: _rrg_snapped_today is in-memory only. App restarts will trigger
+# a re-snap, but the DB INSERT uses ON CONFLICT DO UPDATE so data is safe.
 _rrg_snapped_today = None
 
 def snapshot_rrg_week(sector_scores_dict, universe_stocks):
@@ -1848,10 +1850,10 @@ def snapshot_rrg_week(sector_scores_dict, universe_stocks):
         # Use stable relative strength formula to support negative returns safely
         jdk_rs = ((100.0 + sector_4w) / (100.0 + uni_median) * 100.0) if (100.0 + uni_median) != 0 else 100.0
         
-        # Fetch last week's jdk_rs to compute momentum
+        # Fetch last week's jdk_rs (excluding this week) to compute robust momentum
         cursor.execute(
-            'SELECT jdk_rs FROM rrg_history WHERE sector = ? ORDER BY snapped_at DESC LIMIT 1',
-            (sector,)
+            'SELECT jdk_rs FROM rrg_history WHERE sector = ? AND week != ? ORDER BY snapped_at DESC LIMIT 1',
+            (sector, iso_week)
         )
         row = cursor.fetchone()
         prev_rs = row[0] if row else jdk_rs
@@ -1883,6 +1885,7 @@ def snapshot_rrg_week(sector_scores_dict, universe_stocks):
     conn.close()
     _rrg_snapped_today = today
 
+
 @app.route('/api/rrg/history', methods=['GET'])
 def get_rrg_history_timeline():
     from flask import request
@@ -1894,13 +1897,15 @@ def get_rrg_history_timeline():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
+    cutoff = (datetime.utcnow() - timedelta(weeks=weeks)).isoformat()
     query = '''
         SELECT week, sector, jdk_rs, jdk_rs_momentum, score, quadrant
         FROM rrg_history
-        WHERE snapped_at >= datetime('now', ? || ' days')
+        WHERE snapped_at >= ?
         ORDER BY week ASC, sector ASC
     '''
-    cursor.execute(query, (str(-weeks * 7),))
+    cursor.execute(query, (cutoff,))
+
     rows = cursor.fetchall()
     conn.close()
     
@@ -1956,57 +1961,84 @@ def rrg_backfill():
         if not universe:
             return jsonify(error="No universe stocks found to backfill"), 500
             
+        # We need to map sectors to their scores
+        sector_scores, _, _, _ = calculate_backend_sector_scores(universe)
+        
+        # 1. Fetch benchmark ^NSEI history for last 6 months
+        bench_ticker = "^NSEI"
+        bench_history = fetch_historical_prices(bench_ticker, "6mo")
+        if not bench_history or len(bench_history) < 30:
+            return jsonify(error="Unable to fetch benchmark Nifty 50 history"), 500
+            
+        bench_dates = [d["date"] for d in bench_history]
+        bench_closes = [d["close"] for d in bench_history]
+        
+        # Identify weekly boundary trading days from benchmark
+        weeks_dates = {}
+        for idx, entry in enumerate(bench_history):
+            dt = datetime.strptime(entry["date"], "%Y-%m-%d")
+            week_str = dt.strftime("%Y-W%W")
+            weeks_dates[week_str] = (entry["date"], idx)
+            
+        sorted_weeks = sorted(weeks_dates.keys())
+        target_weeks = sorted_weeks[-14:] # last 14 weeks to get 13 intervals
+        
+        # 2. Fetch sector index histories in parallel
+        unique_tickers = list(set(SECTOR_INDEX_MAP.values()))
+        sector_histories = {}
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(fetch_historical_prices, ticker, "6mo"): ticker for ticker in unique_tickers}
+            for fut in futures:
+                ticker = futures[fut]
+                sector_histories[ticker] = fut.result()
+                
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
         
         # Clear existing history first to ensure clean backfill
         c.execute('DELETE FROM rrg_history')
         
-        # Calculate scores
-        sector_scores, uni_median_w, uni_median_m, uni_median_3m = calculate_backend_sector_scores(universe)
-        
-        today_date = datetime.now().date()
-        
         for sector, data in sector_scores.items():
             if data["count"] < 2:
                 continue
                 
-            p_w = data["avg1W"]
-            p_m = data["avg1M"]
-            p_3m = data["avg3M"]
-            
-            # Compute endpoints
-            jdk_rs_0 = (100.0 + p_m) / (100.0 + uni_median_m) * 100.0 if (100.0 + uni_median_m) != 0 else 100.0
-            jdk_rs_m4 = (100.0 + (p_3m - p_m)) / (100.0 + (uni_median_3m - uni_median_m)) * 100.0 if (100.0 + (uni_median_3m - uni_median_m)) != 0 else 100.0
-            jdk_rs_m12 = 100.0
-            
-            # Insert weekly historical data from week -12 to week 0
-            for offset in range(-12, 1):
-                snap_date = today_date + timedelta(weeks=offset)
-                iso_week = snap_date.strftime('%Y-W%W')
-                snap_time = (datetime.utcnow() + timedelta(weeks=offset)).isoformat()
+            ticker = SECTOR_INDEX_MAP.get(sector)
+            if not ticker:
+                continue
                 
-                # Interpolate jdk_rs
-                if offset <= -4:
-                    ratio = (offset + 12) / 8.0
-                    val = 100.0 + ratio * (jdk_rs_m4 - 100.0)
-                else:
-                    ratio = (offset + 4) / 4.0
-                    val = jdk_rs_m4 + ratio * (jdk_rs_0 - jdk_rs_m4)
+            history = sector_histories.get(ticker, [])
+            if not history:
+                continue
+                
+            history_map = {d["date"]: d["close"] for d in history}
+            
+            jdk_rs_list = []
+            for w_str in target_weeks:
+                if w_str not in weeks_dates:
+                    continue
+                date, idx = weeks_dates[w_str]
+                if idx < 20:
+                    continue
+                
+                # Prices at current week-end
+                close_now = history_map.get(date)
+                bench_now = bench_closes[idx]
+                
+                # Prices 20 trading days prior
+                prior_date = bench_dates[idx - 20]
+                close_prior = history_map.get(prior_date)
+                bench_prior = bench_closes[idx - 20]
+                
+                if close_now is not None and close_prior is not None:
+                    sector_R = (close_now - close_prior) / close_prior * 100.0
+                    bench_R = (bench_now - bench_prior) / bench_prior * 100.0
+                    jdk_rs = ((100.0 + sector_R) / (100.0 + bench_R) * 100.0) if (100.0 + bench_R) != 0 else 100.0
+                    jdk_rs_list.append((w_str, jdk_rs, date))
                     
-                # Add a sine fluctuation for a natural RRG trail effect
-                val += math.sin(offset * math.pi / 2.0) * 0.25
-                
-                # Calculate momentum relative to previous week
-                prev_offset = offset - 1
-                if prev_offset <= -4:
-                    prev_ratio = (prev_offset + 12) / 8.0
-                    prev_val = 100.0 + prev_ratio * (jdk_rs_m4 - 100.0)
-                else:
-                    prev_ratio = (prev_offset + 4) / 4.0
-                    prev_val = jdk_rs_m4 + prev_ratio * (jdk_rs_0 - jdk_rs_m4)
-                prev_val += math.sin(prev_offset * math.pi / 2.0) * 0.25
-                
+            # Calculate weekly momentum and upsert to DB
+            for i in range(1, len(jdk_rs_list)):
+                w_str, val, date = jdk_rs_list[i]
+                prev_w_str, prev_val, prev_date = jdk_rs_list[i - 1]
                 rs_momentum = val - prev_val
                 
                 # Quadrant mapping
@@ -2019,14 +2051,17 @@ def rrg_backfill():
                 else:
                     quadrant = 'Improving'
                     
+                # We simulate snapped_at time as close of that week to keep ordering
+                snap_time = (datetime.strptime(date, "%Y-%m-%d") + timedelta(hours=16)).isoformat()
+                
                 c.execute('''
                     INSERT OR REPLACE INTO rrg_history (week, sector, jdk_rs, jdk_rs_momentum, score, quadrant, snapped_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (iso_week, sector, val, rs_momentum, data["score"], quadrant, snap_time))
+                ''', (w_str, sector, val, rs_momentum, data["score"], quadrant, snap_time))
                 
         conn.commit()
         conn.close()
-        return jsonify(success=True, message="RRG history backfilled successfully with 12 weeks of data")
+        return jsonify(success=True, message="RRG history backfilled successfully with real weekly data")
     except Exception as e:
         return jsonify(error=str(e)), 500
 
@@ -2052,11 +2087,24 @@ SECTOR_INDEX_MAP = {
     "Industrial Services": "^CNXINFRA"
 }
 
+_rrg_response_cache = {}
+_RRG_RESPONSE_TTL = 10 * 60  # 10 minutes
+
 @app.route('/api/rrg-history', methods=['GET'])
 def get_rrg_history():
+    import time
     from flask import request
     view = request.args.get('view', 'sectors').strip().lower()
+    tickers_str = request.args.get('tickers', '').strip()
     
+    cache_key = f"{view}:{tickers_str}"
+    now = time.time()
+    
+    if cache_key in _rrg_response_cache:
+        t_cached, cached_data = _rrg_response_cache[cache_key]
+        if now - t_cached < _RRG_RESPONSE_TTL:
+            return jsonify(cached_data)
+            
     # Define benchmark index (Nifty 50)
     bench_ticker = "^NSEI"
     bench_history = fetch_historical_prices(bench_ticker)
@@ -2150,11 +2198,16 @@ def get_rrg_history():
                 
     dates_timeline = [bench_dates[i] for i in range(len(bench_dates)) if i >= 21][-20:]
     
-    return jsonify(
-        view=view,
-        dates=dates_timeline,
-        data=results
-    )
+    resp_data = {
+        "view": view,
+        "dates": dates_timeline,
+        "data": results
+    }
+    
+    _rrg_response_cache[cache_key] = (time.time(), resp_data)
+    
+    return jsonify(resp_data)
+
 
 @app.route("/")
 def index():
