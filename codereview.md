@@ -513,3 +513,68 @@ This flag is already emitted in the API response, which is good for transparency
 | 5 | No guard for < 2 weeks of benchmark history | 🟡 Medium | Return 400 early |
 | 6 | Debounce delay in `app.js` unverified | 🔵 Low | Confirm ≥ 150ms or RAF |
 | 7 | Simulated growth fields have no UI badge | 🔵 Low | Surface `~` prefix or icon |
+
+---
+
+# Code Review — Pull Request #1: Multi-Model Ensemble Forecasting (Phase 1)
+
+**Scope:** `app.py` (EnsembleCast backend)  
+**Reviewed on:** 2026-05-31
+
+---
+
+## 🔴 High Priority
+
+### 1. Database Connection Leak on Error
+In `/api/ensemble_forecast`, both cache lookup and cache write blocks open database connections (`conn = get_db_connection()`), but call `conn.close()` only at the end of their respective `try` blocks. If any exception is raised, `conn.close()` is bypassed, leaking SQLite connections.
+**Fix:** Wrap DB calls in a `try...finally` block to guarantee `conn.close()` is executed:
+```python
+conn = None
+try:
+    conn = get_db_connection()
+    # db operations...
+finally:
+    if conn:
+        conn.close()
+```
+
+### 2. Insufficient History / Invalid Ticker Returns 500
+If a ticker has insufficient history (e.g., < 60 days or invalid symbol), `_fetch_price_history` correctly throws a `ValueError`. This causes all model runners to fail, resulting in less than 2 active models. The endpoint then returns a `500 Internal Server Error` with `ensemble_failed`. This should degrade to a `400 Bad Request` with an informative error payload.
+**Fix:** Catch `ValueError` or inspect model errors. If any failure is due to `insufficient_history`, return `400 Bad Request`.
+
+---
+
+## 🟡 Medium Priority
+
+### 3. Prophet Predictor Calendar Date Misalignment
+`prophet_predict` generates future dates using `pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=horizon)`. While this skips weekends, it does not account for **NSE market holidays** (e.g., Diwali, Christmas). Kronos uses the holiday-aware `generate_next_trading_days` function. This causes Prophet's close predictions to align with different dates than Kronos.
+**Fix:** Use the same holiday-aware date generator:
+```python
+last_date_str = df['ds'].iloc[-1].strftime("%Y-%m-%d")
+future_dates = generate_next_trading_days(last_date_str, horizon)
+future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates)})
+```
+
+### 4. Logger Spam from cmdstanpy and statsmodels
+Prophet (`cmdstanpy`) prints info chain processing logs to stderr on every prediction, and `statsmodels` prints convergence warnings. This spams the server console during scanning or drawer loads.
+**Fix:** Explicitly set logger level and filter warnings:
+```python
+import logging
+logging.getLogger('cmdstanpy').setLevel(logging.WARNING)
+
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+import warnings
+warnings.simplefilter('ignore', ConvergenceWarning)
+warnings.simplefilter('ignore', UserWarning)
+```
+
+---
+
+## Summary Table
+
+| # | Area | Severity | Action |
+|---|------|----------|--------|
+| 1 | DB connection leak on cache lookup/write failure | 🔴 High | Wrap connections in `finally` blocks |
+| 2 | Insufficient history errors return 500 instead of 400 | 🔴 High | Map `ValueError` of history to 400 Bad Request |
+| 3 | Prophet future dates omit NSE holidays | 🟡 Medium | Align Prophet to `generate_next_trading_days` |
+| 4 | cmdstanpy and statsmodels stderr log spam | 🟡 Medium | Set log level and filter ConvergenceWarnings |

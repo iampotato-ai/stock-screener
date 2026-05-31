@@ -2920,6 +2920,9 @@ let watchlistKronosRankings = {};
 let isKronosBatchSorting = false;
 const KRONOS_PRED_LEN = 5;
 
+// ── Kronos Batch Forecast Config ──
+const KRONOS_BATCH_PRED_LEN = 5;  // Forecast horizon: 3, 5, or 10 sessions
+
 // Toast system for styled notification messages
 function showToast(message, type = 'info') {
     let toastContainer = document.getElementById('toast-container');
@@ -3102,9 +3105,6 @@ function initWatchlist() {
             isKronosBatchSorting = true;
             showWatchlistKronosColumns = true;
             
-            // 2. Clear old rankings cache to prevent stale items persisting
-            watchlistKronosRankings = {};
-            
             if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = '#f59e0b';
             
             const originalSortBtnHtml = btnKronosBatchSort.innerHTML;
@@ -3113,7 +3113,10 @@ function initWatchlist() {
             renderWatchlist();
 
             try {
-                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_PRED_LEN}`);
+                // Reset stale rankings before a fresh batch run
+                watchlistKronosRankings = {};
+
+                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_BATCH_PRED_LEN}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch rankings: ${response.statusText}`);
                 }
@@ -3139,7 +3142,11 @@ function initWatchlist() {
                         }
                     });
 
-                    saveWatchlistSections();
+                    if (typeof saveWatchlistSections === 'function') {
+                        saveWatchlistSections();
+                    } else {
+                        console.error('[Kronos Sort] saveWatchlistSections is not defined — reordered list will not persist. Check script load order.');
+                    }
                     
                     // Show last sorted timestamp suggestion
                     const lastSortedEl = document.getElementById('kronos-last-sorted');
@@ -3152,11 +3159,20 @@ function initWatchlist() {
                 }
             } catch (err) {
                 console.error("Kronos batch sorting error:", err);
-                showToast("Error during Kronos AI sorting: " + err.message, "error");
-                
-                // Reset toggle and column visibility state on error
+                // Reset visual state so user knows the sort failed
                 showWatchlistKronosColumns = false;
-                if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = 'var(--color-text-secondary)';
+                if (btnKronosColumnToggle) {
+                    btnKronosColumnToggle.style.color = 'var(--color-text-secondary)';
+                }
+                // Use inline toast/error badge instead of blocking alert()
+                const errBadge = document.getElementById('kronos-sort-error-badge');
+                if (errBadge) {
+                    errBadge.textContent = '⚠ Sort failed — retry';
+                    errBadge.style.display = 'inline';
+                    setTimeout(() => { errBadge.style.display = 'none'; }, 4000);
+                } else {
+                    alert("Kronos sort failed: " + err.message);  // fallback only
+                }
             } finally {
                 isKronosBatchSorting = false;
                 btnKronosBatchSort.disabled = false;
