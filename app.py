@@ -148,18 +148,18 @@ def init_db():
             generated_at TEXT NOT NULL,
             pred_len    INTEGER NOT NULL,
             forecast_json TEXT NOT NULL,
-            last_close  REAL NOT NULL
+            last_close  REAL NOT NULL,
+            model_type  TEXT NOT NULL DEFAULT 'kronos'
         )
     ''')
+    # Safe migration: add model_type column if upgrading from an older schema
     try:
-        c.execute("ALTER TABLE kronos_forecasts ADD COLUMN model_type TEXT DEFAULT 'kronos'")
-    except Exception:
-        pass  # column already exists
-
-    try:
+        c.execute("ALTER TABLE kronos_forecasts ADD COLUMN model_type TEXT NOT NULL DEFAULT 'kronos'")
+        # Backfill any existing rows that have NULL model_type (from pre-migration rows)
         c.execute("UPDATE kronos_forecasts SET model_type = 'kronos' WHERE model_type IS NULL")
+        print("[DB Migration] Added model_type column to kronos_forecasts")
     except Exception:
-        pass
+        pass  # Column already exists — safe to ignore
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS rrg_history (
