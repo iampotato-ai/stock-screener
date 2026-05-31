@@ -6402,6 +6402,39 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Hook toggle buttons for backtester mode in AI Forecast Workspace
+    document.querySelectorAll('.bt-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.bt-mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const searchInput = document.getElementById('kronos-ticker-input');
+            const symbol = (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
+            
+            loadBacktestingMetrics(symbol);
+        });
+    });
+
+    // Individual models toggle change event listener
+    document.getElementById('showIndividualModels')?.addEventListener('change', () => {
+        const searchInput = document.getElementById('kronos-ticker-input');
+        const symbol = (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
+        
+        // Re-render main chart if in ensemble mode
+        const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+        const isEnsemble = activeBtn && activeBtn.dataset.mode === 'ensemble';
+        if (isEnsemble && window.lastEnsembleData) {
+            renderEnsembleChart(window.lastEnsembleData);
+        }
+
+        // Re-render backtest chart if in ensemble mode
+        const btModeActive = document.querySelector('.bt-mode-btn.active');
+        const isEnsembleBt = btModeActive && btModeActive.dataset.mode === 'ensemble';
+        if (isEnsembleBt && window.lastEnsembleBacktestData) {
+            renderEnsembleBacktestChart(window.lastEnsembleBacktestData);
+        }
+    });
 });
 
 // -----------------------------------------------------------------------------
@@ -8080,7 +8113,46 @@ function renderKronosForecastPanel(data) {
     bandHigh.setData(data.forecast.map(r => ({ time: r.date, value: r.p90_close })));
 
     chart.timeScale().fitContent();
-    
+
+    // Augment with EnsembleCast consensus line and conviction
+    const ticker = data.ticker;
+    const horizon = data.pred_len;
+    fetch('/api/ensemble_forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, horizon: horizon })
+    })
+    .then(res => res.json())
+    .then(ensData => {
+        if (ensData && ensData.ensemble_path && activeKronosChart) {
+            // Draw gold ensemble path on the drawer chart
+            const ensembleSeries = activeKronosChart.addLineSeries({
+                color: '#fbbf24',
+                lineWidth: 2,
+                title: 'Ensemble'
+            });
+            const futureDates = generateFutureTradingDates(ensData.last_close_date, ensData.horizon);
+            ensembleSeries.setData(
+                ensData.ensemble_path.map((close, i) => ({ time: futureDates[i], value: close }))
+            );
+
+            // Add conviction badge in the drawer
+            let drawerBadge = document.getElementById('drawer-ensemble-conviction');
+            if (!drawerBadge) {
+                drawerBadge = document.createElement('div');
+                drawerBadge.id = 'drawer-ensemble-conviction';
+                drawerBadge.style.marginTop = '0.5rem';
+                const parent = document.getElementById('drawer-kronos-chart').parentNode;
+                parent.insertBefore(drawerBadge, document.getElementById('drawer-kronos-chart').nextSibling);
+            }
+            const ICONS = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴' };
+            const LABELS = { HIGH: 'High Conviction', MODERATE: 'Moderate Conviction', LOW: 'Low Conviction ⚠️' };
+            drawerBadge.className = `conviction-badge ${ensData.conviction}`;
+            drawerBadge.innerHTML = `<span style="margin-right: 4px;">${ICONS[ensData.conviction]}</span> ${LABELS[ensData.conviction]}`;
+        }
+    })
+    .catch(err => console.error('[EnsembleCast Drawer]', err));
+
     const backtestRow = document.getElementById('kronos-backtest-row');
     if (backtestRow) {
         backtestRow.style.display = 'flex';
@@ -8124,9 +8196,40 @@ function renderAIForecastWorkspace(ticker) {
     }
 
     const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+    const isEnsemble = activeBtn && activeBtn.dataset.mode === 'ensemble';
     const predLen = activeBtn ? parseInt(activeBtn.dataset.len) : 5;
 
     const runBtn = document.getElementById('btn-run-kronos');
+
+    if (isEnsemble) {
+        if (runBtn) {
+            runBtn.disabled = true;
+            runBtn.textContent = 'Running...';
+        }
+        document.getElementById('ensemblePanel').style.display = 'block';
+        loadEnsembleForecast(symbol, predLen, true)
+            .finally(() => {
+                if (runBtn) {
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Run Forecast';
+                }
+            });
+        return;
+    }
+
+    // Otherwise standard Kronos mode
+    document.getElementById('ensemblePanel').style.display = 'none';
+
+    // Hide Ensemble Backtest elements
+    document.getElementById('ensembleBacktestTable').style.display = 'none';
+    const btKronosBtn = document.querySelector('.bt-mode-btn[data-mode="kronos"]');
+    if (btKronosBtn) {
+        document.querySelectorAll('.bt-mode-btn').forEach(b => b.classList.remove('active'));
+        btKronosBtn.classList.add('active');
+    }
+    const metricsContainer = document.getElementById('kronos-accuracy-metrics');
+    if (metricsContainer) metricsContainer.style.display = 'flex';
+
     if (runBtn) {
         runBtn.disabled = true;
         runBtn.textContent = 'Running...';
@@ -8252,6 +8355,23 @@ function loadBacktestingMetrics(symbol) {
     const metricsContainer = document.getElementById('kronos-accuracy-metrics');
     if (!backtestSection || !metricsContainer) return;
 
+    const btModeActive = document.querySelector('.bt-mode-btn.active');
+    const isEnsembleBt = btModeActive && btModeActive.dataset.mode === 'ensemble';
+
+    if (isEnsembleBt) {
+        document.getElementById('ensembleBacktestTable').style.display = 'block';
+        metricsContainer.style.display = 'none';
+        backtestSection.style.display = 'block';
+        const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+        const horizon = activeBtn ? parseInt(activeBtn.dataset.len) : 10;
+        loadEnsembleBacktest(symbol, horizon);
+        return;
+    }
+
+    // Otherwise standard Kronos metrics
+    document.getElementById('ensembleBacktestTable').style.display = 'none';
+    metricsContainer.style.display = 'flex';
+
     fetch(`/api/kronos-backtest?ticker=${encodeURIComponent(symbol)}`)
         .then(res => res.json())
         .then(data => {
@@ -8364,3 +8484,369 @@ window.renderKronosForecastPanel = renderKronosForecastPanel;
 window.destroyKronosChart = destroyKronosChart;
 window.destroyKronosFullChart = destroyKronosFullChart;
 window.destroyKronosBacktestChart = destroyKronosBacktestChart;
+
+// ── EnsembleCast (Multi-Model Forecast) Helpers ──
+
+function generateFutureTradingDates(lastDate, n) {
+  const NSE_HOLIDAYS_2026 = new Set([
+    '2026-01-26','2026-03-03','2026-03-19','2026-04-02',
+    '2026-04-03','2026-04-14','2026-05-01','2026-08-15',
+    '2026-10-02','2026-10-20','2026-11-25','2026-12-25'
+  ]);
+  const dates = [];
+  const cur = new Date(lastDate);
+  while (dates.length < n) {
+    cur.setDate(cur.getDate() + 1);
+    const dow = cur.getDay();
+    const iso = cur.toISOString().slice(0, 10);
+    if (dow !== 0 && dow !== 6 && !NSE_HOLIDAYS_2026.has(iso)) {
+      dates.push(iso);
+    }
+  }
+  return dates;
+}
+
+function renderEnsembleChart(data) {
+  const MODEL_COLORS = {
+    kronos:  { color: 'rgba(124, 58, 237, 0.45)',  lineWidth: 1 },  // faint purple
+    prophet: { color: 'rgba(234, 88,  12,  0.45)', lineWidth: 1 },  // faint orange
+    arima:   { color: 'rgba(8,   145, 178, 0.45)', lineWidth: 1 },  // faint teal
+  };
+  const ENSEMBLE_STYLE = { color: '#fbbf24', lineWidth: 2.5 };      // gold bold path
+
+  const showIndividual = document.getElementById('showIndividualModels')?.checked ?? false;
+
+  // Generate future date labels aligned to the ensemble path
+  const futureDates = generateFutureTradingDates(data.last_close_date, data.horizon);
+
+  // Remove stale series
+  ['kronosSeries', 'prophetSeries', 'arimaSeries', 'ensembleSeries'].forEach(key => {
+    if (window[key]) {
+      try { activeKronosFullChart.removeSeries(window[key]); } catch (_) {}
+      window[key] = null;
+    }
+  });
+
+  // Draw individual model paths (toggled by checkbox)
+  if (showIndividual) {
+    Object.entries(data.model_paths).forEach(([modelName, path]) => {
+      const style = MODEL_COLORS[modelName] || { color: '#888', lineWidth: 1 };
+      const series = activeKronosFullChart.addLineSeries({
+        color: style.color,
+        lineWidth: style.lineWidth,
+        lineStyle: 2,   // dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      series.setData(
+        path.map((close, i) => ({ time: futureDates[i], value: close }))
+      );
+      window[`${modelName}Series`] = series;
+    });
+  }
+
+  // Draw bold ensemble path
+  const ensembleSeries = activeKronosFullChart.addLineSeries({
+    color: ENSEMBLE_STYLE.color,
+    lineWidth: ENSEMBLE_STYLE.lineWidth,
+    priceLineVisible: false,
+    title: 'Ensemble',
+  });
+  ensembleSeries.setData(
+    data.ensemble_path.map((close, i) => ({ time: futureDates[i], value: close }))
+  );
+  window.ensembleSeries = ensembleSeries;
+}
+
+function renderConvictionBadge(conviction, divergenceScore) {
+  const badge  = document.getElementById('convictionBadge');
+  const icon   = document.getElementById('convictionIcon');
+  const label  = document.getElementById('convictionLabel');
+  if (!badge || !icon || !label) return;
+  const ICONS  = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴' };
+  const LABELS = {
+    HIGH:     `High Conviction  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+    MODERATE: `Moderate Conviction  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+    LOW:      `Low Conviction ⚠️  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+  };
+  badge.className = `conviction-badge ${conviction}`;
+  icon.textContent  = ICONS[conviction]  ?? '●';
+  label.textContent = LABELS[conviction] ?? conviction;
+}
+
+function renderModelWeightsBar(weights) {
+  const models = ['kronos', 'prophet', 'arima'];
+  models.forEach(m => {
+    const pct = Math.round((weights[m] ?? 0) * 100);
+    const seg = document.getElementById(`${m}WeightSeg`);
+    const pctLabel = document.getElementById(`${m}WeightPct`);
+    if (seg) seg.style.width  = `${pct}%`;
+    if (pctLabel) pctLabel.textContent  = `${pct}%`;
+  });
+}
+
+function renderAgreementMatrix(matrix) {
+  const MODELS = ['kronos', 'prophet', 'arima'];
+  const tbody  = document.getElementById('agreementMatrixBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  MODELS.forEach(row => {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.textContent = row.charAt(0).toUpperCase() + row.slice(1);
+    tr.appendChild(th);
+
+    MODELS.forEach(col => {
+      const td = document.createElement('td');
+      if (row === col) {
+        td.textContent = '—';
+      } else {
+        const key = [row, col].sort().join('_vs_');
+        const val = matrix[key];
+        if (val != null) {
+          td.textContent = `${val}%`;
+          td.className = val >= 75 ? 'agreement-cell-high'
+                       : val >= 55 ? 'agreement-cell-medium'
+                       :             'agreement-cell-low';
+        } else {
+          td.textContent = 'N/A';
+        }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = false) {
+  const panel = document.getElementById('ensemblePanel');
+  if (panel) panel.style.display = 'block';
+  const convictionLabel = document.getElementById('convictionLabel');
+  const convictionBadge = document.getElementById('convictionBadge');
+  if (convictionLabel) convictionLabel.textContent = 'Calculating…';
+  if (convictionBadge) convictionBadge.className = 'conviction-badge conviction-loading';
+
+  try {
+    const res = await fetch('/api/ensemble_forecast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker, horizon, use_dynamic_weights: useDynamicWeights })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    
+    // Cache data for toggle checkbox
+    window.lastEnsembleData = data;
+
+    // Create ensemble chart structure
+    destroyKronosFullChart();
+    const container = document.getElementById('kronos-full-chart');
+    if (container && typeof LightweightCharts !== 'undefined') {
+        const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+        const isDark = currentTheme === 'dark';
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: 380,
+            layout: {
+                background: { color: 'transparent' },
+                textColor: isDark ? '#94a3b8' : '#475569'
+            },
+            grid: {
+                vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+                horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+            },
+            timeScale: { borderVisible: false },
+            rightPriceScale: { borderVisible: false },
+        });
+        activeKronosFullChart = chart;
+        
+        // Add resize listener support
+        const resizeObserver = new ResizeObserver(entries => {
+            if (entries.length === 0 || !entries[0].contentRect) return;
+            const { width, height } = entries[0].contentRect;
+            chart.resize(width, height);
+        });
+        resizeObserver.observe(container);
+        container.resizeObserver = resizeObserver;
+    }
+
+    renderEnsembleChart(data);
+    renderConvictionBadge(data.conviction, data.divergence_score);
+    renderModelWeightsBar(data.weights);
+    renderAgreementMatrix(data.agreement_matrix);
+
+    // Render comparison table
+    const tableWrap = document.getElementById('kronos-full-table-wrap');
+    if (tableWrap) {
+        const lastClose = data.last_close;
+        const futureDates = generateFutureTradingDates(data.last_close_date, data.horizon);
+        tableWrap.innerHTML = `
+            <table class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem;">
+                <thead>
+                    <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
+                        <th style="text-align: left; padding: 8px; color: var(--color-text-muted);">Forecast Date</th>
+                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Ensemble Close</th>
+                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Kronos Close</th>
+                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Prophet Close</th>
+                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">ARIMA Close</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${data.ensemble_path.map((val, idx) => {
+                        const closeClass = val >= lastClose ? 'val-up' : 'val-down';
+                        const kVal = data.model_paths.kronos ? `₹${data.model_paths.kronos[idx].toFixed(2)}` : 'N/A';
+                        const pVal = data.model_paths.prophet ? `₹${data.model_paths.prophet[idx].toFixed(2)}` : 'N/A';
+                        const aVal = data.model_paths.arima ? `₹${data.model_paths.arima[idx].toFixed(2)}` : 'N/A';
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="text-align: left; padding: 8px;">${futureDates[idx]}</td>
+                                <td class="${closeClass}" style="text-align: right; padding: 8px; font-weight: 700;">₹${val.toFixed(2)}</td>
+                                <td style="text-align: right; padding: 8px; color: var(--color-text-secondary);">${kVal}</td>
+                                <td style="text-align: right; padding: 8px; color: var(--color-text-secondary);">${pVal}</td>
+                                <td style="text-align: right; padding: 8px; color: var(--color-text-secondary);">${aVal}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    // Trigger backtest metrics refresh for ensemble
+    loadBacktestingMetrics(ticker);
+
+  } catch (err) {
+    if (convictionLabel) convictionLabel.textContent = 'Ensemble unavailable';
+    console.error('[EnsembleCast]', err);
+  }
+}
+
+async function loadEnsembleBacktest(ticker, horizon = 10) {
+  try {
+    const res = await fetch(`/api/ensemble-backtest?ticker=${ticker}&horizon=${horizon}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    
+    // Cache backtest data for toggle checkbox
+    window.lastEnsembleBacktestData = data;
+
+    renderBacktestComparisonTable(data.per_model_metrics);
+    renderEnsembleBacktestChart(data);
+  } catch (err) {
+    console.error('[EnsembleCast Backtest]', err);
+  }
+}
+
+function renderBacktestComparisonTable(metrics) {
+  const tbody = document.getElementById('btComparisonBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const BT_MODEL_LABELS = {
+    kronos: 'Kronos',
+    prophet: 'Prophet',
+    arima: 'ARIMA',
+    ensemble: '⚡ Ensemble'
+  };
+
+  const ORDER = ['kronos', 'prophet', 'arima', 'ensemble'];
+  ORDER.forEach(name => {
+    const m = metrics[name];
+    if (!m) return;
+    const tr = document.createElement('tr');
+    if (name === 'ensemble') tr.classList.add('ensemble-row');
+    tr.innerHTML = `
+      <td>${BT_MODEL_LABELS[name] ?? name}</td>
+      <td>${m.mae}</td>
+      <td>${m.mape}%</td>
+      <td>${m.direction_accuracy}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderEnsembleBacktestChart(data) {
+    destroyKronosBacktestChart();
+    const container = document.getElementById('kronos-backtest-chart');
+    if (!container || typeof LightweightCharts === 'undefined') return;
+
+    const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+    const isDark = currentTheme === 'dark';
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 280,
+        layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#94a3b8' : '#475569'
+        },
+        grid: {
+            vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+            horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+        },
+        timeScale: { borderVisible: false },
+        rightPriceScale: { borderVisible: false },
+    });
+    activeKronosBacktestChart = chart;
+
+    // Actual series (green)
+    const actualSeries = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#10b981',
+        lineWidth: 2.5,
+        title: 'Actual',
+    });
+    actualSeries.setData(data.comparison_points.map(pt => ({
+        time: pt.date,
+        value: pt.actual
+    })));
+
+    // Ensemble series (gold)
+    const ensembleSeries = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#fbbf24',
+        lineWidth: 2.5,
+        title: 'Ensemble',
+    });
+    ensembleSeries.setData(data.comparison_points.map(pt => ({
+        time: pt.date,
+        value: pt.ensemble
+    })));
+
+    // Individual models faint dashed lines if present
+    const showIndividual = document.getElementById('showIndividualModels')?.checked ?? false;
+    if (showIndividual) {
+        const MODEL_COLORS = {
+            kronos: 'rgba(124, 58, 237, 0.45)',
+            prophet: 'rgba(234, 88, 12, 0.45)',
+            arima: 'rgba(8, 145, 178, 0.45)'
+        };
+        ['kronos', 'prophet', 'arima'].forEach(model => {
+            const path = data.comparison_points.map(pt => pt[model] ? { time: pt.date, value: pt[model] } : null).filter(x => x !== null);
+            if (path.length > 0) {
+                const s = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: MODEL_COLORS[model],
+                    lineWidth: 1,
+                    lineStyle: 2, // dashed
+                    title: model.toUpperCase()
+                });
+                s.setData(path);
+            }
+        });
+    }
+
+    chart.timeScale().fitContent();
+
+    const resizeObserver = new ResizeObserver(entries => {
+        if (entries.length === 0 || !entries[0].contentRect) return;
+        const { width, height } = entries[0].contentRect;
+        chart.resize(width, height);
+    });
+    resizeObserver.observe(container);
+    container.resizeObserver = resizeObserver;
+}
+
+window.loadEnsembleForecast = loadEnsembleForecast;
+window.loadEnsembleBacktest = loadEnsembleBacktest;
+window.renderEnsembleChart = renderEnsembleChart;
+window.renderEnsembleBacktestChart = renderEnsembleBacktestChart;
+window.generateFutureTradingDates = generateFutureTradingDates;
+

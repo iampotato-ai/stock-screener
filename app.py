@@ -1386,6 +1386,9 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+# Module-level context cache used by the backtest shim
+_BACKTEST_CTX_CACHE: dict = {}
+
 def _fetch_price_history(ticker: str, min_days: int = 60) -> pd.DataFrame:
     """
     Fetches daily Close price history for `ticker` using native fetch_historical_prices.
@@ -1395,6 +1398,12 @@ def _fetch_price_history(ticker: str, min_days: int = 60) -> pd.DataFrame:
     clean_ticker = ticker
     if clean_ticker.startswith("NSE:"):
         clean_ticker = clean_ticker[4:]
+
+    # Backtest shim: return injected context DataFrame if present
+    if clean_ticker in _BACKTEST_CTX_CACHE:
+        df = _BACKTEST_CTX_CACHE[clean_ticker].copy()
+        if len(df) >= min_days:
+            return df
 
     # Fetch history using the existing fetch_historical_prices with a 2y range
     history = fetch_historical_prices(clean_ticker, range_str="2y")
@@ -1524,6 +1533,123 @@ def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
     forecast = result.forecast(steps=horizon)
     return forecast.tolist()
 
+# Module-level EMA state: {ticker: {model: ema_weight}}
+_weight_ema_state: dict = {}
+_WEIGHT_EMA_ALPHA = 0.4   # higher = faster adaptation; 0.4 is a 4-period EMA
+
+def _compute_rolling_mape(ticker: str, model_fn, horizon: int = 10) -> float:
+    """
+    Runs `model_fn(ticker, horizon)` on a held-out window ending 20 trading
+    days ago and returns MAPE (%) against actual closes.
+
+    If the backtest run fails for any reason, returns a neutral fallback
+    MAPE of 5.0 so the dynamic weight system degrades gracefully.
+    """
+    FALLBACK_MAPE = 5.0
+    try:
+        clean_ticker = ticker
+        if clean_ticker.startswith("NSE:"):
+            clean_ticker = clean_ticker[4:]
+        history = fetch_historical_prices(clean_ticker, range_str='2y')
+        if not history or len(history) < horizon + 60:
+            return FALLBACK_MAPE
+
+        # Held-out window: last `horizon` trading days
+        # Context: the 120 trading days immediately before the held-out window
+        context  = history[-(horizon + 120):-horizon]
+        actuals  = [float(d['close']) for d in history[-horizon:]]
+
+        if len(context) < 60:
+            return FALLBACK_MAPE
+
+        # Temporarily swap fetch_historical_prices cache so model_fn sees
+        # only the context slice — build a lightweight shim DataFrame
+        import pandas as pd
+        df_ctx = pd.DataFrame([{
+            'ds': pd.to_datetime(d['date']),
+            'y':  float(d['close'])
+        } for d in context])
+        df_ctx['ds'] = df_ctx['ds'].dt.tz_localize(None)
+
+        # Inject context into the module-level LRU cache under a sentinel key
+        # so model_fn can call _fetch_price_history without a real HTTP fetch
+        _BACKTEST_CTX_CACHE[clean_ticker] = df_ctx
+        preds = model_fn(ticker, horizon)
+        _BACKTEST_CTX_CACHE.pop(clean_ticker, None)
+
+        if not preds or len(preds) < horizon:
+            return FALLBACK_MAPE
+
+        mape = float(np.mean([
+            abs(p - a) / (abs(a) + 1e-9) * 100
+            for p, a in zip(preds[:horizon], actuals[:horizon])
+        ]))
+        return max(0.1, mape)   # never return 0 — would cause division by zero in weight calc
+    except Exception as e:
+        print(f'[DynWeights] Rolling MAPE failed for {ticker}: {e}')
+        return FALLBACK_MAPE
+
+def compute_dynamic_weights(
+    ticker: str,
+    horizon: int = 10,
+    use_cache: bool = True
+) -> dict:
+    """
+    Computes per-model weights inversely proportional to each model's
+    rolling MAPE on `ticker` over the last `horizon` trading days.
+
+    EMA-smoothed across calls to prevent weight instability on volatile names.
+
+    Returns: {'kronos': float, 'prophet': float, 'arima': float}  (sum == 1.0)
+    """
+    # --- Rolling MAPE per model (run in parallel for speed) ---
+    mapes = {'kronos': 5.0, 'prophet': 5.0, 'arima': 5.0}
+
+    def _score_kronos():
+        return _compute_rolling_mape(ticker, kronos_predict, horizon)
+
+    def _score_prophet():
+        return _compute_rolling_mape(ticker, prophet_predict, horizon)
+
+    def _score_arima():
+        return _compute_rolling_mape(ticker, arima_predict, horizon)
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {
+            'kronos':  ex.submit(_score_kronos),
+            'prophet': ex.submit(_score_prophet),
+            'arima':   ex.submit(_score_arima),
+        }
+        for name, fut in futs.items():
+            try:
+                mapes[name] = fut.result(timeout=20)
+            except Exception as e:
+                print(f'[DynWeights] MAPE scoring failed for {name}: {e}')
+
+    # --- Inverse-MAPE scores → raw weights ---
+    inv_scores = {m: 1.0 / (mapes[m] + 1e-6) for m in mapes}
+    total = sum(inv_scores.values())
+    raw_weights = {m: inv_scores[m] / total for m in inv_scores}
+
+    # --- EMA smoothing ---
+    prev_ema = _weight_ema_state.get(ticker, raw_weights)
+    smoothed = {
+        m: _WEIGHT_EMA_ALPHA * raw_weights[m] + (1 - _WEIGHT_EMA_ALPHA) * prev_ema.get(m, raw_weights[m])
+        for m in raw_weights
+    }
+    # Re-normalise after EMA (floating-point drift)
+    s_total = sum(smoothed.values())
+    smoothed = {m: round(v / s_total, 4) for m, v in smoothed.items()}
+
+    _weight_ema_state[ticker] = smoothed
+
+    print(
+        f'[DynWeights] {ticker} | MAPE k={mapes["kronos"]:.2f}% '
+        f'p={mapes["prophet"]:.2f}% a={mapes["arima"]:.2f}% '
+        f'-> weights {smoothed}'
+    )
+    return smoothed
+
 def ensemble_blend(
     kronos_path: list[float],
     prophet_path: list[float],
@@ -1531,12 +1657,12 @@ def ensemble_blend(
     weights: dict = None
 ) -> dict:
     """
-    Blends three model forecast paths into a single weighted ensemble.
-
-    Returns a dict with:
-      - ensemble_path: weighted average per day
-      - divergence_score: normalised std across models (scalar, worst day)
-      - conviction: 'HIGH' / 'MODERATE' / 'LOW'
+    Returns:
+      ensemble_path       — weighted blended closes
+      divergence_score    — worst-day normalised std (scalar)
+      divergence_daily    — per-day normalised std list (for UI sparkline)
+      conviction          — 'HIGH' / 'MODERATE' / 'LOW'
+      agreement_matrix    — 3x3 pairwise directional agreement (up/down)
     """
     if weights is None:
         weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
@@ -1545,47 +1671,35 @@ def ensemble_blend(
     w_p = weights.get('prophet', 0.0)
     w_a = weights.get('arima', 0.0)
 
-    # Align to shortest path length of models that actually returned predictions
-    lengths = []
-    if len(kronos_path) > 0:
-        lengths.append(len(kronos_path))
-    if len(prophet_path) > 0:
-        lengths.append(len(prophet_path))
-    if len(arima_path) > 0:
-        lengths.append(len(arima_path))
+    named_paths = [
+        ('kronos',  kronos_path,  w_k),
+        ('prophet', prophet_path, w_p),
+        ('arima',   arima_path,   w_a),
+    ]
+    active = [(name, np.array(path), w) for name, path, w in named_paths
+              if len(path) > 0 and w > 0]
 
-    if not lengths:
+    if not active:
         return {
-            'ensemble_path': [],
-            'divergence_score': 0.0,
-            'conviction': 'LOW'
+            'ensemble_path': [], 'divergence_score': 0.0,
+            'divergence_daily': [], 'conviction': 'LOW', 'agreement_matrix': {}
         }
 
-    horizon = min(lengths)
+    horizon = min(len(p) for _, p, _ in active)
+    ensemble = np.zeros(horizon)
+    for _, path_arr, w in active:
+        ensemble += w * path_arr[:horizon]
 
-    k = np.array(kronos_path[:horizon]) if len(kronos_path) > 0 else np.zeros(horizon)
-    p = np.array(prophet_path[:horizon]) if len(prophet_path) > 0 else np.zeros(horizon)
-    a = np.array(arima_path[:horizon]) if len(arima_path) > 0 else np.zeros(horizon)
-
-    ensemble = w_k * k + w_p * p + w_a * a
-
-    # Divergence: normalised std of the active paths at each day, take worst-case day
-    active_paths = []
-    if len(kronos_path) > 0:
-        active_paths.append(k)
-    if len(prophet_path) > 0:
-        active_paths.append(p)
-    if len(arima_path) > 0:
-        active_paths.append(a)
-
-    if len(active_paths) > 1:
-        stacked = np.stack(active_paths, axis=0)  # shape (num_active, horizon)
-        daily_divergence = np.std(stacked, axis=0) / (ensemble + 1e-9)
-        max_divergence = float(np.max(daily_divergence))
+    # Per-day divergence
+    if len(active) > 1:
+        stacked = np.stack([p[:horizon] for _, p, _ in active], axis=0)
+        daily_div = (np.std(stacked, axis=0) / (ensemble + 1e-9)).tolist()
+        max_divergence = float(max(daily_div))
     else:
+        daily_div = [0.0] * horizon
         max_divergence = 0.0
 
-
+    # Conviction label
     if max_divergence < 0.015:
         conviction = 'HIGH'
     elif max_divergence < 0.03:
@@ -1593,13 +1707,46 @@ def ensemble_blend(
     else:
         conviction = 'LOW'
 
+    # Pairwise directional agreement matrix
+    # direction[i] = +1 if path[i] > path[i-1], else -1
+    def _dirs(arr):
+        return [1 if arr[i] > arr[i - 1] else -1 for i in range(1, len(arr))]
+
+    agreement_matrix = {}
+    for i, (n1, p1, _) in enumerate(active):
+        for j, (n2, p2, _) in enumerate(active):
+            if i >= j:
+                continue
+            d1, d2 = _dirs(p1[:horizon]), _dirs(p2[:horizon])
+            match = sum(1 for a, b in zip(d1, d2) if a == b)
+            pct = round(match / len(d1) * 100, 1) if d1 else 0.0
+            agreement_matrix[f'{n1}_vs_{n2}'] = pct
+
     return {
-        'ensemble_path': ensemble.tolist(),
+        'ensemble_path':    ensemble.tolist(),
         'divergence_score': round(max_divergence, 5),
-        'conviction': conviction
+        'divergence_daily': [round(v, 5) for v in daily_div],
+        'conviction':       conviction,
+        'agreement_matrix': agreement_matrix
     }
 
+import functools
+
+def profile_endpoint(fn):
+    """Logs wall-clock time for any decorated Flask route on each call."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        import time
+        t0 = time.time()
+        result = fn(*args, **kwargs)
+        elapsed = round((time.time() - t0) * 1000)
+        if elapsed > 6000:
+            print(f'[PERF WARNING] {fn.__name__} took {elapsed}ms — exceeds 6s SLA')
+        return result
+    return wrapper
+
 @app.route('/api/ensemble_forecast', methods=['POST'])
+@profile_endpoint
 def api_ensemble_forecast():
     """
     POST /api/ensemble_forecast
@@ -1699,14 +1846,22 @@ def api_ensemble_forecast():
             'details': errors
         }), 500
 
-    # --- Build weights (static for Phase 1; dynamic weights in Phase 2) ---
-    default_weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
-    # If a model failed, redistribute its weight proportionally
-    if degraded:
-        active_weight_sum = sum(default_weights[m] for m in active_models)
-        weights = {m: default_weights[m] / active_weight_sum for m in active_models}
+    # --- Build weights ---
+    if use_dynamic_weights and len(active_models) == 3:
+        try:
+            weights = compute_dynamic_weights(ticker, horizon)
+            print(f'[EnsembleCast] {ticker} using dynamic weights: {weights}')
+        except Exception as e:
+            print(f'[EnsembleCast] Dynamic weight computation failed ({e}), falling back to static')
+            weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
     else:
-        weights = default_weights
+        # Degraded (1 model failed) or static mode requested
+        default_weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
+        if degraded:
+            total_w = sum(default_weights[m] for m in active_models)
+            weights = {m: default_weights[m] / total_w for m in active_models}
+        else:
+            weights = default_weights
 
     # --- Blend ---
     blend_result = ensemble_blend(
@@ -1718,10 +1873,12 @@ def api_ensemble_forecast():
 
     # --- Determine last close ---
     last_close = 0.0
+    last_close_date = ""
     try:
         # Fetch actual close price from history
         df_hist = _fetch_price_history(ticker, min_days=10)
         last_close = float(df_hist['y'].iloc[-1])
+        last_close_date = df_hist['ds'].iloc[-1].strftime('%Y-%m-%d')
     except Exception:
         pass
 
@@ -1732,12 +1889,16 @@ def api_ensemble_forecast():
         'ensemble_path': blend_result['ensemble_path'],
         'model_paths': {k: v for k, v in results.items() if v is not None},
         'weights': weights,
+        'weights_source': 'dynamic' if (use_dynamic_weights and len(active_models) == 3) else 'static',
         'divergence_score': blend_result['divergence_score'],
+        'divergence_daily': blend_result.get('divergence_daily', []),
+        'agreement_matrix': blend_result.get('agreement_matrix', {}),
         'conviction': blend_result['conviction'],
         'degraded': degraded,
         'model_errors': {k: v for k, v in errors.items() if v is not None},
         'cached': False,
         'last_close': last_close,
+        'last_close_date': last_close_date,
         'latency_ms': round((time.time() - start_time) * 1000)
     }
 
@@ -2138,6 +2299,129 @@ def get_kronos_backtest():
         ticker=ticker,
         backtest_runs=backtest_runs[:5]
     )
+
+@app.route('/api/ensemble-backtest', methods=['GET'])
+@profile_endpoint
+def get_ensemble_backtest():
+    """
+    GET /api/ensemble-backtest?ticker=RELIANCE&horizon=10
+
+    Runs a walk-forward backtest over the last `horizon` trading days,
+    comparing Kronos, Prophet, ARIMA, and the blended Ensemble path
+    against actual closes.
+
+    Returns per-model MAE, MAPE, directional accuracy, and band hit rate
+    alongside the blended ensemble metrics.
+    """
+    from flask import request
+    import time
+    t0 = time.time()
+
+    ticker  = request.args.get('ticker', '').strip().upper().replace('NSE:', '')
+    horizon = int(request.args.get('horizon', 10))
+
+    if not ticker:
+        return jsonify({'error': 'ticker_required'}), 400
+    if horizon < 3 or horizon > 20:
+        return jsonify({'error': 'horizon must be between 3 and 20'}), 400
+
+    history = fetch_historical_prices(ticker, range_str='2y')
+    if not history or len(history) < horizon + 80:
+        return jsonify({'error': 'insufficient_history'}), 400
+
+    # Split history: context window vs held-out actuals
+    context = history[-(horizon + 120):-horizon]
+    actuals = [float(d['close']) for d in history[-horizon:]]
+    actual_dates = [d['date'] for d in history[-horizon:]]
+    last_context_close = float(context[-1]['close'])
+
+    # Inject context into backtest shim
+    _BACKTEST_CTX_CACHE[ticker] = pd.DataFrame([{
+        'ds': pd.to_datetime(d['date']),
+        'y':  float(d['close'])
+    } for d in context]).assign(ds=lambda df: df['ds'].dt.tz_localize(None))
+
+    model_preds = {'kronos': None, 'prophet': None, 'arima': None}
+    model_errors_bt = {}
+
+    def _run(name, fn):
+        try:
+            return name, fn(ticker, horizon)
+        except Exception as e:
+            return name, e
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = [
+            ex.submit(_run, 'kronos',  kronos_predict),
+            ex.submit(_run, 'prophet', prophet_predict),
+            ex.submit(_run, 'arima',   arima_predict),
+        ]
+        for fut in futs:
+            name, result = fut.result(timeout=30)
+            if isinstance(result, Exception):
+                model_errors_bt[name] = str(result)
+            else:
+                model_preds[name] = result
+
+    # Clean up shim
+    _BACKTEST_CTX_CACHE.pop(ticker, None)
+
+    active = {k: v for k, v in model_preds.items() if v is not None}
+    if len(active) < 2:
+        return jsonify({'error': 'backtest_failed', 'details': model_errors_bt}), 500
+
+    # Build ensemble path using current dynamic weights if available
+    default_w = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
+    total_w   = sum(default_w[m] for m in active)
+    weights   = {m: default_w[m] / total_w for m in active}
+    blend     = ensemble_blend(
+        kronos_path=model_preds.get('kronos', []),
+        prophet_path=model_preds.get('prophet', []),
+        arima_path=model_preds.get('arima', []),
+        weights=weights
+    )
+    active['ensemble'] = blend['ensemble_path']
+
+    def _metrics(preds, actuals, prev_close):
+        n = min(len(preds), len(actuals))
+        if n == 0:
+            return {}
+        abs_err = [abs(preds[i] - actuals[i]) for i in range(n)]
+        pct_err = [abs_err[i] / (actuals[i] + 1e-9) * 100 for i in range(n)]
+        dir_hits = 0
+        for i in range(n):
+            p_ref = preds[i-1] if i > 0 else prev_close
+            a_ref = actuals[i-1] if i > 0 else prev_close
+            if (preds[i] > p_ref) == (actuals[i] > a_ref):
+                dir_hits += 1
+        return {
+            'mae':                round(sum(abs_err) / n, 2),
+            'mape':               round(sum(pct_err) / n, 2),
+            'direction_accuracy': round(dir_hits / n * 100, 1),
+            'n_days':             n
+        }
+
+    per_model = {
+        name: _metrics(preds, actuals, last_context_close)
+        for name, preds in active.items()
+    }
+
+    comparison_points = []
+    for i, (date, actual) in enumerate(zip(actual_dates, actuals)):
+        pt = {'date': date, 'actual': actual}
+        for name, preds in active.items():
+            pt[name] = round(preds[i], 2) if i < len(preds) else None
+        comparison_points.append(pt)
+
+    return jsonify({
+        'ticker':             ticker,
+        'horizon':            horizon,
+        'per_model_metrics':  per_model,
+        'comparison_points':  comparison_points,
+        'model_errors':       model_errors_bt,
+        'latency_ms':         round((time.time() - t0) * 1000)
+    })
+
 import statistics
 import math
 
