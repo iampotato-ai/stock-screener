@@ -2081,6 +2081,11 @@ def rrg_backfill():
         finally:
             conn.close()
             
+        # Re-snap current week to ensure today's snapshot is preserved after the backfill clear
+        global _rrg_snapped_today
+        _rrg_snapped_today = None
+        snapshot_rrg_week(sector_scores, universe)
+            
         return jsonify(success=True, message="RRG history backfilled successfully with real weekly data")
     except Exception as e:
         return jsonify(error=str(e)), 500
@@ -2170,37 +2175,39 @@ def get_rrg_history():
                 if date in history_map:
                     valid_indices.append(idx)
                     
-        # Grab last 20 matching dates
-        target_indices = valid_indices[-20:]
-        
-        trail_points = []
+        # Grab last 21 matching dates (20 points + 1 prior point for momentum diff)
+        target_indices = valid_indices[-21:]
+        if len(target_indices) < 2:
+            return None
+            
+        jdk_rs_list = []
         for idx in target_indices:
             date = bench_dates[idx]
             close = history_map[date]
             bench_close = bench_closes[idx]
-            
-            # Weekly performance (5 days ago)
-            prev_date_w = bench_dates[idx - 5]
-            close_w = history_map.get(prev_date_w, close)
-            bench_close_w = bench_closes[idx - 5]
             
             # Monthly performance (21 days ago)
             prev_date_m = bench_dates[idx - 21]
             close_m = history_map.get(prev_date_m, close)
             bench_close_m = bench_closes[idx - 21]
             
-            stock_w = (close - close_w) / close_w * 100 if close_w > 0 else 0
             stock_m = (close - close_m) / close_m * 100 if close_m > 0 else 0
-            bench_w = (bench_close - bench_close_w) / bench_close_w * 100 if bench_close_w > 0 else 0
             bench_m = (bench_close - bench_close_m) / bench_close_m * 100 if bench_close_m > 0 else 0
             
-            x = stock_m - bench_m
-            y = stock_w - bench_w
+            jdk_rs = ((100.0 + stock_m) / (100.0 + bench_m) * 100.0) if (100.0 + bench_m) != 0 else 100.0
+            jdk_rs_list.append({"date": date, "rs": jdk_rs})
+            
+        trail_points = []
+        for i in range(1, len(jdk_rs_list)):
+            date = jdk_rs_list[i]["date"]
+            rs = jdk_rs_list[i]["rs"]
+            prev_rs = jdk_rs_list[i - 1]["rs"]
+            momentum = rs - prev_rs
             
             trail_points.append({
                 "date": date,
-                "x": round(x, 2),
-                "y": round(y, 2)
+                "x": round(rs, 2),
+                "y": round(momentum, 2)
             })
             
         return {
@@ -2211,7 +2218,7 @@ def get_rrg_history():
         
     results = []
     # Calculate in parallel to keep scan fast
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         for res in executor.map(calculate_asset_trail, assets):
             if res:
                 results.append(res)

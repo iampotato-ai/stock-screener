@@ -4898,6 +4898,9 @@ function renderRRG() {
         if (timelineBar) timelineBar.style.display = 'flex';
         if (rrgCanvas) rrgCanvas.style.display = 'block';
         if (rrgChart) rrgChart.style.display = 'none';
+        // Hide the stocks filter label bar in sectors/timeline mode
+        const labelBar = document.getElementById('rrg-sector-label-bar');
+        if (labelBar) labelBar.style.display = 'none';
         
         const weeksSelect = document.getElementById('rrg-weeks-select');
         const weeks = weeksSelect ? parseInt(weeksSelect.value) : 12;
@@ -4927,104 +4930,197 @@ function renderStaticStocksRRG() {
     const benchW = getMedian(validW);
     const benchM = getMedian(validM);
     
-    const dataPoints = filteredStocks.map(s => {
-        return {
+    // Use universeData filtered by selected sector for the RRG stocks view.
+    const sourceStocks = (selectedSector && selectedSector !== 'all')
+        ? universeData.filter(s => s.sector === selectedSector)
+        : universeData;
+    
+    // Show/hide sector label bar
+    const rrgLabelBar = document.getElementById('rrg-sector-label-bar');
+    const rrgSectorLabel = document.getElementById('rrg-sector-label');
+    if (rrgLabelBar && rrgSectorLabel) {
+        if (selectedSector && selectedSector !== 'all') {
+            rrgSectorLabel.textContent = `Showing: ${selectedSector}  (${sourceStocks.length} stocks)`;
+            rrgLabelBar.style.display = 'flex';
+        } else {
+            rrgSectorLabel.textContent = `All Universe Stocks (${sourceStocks.length})`;
+            rrgLabelBar.style.display = 'flex';
+        }
+    }
+    
+    // Build a fast lookup Set of tickers in filteredStocks (screener-quality stocks)
+    const screenerTickerSet = new Set(filteredStocks.map(s => s.clean_ticker || s.ticker));
+    
+    // Split sourceStocks into screener-quality (orange) vs universe-only (grey)
+    const screenerPoints = [];
+    const universeOnlyPoints = [];
+    
+    sourceStocks.forEach(s => {
+        const ticker = s.ticker || s.clean_ticker || '';
+        const point = {
             x: ((s.perf_m || 0) - benchM),
             y: ((s.perf_w || 0) - benchW),
-            label: s.clean_ticker || s.ticker
+            label: ticker,
+            sector: s.sector || '',
+            isScreener: screenerTickerSet.has(ticker)
         };
+        if (screenerTickerSet.has(ticker)) {
+            screenerPoints.push(point);
+        } else {
+            universeOnlyPoints.push(point);
+        }
     });
+
+    // Dataset 0: Universe-only stocks (dim grey — background context)
+    const universeDataset = {
+        label: 'Universe',
+        data: universeOnlyPoints,
+        backgroundColor: 'rgba(148, 163, 184, 0.25)',
+        borderColor: 'rgba(148, 163, 184, 0.5)',
+        borderWidth: 1,
+        pointRadius: 3.5,
+        pointHoverRadius: 5,
+        pointStyle: 'circle',
+        order: 2
+    };
     
-    const datasets = [{
-        label: 'Stocks',
-        data: dataPoints,
-        backgroundColor: 'rgba(255, 255, 255, 0.8)',
-        borderColor: '#10b981',
-        borderWidth: 2,
-        pointRadius: 4,
-        pointHoverRadius: 6
-    }];
+    // Dataset 1: Screener-quality stocks (orange glow — your filtered picks)
+    const screenerDataset = {
+        label: 'Screener Picks',
+        data: screenerPoints,
+        backgroundColor: 'rgba(251, 146, 60, 0.90)',   // orange-400
+        borderColor: 'rgba(253, 186, 116, 1)',           // orange-300 border
+        borderWidth: 1.5,
+        pointRadius: 5,
+        pointHoverRadius: 7.5,
+        pointStyle: 'circle',
+        order: 1   // rendered on top
+    };
     
     const canvas = document.getElementById('rrgChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (rrgChartInstance) rrgChartInstance.destroy();
     
+    // --- Quadrant background plugin ---
     const quadrantPlugin = {
         id: 'quadrants',
         beforeDraw: (chart) => {
             const { ctx, chartArea: { top, bottom, left, right }, scales: { x, y } } = chart;
             ctx.save();
-            
             const xZero = x.getPixelForValue(0);
             const yZero = y.getPixelForValue(0);
-            
-            // Top Right (Leading - Green)
             ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
             ctx.fillRect(xZero, top, right - xZero, yZero - top);
-            
-            // Bottom Right (Weakening - Yellow)
             ctx.fillStyle = 'rgba(234, 179, 8, 0.08)';
             ctx.fillRect(xZero, yZero, right - xZero, bottom - yZero);
-            
-            // Bottom Left (Lagging - Red)
             ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
             ctx.fillRect(left, yZero, xZero - left, bottom - yZero);
-            
-            // Top Left (Improving - Blue)
             ctx.fillStyle = 'rgba(59, 130, 246, 0.08)';
             ctx.fillRect(left, top, xZero - left, yZero - top);
-            
             ctx.restore();
         }
     };
     
+    // --- Labels plugin: draw ticker labels for all visible datasets ---
     const labelsPlugin = {
         id: 'labels',
         afterDatasetsDraw: (chart) => {
             const { ctx, data } = chart;
-            const dataset = data.datasets[0];
-            if (!dataset || dataset.data.length > 25) return;
+            const totalPoints = data.datasets.reduce((sum, ds) => sum + ds.data.length, 0);
+            if (totalPoints > 60) return; // skip labels if too crowded
             
             ctx.save();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-            ctx.font = 'bold 9px Inter, sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             
-            const meta = chart.getDatasetMeta(0);
-            dataset.data.forEach((point, index) => {
-                const element = meta.data[index];
-                if (element && !element.hidden) {
-                    const x = element.x;
-                    const y = element.y;
-                    ctx.fillText(point.label.substring(0, 5), x + 6, y - 4);
-                }
+            data.datasets.forEach((dataset, dsIdx) => {
+                const isScreenerDs = dsIdx === 1; // dataset 1 = screener picks
+                const meta = chart.getDatasetMeta(dsIdx);
+                ctx.font = isScreenerDs ? 'bold 9px Inter, sans-serif' : '8px Inter, sans-serif';
+                ctx.fillStyle = isScreenerDs ? 'rgba(251, 146, 60, 0.95)' : 'rgba(148, 163, 184, 0.6)';
+                
+                dataset.data.forEach((point, index) => {
+                    const element = meta.data[index];
+                    if (element && !element.hidden) {
+                        ctx.fillText(point.label.substring(0, 6), element.x + 6, element.y - 4);
+                    }
+                });
             });
+            ctx.restore();
+        }
+    };
+
+    // --- Legend plugin: draw custom mini-legend in top-right corner ---
+    const legendPlugin = {
+        id: 'rrgLegend',
+        afterDraw: (chart) => {
+            const { ctx, chartArea: { top, right } } = chart;
+            ctx.save();
+            const lx = right - 160;
+            const ly = top + 8;
+            
+            // Orange dot = screener picks
+            ctx.beginPath();
+            ctx.arc(lx, ly + 5, 5, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
+            ctx.fill();
+            ctx.font = '9px Inter, sans-serif';
+            ctx.fillStyle = 'rgba(251, 146, 60, 1)';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Screener Picks (${screenerPoints.length})`, lx + 10, ly + 6);
+            
+            // Grey dot = universe
+            ctx.beginPath();
+            ctx.arc(lx, ly + 20, 4, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.5)';
+            ctx.fill();
+            ctx.fillStyle = 'rgba(148, 163, 184, 0.8)';
+            ctx.fillText(`Universe Only (${universeOnlyPoints.length})`, lx + 10, ly + 21);
+            
             ctx.restore();
         }
     };
     
     rrgChartInstance = new Chart(ctx, {
         type: 'scatter',
-        data: { datasets: datasets },
+        data: { datasets: [universeDataset, screenerDataset] },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             color: '#9ca3af',
+            onClick: (event, elements) => {
+                if (!elements || elements.length === 0) return;
+                const el = elements[0];
+                const dsData = rrgChartInstance.data.datasets[el.datasetIndex].data;
+                const point = dsData[el.index];
+                if (point && point.label) {
+                    openTradeDrawerFromRRG(point.label);
+                }
+            },
+            onHover: (event, elements) => {
+                canvas.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+            },
             plugins: {
                 legend: { display: false },
                 tooltip: {
                     callbacks: {
+                        title: (ctx) => ctx[0].raw.label,
                         label: (ctx) => {
                             const pt = ctx.raw;
+                            const tag = pt.isScreener ? ' 🟠 Screener Pick' : ' · Universe';
                             return [
-                                `Relative Strength (1M): ${pt.x > 0 ? '+' : ''}${pt.x.toFixed(1)}% vs Market`,
-                                `Relative Momentum (1W): ${pt.y > 0 ? '+' : ''}${pt.y.toFixed(1)}% vs Market`
+                                `RS (1M): ${pt.x > 0 ? '+' : ''}${pt.x.toFixed(1)}% vs Market`,
+                                `Mom (1W): ${pt.y > 0 ? '+' : ''}${pt.y.toFixed(1)}% vs Market`,
+                                tag
                             ];
                         },
-                        title: (ctx) => {
-                            return ctx[0].raw.label;
+                        labelColor: (ctx) => {
+                            const isScr = ctx.datasetIndex === 1;
+                            return {
+                                borderColor: isScr ? 'rgb(251,146,60)' : 'rgba(148,163,184,0.5)',
+                                backgroundColor: isScr ? 'rgb(251,146,60)' : 'rgba(148,163,184,0.3)'
+                            };
                         }
                     }
                 }
@@ -5040,9 +5136,126 @@ function renderStaticStocksRRG() {
                 }
             }
         },
-        plugins: [quadrantPlugin, labelsPlugin]
+        plugins: [quadrantPlugin, labelsPlugin, legendPlugin]
     });
 }
+
+// Open trade drawer from RRG — tries stocksData first, falls back to universeData
+function openTradeDrawerFromRRG(ticker) {
+    // Try to find in screener stocksData first (full data)
+    const screenerStock = stocksData.find(s => s.clean_ticker === ticker || s.ticker === ticker);
+    if (screenerStock) {
+        openTradeDrawer(screenerStock.clean_ticker);
+        return;
+    }
+    
+    // Fallback: stock is in universeData only — build a minimal stub and open drawer
+    const uStock = universeData.find(s => s.ticker === ticker || s.clean_ticker === ticker);
+    if (!uStock) return;
+    
+    // Build a minimal stub compatible with drawer fields
+    const stub = {
+        clean_ticker: uStock.ticker || uStock.clean_ticker || ticker,
+        ticker: uStock.ticker || ticker,
+        description: uStock.ticker || ticker,
+        sector: uStock.sector || '',
+        close: uStock.close || 0,
+        perf_w: uStock.perf_w || 0,
+        perf_m: uStock.perf_m || 0,
+        setupLabel: '— Universe Stock',
+        setupTags: [],
+        swingband: null,
+        ims_band: null,
+        volDryUp: false,
+        mtfScore: null,
+        upcoming_earnings: null,
+        SMA21: uStock.SMA21 || 0,
+        SMA50: uStock.SMA50 || 0,
+        _isUniverseOnly: true   // flag for drawer to show a notice
+    };
+    
+    window.currentTradeStock = stub;
+    const overlay = document.getElementById('trade-drawer-overlay');
+    const drawer = document.getElementById('trade-drawer');
+    if (!overlay || !drawer) return;
+    
+    document.getElementById('drawer-ticker').textContent = stub.clean_ticker;
+    document.getElementById('drawer-name').textContent = `${stub.sector || 'Unknown Sector'} · Universe Stock`;
+    
+    // Setup pill
+    const pillEl = document.getElementById('drawer-setup-pill');
+    if (pillEl) {
+        pillEl.className = 'setup-pill setup-pill-early';
+        pillEl.textContent = 'Universe Stock';
+    }
+    
+    // Price
+    const closePrice = parseFloat(stub.close) || 0;
+    const priceEl = document.getElementById('drawer-current-price');
+    if (priceEl) priceEl.textContent = closePrice > 0 ? `₹${closePrice.toFixed(2)}` : '—';
+    
+    // Hide earnings / MTF / vol warnings
+    ['drawer-earnings-warning', 'drawer-mtf-warning', 'drawer-vol-warning'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    
+    // Show a notice that screener data is unavailable
+    const intelSection = document.getElementById('drawer-intelligence-section');
+    if (intelSection) {
+        intelSection.style.display = 'block';
+        const aiResult = document.getElementById('drawer-ai-result');
+        if (aiResult) {
+            aiResult.innerHTML = `
+                <div style="padding: 1rem; background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.2); border-radius: 8px; text-align:center;">
+                    <div style="font-size:1.5rem; margin-bottom:0.5rem;">📊</div>
+                    <div style="font-size:0.85rem; font-weight:600; color:rgba(251,146,60,0.9); margin-bottom:0.4rem;">Not in Screener</div>
+                    <div style="font-size:0.75rem; color:var(--color-text-secondary);">
+                        ${stub.clean_ticker} appears in the universe but doesn't pass the<br>
+                        momentum filter criteria (SMA10 > 21 > 50, ATR > 3%, etc.).<br>
+                        Full trade analysis is only available for screener picks.
+                    </div>
+                    <div style="margin-top:0.75rem; font-size:0.75rem; color:var(--color-text-muted);">
+                        1M: <strong style="color:${(stub.perf_m||0)>=0?'#10b981':'#ef4444'}">${(stub.perf_m||0)>0?'+':''}${(stub.perf_m||0).toFixed(1)}%</strong>
+                        &nbsp;|&nbsp;
+                        1W: <strong style="color:${(stub.perf_w||0)>=0?'#10b981':'#ef4444'}">${(stub.perf_w||0)>0?'+':''}${(stub.perf_w||0).toFixed(1)}%</strong>
+                    </div>
+                </div>`;
+        }
+    }
+    
+    // History
+    const historyContainer = document.getElementById('drawer-history-content');
+    if (historyContainer) historyContainer.innerHTML = '<div style="font-size:0.8rem;color:var(--color-text-muted);">No screener history for universe-only stocks.</div>';
+    
+    // Chart action button
+    const btnChart = document.getElementById('btn-drawer-chart');
+    if (btnChart) btnChart.onclick = () => openTradingView(stub.clean_ticker);
+    const btnWatchlist = document.getElementById('btn-drawer-watchlist');
+    if (btnWatchlist) btnWatchlist.onclick = (e) => addToWatchlist(stub.clean_ticker, e);
+    
+    // Regime hint
+    const rb = marketBreadth.regimeBand ?? 'Neutral';
+    const rs = marketBreadth.regimeScore ?? 50;
+    const sizingMap = {
+      'Bull Run':    { hint: 'Full size — bull conditions support aggressive positioning.', cls: 'regime-hint--bullish' },
+      'Bullish':     { hint: 'Normal size — bullish market supports standard risk.',        cls: 'regime-hint--bullish' },
+      'Neutral':     { hint: 'Half size — mixed market. Reduce risk per trade by 50%.',    cls: 'regime-hint--neutral' },
+      'Bearish':     { hint: 'Quarter size only — high stop-out risk in bearish conditions.', cls: 'regime-hint--bearish' },
+      'Bear Market': { hint: 'Avoid new longs — bear market conditions active.',            cls: 'regime-hint--danger' },
+    };
+    const sz = sizingMap[rb] ?? sizingMap['Neutral'];
+    const hint = document.getElementById('drawer-regime-hint');
+    if (hint) {
+        hint.className = `drawer-regime-hint ${sz.cls}`;
+        hint.innerHTML = `<span class="regime-hint-label">Market Regime</span><span class="regime-hint-band">${rb} (${rs}/100)</span><span class="regime-hint-guidance">${sz.hint}</span>`;
+    }
+    
+    overlay.classList.add('open');
+    drawer.classList.add('open');
+}
+
+
 
 function renderRRGTimeline(frames, frameIdx) {
     const canvas = document.getElementById('rrg-canvas');
@@ -5540,6 +5753,20 @@ function renderSectorHeatmap() {
     
     container.innerHTML = html;
 }
+
+window.clearRRGSectorFilter = function() {
+    selectSector('all');
+    rrgViewMode = 'stocks';
+    const btnSectors = document.getElementById('btn-rrg-sectors');
+    const btnStocks = document.getElementById('btn-rrg-stocks');
+    if (btnSectors && btnStocks) {
+        btnStocks.classList.add('active', 'btn-primary');
+        btnStocks.classList.remove('btn-secondary');
+        btnSectors.classList.remove('active', 'btn-primary');
+        btnSectors.classList.add('btn-secondary');
+    }
+    renderRRG();
+};
 
 window.filterBySectorHeatmap = function(sectorName) {
     // Switch RRG View Mode to stocks

@@ -722,6 +722,12 @@
                     </div>
                 </div>
 
+                <!-- RRG Sector Filter Label (shown when sector heatmap card is clicked) -->
+                <div id="rrg-sector-label-bar" style="display: none; align-items: center; gap: 0.75rem; padding: 0.4rem 1rem; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); border-radius: 6px; margin-bottom: 0.75rem;">
+                    <span id="rrg-sector-label" style="font-size: 0.85rem; font-weight: 600; color: #a5b4fc;"></span>
+                    <button onclick="clearRRGSectorFilter()" style="margin-left: auto; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 4px; color: #a5b4fc; font-size: 0.75rem; padding: 2px 8px; cursor: pointer;">✕ Show All</button>
+                </div>
+
                 <div style="height: 500px; position: relative;">
                     <canvas id="rrgChart"></canvas>
                     <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
