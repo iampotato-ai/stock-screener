@@ -1100,6 +1100,14 @@ def load_nse_holidays():
     _loaded_nse_holidays = holidays
     return _loaded_nse_holidays
 
+@app.route('/api/nse-holidays', methods=['GET'])
+def api_get_nse_holidays():
+    try:
+        holidays = sorted(list(load_nse_holidays()))
+        return jsonify({'holidays': holidays})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 def generate_next_trading_days(last_date_str, num_days=10):
     import pandas as pd
     current_date = pd.to_datetime(last_date_str)
@@ -1400,6 +1408,27 @@ def _fetch_price_history(ticker: str, min_days: int = 60) -> pd.DataFrame:
         clean_ticker = clean_ticker[4:]
 
     # Backtest shim: return injected context DataFrame if present
+    import sys
+    import threading
+    thread_id = threading.get_ident()
+
+    # Walk stack to identify the prediction function calling this
+    frame = sys._getframe()
+    calling_model = None
+    while frame:
+        func_name = frame.f_code.co_name
+        if func_name in ('kronos_predict', 'prophet_predict', 'arima_predict'):
+            calling_model = func_name
+            break
+        frame = frame.f_back
+
+    if calling_model:
+        specific_key = f"{clean_ticker}__mape__{calling_model}__{thread_id}"
+        if specific_key in _BACKTEST_CTX_CACHE:
+            df = _BACKTEST_CTX_CACHE[specific_key].copy()
+            if len(df) >= min_days:
+                return df
+
     if clean_ticker in _BACKTEST_CTX_CACHE:
         df = _BACKTEST_CTX_CACHE[clean_ticker].copy()
         if len(df) >= min_days:
@@ -1571,11 +1600,15 @@ def _compute_rolling_mape(ticker: str, model_fn, horizon: int = 10) -> float:
         } for d in context])
         df_ctx['ds'] = df_ctx['ds'].dt.tz_localize(None)
 
-        # Inject context into the module-level LRU cache under a sentinel key
-        # so model_fn can call _fetch_price_history without a real HTTP fetch
-        _BACKTEST_CTX_CACHE[clean_ticker] = df_ctx
-        preds = model_fn(ticker, horizon)
-        _BACKTEST_CTX_CACHE.pop(clean_ticker, None)
+        # Inject context into the module-level cache under a unique thread-scoped key
+        import threading
+        thread_id = threading.get_ident()
+        cache_key = f"{clean_ticker}__mape__{model_fn.__name__}__{thread_id}"
+        _BACKTEST_CTX_CACHE[cache_key] = df_ctx
+        try:
+            preds = model_fn(ticker, horizon)
+        finally:
+            _BACKTEST_CTX_CACHE.pop(cache_key, None)
 
         if not preds or len(preds) < horizon:
             return FALLBACK_MAPE
@@ -2335,20 +2368,25 @@ def get_ensemble_backtest():
     actual_dates = [d['date'] for d in history[-horizon:]]
     last_context_close = float(context[-1]['close'])
 
-    # Inject context into backtest shim
-    _BACKTEST_CTX_CACHE[ticker] = pd.DataFrame([{
-        'ds': pd.to_datetime(d['date']),
-        'y':  float(d['close'])
-    } for d in context]).assign(ds=lambda df: df['ds'].dt.tz_localize(None))
-
+    # Set up thread-safe context caching for model predictors
     model_preds = {'kronos': None, 'prophet': None, 'arima': None}
     model_errors_bt = {}
 
     def _run(name, fn):
+        import threading
+        thread_id = threading.get_ident()
+        cache_key = f"{ticker}__mape__{fn.__name__}__{thread_id}"
+        df_ctx = pd.DataFrame([{
+            'ds': pd.to_datetime(d['date']),
+            'y':  float(d['close'])
+        } for d in context]).assign(ds=lambda df: df['ds'].dt.tz_localize(None))
+        _BACKTEST_CTX_CACHE[cache_key] = df_ctx
         try:
             return name, fn(ticker, horizon)
         except Exception as e:
             return name, e
+        finally:
+            _BACKTEST_CTX_CACHE.pop(cache_key, None)
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         futs = [
@@ -2362,9 +2400,6 @@ def get_ensemble_backtest():
                 model_errors_bt[name] = str(result)
             else:
                 model_preds[name] = result
-
-    # Clean up shim
-    _BACKTEST_CTX_CACHE.pop(ticker, None)
 
     active = {k: v for k, v in model_preds.items() if v is not None}
     if len(active) < 2:
@@ -4231,6 +4266,28 @@ def _run_kronos_for_ticker(ticker, pred_len):
             pass
         return build_ranking_entry(ticker, None, 0, {}, cache_hit=False)
 
+def get_ensemble_conviction_label(ticker: str) -> str:
+    """
+    Returns cached ensemble conviction for `ticker` if available in the
+    kronos_forecasts table (avoids re-running the full ensemble just for sort).
+    """
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            """SELECT forecast_json FROM kronos_forecasts
+               WHERE ticker = ? AND model_type = 'ensemble'
+               ORDER BY generated_at DESC LIMIT 1""",
+            (ticker,)
+        ).fetchone()
+        conn.close()
+        if row:
+            import json
+            data = json.loads(row['forecast_json'])
+            return data.get('conviction', 'UNKNOWN')
+    except Exception as e:
+        print(f"[BatchSort] Error getting conviction: {e}")
+    return 'UNKNOWN'
+
 @app.route('/api/watchlist/kronos-ranking', methods=['GET'])
 def get_watchlist_kronos_ranking():
     from flask import request
@@ -4281,8 +4338,22 @@ def get_watchlist_kronos_ranking():
             with ThreadPoolExecutor(max_workers=8) as executor:
                 rankings = list(executor.map(lambda t: _run_kronos_for_ticker(t, pred_len), tickers))
 
-            # Sort rankings: highest predicted_return_pct first, None/failed at the bottom
-            rankings.sort(key=lambda x: x["predicted_return_pct"] if x["predicted_return_pct"] is not None else -9999, reverse=True)
+            # Sort rankings: 
+            # 1. Primary: highest predicted_return_pct first (failed/None go to the bottom)
+            # 2. Secondary: conviction order (HIGH -> MODERATE -> LOW -> UNKNOWN)
+            CONVICTION_ORDER = {'HIGH': 0, 'MODERATE': 1, 'LOW': 2, 'UNKNOWN': 3}
+            def sort_key(item):
+                ret = item.get("predicted_return_pct")
+                if ret is None:
+                    return (True, 0, 3)
+                t_clean = item.get("ticker", "")
+                if t_clean.startswith("NSE:"):
+                    t_clean = t_clean[4:]
+                conv = get_ensemble_conviction_label(t_clean)
+                conv_score = CONVICTION_ORDER.get(conv, 3)
+                return (False, -ret, conv_score)
+
+            rankings.sort(key=sort_key)
 
             # Assign rank
             for idx, item in enumerate(rankings):

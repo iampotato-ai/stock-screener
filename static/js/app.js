@@ -27,6 +27,7 @@ let activeOverlayChart = null;
 let activeKronosChart = null;
 let activeKronosFullChart = null;
 let activeKronosBacktestChart = null;
+let activeEnsembleSeries = {};
 let journalData = [];
 
 // ── Stat card previous-value store ──
@@ -268,6 +269,17 @@ window.openUpgradeModal = window.openUpgradeModal || function() {
 
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Fetch trading holidays dynamically
+    fetch('/api/nse-holidays')
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.holidays) {
+                window.nseHolidays = new Set(data.holidays);
+                console.log(`[EnsembleCast] Loaded ${window.nseHolidays.size} trading holidays dynamically.`);
+            }
+        })
+        .catch(err => console.error('[EnsembleCast] Failed to fetch trading holidays:', err));
+
     // Request Notification permission
     if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
@@ -8488,18 +8500,30 @@ window.destroyKronosBacktestChart = destroyKronosBacktestChart;
 // ── EnsembleCast (Multi-Model Forecast) Helpers ──
 
 function generateFutureTradingDates(lastDate, n) {
-  const NSE_HOLIDAYS_2026 = new Set([
+  // If window.nseHolidays is loaded dynamically from the backend, use it.
+  // Otherwise, use a static fallback set spanning 2026 and 2027.
+  const staticFallback = new Set([
     '2026-01-26','2026-03-03','2026-03-19','2026-04-02',
     '2026-04-03','2026-04-14','2026-05-01','2026-08-15',
-    '2026-10-02','2026-10-20','2026-11-25','2026-12-25'
+    '2026-10-02','2026-10-20','2026-11-25','2026-12-25',
+    '2027-01-26','2027-03-24','2027-03-26','2027-04-14',
+    '2027-05-01','2027-08-15','2027-10-02','2027-11-09',
+    '2027-12-25'
   ]);
+  const holidays = window.nseHolidays || staticFallback;
+  
+  const curYear = new Date(lastDate).getFullYear();
+  if (curYear > 2027 && !window.nseHolidays) {
+    console.warn(`[EnsembleCast] Current year is ${curYear} but trading holidays were not fetched dynamically. Using 2027 fallback.`);
+  }
+
   const dates = [];
   const cur = new Date(lastDate);
   while (dates.length < n) {
     cur.setDate(cur.getDate() + 1);
     const dow = cur.getDay();
     const iso = cur.toISOString().slice(0, 10);
-    if (dow !== 0 && dow !== 6 && !NSE_HOLIDAYS_2026.has(iso)) {
+    if (dow !== 0 && dow !== 6 && !holidays.has(iso)) {
       dates.push(iso);
     }
   }
@@ -8519,13 +8543,13 @@ function renderEnsembleChart(data) {
   // Generate future date labels aligned to the ensemble path
   const futureDates = generateFutureTradingDates(data.last_close_date, data.horizon);
 
-  // Remove stale series
-  ['kronosSeries', 'prophetSeries', 'arimaSeries', 'ensembleSeries'].forEach(key => {
-    if (window[key]) {
-      try { activeKronosFullChart.removeSeries(window[key]); } catch (_) {}
-      window[key] = null;
+  // Remove stale series from activeKronosFullChart
+  Object.keys(activeEnsembleSeries).forEach(key => {
+    if (activeEnsembleSeries[key] && activeKronosFullChart) {
+      try { activeKronosFullChart.removeSeries(activeEnsembleSeries[key]); } catch (_) {}
     }
   });
+  activeEnsembleSeries = {};
 
   // Draw individual model paths (toggled by checkbox)
   if (showIndividual) {
@@ -8541,7 +8565,7 @@ function renderEnsembleChart(data) {
       series.setData(
         path.map((close, i) => ({ time: futureDates[i], value: close }))
       );
-      window[`${modelName}Series`] = series;
+      activeEnsembleSeries[`${modelName}Series`] = series;
     });
   }
 
@@ -8555,7 +8579,7 @@ function renderEnsembleChart(data) {
   ensembleSeries.setData(
     data.ensemble_path.map((close, i) => ({ time: futureDates[i], value: close }))
   );
-  window.ensembleSeries = ensembleSeries;
+  activeEnsembleSeries.ensembleSeries = ensembleSeries;
 }
 
 function renderConvictionBadge(conviction, divergenceScore) {
