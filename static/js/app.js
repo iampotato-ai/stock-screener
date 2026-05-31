@@ -3102,9 +3102,6 @@ function initWatchlist() {
             isKronosBatchSorting = true;
             showWatchlistKronosColumns = true;
             
-            // 2. Clear old rankings cache to prevent stale items persisting
-            watchlistKronosRankings = {};
-            
             if (btnKronosColumnToggle) btnKronosColumnToggle.style.color = '#f59e0b';
             
             const originalSortBtnHtml = btnKronosBatchSort.innerHTML;
@@ -3113,6 +3110,9 @@ function initWatchlist() {
             renderWatchlist();
 
             try {
+                // Reset stale rankings before a fresh batch run
+                watchlistKronosRankings = {};
+
                 const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_PRED_LEN}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch rankings: ${response.statusText}`);
