@@ -13,6 +13,12 @@ from prophet import Prophet
 from statsmodels.tsa.arima.model import ARIMA
 import warnings
 warnings.filterwarnings('ignore')  # suppress Prophet/ARIMA verbose output
+import logging
+logging.getLogger('cmdstanpy').setLevel(logging.WARNING)
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+warnings.simplefilter('ignore', ConvergenceWarning)
+warnings.simplefilter('ignore', UserWarning)
+
 
 
 def init_db():
@@ -1024,12 +1030,11 @@ def get_kronos_predictor():
                 try:
                     import pandas as pd
                     import numpy as np
-                    import torch
-                    torch.set_num_threads(1)
+                    # torch.set_num_threads(1)  # Commented out to allow multi-threading on CPU
                     from model import Kronos, KronosTokenizer, KronosPredictor
                     tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
                     model = Kronos.from_pretrained("NeoQuasar/Kronos-small")
-                    kronos_predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=2048)
+                    kronos_predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=256)
                     print("Kronos-small loaded successfully on CPU.")
                 except Exception as e:
                     print(f"Error loading Kronos model: {e}")
@@ -1234,7 +1239,7 @@ def get_setup_analysis():
     if ticker.startswith("NSE:"):
         ticker = ticker[4:]
         
-    history = fetch_historical_prices(ticker, range_str="6mo")
+    history = fetch_historical_prices(ticker, range_str="1y")
     if not history:
         return jsonify(
             ticker=ticker,
@@ -1368,7 +1373,7 @@ def get_setup_analysis():
             "low": d["low"],
             "close": d["close"],
             "volume": d["volume"]
-        } for d in history]
+        } for d in history[-120:]]
     )
 
 def get_db_connection():
@@ -1417,7 +1422,7 @@ def kronos_predict(ticker: str, horizon: int = 10) -> list[float]:
         clean_ticker = clean_ticker[4:]
 
     # Fetch history using the existing fetch_historical_prices
-    history = fetch_historical_prices(clean_ticker, range_str="6mo")
+    history = fetch_historical_prices(clean_ticker, range_str="1y")
     if not history or len(history) < 10:
         raise ValueError(f"Insufficient history for {clean_ticker}")
 
@@ -1482,10 +1487,11 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
     )
     model.fit(df[['ds', 'y']])
 
-    # Generate future calendar dates (skip weekends)
-    last_date = df['ds'].iloc[-1]
-    future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=horizon)
-    future_df = pd.DataFrame({'ds': future_dates})
+    # Generate future trading dates skipping weekends and NSE holidays
+    last_date_str = df['ds'].iloc[-1].strftime("%Y-%m-%d")
+    future_dates = generate_next_trading_days(last_date_str, horizon)
+    future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates)})
+
 
     forecast = model.predict(future_df)
     return forecast['yhat'].tolist()
@@ -1615,6 +1621,7 @@ def api_ensemble_forecast():
         return jsonify({'error': 'horizon must be between 1 and 30'}), 400
 
     # --- Check cache first ---
+    conn = None
     try:
         conn = get_db_connection()
         cached = conn.execute(
@@ -1624,7 +1631,6 @@ def api_ensemble_forecast():
                ORDER BY generated_at DESC LIMIT 1""",
             (ticker,)
         ).fetchone()
-        conn.close()
 
         if cached:
             import json as _json
@@ -1634,6 +1640,9 @@ def api_ensemble_forecast():
             return jsonify(result)
     except Exception as e:
         print(f'[EnsembleCast] Cache lookup error: {e}')
+    finally:
+        if conn:
+            conn.close()
 
     # --- Run models in parallel ---
     results = {'kronos': None, 'prophet': None, 'arima': None}
@@ -1664,6 +1673,22 @@ def api_ensemble_forecast():
     degraded = len(active_models) < 3
 
     if len(active_models) < 2:
+        # Check if errors are due to insufficient history
+        is_insufficient = any(
+            err and 'insufficient_history' in err.lower()
+            for err in errors.values() if err
+        )
+        if is_insufficient:
+            first_err = next(
+                (err for err in errors.values() if err and 'insufficient_history' in err.lower()),
+                'insufficient_history'
+            )
+            return jsonify({
+                'error': 'insufficient_history',
+                'message': first_err,
+                'details': errors
+            }), 400
+
         return jsonify({
             'error': 'ensemble_failed',
             'details': errors
@@ -1712,6 +1737,7 @@ def api_ensemble_forecast():
     }
 
     # --- Persist to cache ---
+    conn = None
     try:
         import json as _json
         conn = get_db_connection()
@@ -1721,9 +1747,11 @@ def api_ensemble_forecast():
             (ticker, _json.dumps(response), horizon, last_close)
         )
         conn.commit()
-        conn.close()
     except Exception as e:
         print(f'[EnsembleCast] Cache write error: {e}')
+    finally:
+        if conn:
+            conn.close()
 
     return jsonify(response)
 
@@ -1749,7 +1777,7 @@ def get_kronos_forecast():
     sample_count = int(request.args.get('sample_count', 20))
     
     # 1. Fetch historical prices (120 bars for calculation of ATR%)
-    history = fetch_historical_prices(ticker, range_str="6mo")
+    history = fetch_historical_prices(ticker, range_str="1y")
     if not history or len(history) < 10:
         return jsonify(error="Insufficient price history"), 400
         
