@@ -1936,22 +1936,30 @@ def manual_rrg_snapshot():
     now_time = time.time()
     if now_time - _last_snapshot_time < 60:
         return jsonify(error="Snapshot cooldown active. Try again in a moment."), 429
+    # Set cooldown BEFORE the attempt so concurrent requests are blocked,
+    # but reset to 0 on any failure so the user can retry immediately.
     _last_snapshot_time = now_time
     _rrg_snapped_today = None
     try:
         res = scan_stocks()
         res_data = res.get_json()
         if "error" in res_data:
+            _last_snapshot_time = 0   # allow immediate retry on scan error
             return jsonify(error=res_data["error"]), 500
             
         universe = res_data.get("universe", [])
         if not universe:
+            _last_snapshot_time = 0   # allow immediate retry on empty universe
             return jsonify(error="No universe stocks found to snap"), 500
             
         sector_scores, _, _, _ = calculate_backend_sector_scores(universe)
         snapshot_rrg_week(sector_scores, universe)
+        # Invalidate the RRG response cache so the next /api/rrg-history call
+        # returns fresh data instead of stale cached results (Fix #8).
+        _rrg_response_cache.clear()
         return jsonify(success=True, message="RRG Snapshot saved successfully")
     except Exception as e:
+        _last_snapshot_time = 0   # allow immediate retry on exception (Fix #6)
         return jsonify(error=str(e)), 500
 
 @app.route('/api/rrg/backfill', methods=['POST'])
@@ -2066,8 +2074,12 @@ def rrg_backfill():
                     else:
                         quadrant = 'Improving'
                         
-                    # We simulate snapped_at time as close of that week to keep ordering
-                    snap_time = (datetime.strptime(date, "%Y-%m-%d") + timedelta(hours=16)).isoformat()
+                    # Use UTC time equivalent of IST 16:00 close (16:00 IST = 10:30 UTC).
+                    # This keeps snap_time consistent with the cutoff in get_rrg_history_timeline()
+                    # which also uses datetime.utcnow().isoformat() — both are naive UTC strings.
+                    # NOTE: If deploying on a UTC server this stays correct; on a local IST machine
+                    # both sides are naive-UTC so ordering is preserved.
+                    snap_time = (datetime.strptime(date, "%Y-%m-%d") + timedelta(hours=10, minutes=30)).isoformat()
                     
                     c.execute('''
                         INSERT OR REPLACE INTO rrg_history (week, sector, jdk_rs, jdk_rs_momentum, score, quadrant, snapped_at)
