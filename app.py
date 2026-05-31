@@ -3,10 +3,17 @@ import requests
 import time
 import json
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import threading
 from flask import Flask, jsonify, render_template
 import sqlite3
+import numpy as np
+import pandas as pd
+from prophet import Prophet
+from statsmodels.tsa.arima.model import ARIMA
+import warnings
+warnings.filterwarnings('ignore')  # suppress Prophet/ARIMA verbose output
+
 
 def init_db():
     conn = sqlite3.connect('scan_history.db')
@@ -138,6 +145,11 @@ def init_db():
             last_close  REAL NOT NULL
         )
     ''')
+    try:
+        c.execute("ALTER TABLE kronos_forecasts ADD COLUMN model_type TEXT DEFAULT 'kronos'")
+    except Exception:
+        pass  # column already exists
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS rrg_history (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1358,6 +1370,362 @@ def get_setup_analysis():
             "volume": d["volume"]
         } for d in history]
     )
+
+def get_db_connection():
+    conn = sqlite3.connect('scan_history.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def _fetch_price_history(ticker: str, min_days: int = 60) -> pd.DataFrame:
+    """
+    Fetches daily Close price history for `ticker` using native fetch_historical_prices.
+    Returns a DataFrame with columns ['ds', 'y'] (Prophet-compatible).
+    Raises ValueError if fewer than min_days of history are available.
+    """
+    clean_ticker = ticker
+    if clean_ticker.startswith("NSE:"):
+        clean_ticker = clean_ticker[4:]
+
+    # Fetch history using the existing fetch_historical_prices with a 2y range
+    history = fetch_historical_prices(clean_ticker, range_str="2y")
+    if not history or len(history) < min_days:
+        raise ValueError(
+            f"insufficient_history: {clean_ticker} has only {len(history)} days (need {min_days})"
+        )
+    
+    # Convert list of dicts to DataFrame
+    df = pd.DataFrame([{
+        'ds': pd.to_datetime(d['date']),
+        'y': float(d['close'])
+    } for d in history])
+    
+    # Strip tz for Prophet
+    df['ds'] = df['ds'].dt.tz_localize(None)
+    return df
+
+
+def kronos_predict(ticker: str, horizon: int = 10) -> list[float]:
+    """
+    Runs Kronos model on `ticker` and returns a list of `horizon`
+    predicted closing prices for the next N trading days (mean close).
+    """
+    import pandas as pd
+    import numpy as np
+
+    clean_ticker = ticker
+    if clean_ticker.startswith("NSE:"):
+        clean_ticker = clean_ticker[4:]
+
+    # Fetch history using the existing fetch_historical_prices
+    history = fetch_historical_prices(clean_ticker, range_str="6mo")
+    if not history or len(history) < 10:
+        raise ValueError(f"Insufficient history for {clean_ticker}")
+
+    last_date_str = history[-1]["date"]
+
+    predictor = get_kronos_predictor()
+    if not predictor:
+        raise ValueError("Kronos predictor not loaded")
+
+    # Prepare inputs using the last 60 bars for fast inference context
+    history_slice = history[-60:]
+    df_input = pd.DataFrame([{
+        "open": float(d["open"]),
+        "high": float(d["high"]),
+        "low": float(d["low"]),
+        "close": float(d["close"]),
+        "volume": float(d["volume"])
+    } for d in history_slice])
+    df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
+
+    x_timestamps = pd.to_datetime([d["date"] for d in history_slice])
+    y_timestamps = generate_next_trading_days(last_date_str, horizon)
+
+    # Calculate ATR% from the full history
+    atr_pct = compute_atr_pct(history)
+
+    # Scaled temperature
+    T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
+
+    pred_df = predictor.predict(
+        df=df_input,
+        x_timestamp=pd.Series(x_timestamps),
+        y_timestamp=y_timestamps,
+        pred_len=horizon,
+        T=T_val,
+        top_p=0.8,
+        sample_count=10,
+        verbose=False
+    )
+
+    closes = []
+    for idx, row in pred_df.iterrows():
+        closes.append(round(float(row["close"]), 2))
+    return closes
+
+def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
+    """
+    Runs Facebook Prophet on `ticker` and returns a list of `horizon`
+    predicted closing prices for the next N trading days.
+
+    Tuned for speed: yearly_seasonality only, no weekly/daily seasonality
+    changepoint_prior_scale=0.05 keeps it fast and avoids overfitting.
+    """
+    df = _fetch_price_history(ticker)
+
+    model = Prophet(
+        yearly_seasonality=True,
+        weekly_seasonality=False,
+        daily_seasonality=False,
+        changepoint_prior_scale=0.05,   # lower = faster, less flexible
+        interval_width=0.80
+    )
+    model.fit(df[['ds', 'y']])
+
+    # Generate future calendar dates (skip weekends)
+    last_date = df['ds'].iloc[-1]
+    future_dates = pd.bdate_range(start=last_date + pd.Timedelta(days=1), periods=horizon)
+    future_df = pd.DataFrame({'ds': future_dates})
+
+    forecast = model.predict(future_df)
+    return forecast['yhat'].tolist()
+
+def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
+    """
+    Runs ARIMA(5,1,0) on `ticker` closing prices.
+    Order (5,1,0): 5 AR lags, 1 differencing (for stationarity), 0 MA terms.
+    This is a solid general-purpose order for daily equity price series.
+
+    Falls back to ARIMA(2,1,0) if the primary order fails to converge
+    (common on low-liquidity small-cap stocks).
+    """
+    df = _fetch_price_history(ticker)
+    closes = df['y'].values
+
+    try:
+        model = ARIMA(closes, order=(5, 1, 0))
+        result = model.fit()
+    except Exception:
+        # Fallback to simpler order on convergence failure
+        model = ARIMA(closes, order=(2, 1, 0))
+        result = model.fit()
+
+    forecast = result.forecast(steps=horizon)
+    return forecast.tolist()
+
+def ensemble_blend(
+    kronos_path: list[float],
+    prophet_path: list[float],
+    arima_path: list[float],
+    weights: dict = None
+) -> dict:
+    """
+    Blends three model forecast paths into a single weighted ensemble.
+
+    Returns a dict with:
+      - ensemble_path: weighted average per day
+      - divergence_score: normalised std across models (scalar, worst day)
+      - conviction: 'HIGH' / 'MODERATE' / 'LOW'
+    """
+    if weights is None:
+        weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
+
+    w_k = weights.get('kronos', 0.0)
+    w_p = weights.get('prophet', 0.0)
+    w_a = weights.get('arima', 0.0)
+
+    # Align to shortest path length of models that actually returned predictions
+    lengths = []
+    if len(kronos_path) > 0:
+        lengths.append(len(kronos_path))
+    if len(prophet_path) > 0:
+        lengths.append(len(prophet_path))
+    if len(arima_path) > 0:
+        lengths.append(len(arima_path))
+
+    if not lengths:
+        return {
+            'ensemble_path': [],
+            'divergence_score': 0.0,
+            'conviction': 'LOW'
+        }
+
+    horizon = min(lengths)
+
+    k = np.array(kronos_path[:horizon]) if len(kronos_path) > 0 else np.zeros(horizon)
+    p = np.array(prophet_path[:horizon]) if len(prophet_path) > 0 else np.zeros(horizon)
+    a = np.array(arima_path[:horizon]) if len(arima_path) > 0 else np.zeros(horizon)
+
+    ensemble = w_k * k + w_p * p + w_a * a
+
+    # Divergence: normalised std of the active paths at each day, take worst-case day
+    active_paths = []
+    if len(kronos_path) > 0:
+        active_paths.append(k)
+    if len(prophet_path) > 0:
+        active_paths.append(p)
+    if len(arima_path) > 0:
+        active_paths.append(a)
+
+    if len(active_paths) > 1:
+        stacked = np.stack(active_paths, axis=0)  # shape (num_active, horizon)
+        daily_divergence = np.std(stacked, axis=0) / (ensemble + 1e-9)
+        max_divergence = float(np.max(daily_divergence))
+    else:
+        max_divergence = 0.0
+
+
+    if max_divergence < 0.015:
+        conviction = 'HIGH'
+    elif max_divergence < 0.03:
+        conviction = 'MODERATE'
+    else:
+        conviction = 'LOW'
+
+    return {
+        'ensemble_path': ensemble.tolist(),
+        'divergence_score': round(max_divergence, 5),
+        'conviction': conviction
+    }
+
+@app.route('/api/ensemble_forecast', methods=['POST'])
+def api_ensemble_forecast():
+    """
+    POST /api/ensemble_forecast
+    Body: { "ticker": "RELIANCE.NS", "horizon": 10, "use_dynamic_weights": false }
+
+    Runs Prophet + ARIMA in parallel alongside the existing Kronos predictor,
+    then blends all three into a confidence-weighted ensemble path.
+
+    Falls back gracefully to a 2-model ensemble if any single model fails.
+    Caches results in kronos_forecasts table with model_type='ensemble'.
+    """
+    from flask import request
+    import time
+    start_time = time.time()
+
+    data = request.get_json(force=True)
+    ticker = data.get('ticker', '').strip().upper()
+    horizon = int(data.get('horizon', 10))
+    use_dynamic_weights = data.get('use_dynamic_weights', False)
+
+    if not ticker:
+        return jsonify({'error': 'ticker_required'}), 400
+    if horizon < 1 or horizon > 30:
+        return jsonify({'error': 'horizon must be between 1 and 30'}), 400
+
+    # --- Check cache first ---
+    try:
+        conn = get_db_connection()
+        cached = conn.execute(
+            """SELECT forecast_json FROM kronos_forecasts
+               WHERE ticker = ? AND model_type = 'ensemble'
+               AND datetime(generated_at) > datetime('now', '-4 hours')
+               ORDER BY generated_at DESC LIMIT 1""",
+            (ticker,)
+        ).fetchone()
+        conn.close()
+
+        if cached:
+            import json as _json
+            result = _json.loads(cached['forecast_json'])
+            result['cached'] = True
+            result['latency_ms'] = round((time.time() - start_time) * 1000)
+            return jsonify(result)
+    except Exception as e:
+        print(f'[EnsembleCast] Cache lookup error: {e}')
+
+    # --- Run models in parallel ---
+    results = {'kronos': None, 'prophet': None, 'arima': None}
+    errors  = {'kronos': None, 'prophet': None, 'arima': None}
+
+    def run_kronos():
+        return kronos_predict(ticker, horizon)
+
+    def run_prophet():
+        return prophet_predict(ticker, horizon)
+
+    def run_arima():
+        return arima_predict(ticker, horizon)
+
+    runners = {'kronos': run_kronos, 'prophet': run_prophet, 'arima': run_arima}
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {name: executor.submit(fn) for name, fn in runners.items()}
+        for name, future in futures.items():
+            try:
+                results[name] = future.result(timeout=30)  # 30s hard timeout per model
+            except Exception as e:
+                errors[name] = str(e)
+                print(f'[EnsembleCast] {name} failed: {e}')
+
+    # --- Assess which models succeeded ---
+    active_models = {k: v for k, v in results.items() if v is not None}
+    degraded = len(active_models) < 3
+
+    if len(active_models) < 2:
+        return jsonify({
+            'error': 'ensemble_failed',
+            'details': errors
+        }), 500
+
+    # --- Build weights (static for Phase 1; dynamic weights in Phase 2) ---
+    default_weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
+    # If a model failed, redistribute its weight proportionally
+    if degraded:
+        active_weight_sum = sum(default_weights[m] for m in active_models)
+        weights = {m: default_weights[m] / active_weight_sum for m in active_models}
+    else:
+        weights = default_weights
+
+    # --- Blend ---
+    blend_result = ensemble_blend(
+        kronos_path=results['kronos'] or [],
+        prophet_path=results['prophet'] or [],
+        arima_path=results['arima'] or [],
+        weights=weights
+    )
+
+    # --- Determine last close ---
+    last_close = 0.0
+    try:
+        # Fetch actual close price from history
+        df_hist = _fetch_price_history(ticker, min_days=10)
+        last_close = float(df_hist['y'].iloc[-1])
+    except Exception:
+        pass
+
+    # --- Build response ---
+    response = {
+        'ticker': ticker,
+        'horizon': horizon,
+        'ensemble_path': blend_result['ensemble_path'],
+        'model_paths': {k: v for k, v in results.items() if v is not None},
+        'weights': weights,
+        'divergence_score': blend_result['divergence_score'],
+        'conviction': blend_result['conviction'],
+        'degraded': degraded,
+        'model_errors': {k: v for k, v in errors.items() if v is not None},
+        'cached': False,
+        'last_close': last_close,
+        'latency_ms': round((time.time() - start_time) * 1000)
+    }
+
+    # --- Persist to cache ---
+    try:
+        import json as _json
+        conn = get_db_connection()
+        conn.execute(
+            """INSERT INTO kronos_forecasts (ticker, forecast_json, generated_at, pred_len, last_close, model_type)
+               VALUES (?, ?, datetime('now'), ?, ?, 'ensemble')""",
+            (ticker, _json.dumps(response), horizon, last_close)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f'[EnsembleCast] Cache write error: {e}')
+
+    return jsonify(response)
 
 @app.route('/api/kronos-forecast', methods=['GET'])
 def get_kronos_forecast():
