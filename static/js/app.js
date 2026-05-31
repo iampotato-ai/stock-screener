@@ -2925,15 +2925,17 @@ let watchlistStocks = [];
 let watchlistSections = [];
 let watchlistDataMap = {};
 let watchlistCurrentPage = 1;
-const watchlistItemsPerPage = 5;
+const watchlistItemsPerPage = 10;
 let activeNewsFilter = 'all'; // 'all' or ticker symbol
 let showWatchlistKronosColumns = false;
 let watchlistKronosRankings = {};
 let isKronosBatchSorting = false;
-const KRONOS_PRED_LEN = 5;
+let isWatchlistLoaded = false;
+let lastKronosSortTime = 0;
+const KRONOS_SORT_COOLDOWN_MS = 5 * 60 * 1000; // 5-minute cooldown
 
-// ── Kronos Batch Forecast Config ──
-const KRONOS_BATCH_PRED_LEN = 5;  // Forecast horizon: 3, 5, or 10 sessions
+// ── Kronos Forecast Config ──
+const KRONOS_FORECAST_HORIZON = 5;  // Forecast horizon: 3, 5, or 10 sessions
 
 // Toast system for styled notification messages
 function showToast(message, type = 'info') {
@@ -3016,9 +3018,17 @@ function fetchWatchlistFromBackend() {
                 syncWatchlistStocksFlat();
                 renderWatchlist();
                 renderAnnouncements();
+                
+                isWatchlistLoaded = true;
+                const btnKronosBatchSort = document.getElementById('btn-kronos-batch-sort');
+                if (btnKronosBatchSort) {
+                    btnKronosBatchSort.disabled = false;
+                }
             }
         })
-        .catch(err => console.error("Error loading watchlist from backend:", err));
+        .catch(err => {
+            console.error("Error loading watchlist from backend:", err);
+        });
 }
 
 function fetchJournalFromBackend() {
@@ -3108,9 +3118,23 @@ function initWatchlist() {
     // Kronos batch sort button
     const btnKronosBatchSort = document.getElementById('btn-kronos-batch-sort');
     if (btnKronosBatchSort) {
+        if (!isWatchlistLoaded) {
+            btnKronosBatchSort.disabled = true;
+        }
         btnKronosBatchSort.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (isKronosBatchSorting) return;
+
+            const now = Date.now();
+            if (now - lastKronosSortTime < KRONOS_SORT_COOLDOWN_MS) {
+                const remainingSecs = Math.ceil((KRONOS_SORT_COOLDOWN_MS - (now - lastKronosSortTime)) / 1000);
+                const mins = Math.floor(remainingSecs / 60);
+                const secs = remainingSecs % 60;
+                if (typeof showToast === 'function') {
+                    showToast(`Sort is on cooldown. Please wait ${mins}m ${secs}s before running again.`, "info");
+                }
+                return;
+            }
 
             // 1. Immediately disable and set loading state to prevent double clicks
             btnKronosBatchSort.disabled = true;
@@ -3125,16 +3149,21 @@ function initWatchlist() {
             renderWatchlist();
 
             try {
-                // Reset stale rankings before a fresh batch run
-                watchlistKronosRankings = {};
-
-                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_BATCH_PRED_LEN}`);
+                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_FORECAST_HORIZON}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch rankings: ${response.statusText}`);
                 }
                 const data = await response.json();
                 
                 if (data && data.sections) {
+                    lastKronosSortTime = Date.now();
+                    if (data.partial && typeof showToast === 'function') {
+                        showToast(`Sort completed: ${data.missing_count} tickers timed out and moved to the bottom.`, "warning");
+                    }
+                    
+                    // Reset stale rankings ONLY now, upon successful response
+                    watchlistKronosRankings = {};
+                    
                     data.sections.forEach(sec => {
                         sec.rankings.forEach(r => {
                             watchlistKronosRankings[r.ticker] = {
@@ -3154,10 +3183,11 @@ function initWatchlist() {
                         }
                     });
 
-                    if (typeof saveWatchlistSections === 'function') {
-                        saveWatchlistSections();
+                    const saveFunc = window.saveWatchlistSections || (typeof saveWatchlistSections === 'function' ? saveWatchlistSections : null);
+                    if (saveFunc) {
+                        saveFunc(true);
                     } else {
-                        console.error('[Kronos Sort] saveWatchlistSections is not defined — reordered list will not persist. Check script load order.');
+                        throw new Error('[Kronos Sort] saveWatchlistSections is not defined');
                     }
                     
                     // Show last sorted timestamp suggestion
@@ -3254,12 +3284,55 @@ function initWatchlist() {
             menu.remove();
         }
     });
+} // Closing initWatchlist
+
+function normalizeBias(rawBias) {
+    if (!rawBias) return 'Sideways Consolidation';
+    const lower = rawBias.toLowerCase();
+    if (lower.includes('breakout')) return 'Strong Breakout';
+    if (lower.includes('bullish') || lower.includes('continuation')) return 'Bullish Continuation';
+    if (lower.includes('downtrend') || lower.includes('strong downtrend') || lower.includes('strong down')) return 'Strong Downtrend';
+    if (lower.includes('bearish') || lower.includes('pressure')) return 'Bearish Pressure';
+    return 'Sideways Consolidation';
 }
 
-function saveWatchlistSections() {
-    localStorage.setItem('tv_watchlist_sections_order', JSON.stringify(watchlistSections.map(s => s.id)));
+async function saveWatchlistSections(force = false) {
+    if (!isWatchlistLoaded) {
+        console.warn('[Watchlist Save] Save skipped: Watchlist not loaded.');
+        return;
+    }
+    if (isKronosBatchSorting && !force) {
+        console.warn('[Watchlist Save] Save skipped: Kronos sort in progress.');
+        return;
+    }
+    const order = watchlistSections.map(s => s.id);
+    localStorage.setItem('tv_watchlist_sections_order', JSON.stringify(order));
     syncWatchlistStocksFlat();
+    
+    try {
+        await fetch('/api/watchlist/sections/reorder', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ order })
+        });
+    } catch (err) {
+        console.error('[Watchlist Sync] Failed to save section order to backend database:', err);
+    }
+
+    // Persist stock order per section to backend
+    watchlistSections.forEach(sec => {
+        if (sec.stocks && Array.isArray(sec.stocks)) {
+            fetch(`/api/watchlist/sections/${sec.id}/reorder`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stocks: sec.stocks })
+            }).catch(err => console.error(`[WL] Failed to persist order for section ${sec.id}:`, err));
+        }
+    });
 }
+window.saveWatchlistSections = saveWatchlistSections;
 
 function syncWatchlistStocksFlat() {
     const allSyms = new Set();
@@ -3357,6 +3430,7 @@ function deleteSection(sectionId) {
 }
 
 function moveSection(sectionId, direction) {
+    if (!isWatchlistLoaded || isKronosBatchSorting) return;
     const index = watchlistSections.findIndex(s => s.id === sectionId);
     if (index === -1) return;
     
@@ -3915,7 +3989,7 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_forecast_bias) {
-                            const bias = rankData.ai_forecast_bias;
+                            const bias = normalizeBias(rankData.ai_forecast_bias);
                             const biasStyles = {
                                 'Strong Breakout':        { bg: 'rgba(16,185,129,0.1)',    color: '#10b981', border: 'rgba(16,185,129,0.2)' },
                                 'Bullish Continuation':   { bg: 'rgba(52,211,153,0.08)',   color: '#34d399', border: 'rgba(52,211,153,0.15)' },
@@ -3937,11 +4011,13 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_confidence_score) {
-                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600; color:var(--color-text-secondary);">
+                            const conf = rankData.ai_confidence_score;
+                            const confClass = conf >= 70 ? 'val-up' : conf >= 50 ? 'val-warn' : 'val-down';
+                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px; min-width:30px; margin:0 auto;">
-                                    <span>${rankData.ai_confidence_score}%</span>
+                                    <span class="${confClass}">${conf}%</span>
                                     <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
-                                        <div style="width:${rankData.ai_confidence_score}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
+                                        <div style="width:${conf}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
                                     </div>
                                 </div>
                             </td>`;
@@ -4011,7 +4087,7 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_forecast_bias) {
-                            const bias = rankData.ai_forecast_bias;
+                            const bias = normalizeBias(rankData.ai_forecast_bias);
                             const biasStyles = {
                                 'Strong Breakout':        { bg: 'rgba(16,185,129,0.1)',    color: '#10b981', border: 'rgba(16,185,129,0.2)' },
                                 'Bullish Continuation':   { bg: 'rgba(52,211,153,0.08)',   color: '#34d399', border: 'rgba(52,211,153,0.15)' },
@@ -4033,11 +4109,13 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_confidence_score) {
-                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600; color:var(--color-text-secondary);">
+                            const conf = rankData.ai_confidence_score;
+                            const confClass = conf >= 70 ? 'val-up' : conf >= 50 ? 'val-warn' : 'val-down';
+                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px; min-width:30px; margin:0 auto;">
-                                    <span>${rankData.ai_confidence_score}%</span>
+                                    <span class="${confClass}">${conf}%</span>
                                     <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
-                                        <div style="width:${rankData.ai_confidence_score}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
+                                        <div style="width:${conf}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
                                     </div>
                                 </div>
                             </td>`;
@@ -4638,6 +4716,10 @@ let dragSrcSymbol = null;
 let dragSrcSectionId = null;
 
 function handleDragStart(e) {
+    if (!isWatchlistLoaded || isKronosBatchSorting) {
+        e.preventDefault();
+        return;
+    }
     dragSrcSymbol = this.dataset.symbol;
     dragSrcSectionId = this.dataset.sectionId;
     e.dataTransfer.effectAllowed = 'move';
@@ -4682,6 +4764,10 @@ function handleDragLeave(e) {
 function handleDrop(e) {
     if (e.stopPropagation) {
         e.stopPropagation();
+    }
+    
+    if (!isWatchlistLoaded || isKronosBatchSorting) {
+        return false;
     }
     
     const targetRow = e.target.closest('.watchlist-row');
@@ -6075,7 +6161,7 @@ function openTradeDrawer(ticker) {
                 if (kronosForecastRow) {
                     kronosForecastRow.style.display = 'block';
                     const biasBadge = document.getElementById('drawer-kronos-bias');
-                    const bias = data.ai_forecast_bias;  // null = model errored / not run
+                    const bias = data.ai_forecast_bias ? normalizeBias(data.ai_forecast_bias) : null;
 
                     if (!bias) {
                         // Model did not run or threw an error — show neutral grey Unavailable badge
@@ -6175,8 +6261,8 @@ function openTradeDrawer(ticker) {
                     destroyKronosChart();
                 }
 
-                // Fetch interactive Kronos details (sample_count = 20 for envelope calculation)
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_PRED_LEN}&sample_count=20`)
+                // Fetch interactive Kronos details (sample_count = 10 for envelope calculation)
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_FORECAST_HORIZON}&sample_count=10`)
                     .then(res => res.json())
                     .then(kdata => {
                         if (kdata.error) {
@@ -6406,7 +6492,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
             const len = parseInt(btn.dataset.len);
             if (window.currentTradeStock) {
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=20`)
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=10`)
                     .then(res => res.json())
                     .then(kdata => {
                         if (!kdata.error) {
@@ -8161,7 +8247,7 @@ function renderKronosForecastPanel(data) {
     .then(ensData => {
         if (ensData && ensData.ensemble_path && activeKronosChart) {
             // Draw gold ensemble path on the drawer chart
-            const ensembleSeries = activeKronosChart.addLineSeries({
+            const ensembleSeries = activeKronosChart.addSeries(LightweightCharts.LineSeries, {
                 color: '#fbbf24',
                 lineWidth: 2,
                 title: 'Ensemble'
@@ -8276,7 +8362,7 @@ function renderAIForecastWorkspace(ticker) {
         runBtn.textContent = 'Running...';
     }
 
-    fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=20`)
+    fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=10`)
         .then(res => res.json())
         .then(data => {
             if (runBtn) {
@@ -8613,7 +8699,7 @@ function renderEnsembleChart(data) {
   if (showIndividual && activeKronosFullChart) {
     Object.entries(data.model_paths).forEach(([modelName, path]) => {
       const style = MODEL_COLORS[modelName] || { color: '#888', lineWidth: 1 };
-      const series = activeKronosFullChart.addLineSeries({
+      const series = activeKronosFullChart.addSeries(LightweightCharts.LineSeries, {
         color: style.color,
         lineWidth: style.lineWidth,
         lineStyle: 2,   // dashed
@@ -8632,7 +8718,7 @@ function renderEnsembleChart(data) {
     console.error('[EnsembleCast] activeKronosFullChart still null after creation attempt — aborting chart draw');
     return;
   }
-  const ensembleSeries = activeKronosFullChart.addLineSeries({
+  const ensembleSeries = activeKronosFullChart.addSeries(LightweightCharts.LineSeries, {
     color: ENSEMBLE_STYLE.color,
     lineWidth: ENSEMBLE_STYLE.lineWidth,
     priceLineVisible: false,
@@ -8649,15 +8735,17 @@ function renderConvictionBadge(conviction, divergenceScore) {
   const icon   = document.getElementById('convictionIcon');
   const label  = document.getElementById('convictionLabel');
   if (!badge || !icon || !label) return;
-  const ICONS  = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴' };
+  const ICONS  = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴', UNKNOWN: '⚪' };
   const LABELS = {
     HIGH:     `High Conviction  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
     MODERATE: `Moderate Conviction  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
     LOW:      `Low Conviction ⚠️  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+    UNKNOWN:  `Unknown Conviction`
   };
-  badge.className = `conviction-badge ${conviction}`;
-  icon.textContent  = ICONS[conviction]  ?? '●';
-  label.textContent = LABELS[conviction] ?? conviction;
+  const key = conviction ?? 'UNKNOWN';
+  badge.className = `conviction-badge ${key}`;
+  icon.textContent  = ICONS[key]  ?? '●';
+  label.textContent = LABELS[key] ?? key;
 }
 
 function renderModelWeightsBar(weights = {}) {
@@ -8721,8 +8809,16 @@ async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = fa
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticker, horizon, use_dynamic_weights: useDynamicWeights })
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      throw e;
+    }
+    if (!res.ok || data.error) {
+      throw new Error(data?.error || 'HTTP ' + res.status);
+    }
 
     window.lastEnsembleData = data;
 

@@ -715,6 +715,11 @@ input:checked + .slider:before {
     font-weight: 600;
 }
 
+.val-warn {
+    color: var(--accent-orange) !important;
+    font-weight: 600;
+}
+
 .val-na {
     color: var(--color-text-muted);
     opacity: 0.5;
