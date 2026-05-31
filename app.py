@@ -19,6 +19,10 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 warnings.simplefilter('ignore', ConvergenceWarning)
 warnings.simplefilter('ignore', UserWarning)
 
+from journal_math import compute_pnl_and_r
+from rrg_math import compute_jdk_rs, compute_quadrant
+from forecast_math import compute_forecast_metrics
+
 
 
 def init_db():
@@ -109,6 +113,10 @@ def init_db():
             name TEXT NOT NULL
         )
     ''')
+    try:
+        c.execute("ALTER TABLE watchlist_sections ADD COLUMN position INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # position column already exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS watchlist_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +126,10 @@ def init_db():
             FOREIGN KEY(section_id) REFERENCES watchlist_sections(id) ON DELETE CASCADE
         )
     ''')
+    try:
+        c.execute("ALTER TABLE watchlist_items ADD COLUMN position INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # position column already exists
     c.execute('''
         CREATE TABLE IF NOT EXISTS trade_journal (
             id TEXT PRIMARY KEY,
@@ -1003,12 +1015,15 @@ def populate_screener_intelligence(stocks_list):
 # ── Kronos AI Predictor Loading ──
 kronos_predictor = None
 kronos_load_lock = threading.Lock()
+kronos_inference_lock = threading.Lock()
 
 # ── Kronos Result Cache (4hr TTL per ticker) ──
 import time as _time
 from collections import OrderedDict
 _kronos_cache = OrderedDict()       # {ticker: (timestamp, bias, score, forecast_list, forecast_metrics)}
 _kronos_cache_lock = threading.Lock()
+_in_progress_locks = {}
+_in_progress_lock_mutex = threading.Lock()
 _KRONOS_TTL   = 4 * 3600 # 4 hours
 _MAX_KRONOS_CACHE = 200
 
@@ -1100,6 +1115,14 @@ def load_nse_holidays():
     _loaded_nse_holidays = holidays
     return _loaded_nse_holidays
 
+@app.route('/api/nse-holidays', methods=['GET'])
+def api_get_nse_holidays():
+    try:
+        holidays = sorted(list(load_nse_holidays()))
+        return jsonify({'holidays': holidays})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 def generate_next_trading_days(last_date_str, num_days=10):
     import pandas as pd
     current_date = pd.to_datetime(last_date_str)
@@ -1113,123 +1136,8 @@ def generate_next_trading_days(last_date_str, num_days=10):
     return pd.Series(trading_days)
 
 def compute_forecast_metrics(forecast_list, last_close, history):
-    """
-    Computes forecast scoring metrics, forecast bias, and confidence score.
-    Returns: (ai_forecast_bias, ai_confidence_score, forecast_metrics)
-    """
-    if not forecast_list:
-        return None, 0, {}
-
-    import numpy as np
-
-    forecast_closes = [r["close"] for r in forecast_list]
-    forecast_highs  = [r["high"] for r in forecast_list]
-    current_close   = last_close
-
-    # ── M1: Endpoint Return % ──────────────────────────────────────────
-    m1_return_pct = (forecast_closes[-1] - current_close) / (current_close + 1e-5) * 100
-
-    # ── M2: Momentum Split (early vs late 3 bars) ──────────────────────
-    early_len = min(3, len(forecast_closes))
-    late_len = min(3, len(forecast_closes))
-    early_avg = np.mean(forecast_closes[:early_len]) if early_len > 0 else current_close
-    late_avg  = np.mean(forecast_closes[-late_len:]) if late_len > 0 else current_close
-    m2_split_pct = (late_avg - early_avg) / (current_close + 1e-5) * 100
-
-    # ── M3: Day-by-Day Consistency % ──────────────────────────────────
-    if len(forecast_closes) > 1:
-        up_days = sum(
-            1 for i in range(1, len(forecast_closes))
-            if forecast_closes[i] > forecast_closes[i-1]
-        )
-        m3_consistency_pct = up_days / (len(forecast_closes) - 1) * 100
-    else:
-        m3_consistency_pct = 50.0
-
-    # ── M4: Breakout Above 20d Recent High ────────────────────────────
-    highs = [day["high"] for day in history]
-    recent_20d_high = max(highs[-21:-1]) if len(highs) >= 21 else max(highs)
-    m4_breakout = max(forecast_highs) > recent_20d_high
-
-    # ── M5: Max Drawdown During Forecast Window ────────────────────────
-    m5_drawdown_pct = (min(forecast_closes) - current_close) / (current_close + 1e-5) * 100
-
-    # ── [TWEAK 2] Realised return std from history ──────────────
-    hist_closes = [float(d["close"]) for d in history]
-    realised_returns = []
-    horizon = len(forecast_list)
-    for i in range(horizon, len(hist_closes)):
-        r = (hist_closes[i] - hist_closes[i - horizon]) / (hist_closes[i - horizon] + 1e-5) * 100
-        realised_returns.append(r)
-    realised_std = float(np.std(realised_returns)) if len(realised_returns) >= 5 else 5.0
-    normalised_return = m1_return_pct / (realised_std + 1e-5)
-
-    # ── Weighted Score [-1, +1] ────────────────────────────────────────
-    def _norm(val, lo, hi):
-        """Linearly map val from [lo, hi] to [-1, +1], clamped."""
-        return float(np.clip((val - lo) / ((hi - lo) / 2 + 1e-9) - 1, -1, 1))
-
-    s1 = _norm(m1_return_pct,     -10,  10)   # endpoint direction  (30%)
-    s2 = _norm(m2_split_pct,       -5,   5)   # momentum quality    (25%)
-    s3 = _norm(m3_consistency_pct,  30,  70)  # day consistency     (20%)
-    s4 = 1.0 if m4_breakout else -0.2         # breakout signal     (15%)
-    s5 = _norm(-m5_drawdown_pct,   -8,   0)   # inverse of drawdown (10%)
-
-    weighted_score = (0.30 * s1 + 0.25 * s2 + 0.20 * s3
-                      + 0.15 * s4 + 0.10 * s5)
-
-    # ── 5-Label Bias ───────────────────────────────────────────────────
-    if weighted_score > 0.40:
-        ai_forecast_bias = "Strong Breakout"
-    elif weighted_score > 0.15:
-        ai_forecast_bias = "Bullish Continuation"
-    elif weighted_score > -0.15:
-        ai_forecast_bias = "Sideways Consolidation"
-    elif weighted_score > -0.40:
-        ai_forecast_bias = "Bearish Pressure"
-    else:
-        ai_forecast_bias = "Strong Downtrend"
-
-    # ── [TWEAK 3] Dampened cv_score for flat forecasts ─────────────────
-    atr_pct = compute_atr_pct(history)
-    fc_mean = np.mean(forecast_closes)
-    fc_std  = np.std(forecast_closes)
-    cv      = fc_std / (fc_mean + 1e-5)
-    forecast_range_pct = (max(forecast_closes) - min(forecast_closes)) / (current_close + 1e-5) * 100
-    is_flat_forecast   = forecast_range_pct < atr_pct          # less than 1 ATR of movement
-    cv_weight = 0.20 if is_flat_forecast else 0.40             # dampen cv on flat names
-
-    cv_score   = float(np.clip(1.0 - cv * 10, 0, 1))
-    
-    if weighted_score > 0:
-        cons_score = float(np.clip((m3_consistency_pct - 50) / 50, 0.0, 1.0))
-    elif weighted_score < 0:
-        cons_score = float(np.clip((50 - m3_consistency_pct) / 50, 0.0, 1.0))
-    else:
-        cons_score = 0.0
-        
-    mag_score  = abs(weighted_score)
-    cons_weight = 0.50 if is_flat_forecast else 0.40
-    mag_weight  = 0.30 if is_flat_forecast else 0.20
-    ai_confidence_score = int(np.clip(
-        (cv_weight * cv_score + cons_weight * cons_score + mag_weight * mag_score) * 100,
-        25, 92
-    ))
-
-    forecast_metrics = {
-        "return_pct":         round(m1_return_pct,    2),
-        "momentum_split":     round(m2_split_pct,     2),
-        "consistency_pct":    round(m3_consistency_pct, 1),
-        "breakout_signal":    bool(m4_breakout),
-        "max_drawdown_pct":   round(m5_drawdown_pct,  2),
-        "weighted_score":     round(weighted_score,   3),
-        "normalised_return":  round(normalised_return, 2),
-        "realised_std_10d":   round(realised_std,      2),
-        "forecast_range_pct": round(forecast_range_pct, 2),
-        "is_flat_forecast":   bool(is_flat_forecast),
-    }
-
-    return ai_forecast_bias, ai_confidence_score, forecast_metrics
+    from forecast_math import compute_forecast_metrics as _cfm
+    return _cfm(forecast_list, last_close, history)
 
 @app.route('/api/setup-analysis', methods=['GET'])
 def get_setup_analysis():
@@ -1384,7 +1292,11 @@ def get_setup_analysis():
 def get_db_connection():
     conn = sqlite3.connect('scan_history.db')
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+# Module-level context cache used by the backtest shim
+_BACKTEST_CTX_CACHE: dict = {}
 
 def _fetch_price_history(ticker: str, min_days: int = 60) -> pd.DataFrame:
     """
@@ -1395,6 +1307,33 @@ def _fetch_price_history(ticker: str, min_days: int = 60) -> pd.DataFrame:
     clean_ticker = ticker
     if clean_ticker.startswith("NSE:"):
         clean_ticker = clean_ticker[4:]
+
+    # Backtest shim: return injected context DataFrame if present
+    import sys
+    import threading
+    thread_id = threading.get_ident()
+
+    # Walk stack to identify the prediction function calling this
+    frame = sys._getframe()
+    calling_model = None
+    while frame:
+        func_name = frame.f_code.co_name
+        if func_name in ('kronos_predict', 'prophet_predict', 'arima_predict'):
+            calling_model = func_name
+            break
+        frame = frame.f_back
+
+    if calling_model:
+        specific_key = f"{clean_ticker}__mape__{calling_model}__{thread_id}"
+        if specific_key in _BACKTEST_CTX_CACHE:
+            df = _BACKTEST_CTX_CACHE[specific_key].copy()
+            if len(df) >= min_days:
+                return df
+
+    if clean_ticker in _BACKTEST_CTX_CACHE:
+        df = _BACKTEST_CTX_CACHE[clean_ticker].copy()
+        if len(df) >= min_days:
+            return df
 
     # Fetch history using the existing fetch_historical_prices with a 2y range
     history = fetch_historical_prices(clean_ticker, range_str="2y")
@@ -1457,16 +1396,17 @@ def kronos_predict(ticker: str, horizon: int = 10) -> list[float]:
     # Scaled temperature
     T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
 
-    pred_df = predictor.predict(
-        df=df_input,
-        x_timestamp=pd.Series(x_timestamps),
-        y_timestamp=y_timestamps,
-        pred_len=horizon,
-        T=T_val,
-        top_p=0.8,
-        sample_count=10,
-        verbose=False
-    )
+    with kronos_inference_lock:
+        pred_df = predictor.predict(
+            df=df_input,
+            x_timestamp=pd.Series(x_timestamps),
+            y_timestamp=y_timestamps,
+            pred_len=horizon,
+            T=T_val,
+            top_p=0.8,
+            sample_count=10,
+            verbose=False
+        )
 
     closes = []
     for idx, row in pred_df.iterrows():
@@ -1478,16 +1418,29 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
     Runs Facebook Prophet on `ticker` and returns a list of `horizon`
     predicted closing prices for the next N trading days.
 
-    Tuned for speed: yearly_seasonality only, no weekly/daily seasonality
+    Uses fetch_historical_prices directly with range_str="1y" to reuse the
+    same Yahoo Finance cache key populated by Kronos — avoids a redundant 2y
+    fetch under thread concurrency which often times out.
+
+    Tuned for speed: yearly_seasonality only, no weekly/daily seasonality,
     changepoint_prior_scale=0.05 keeps it fast and avoids overfitting.
     """
-    df = _fetch_price_history(ticker)
+    clean_ticker = ticker
+    if clean_ticker.startswith("NSE:"):
+        clean_ticker = clean_ticker[4:]
+
+    history = fetch_historical_prices(clean_ticker, range_str="1y")
+    if not history or len(history) < 60:
+        raise ValueError(f"insufficient_history: {clean_ticker} has only {len(history)} days (need 60)")
+
+    df = pd.DataFrame([{'ds': pd.to_datetime(d['date']), 'y': float(d['close'])} for d in history])
+    df['ds'] = df['ds'].dt.tz_localize(None)  # ensure tz-naive for Prophet
 
     model = Prophet(
         yearly_seasonality=True,
         weekly_seasonality=False,
         daily_seasonality=False,
-        changepoint_prior_scale=0.05,   # lower = faster, less flexible
+        changepoint_prior_scale=0.05,
         interval_width=0.80
     )
     model.fit(df[['ds', 'y']])
@@ -1495,11 +1448,14 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
     # Generate future trading dates skipping weekends and NSE holidays
     last_date_str = df['ds'].iloc[-1].strftime("%Y-%m-%d")
     future_dates = generate_next_trading_days(last_date_str, horizon)
-    future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates)})
-
+    # Build a proper DatetimeIndex then strip tz — avoids TypeError when
+    # pd.to_datetime() on a Series returns a Series (not DatetimeIndex)
+    future_series = pd.to_datetime(future_dates.values)  # ndarray → DatetimeIndex
+    future_df = pd.DataFrame({'ds': future_series.tz_localize(None)})
 
     forecast = model.predict(future_df)
     return forecast['yhat'].tolist()
+
 
 def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
     """
@@ -1507,11 +1463,22 @@ def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
     Order (5,1,0): 5 AR lags, 1 differencing (for stationarity), 0 MA terms.
     This is a solid general-purpose order for daily equity price series.
 
+    Uses fetch_historical_prices directly with range_str="1y" to reuse the
+    same Yahoo Finance cache key populated by Kronos — avoids a redundant 2y
+    fetch under thread concurrency which often times out.
+
     Falls back to ARIMA(2,1,0) if the primary order fails to converge
     (common on low-liquidity small-cap stocks).
     """
-    df = _fetch_price_history(ticker)
-    closes = df['y'].values
+    clean_ticker = ticker
+    if clean_ticker.startswith("NSE:"):
+        clean_ticker = clean_ticker[4:]
+
+    history = fetch_historical_prices(clean_ticker, range_str="1y")
+    if not history or len(history) < 60:
+        raise ValueError(f"insufficient_history: {clean_ticker} has only {len(history)} days (need 60)")
+
+    closes = np.array([float(d['close']) for d in history])
 
     try:
         model = ARIMA(closes, order=(5, 1, 0))
@@ -1524,6 +1491,137 @@ def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
     forecast = result.forecast(steps=horizon)
     return forecast.tolist()
 
+# Module-level EMA state: {ticker: {model: ema_weight}}
+_weight_ema_state: dict = {}
+_WEIGHT_EMA_ALPHA = 0.4   # higher = faster adaptation; 0.4 is a 4-period EMA
+
+def _compute_rolling_mape(ticker: str, model_fn, horizon: int = 10) -> float:
+    """
+    Runs `model_fn(ticker, horizon)` on a held-out window ending `horizon`
+    trading days ago and returns MAPE (%) against actual closes.
+
+    Injects the context slice directly into _historical_prices_cache (the
+    fetch_historical_prices LRU cache) so all three models — including
+    prophet_predict and arima_predict which call fetch_historical_prices
+    directly — see the context-only data without triggering a real HTTP fetch.
+
+    If the backtest run fails for any reason, returns a neutral fallback
+    MAPE of 5.0 so the dynamic weight system degrades gracefully.
+    """
+    FALLBACK_MAPE = 5.0
+    import threading, time
+    try:
+        clean_ticker = ticker
+        if clean_ticker.startswith("NSE:"):
+            clean_ticker = clean_ticker[4:]
+        history = fetch_historical_prices(clean_ticker, range_str='2y')
+        if not history or len(history) < horizon + 60:
+            return FALLBACK_MAPE
+
+        # Held-out window: last `horizon` trading days
+        # Context: the 120 trading days immediately before the held-out window
+        context  = history[-(horizon + 120):-horizon]
+        actuals  = [float(d['close']) for d in history[-horizon:]]
+
+        if len(context) < 60:
+            return FALLBACK_MAPE
+
+        # Inject context slice into _historical_prices_cache under both 1y and 2y
+        # keys so every model variant (kronos→2y, prophet/arima→1y) gets intercepted.
+        # Use a sentinel timestamp far in the future so TTL never expires during the call.
+        FAR_FUTURE = time.time() + 3600
+        ctx_1y_key = (clean_ticker, '1y')
+        ctx_2y_key = (clean_ticker, '2y')
+        old_1y = _historical_prices_cache.get(ctx_1y_key)
+        old_2y = _historical_prices_cache.get(ctx_2y_key)
+        _historical_prices_cache[ctx_1y_key] = (FAR_FUTURE, context)
+        _historical_prices_cache[ctx_2y_key] = (FAR_FUTURE, context)
+        try:
+            preds = model_fn(ticker, horizon)
+        finally:
+            # Restore original cache entries (or remove if they didn't exist)
+            if old_1y is not None:
+                _historical_prices_cache[ctx_1y_key] = old_1y
+            else:
+                _historical_prices_cache.pop(ctx_1y_key, None)
+            if old_2y is not None:
+                _historical_prices_cache[ctx_2y_key] = old_2y
+            else:
+                _historical_prices_cache.pop(ctx_2y_key, None)
+
+        if not preds or len(preds) < horizon:
+            return FALLBACK_MAPE
+
+        mape = float(np.mean([
+            abs(p - a) / (abs(a) + 1e-9) * 100
+            for p, a in zip(preds[:horizon], actuals[:horizon])
+        ]))
+        return max(0.1, mape)   # never return 0 — would cause division by zero in weight calc
+    except Exception as e:
+        print(f'[DynWeights] Rolling MAPE failed for {ticker}: {e}')
+        return FALLBACK_MAPE
+
+def compute_dynamic_weights(
+    ticker: str,
+    horizon: int = 10,
+    use_cache: bool = True
+) -> dict:
+    """
+    Computes per-model weights inversely proportional to each model's
+    rolling MAPE on `ticker` over the last `horizon` trading days.
+
+    EMA-smoothed across calls to prevent weight instability on volatile names.
+
+    Returns: {'kronos': float, 'prophet': float, 'arima': float}  (sum == 1.0)
+    """
+    # --- Rolling MAPE per model (run in parallel for speed) ---
+    mapes = {'kronos': 5.0, 'prophet': 5.0, 'arima': 5.0}
+
+    def _score_kronos():
+        return _compute_rolling_mape(ticker, kronos_predict, horizon)
+
+    def _score_prophet():
+        return _compute_rolling_mape(ticker, prophet_predict, horizon)
+
+    def _score_arima():
+        return _compute_rolling_mape(ticker, arima_predict, horizon)
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = {
+            'kronos':  ex.submit(_score_kronos),
+            'prophet': ex.submit(_score_prophet),
+            'arima':   ex.submit(_score_arima),
+        }
+        for name, fut in futs.items():
+            try:
+                mapes[name] = fut.result(timeout=20)
+            except Exception as e:
+                print(f'[DynWeights] MAPE scoring failed for {name}: {e}')
+
+    # --- Inverse-MAPE scores → raw weights ---
+    inv_scores = {m: 1.0 / (mapes[m] + 1e-6) for m in mapes}
+    total = sum(inv_scores.values())
+    raw_weights = {m: inv_scores[m] / total for m in inv_scores}
+
+    # --- EMA smoothing ---
+    prev_ema = _weight_ema_state.get(ticker, raw_weights)
+    smoothed = {
+        m: _WEIGHT_EMA_ALPHA * raw_weights[m] + (1 - _WEIGHT_EMA_ALPHA) * prev_ema.get(m, raw_weights[m])
+        for m in raw_weights
+    }
+    # Re-normalise after EMA (floating-point drift)
+    s_total = sum(smoothed.values())
+    smoothed = {m: round(v / s_total, 4) for m, v in smoothed.items()}
+
+    _weight_ema_state[ticker] = smoothed
+
+    print(
+        f'[DynWeights] {ticker} | MAPE k={mapes["kronos"]:.2f}% '
+        f'p={mapes["prophet"]:.2f}% a={mapes["arima"]:.2f}% '
+        f'-> weights {smoothed}'
+    )
+    return smoothed
+
 def ensemble_blend(
     kronos_path: list[float],
     prophet_path: list[float],
@@ -1531,12 +1629,12 @@ def ensemble_blend(
     weights: dict = None
 ) -> dict:
     """
-    Blends three model forecast paths into a single weighted ensemble.
-
-    Returns a dict with:
-      - ensemble_path: weighted average per day
-      - divergence_score: normalised std across models (scalar, worst day)
-      - conviction: 'HIGH' / 'MODERATE' / 'LOW'
+    Returns:
+      ensemble_path       — weighted blended closes
+      divergence_score    — worst-day normalised std (scalar)
+      divergence_daily    — per-day normalised std list (for UI sparkline)
+      conviction          — 'HIGH' / 'MODERATE' / 'LOW'
+      agreement_matrix    — 3x3 pairwise directional agreement (up/down)
     """
     if weights is None:
         weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
@@ -1545,47 +1643,35 @@ def ensemble_blend(
     w_p = weights.get('prophet', 0.0)
     w_a = weights.get('arima', 0.0)
 
-    # Align to shortest path length of models that actually returned predictions
-    lengths = []
-    if len(kronos_path) > 0:
-        lengths.append(len(kronos_path))
-    if len(prophet_path) > 0:
-        lengths.append(len(prophet_path))
-    if len(arima_path) > 0:
-        lengths.append(len(arima_path))
+    named_paths = [
+        ('kronos',  kronos_path,  w_k),
+        ('prophet', prophet_path, w_p),
+        ('arima',   arima_path,   w_a),
+    ]
+    active = [(name, np.array(path), w) for name, path, w in named_paths
+              if len(path) > 0 and w > 0]
 
-    if not lengths:
+    if not active:
         return {
-            'ensemble_path': [],
-            'divergence_score': 0.0,
-            'conviction': 'LOW'
+            'ensemble_path': [], 'divergence_score': 0.0,
+            'divergence_daily': [], 'conviction': 'LOW', 'agreement_matrix': {}
         }
 
-    horizon = min(lengths)
+    horizon = min(len(p) for _, p, _ in active)
+    ensemble = np.zeros(horizon)
+    for _, path_arr, w in active:
+        ensemble += w * path_arr[:horizon]
 
-    k = np.array(kronos_path[:horizon]) if len(kronos_path) > 0 else np.zeros(horizon)
-    p = np.array(prophet_path[:horizon]) if len(prophet_path) > 0 else np.zeros(horizon)
-    a = np.array(arima_path[:horizon]) if len(arima_path) > 0 else np.zeros(horizon)
-
-    ensemble = w_k * k + w_p * p + w_a * a
-
-    # Divergence: normalised std of the active paths at each day, take worst-case day
-    active_paths = []
-    if len(kronos_path) > 0:
-        active_paths.append(k)
-    if len(prophet_path) > 0:
-        active_paths.append(p)
-    if len(arima_path) > 0:
-        active_paths.append(a)
-
-    if len(active_paths) > 1:
-        stacked = np.stack(active_paths, axis=0)  # shape (num_active, horizon)
-        daily_divergence = np.std(stacked, axis=0) / (ensemble + 1e-9)
-        max_divergence = float(np.max(daily_divergence))
+    # Per-day divergence
+    if len(active) > 1:
+        stacked = np.stack([p[:horizon] for _, p, _ in active], axis=0)
+        daily_div = (np.std(stacked, axis=0) / (ensemble + 1e-9)).tolist()
+        max_divergence = float(max(daily_div))
     else:
+        daily_div = [0.0] * horizon
         max_divergence = 0.0
 
-
+    # Conviction label
     if max_divergence < 0.015:
         conviction = 'HIGH'
     elif max_divergence < 0.03:
@@ -1593,13 +1679,46 @@ def ensemble_blend(
     else:
         conviction = 'LOW'
 
+    # Pairwise directional agreement matrix
+    # direction[i] = +1 if path[i] > path[i-1], else -1
+    def _dirs(arr):
+        return [1 if arr[i] > arr[i - 1] else -1 for i in range(1, len(arr))]
+
+    agreement_matrix = {}
+    for i, (n1, p1, _) in enumerate(active):
+        for j, (n2, p2, _) in enumerate(active):
+            if i >= j:
+                continue
+            d1, d2 = _dirs(p1[:horizon]), _dirs(p2[:horizon])
+            match = sum(1 for a, b in zip(d1, d2) if a == b)
+            pct = round(match / len(d1) * 100, 1) if d1 else 0.0
+            agreement_matrix[f'{n1}_vs_{n2}'] = pct
+
     return {
-        'ensemble_path': ensemble.tolist(),
+        'ensemble_path':    ensemble.tolist(),
         'divergence_score': round(max_divergence, 5),
-        'conviction': conviction
+        'divergence_daily': [round(v, 5) for v in daily_div],
+        'conviction':       conviction,
+        'agreement_matrix': agreement_matrix
     }
 
+import functools
+
+def profile_endpoint(fn):
+    """Logs wall-clock time for any decorated Flask route on each call."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        import time
+        t0 = time.time()
+        result = fn(*args, **kwargs)
+        elapsed = round((time.time() - t0) * 1000)
+        if elapsed > 6000:
+            print(f'[PERF WARNING] {fn.__name__} took {elapsed}ms — exceeds 6s SLA')
+        return result
+    return wrapper
+
 @app.route('/api/ensemble_forecast', methods=['POST'])
+@profile_endpoint
 def api_ensemble_forecast():
     """
     POST /api/ensemble_forecast
@@ -1640,9 +1759,12 @@ def api_ensemble_forecast():
         if cached:
             import json as _json
             result = _json.loads(cached['forecast_json'])
-            result['cached'] = True
-            result['latency_ms'] = round((time.time() - start_time) * 1000)
-            return jsonify(result)
+            # Verify if this is a complete record containing the Phase 2 consensus metrics
+            if 'agreement_matrix' in result and 'weights' in result:
+                result['cached'] = True
+                result['weights_source'] = 'dynamic' if (use_dynamic_weights and not result.get('degraded', False)) else 'static'
+                result['latency_ms'] = round((time.time() - start_time) * 1000)
+                return jsonify(result)
     except Exception as e:
         print(f'[EnsembleCast] Cache lookup error: {e}')
     finally:
@@ -1652,6 +1774,15 @@ def api_ensemble_forecast():
     # --- Run models in parallel ---
     results = {'kronos': None, 'prophet': None, 'arima': None}
     errors  = {'kronos': None, 'prophet': None, 'arima': None}
+
+    # Pre-warm the history cache before spawning threads so all three models
+    # get a guaranteed cache hit and never race on the same Yahoo Finance URL.
+    _prefetch = ticker[4:] if ticker.startswith('NSE:') else ticker
+    try:
+        fetch_historical_prices(_prefetch, range_str='1y')
+        fetch_historical_prices(_prefetch, range_str='2y')  # also warm the 2y key for dynamic weights
+    except Exception:
+        pass  # prefetch failure is non-fatal
 
     def run_kronos():
         return kronos_predict(ticker, horizon)
@@ -1668,7 +1799,10 @@ def api_ensemble_forecast():
         futures = {name: executor.submit(fn) for name, fn in runners.items()}
         for name, future in futures.items():
             try:
-                results[name] = future.result(timeout=30)  # 30s hard timeout per model
+                results[name] = future.result(timeout=20)  # 20s timeout
+            except FuturesTimeoutError:
+                errors[name] = f'{name} timed out after 20s'
+                print(f'[EnsembleCast] {name} TIMEOUT after 20s')
             except Exception as e:
                 errors[name] = str(e)
                 print(f'[EnsembleCast] {name} failed: {e}')
@@ -1677,7 +1811,7 @@ def api_ensemble_forecast():
     active_models = {k: v for k, v in results.items() if v is not None}
     degraded = len(active_models) < 3
 
-    if len(active_models) < 2:
+    if len(active_models) < 1:
         # Check if errors are due to insufficient history
         is_insufficient = any(
             err and 'insufficient_history' in err.lower()
@@ -1696,17 +1830,26 @@ def api_ensemble_forecast():
 
         return jsonify({
             'error': 'ensemble_failed',
+            'message': 'All models failed — check server logs',
             'details': errors
         }), 500
 
-    # --- Build weights (static for Phase 1; dynamic weights in Phase 2) ---
-    default_weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
-    # If a model failed, redistribute its weight proportionally
-    if degraded:
-        active_weight_sum = sum(default_weights[m] for m in active_models)
-        weights = {m: default_weights[m] / active_weight_sum for m in active_models}
+    # --- Build weights ---
+    if use_dynamic_weights and len(active_models) == 3:
+        try:
+            weights = compute_dynamic_weights(ticker, horizon)
+            print(f'[EnsembleCast] {ticker} using dynamic weights: {weights}')
+        except Exception as e:
+            print(f'[EnsembleCast] Dynamic weight computation failed ({e}), falling back to static')
+            weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
     else:
-        weights = default_weights
+        # Degraded (1 model failed) or static mode requested
+        default_weights = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
+        if degraded:
+            total_w = sum(default_weights[m] for m in active_models)
+            weights = {m: default_weights[m] / total_w for m in active_models}
+        else:
+            weights = default_weights
 
     # --- Blend ---
     blend_result = ensemble_blend(
@@ -1718,10 +1861,12 @@ def api_ensemble_forecast():
 
     # --- Determine last close ---
     last_close = 0.0
+    last_close_date = ""
     try:
         # Fetch actual close price from history
         df_hist = _fetch_price_history(ticker, min_days=10)
         last_close = float(df_hist['y'].iloc[-1])
+        last_close_date = df_hist['ds'].iloc[-1].strftime('%Y-%m-%d')
     except Exception:
         pass
 
@@ -1732,12 +1877,16 @@ def api_ensemble_forecast():
         'ensemble_path': blend_result['ensemble_path'],
         'model_paths': {k: v for k, v in results.items() if v is not None},
         'weights': weights,
+        'weights_source': 'dynamic' if (use_dynamic_weights and len(active_models) == 3) else 'static',
         'divergence_score': blend_result['divergence_score'],
+        'divergence_daily': blend_result.get('divergence_daily', []),
+        'agreement_matrix': blend_result.get('agreement_matrix', {}),
         'conviction': blend_result['conviction'],
         'degraded': degraded,
         'model_errors': {k: v for k, v in errors.items() if v is not None},
         'cached': False,
         'last_close': last_close,
+        'last_close_date': last_close_date,
         'latency_ms': round((time.time() - start_time) * 1000)
     }
 
@@ -1779,7 +1928,7 @@ def get_kronos_forecast():
     if pred_len not in [3, 5, 10]:
         pred_len = 5
         
-    sample_count = int(request.args.get('sample_count', 20))
+    sample_count = int(request.args.get('sample_count', 10))
     
     # 1. Fetch historical prices (120 bars for calculation of ATR%)
     history = fetch_historical_prices(ticker, range_str="1y")
@@ -1788,29 +1937,31 @@ def get_kronos_forecast():
         
     last_date_str = history[-1]["date"]
     
-    # Check database to see if we already have it stored for today
+    # Check database to see if we already have it stored within the last 4 hours
     conn = sqlite3.connect("scan_history.db")
     c = conn.cursor()
     c.execute(
-        "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? ORDER BY id DESC LIMIT 1",
+        "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
         (ticker, pred_len)
     )
     db_row = c.fetchone()
     
-    # If the database record matches today's generated date, use it
+    # If the database record is less than 4 hours old, use it
     if db_row:
         stored_forecast_json, last_close, generated_at_str = db_row
-        gen_date = generated_at_str.split('T')[0]
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        if gen_date == today_str:
-            conn.close()
-            return jsonify(
-                ticker=ticker,
-                pred_len=pred_len,
-                forecast=json.loads(stored_forecast_json),
-                last_close=last_close,
-                generated_at=generated_at_str
-            )
+        try:
+            gen_time = datetime.fromisoformat(generated_at_str)
+            if (datetime.now() - gen_time).total_seconds() < 4 * 3600:
+                conn.close()
+                return jsonify(
+                    ticker=ticker,
+                    pred_len=pred_len,
+                    forecast=json.loads(stored_forecast_json),
+                    last_close=last_close,
+                    generated_at=generated_at_str
+                )
+        except Exception:
+            pass
             
     # Load predictor
     predictor = get_kronos_predictor()
@@ -1839,19 +1990,18 @@ def get_kronos_forecast():
         # Scaled temperature continuously:
         T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
         
-        # Call model with return_samples=True to compute bands
-        # Shape returned is (sample_count, pred_len, features)
-        raw_samples = predictor.predict(
-            df=df_input,
-            x_timestamp=pd.Series(x_timestamps),
-            y_timestamp=y_timestamps,
-            pred_len=pred_len,
-            T=T_val,
-            top_p=0.8,
-            sample_count=sample_count,
-            verbose=False,
-            return_samples=True
-        )
+        with kronos_inference_lock:
+            raw_samples = predictor.predict(
+                df=df_input,
+                x_timestamp=pd.Series(x_timestamps),
+                y_timestamp=y_timestamps,
+                pred_len=pred_len,
+                T=T_val,
+                top_p=0.8,
+                sample_count=sample_count,
+                verbose=False,
+                return_samples=True
+            )
         
         # raw_samples has shape (sample_count, pred_len, 6)
         mean_pred = raw_samples.mean(axis=0)
@@ -1925,7 +2075,7 @@ def get_kronos_backtest():
     conn = sqlite3.connect("scan_history.db")
     c = conn.cursor()
     c.execute(
-        "SELECT id, generated_at, pred_len, forecast_json, last_close FROM kronos_forecasts WHERE ticker = ? ORDER BY id DESC",
+        "SELECT id, generated_at, pred_len, forecast_json, last_close FROM kronos_forecasts WHERE ticker = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC",
         (ticker,)
     )
     rows = c.fetchall()
@@ -2138,6 +2288,139 @@ def get_kronos_backtest():
         ticker=ticker,
         backtest_runs=backtest_runs[:5]
     )
+
+@app.route('/api/ensemble-backtest', methods=['GET'])
+@profile_endpoint
+def get_ensemble_backtest():
+    """
+    GET /api/ensemble-backtest?ticker=RELIANCE&horizon=10
+
+    Runs a walk-forward backtest over the last `horizon` trading days,
+    comparing Kronos, Prophet, ARIMA, and the blended Ensemble path
+    against actual closes.
+
+    Returns per-model MAE, MAPE, directional accuracy, and band hit rate
+    alongside the blended ensemble metrics.
+    """
+    from flask import request
+    import time
+    t0 = time.time()
+
+    ticker  = request.args.get('ticker', '').strip().upper().replace('NSE:', '')
+    horizon = int(request.args.get('horizon', 10))
+
+    if not ticker:
+        return jsonify({'error': 'ticker_required'}), 400
+    if horizon < 3 or horizon > 20:
+        return jsonify({'error': 'horizon must be between 3 and 20'}), 400
+
+    history = fetch_historical_prices(ticker, range_str='2y')
+    if not history or len(history) < horizon + 80:
+        return jsonify({'error': 'insufficient_history'}), 400
+
+    # Split history: context window vs held-out actuals
+    context = history[-(horizon + 120):-horizon]
+    actuals = [float(d['close']) for d in history[-horizon:]]
+    actual_dates = [d['date'] for d in history[-horizon:]]
+    last_context_close = float(context[-1]['close'])
+
+    # Set up thread-safe context caching for model predictors
+    model_preds = {'kronos': None, 'prophet': None, 'arima': None}
+    model_errors_bt = {}
+
+    def _run(name, fn):
+        import time
+        clean_t = ticker[4:] if ticker.startswith("NSE:") else ticker
+        FAR_FUTURE = time.time() + 3600
+        ctx_1y_key = (clean_t, '1y')
+        ctx_2y_key = (clean_t, '2y')
+        old_1y = _historical_prices_cache.get(ctx_1y_key)
+        old_2y = _historical_prices_cache.get(ctx_2y_key)
+        _historical_prices_cache[ctx_1y_key] = (FAR_FUTURE, context)
+        _historical_prices_cache[ctx_2y_key] = (FAR_FUTURE, context)
+        try:
+            return name, fn(ticker, horizon)
+        except Exception as e:
+            return name, e
+        finally:
+            if old_1y is not None:
+                _historical_prices_cache[ctx_1y_key] = old_1y
+            else:
+                _historical_prices_cache.pop(ctx_1y_key, None)
+            if old_2y is not None:
+                _historical_prices_cache[ctx_2y_key] = old_2y
+            else:
+                _historical_prices_cache.pop(ctx_2y_key, None)
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        futs = [
+            ex.submit(_run, 'kronos',  kronos_predict),
+            ex.submit(_run, 'prophet', prophet_predict),
+            ex.submit(_run, 'arima',   arima_predict),
+        ]
+        for fut in futs:
+            name, result = fut.result(timeout=30)
+            if isinstance(result, Exception):
+                model_errors_bt[name] = str(result)
+            else:
+                model_preds[name] = result
+
+    active = {k: v for k, v in model_preds.items() if v is not None}
+    if len(active) < 2:
+        return jsonify({'error': 'backtest_failed', 'details': model_errors_bt}), 500
+
+    # Build ensemble path using current dynamic weights if available
+    default_w = {'kronos': 0.50, 'prophet': 0.30, 'arima': 0.20}
+    total_w   = sum(default_w[m] for m in active)
+    weights   = {m: default_w[m] / total_w for m in active}
+    blend     = ensemble_blend(
+        kronos_path=model_preds.get('kronos') or [],
+        prophet_path=model_preds.get('prophet') or [],
+        arima_path=model_preds.get('arima') or [],
+        weights=weights
+    )
+    active['ensemble'] = blend['ensemble_path']
+
+    def _metrics(preds, actuals, prev_close):
+        n = min(len(preds), len(actuals))
+        if n == 0:
+            return {}
+        abs_err = [abs(preds[i] - actuals[i]) for i in range(n)]
+        pct_err = [abs_err[i] / (actuals[i] + 1e-9) * 100 for i in range(n)]
+        dir_hits = 0
+        for i in range(n):
+            p_ref = preds[i-1] if i > 0 else prev_close
+            a_ref = actuals[i-1] if i > 0 else prev_close
+            if (preds[i] > p_ref) == (actuals[i] > a_ref):
+                dir_hits += 1
+        return {
+            'mae':                round(sum(abs_err) / n, 2),
+            'mape':               round(sum(pct_err) / n, 2),
+            'direction_accuracy': round(dir_hits / n * 100, 1),
+            'n_days':             n
+        }
+
+    per_model = {
+        name: _metrics(preds, actuals, last_context_close)
+        for name, preds in active.items()
+    }
+
+    comparison_points = []
+    for i, (date, actual) in enumerate(zip(actual_dates, actuals)):
+        pt = {'date': date, 'actual': actual}
+        for name, preds in active.items():
+            pt[name] = round(preds[i], 2) if i < len(preds) else None
+        comparison_points.append(pt)
+
+    return jsonify({
+        'ticker':             ticker,
+        'horizon':            horizon,
+        'per_model_metrics':  per_model,
+        'comparison_points':  comparison_points,
+        'model_errors':       model_errors_bt,
+        'latency_ms':         round((time.time() - t0) * 1000)
+    })
+
 import statistics
 import math
 
@@ -2250,7 +2533,7 @@ def snapshot_rrg_week(sector_scores_dict, universe_stocks):
         sector_4w = data.get('avg1M', 0) or 0.0
         
         # Use stable relative strength formula to support negative returns safely
-        jdk_rs = ((100.0 + sector_4w) / (100.0 + uni_median) * 100.0) if (100.0 + uni_median) != 0 else 100.0
+        jdk_rs = compute_jdk_rs(sector_4w, uni_median)
         
         # Fetch last week's jdk_rs (excluding this week) to compute robust momentum
         cursor.execute(
@@ -2262,14 +2545,7 @@ def snapshot_rrg_week(sector_scores_dict, universe_stocks):
         rs_momentum = jdk_rs - prev_rs
         
         # Quadrant mapping
-        if jdk_rs >= 100.0 and rs_momentum >= 0.0:
-            quadrant = 'Leading'
-        elif jdk_rs >= 100.0 and rs_momentum < 0.0:
-            quadrant = 'Weakening'
-        elif jdk_rs < 100.0 and rs_momentum < 0.0:
-            quadrant = 'Lagging'
-        else:
-            quadrant = 'Improving'
+        quadrant = compute_quadrant(jdk_rs, rs_momentum)
             
         cursor.execute('''
             INSERT INTO rrg_history (week, sector, jdk_rs, jdk_rs_momentum, score, quadrant, snapped_at)
@@ -2456,7 +2732,7 @@ def rrg_backfill():
                     if close_now is not None and close_prior is not None:
                         sector_R = (close_now - close_prior) / close_prior * 100.0
                         bench_R = (bench_now - bench_prior) / bench_prior * 100.0
-                        jdk_rs = ((100.0 + sector_R) / (100.0 + bench_R) * 100.0) if (100.0 + bench_R) != 0 else 100.0
+                        jdk_rs = compute_jdk_rs(sector_R, bench_R)
                         jdk_rs_list.append((w_str, jdk_rs, date))
                         
                 # Calculate weekly momentum and upsert to DB
@@ -2466,14 +2742,7 @@ def rrg_backfill():
                     rs_momentum = val - prev_val
                     
                     # Quadrant mapping
-                    if val >= 100.0 and rs_momentum >= 0.0:
-                        quadrant = 'Leading'
-                    elif val >= 100.0 and rs_momentum < 0.0:
-                        quadrant = 'Weakening'
-                    elif val < 100.0 and rs_momentum < 0.0:
-                        quadrant = 'Lagging'
-                    else:
-                        quadrant = 'Improving'
+                    quadrant = compute_quadrant(val, rs_momentum)
                         
                     # Use UTC time equivalent of IST 16:00 close (16:00 IST = 10:30 UTC).
                     # This keeps snap_time consistent with the cutoff in get_rrg_history_timeline()
@@ -2607,7 +2876,7 @@ def get_rrg_history():
             stock_m = (close - close_m) / close_m * 100 if close_m > 0 else 0
             bench_m = (bench_close - bench_close_m) / bench_close_m * 100 if bench_close_m > 0 else 0
             
-            jdk_rs = ((100.0 + stock_m) / (100.0 + bench_m) * 100.0) if (100.0 + bench_m) != 0 else 100.0
+            jdk_rs = compute_jdk_rs(stock_m, bench_m)
             jdk_rs_list.append({"date": date, "rs": jdk_rs})
             
         trail_points = []
@@ -2898,6 +3167,11 @@ def scan_stocks():
         # Run parallel Screener Intelligence setup pattern scanning
         populate_screener_intelligence(filtered_stocks)
         
+        # Run setup classification and volume compression analysis
+        for stock in filtered_stocks:
+            classify_setup(stock)
+            compute_vol_dryup(stock)
+            
         # Hook weekly RRG snapping here
         if universe_stocks:
             try:
@@ -3790,12 +4064,12 @@ def get_watchlist():
     try:
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
-        c.execute("SELECT id, name FROM watchlist_sections")
+        c.execute("SELECT id, name FROM watchlist_sections ORDER BY position ASC, id ASC")
         sections = c.fetchall()
         
         result = []
         for sec_id, sec_name in sections:
-            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ?", (sec_id,))
+            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ? ORDER BY position ASC, id ASC", (sec_id,))
             tickers = [r[0] for r in c.fetchall()]
             result.append({
                 "id": sec_id,
@@ -3823,6 +4097,34 @@ def _run_kronos_for_ticker(ticker, pred_len):
     Runs Kronos forecast for a single ticker. Checks memory cache and SQLite db cache first.
     Returns: build_ranking_entry(ticker, bias, score, metrics, cache_hit)
     """
+    import threading
+    cache_key = (ticker, pred_len)
+    is_duplicate = False
+    
+    with _in_progress_lock_mutex:
+        if cache_key in _in_progress_locks:
+            event = _in_progress_locks[cache_key]
+            is_duplicate = True
+        else:
+            event = threading.Event()
+            _in_progress_locks[cache_key] = event
+            is_duplicate = False
+            
+    if is_duplicate:
+        event.wait()
+        mem_cached = _get_kronos_cache(ticker)
+        if mem_cached:
+            bias, score, forecast_list, forecast_metrics = mem_cached
+            try:
+                history = fetch_historical_prices(ticker, range_str="6mo")
+                if history:
+                    last_close = float(history[-1]["close"])
+                    sliced_forecast = forecast_list[:pred_len]
+                    b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history)
+                    return build_ranking_entry(ticker, b, s, m, cache_hit=True)
+            except Exception:
+                pass
+
     try:
         import sqlite3
         import json
@@ -3844,7 +4146,6 @@ def _run_kronos_for_ticker(ticker, pred_len):
             bias, score, forecast_list, forecast_metrics = mem_cached
             if len(forecast_list) >= pred_len:
                 sliced_forecast = forecast_list[:pred_len]
-                # Recompute metrics for the specific pred_len
                 b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history)
                 return build_ranking_entry(ticker, b, s, m, cache_hit=True)
 
@@ -3852,20 +4153,23 @@ def _run_kronos_for_ticker(ticker, pred_len):
         conn = sqlite3.connect("scan_history.db")
         c = conn.cursor()
         c.execute(
-            "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? ORDER BY id DESC LIMIT 1",
+            "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
             (ticker, pred_len)
         )
         db_row = c.fetchone()
         
         if db_row:
             stored_forecast_json, db_last_close, generated_at_str = db_row
-            gen_date = generated_at_str.split('T')[0]
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            if gen_date == today_str:
-                conn.close()
-                forecast_list = json.loads(stored_forecast_json)
-                b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history)
-                return build_ranking_entry(ticker, b, s, m, cache_hit=True)
+            try:
+                gen_time = datetime.fromisoformat(generated_at_str)
+                if (datetime.now() - gen_time).total_seconds() < 4 * 3600:
+                    conn.close()
+                    forecast_list = json.loads(stored_forecast_json)
+                    b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history)
+                    _set_kronos_cache(ticker, b, s, forecast_list, m)
+                    return build_ranking_entry(ticker, b, s, m, cache_hit=True)
+            except Exception:
+                pass
 
         # 3. Live Inference
         predictor = get_kronos_predictor()
@@ -3895,17 +4199,18 @@ def _run_kronos_for_ticker(ticker, pred_len):
         atr_pct = compute_atr_pct(history)
         T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
 
-        raw_samples = predictor.predict(
-            df=df_input,
-            x_timestamp=pd.Series(x_timestamps),
-            y_timestamp=y_timestamps,
-            pred_len=pred_len,
-            T=T_val,
-            top_p=0.8,
-            sample_count=10,
-            verbose=False,
-            return_samples=True
-        )
+        with kronos_inference_lock:
+            raw_samples = predictor.predict(
+                df=df_input,
+                x_timestamp=pd.Series(x_timestamps),
+                y_timestamp=y_timestamps,
+                pred_len=pred_len,
+                T=T_val,
+                top_p=0.8,
+                sample_count=10,
+                verbose=False,
+                return_samples=True
+            )
 
         mean_pred = raw_samples.mean(axis=0)
         p10 = np.percentile(raw_samples, 10, axis=0)
@@ -3937,6 +4242,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
 
         # Compute metrics
         b, s, m = compute_forecast_metrics(forecast_list, last_close, history)
+        _set_kronos_cache(ticker, b, s, forecast_list, m)
         return build_ranking_entry(ticker, b, s, m, cache_hit=False)
 
     except Exception as ex:
@@ -3946,6 +4252,33 @@ def _run_kronos_for_ticker(ticker, pred_len):
         except Exception:
             pass
         return build_ranking_entry(ticker, None, 0, {}, cache_hit=False)
+    finally:
+        with _in_progress_lock_mutex:
+            if not is_duplicate:
+                event.set()
+                _in_progress_locks.pop(cache_key, None)
+
+def get_ensemble_conviction_label(ticker: str) -> str:
+    """
+    Returns cached ensemble conviction for `ticker` if available in the
+    kronos_forecasts table (avoids re-running the full ensemble just for sort).
+    """
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            """SELECT forecast_json FROM kronos_forecasts
+               WHERE ticker = ? AND model_type = 'ensemble'
+               ORDER BY generated_at DESC LIMIT 1""",
+            (ticker,)
+        ).fetchone()
+        conn.close()
+        if row:
+            import json
+            data = json.loads(row['forecast_json'])
+            return data.get('conviction', 'UNKNOWN')
+    except Exception as e:
+        print(f"[BatchSort] Error getting conviction: {e}")
+    return 'UNKNOWN'
 
 @app.route('/api/watchlist/kronos-ranking', methods=['GET'])
 def get_watchlist_kronos_ranking():
@@ -3976,12 +4309,12 @@ def get_watchlist_kronos_ranking():
                 conn.close()
                 return jsonify(error="Section not found"), 404
         else:
-            c.execute("SELECT id, name FROM watchlist_sections")
+            c.execute("SELECT id, name FROM watchlist_sections ORDER BY position ASC, id ASC")
             sections = c.fetchall()
 
         result_sections = []
         for sec_id, sec_name in sections:
-            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ?", (sec_id,))
+            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ? ORDER BY position ASC, id ASC", (sec_id,))
             tickers = [r[0] for r in c.fetchall()]
             
             # If no tickers in this section, append empty rankings
@@ -3997,25 +4330,58 @@ def get_watchlist_kronos_ranking():
             with ThreadPoolExecutor(max_workers=8) as executor:
                 rankings = list(executor.map(lambda t: _run_kronos_for_ticker(t, pred_len), tickers))
 
-            # Sort rankings: highest predicted_return_pct first, None/failed at the bottom
-            rankings.sort(key=lambda x: x["predicted_return_pct"] if x["predicted_return_pct"] is not None else -9999, reverse=True)
+            # Sort rankings: 
+            # 1. Primary: Valid forecast first, then composite score descending:
+            #    composite_score = (ai_confidence_score * 0.6) + (bias_weight * 0.4)
+            # 2. Secondary: conviction order (HIGH -> MODERATE -> LOW -> UNKNOWN)
+            CONVICTION_ORDER = {'HIGH': 0, 'MODERATE': 1, 'LOW': 2, 'UNKNOWN': 3}
+            BIAS_WEIGHTS = {
+                'Strong Breakout': 100,
+                'Bullish Continuation': 75,
+                'Sideways Consolidation': 50,
+                'Bearish Pressure': 25,
+                'Strong Downtrend': 0
+            }
+            def sort_key(item):
+                bias = item.get("ai_forecast_bias")
+                conf = item.get("ai_confidence_score", 0) or 0
+                if bias is None:
+                    return (True, 0, 3) # Push failures to bottom
+                
+                bias_score = BIAS_WEIGHTS.get(bias, 50)
+                composite_score = (conf * 0.6) + (bias_score * 0.4)
+                
+                t_clean = item.get("ticker", "")
+                if t_clean.startswith("NSE:"):
+                    t_clean = t_clean[4:]
+                conv = get_ensemble_conviction_label(t_clean)
+                conv_score = CONVICTION_ORDER.get(conv, 3)
+                return (False, -composite_score, conv_score)
+
+            rankings.sort(key=sort_key)
 
             # Assign rank
             for idx, item in enumerate(rankings):
                 item["rank"] = idx + 1
 
+            missing_count = sum(1 for item in rankings if item.get("ai_forecast_bias") is None)
             result_sections.append({
                 "id": sec_id,
                 "name": sec_name,
-                "rankings": rankings
+                "rankings": rankings,
+                "partial": missing_count > 0,
+                "missing_count": missing_count
             })
 
         conn.close()
         
+        total_missing = sum(s.get("missing_count", 0) for s in result_sections)
         return jsonify({
             "generated_at": datetime.now().isoformat(),
             "pred_len": pred_len,
-            "sections": result_sections
+            "sections": result_sections,
+            "partial": total_missing > 0,
+            "missing_count": total_missing
         })
 
     except Exception as e:
@@ -4024,6 +4390,46 @@ def get_watchlist_kronos_ranking():
         except Exception:
             pass
         print(f"[Kronos Batch Route] Error: {e}")
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/sections/reorder', methods=['PUT'])
+def reorder_watchlist_sections():
+    from flask import request
+    import sqlite3
+    try:
+        data = request.get_json() or {}
+        order = data.get('order')
+        if not order or not isinstance(order, list):
+            return jsonify(error="order (list) is required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        for idx, sec_id in enumerate(order):
+            c.execute("UPDATE watchlist_sections SET position = ? WHERE id = ?", (idx, sec_id))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+@app.route('/api/watchlist/sections/<section_id>/reorder', methods=['PUT'])
+def reorder_watchlist_items(section_id):
+    from flask import request
+    import sqlite3
+    try:
+        data = request.get_json() or {}
+        stocks = data.get('stocks')
+        if stocks is None or not isinstance(stocks, list):
+            return jsonify(error="stocks (list) is required"), 400
+            
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        for idx, ticker in enumerate(stocks):
+            c.execute("UPDATE watchlist_items SET position = ? WHERE section_id = ? AND ticker = ?", (idx, section_id, ticker.upper()))
+        conn.commit()
+        conn.close()
+        return jsonify(success=True)
+    except Exception as e:
         return jsonify(error=str(e)), 500
 
 @app.route('/api/watchlist/sections', methods=['POST'])
@@ -4089,7 +4495,9 @@ def add_watchlist_item():
         conn = sqlite3.connect('scan_history.db')
         conn.execute("PRAGMA foreign_keys = ON;")
         c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker) VALUES (?, ?)", (sec_id, ticker.upper()))
+        c.execute("SELECT COALESCE(MAX(position), 0) FROM watchlist_items WHERE section_id = ?", (sec_id,))
+        max_pos = c.fetchone()[0]
+        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker, position) VALUES (?, ?, ?)", (sec_id, ticker.upper(), max_pos + 1))
         conn.commit()
         conn.close()
         return jsonify(success=True)
@@ -4117,16 +4525,48 @@ def delete_watchlist_item():
 
 @app.route('/api/journal', methods=['GET'])
 def get_journal():
+    from flask import request
     try:
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
-        c.execute("""
+        status_filter = request.args.get('status', '').strip().lower()
+        limit = request.args.get('limit', '').strip()
+        offset = request.args.get('offset', '').strip()
+        
+        query = """
             SELECT id, ticker, name, date, setupLabel, swingband, entry, stop, 
                    target1, target2, target3, riskAmount, qty, status, 
                    exitPrice, exitDate, pnl, rAchieved, notes 
-            FROM trade_journal 
-            ORDER BY id DESC
-        """)
+            FROM trade_journal
+        """
+        where_clauses = []
+        params = []
+        
+        if status_filter:
+            where_clauses.append("LOWER(status) = ?")
+            params.append(status_filter)
+            
+        if where_clauses:
+            query += f" WHERE {' AND '.join(where_clauses)}"
+            
+        query += " ORDER BY id DESC"
+        
+        if limit:
+            try:
+                limit_val = int(limit)
+                query += " LIMIT ?"
+                params.append(limit_val)
+                if offset:
+                    try:
+                        offset_val = int(offset)
+                        query += " OFFSET ?"
+                        params.append(offset_val)
+                    except ValueError:
+                        pass
+            except ValueError:
+                pass
+
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute(query, tuple(params))
         rows = c.fetchall()
         conn.close()
         
@@ -4149,8 +4589,14 @@ def create_journal_entry():
             
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
+        
+        c.execute("SELECT id FROM trade_journal WHERE id = ?", (trade_id,))
+        if c.fetchone():
+            conn.close()
+            return jsonify(error="Trade already exists. Use PUT to update."), 409
+            
         c.execute("""
-            INSERT OR REPLACE INTO trade_journal (
+            INSERT OR IGNORE INTO trade_journal (
                 id, ticker, name, date, setupLabel, swingband, entry, stop, 
                 target1, target2, target3, riskAmount, qty, status, 
                 exitPrice, exitDate, pnl, rAchieved, notes
@@ -4174,17 +4620,76 @@ def update_journal_entry(trade_id):
     from flask import request
     try:
         data = request.get_json() or {}
+        
+        if 'id' in data and data['id'] != trade_id:
+            return jsonify(error="Trade ID mismatch between URL and body"), 400
+            
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
+        
+        # Calculate server-side P&L and R-Achieved when exitPrice is provided
+        if 'exitPrice' in data and data['exitPrice'] is not None and str(data['exitPrice']).strip() != '':
+            # Fetch original trade fields
+            c.execute("SELECT entry, qty, stop FROM trade_journal WHERE id = ?", (trade_id,))
+            orig = c.fetchone()
+            if orig:
+                entry_price, qty, stop = orig
+                
+                entry_val = data.get('entry')
+                if entry_val is None:
+                    entry_val = entry_price or 0.0
+                entry_price = float(entry_val)
+
+                qty_val = data.get('qty')
+                if qty_val is None:
+                    qty_val = qty or 0
+                qty = int(qty_val)
+
+                stop_val = data.get('stop')
+                if stop_val is None:
+                    stop_val = stop or 0.0
+                stop = float(stop_val)
+
+                exit_price = float(data['exitPrice'])
+                pnl, r_achieved = compute_pnl_and_r(entry_price, stop, qty, exit_price, risk_amount=data.get('riskAmount'))
+                
+                data['pnl'] = pnl
+                data['rAchieved'] = r_achieved
+                data['status'] = 'closed'
+        
+        type_map = {
+            'qty': int,
+            'entry': float,
+            'stop': float,
+            'target1': float,
+            'target2': float,
+            'target3': float,
+            'riskAmount': float,
+            'exitPrice': float,
+            'pnl': float,
+            'rAchieved': float
+        }
         
         fields = []
         params = []
         for key in ['status', 'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes', 'entry', 'stop', 'target1', 'target2', 'target3', 'riskAmount', 'qty', 'ticker', 'name', 'date', 'setupLabel', 'swingband']:
             if key in data:
+                val = data[key]
+                if val is not None and str(val).strip() != '':
+                    if key in type_map:
+                        try:
+                            val = type_map[key](val)
+                        except (ValueError, TypeError):
+                            conn.close()
+                            return jsonify(error=f"Invalid value type for {key}"), 400
+                else:
+                    val = None
+                
                 fields.append(f"{key} = ?")
-                params.append(data[key])
+                params.append(val)
                 
         if not fields:
+            conn.close()
             return jsonify(error="No fields to update"), 400
             
         params.append(trade_id)
@@ -4194,6 +4699,10 @@ def update_journal_entry(trade_id):
         conn.close()
         return jsonify(success=True)
     except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
         return jsonify(error=str(e)), 500
 
 @app.route('/api/journal/<trade_id>', methods=['DELETE'])
@@ -4202,6 +4711,9 @@ def delete_journal_entry(trade_id):
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
         c.execute("DELETE FROM trade_journal WHERE id = ?", (trade_id,))
+        if c.rowcount == 0:
+            conn.close()
+            return jsonify(error="Trade not found"), 404
         conn.commit()
         conn.close()
         return jsonify(success=True)
@@ -4225,18 +4737,17 @@ def migrate_local_data():
             sec_id = sec.get('id')
             sec_name = sec.get('name')
             if sec_id and sec_name:
-                c.execute("INSERT OR REPLACE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
-                stocks = sec.get('stocks', [])
-                for sym in stocks:
+                c.execute("INSERT OR IGNORE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
+                for idx, sym in enumerate(sec.get('stocks', [])):
                     if sym:
-                        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker) VALUES (?, ?)", (sec_id, sym.upper()))
+                        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker, position) VALUES (?, ?, ?)", (sec_id, sym.upper(), idx))
                         
         # Migrate journal
         for entry in journal:
             trade_id = entry.get('id')
             if trade_id:
                 c.execute("""
-                    INSERT OR REPLACE INTO trade_journal (
+                    INSERT OR IGNORE INTO trade_journal (
                         id, ticker, name, date, setupLabel, swingband, entry, stop, 
                         target1, target2, target3, riskAmount, qty, status, 
                         exitPrice, exitDate, pnl, rAchieved, notes

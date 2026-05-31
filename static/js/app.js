@@ -27,6 +27,7 @@ let activeOverlayChart = null;
 let activeKronosChart = null;
 let activeKronosFullChart = null;
 let activeKronosBacktestChart = null;
+let activeEnsembleSeries = {};
 let journalData = [];
 
 // ── Stat card previous-value store ──
@@ -268,6 +269,17 @@ window.openUpgradeModal = window.openUpgradeModal || function() {
 
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Fetch trading holidays dynamically
+    fetch('/api/nse-holidays')
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.holidays) {
+                window.nseHolidays = new Set(data.holidays);
+                console.log(`[EnsembleCast] Loaded ${window.nseHolidays.size} trading holidays dynamically.`);
+            }
+        })
+        .catch(err => console.error('[EnsembleCast] Failed to fetch trading holidays:', err));
+
     // Request Notification permission
     if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
@@ -2913,15 +2925,17 @@ let watchlistStocks = [];
 let watchlistSections = [];
 let watchlistDataMap = {};
 let watchlistCurrentPage = 1;
-const watchlistItemsPerPage = 5;
+const watchlistItemsPerPage = 10;
 let activeNewsFilter = 'all'; // 'all' or ticker symbol
 let showWatchlistKronosColumns = false;
 let watchlistKronosRankings = {};
 let isKronosBatchSorting = false;
-const KRONOS_PRED_LEN = 5;
+let isWatchlistLoaded = false;
+let lastKronosSortTime = 0;
+const KRONOS_SORT_COOLDOWN_MS = 5 * 60 * 1000; // 5-minute cooldown
 
-// ── Kronos Batch Forecast Config ──
-const KRONOS_BATCH_PRED_LEN = 5;  // Forecast horizon: 3, 5, or 10 sessions
+// ── Kronos Forecast Config ──
+const KRONOS_FORECAST_HORIZON = 5;  // Forecast horizon: 3, 5, or 10 sessions
 
 // Toast system for styled notification messages
 function showToast(message, type = 'info') {
@@ -3004,9 +3018,17 @@ function fetchWatchlistFromBackend() {
                 syncWatchlistStocksFlat();
                 renderWatchlist();
                 renderAnnouncements();
+                
+                isWatchlistLoaded = true;
+                const btnKronosBatchSort = document.getElementById('btn-kronos-batch-sort');
+                if (btnKronosBatchSort) {
+                    btnKronosBatchSort.disabled = false;
+                }
             }
         })
-        .catch(err => console.error("Error loading watchlist from backend:", err));
+        .catch(err => {
+            console.error("Error loading watchlist from backend:", err);
+        });
 }
 
 function fetchJournalFromBackend() {
@@ -3096,9 +3118,23 @@ function initWatchlist() {
     // Kronos batch sort button
     const btnKronosBatchSort = document.getElementById('btn-kronos-batch-sort');
     if (btnKronosBatchSort) {
+        if (!isWatchlistLoaded) {
+            btnKronosBatchSort.disabled = true;
+        }
         btnKronosBatchSort.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (isKronosBatchSorting) return;
+
+            const now = Date.now();
+            if (now - lastKronosSortTime < KRONOS_SORT_COOLDOWN_MS) {
+                const remainingSecs = Math.ceil((KRONOS_SORT_COOLDOWN_MS - (now - lastKronosSortTime)) / 1000);
+                const mins = Math.floor(remainingSecs / 60);
+                const secs = remainingSecs % 60;
+                if (typeof showToast === 'function') {
+                    showToast(`Sort is on cooldown. Please wait ${mins}m ${secs}s before running again.`, "info");
+                }
+                return;
+            }
 
             // 1. Immediately disable and set loading state to prevent double clicks
             btnKronosBatchSort.disabled = true;
@@ -3113,16 +3149,21 @@ function initWatchlist() {
             renderWatchlist();
 
             try {
-                // Reset stale rankings before a fresh batch run
-                watchlistKronosRankings = {};
-
-                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_BATCH_PRED_LEN}`);
+                const response = await fetch(`/api/watchlist/kronos-ranking?pred_len=${KRONOS_FORECAST_HORIZON}`);
                 if (!response.ok) {
                     throw new Error(`Failed to fetch rankings: ${response.statusText}`);
                 }
                 const data = await response.json();
                 
                 if (data && data.sections) {
+                    lastKronosSortTime = Date.now();
+                    if (data.partial && typeof showToast === 'function') {
+                        showToast(`Sort completed: ${data.missing_count} tickers timed out and moved to the bottom.`, "warning");
+                    }
+                    
+                    // Reset stale rankings ONLY now, upon successful response
+                    watchlistKronosRankings = {};
+                    
                     data.sections.forEach(sec => {
                         sec.rankings.forEach(r => {
                             watchlistKronosRankings[r.ticker] = {
@@ -3142,10 +3183,11 @@ function initWatchlist() {
                         }
                     });
 
-                    if (typeof saveWatchlistSections === 'function') {
-                        saveWatchlistSections();
+                    const saveFunc = window.saveWatchlistSections || (typeof saveWatchlistSections === 'function' ? saveWatchlistSections : null);
+                    if (saveFunc) {
+                        saveFunc(true);
                     } else {
-                        console.error('[Kronos Sort] saveWatchlistSections is not defined — reordered list will not persist. Check script load order.');
+                        throw new Error('[Kronos Sort] saveWatchlistSections is not defined');
                     }
                     
                     // Show last sorted timestamp suggestion
@@ -3242,12 +3284,55 @@ function initWatchlist() {
             menu.remove();
         }
     });
+} // Closing initWatchlist
+
+function normalizeBias(rawBias) {
+    if (!rawBias) return 'Sideways Consolidation';
+    const lower = rawBias.toLowerCase();
+    if (lower.includes('breakout')) return 'Strong Breakout';
+    if (lower.includes('bullish') || lower.includes('continuation')) return 'Bullish Continuation';
+    if (lower.includes('downtrend') || lower.includes('strong downtrend') || lower.includes('strong down')) return 'Strong Downtrend';
+    if (lower.includes('bearish') || lower.includes('pressure')) return 'Bearish Pressure';
+    return 'Sideways Consolidation';
 }
 
-function saveWatchlistSections() {
-    localStorage.setItem('tv_watchlist_sections_order', JSON.stringify(watchlistSections.map(s => s.id)));
+async function saveWatchlistSections(force = false) {
+    if (!isWatchlistLoaded) {
+        console.warn('[Watchlist Save] Save skipped: Watchlist not loaded.');
+        return;
+    }
+    if (isKronosBatchSorting && !force) {
+        console.warn('[Watchlist Save] Save skipped: Kronos sort in progress.');
+        return;
+    }
+    const order = watchlistSections.map(s => s.id);
+    localStorage.setItem('tv_watchlist_sections_order', JSON.stringify(order));
     syncWatchlistStocksFlat();
+    
+    try {
+        await fetch('/api/watchlist/sections/reorder', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ order })
+        });
+    } catch (err) {
+        console.error('[Watchlist Sync] Failed to save section order to backend database:', err);
+    }
+
+    // Persist stock order per section to backend
+    watchlistSections.forEach(sec => {
+        if (sec.stocks && Array.isArray(sec.stocks)) {
+            fetch(`/api/watchlist/sections/${sec.id}/reorder`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stocks: sec.stocks })
+            }).catch(err => console.error(`[WL] Failed to persist order for section ${sec.id}:`, err));
+        }
+    });
 }
+window.saveWatchlistSections = saveWatchlistSections;
 
 function syncWatchlistStocksFlat() {
     const allSyms = new Set();
@@ -3345,6 +3430,7 @@ function deleteSection(sectionId) {
 }
 
 function moveSection(sectionId, direction) {
+    if (!isWatchlistLoaded || isKronosBatchSorting) return;
     const index = watchlistSections.findIndex(s => s.id === sectionId);
     if (index === -1) return;
     
@@ -3903,7 +3989,7 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_forecast_bias) {
-                            const bias = rankData.ai_forecast_bias;
+                            const bias = normalizeBias(rankData.ai_forecast_bias);
                             const biasStyles = {
                                 'Strong Breakout':        { bg: 'rgba(16,185,129,0.1)',    color: '#10b981', border: 'rgba(16,185,129,0.2)' },
                                 'Bullish Continuation':   { bg: 'rgba(52,211,153,0.08)',   color: '#34d399', border: 'rgba(52,211,153,0.15)' },
@@ -3925,11 +4011,13 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_confidence_score) {
-                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600; color:var(--color-text-secondary);">
+                            const conf = rankData.ai_confidence_score;
+                            const confClass = conf >= 70 ? 'val-up' : conf >= 50 ? 'val-warn' : 'val-down';
+                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px; min-width:30px; margin:0 auto;">
-                                    <span>${rankData.ai_confidence_score}%</span>
+                                    <span class="${confClass}">${conf}%</span>
                                     <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
-                                        <div style="width:${rankData.ai_confidence_score}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
+                                        <div style="width:${conf}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
                                     </div>
                                 </div>
                             </td>`;
@@ -3999,7 +4087,7 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_forecast_bias) {
-                            const bias = rankData.ai_forecast_bias;
+                            const bias = normalizeBias(rankData.ai_forecast_bias);
                             const biasStyles = {
                                 'Strong Breakout':        { bg: 'rgba(16,185,129,0.1)',    color: '#10b981', border: 'rgba(16,185,129,0.2)' },
                                 'Bullish Continuation':   { bg: 'rgba(52,211,153,0.08)',   color: '#34d399', border: 'rgba(52,211,153,0.15)' },
@@ -4021,11 +4109,13 @@ function renderWatchlist() {
                         }
                         
                         if (rankData.ai_confidence_score) {
-                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600; color:var(--color-text-secondary);">
+                            const conf = rankData.ai_confidence_score;
+                            const confClass = conf >= 70 ? 'val-up' : conf >= 50 ? 'val-warn' : 'val-down';
+                            confidenceHtml = `<td class="watchlist-cell-center" style="font-size:0.65rem; font-weight:600;">
                                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px; min-width:30px; margin:0 auto;">
-                                    <span>${rankData.ai_confidence_score}%</span>
+                                    <span class="${confClass}">${conf}%</span>
                                     <div style="width:100%; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
-                                        <div style="width:${rankData.ai_confidence_score}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
+                                        <div style="width:${conf}%; height:100%; background:linear-gradient(90deg, #3b82f6, #10b981);"></div>
                                     </div>
                                 </div>
                             </td>`;
@@ -4626,6 +4716,10 @@ let dragSrcSymbol = null;
 let dragSrcSectionId = null;
 
 function handleDragStart(e) {
+    if (!isWatchlistLoaded || isKronosBatchSorting) {
+        e.preventDefault();
+        return;
+    }
     dragSrcSymbol = this.dataset.symbol;
     dragSrcSectionId = this.dataset.sectionId;
     e.dataTransfer.effectAllowed = 'move';
@@ -4670,6 +4764,10 @@ function handleDragLeave(e) {
 function handleDrop(e) {
     if (e.stopPropagation) {
         e.stopPropagation();
+    }
+    
+    if (!isWatchlistLoaded || isKronosBatchSorting) {
+        return false;
     }
     
     const targetRow = e.target.closest('.watchlist-row');
@@ -6063,7 +6161,7 @@ function openTradeDrawer(ticker) {
                 if (kronosForecastRow) {
                     kronosForecastRow.style.display = 'block';
                     const biasBadge = document.getElementById('drawer-kronos-bias');
-                    const bias = data.ai_forecast_bias;  // null = model errored / not run
+                    const bias = data.ai_forecast_bias ? normalizeBias(data.ai_forecast_bias) : null;
 
                     if (!bias) {
                         // Model did not run or threw an error — show neutral grey Unavailable badge
@@ -6163,8 +6261,8 @@ function openTradeDrawer(ticker) {
                     destroyKronosChart();
                 }
 
-                // Fetch interactive Kronos details (sample_count = 20 for envelope calculation)
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_PRED_LEN}&sample_count=20`)
+                // Fetch interactive Kronos details (sample_count = 10 for envelope calculation)
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_FORECAST_HORIZON}&sample_count=10`)
                     .then(res => res.json())
                     .then(kdata => {
                         if (kdata.error) {
@@ -6326,6 +6424,8 @@ function closeTradeDrawer() {
     destroyKronosChart();
     const kronosSection = document.getElementById('drawer-kronos-section');
     if (kronosSection) kronosSection.style.display = 'none';
+    const drawerBadge = document.getElementById('drawer-ensemble-conviction');
+    if (drawerBadge) drawerBadge.remove();
 }
 
 window.openTradeDrawer = openTradeDrawer;
@@ -6392,7 +6492,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
             const len = parseInt(btn.dataset.len);
             if (window.currentTradeStock) {
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=20`)
+                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=10`)
                     .then(res => res.json())
                     .then(kdata => {
                         if (!kdata.error) {
@@ -6401,6 +6501,39 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
             }
         });
+    });
+
+    // Hook toggle buttons for backtester mode in AI Forecast Workspace
+    document.querySelectorAll('.bt-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.bt-mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const searchInput = document.getElementById('kronos-ticker-input');
+            const symbol = (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
+            
+            loadBacktestingMetrics(symbol);
+        });
+    });
+
+    // Individual models toggle change event listener
+    document.getElementById('showIndividualModels')?.addEventListener('change', () => {
+        const searchInput = document.getElementById('kronos-ticker-input');
+        const symbol = (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
+        
+        // Re-render main chart if in ensemble mode
+        const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+        const isEnsemble = activeBtn && activeBtn.dataset.mode === 'ensemble';
+        if (isEnsemble && window.lastEnsembleData) {
+            renderEnsembleChart(window.lastEnsembleData);
+        }
+
+        // Re-render backtest chart if in ensemble mode
+        const btModeActive = document.querySelector('.bt-mode-btn.active');
+        const isEnsembleBt = btModeActive && btModeActive.dataset.mode === 'ensemble';
+        if (isEnsembleBt && window.lastEnsembleBacktestData) {
+            renderEnsembleBacktestChart(window.lastEnsembleBacktestData);
+        }
     });
 });
 
@@ -6653,7 +6786,7 @@ let intradayWidgetSort = {
     'vwap': { field: 'change', asc: false },
     'rvol': { field: 'change', asc: false },
     'confluence': { field: 'change', asc: false },
-    'focus': { field: 'change', asc: false }
+    'focus': { field: 'metric', asc: false }
 };
 
 window.sortIntradayWidget = function(widgetId, field) {
@@ -6724,8 +6857,31 @@ function renderIntradayWorkspace() {
         }
         
         // Watchlist Focus
-        if (isInWatchlist && (rvol >= 1.2 || intradayScore >= 50)) {
-            widgetsData['focus'].push({ ...s, _metricValue: `${rvol.toFixed(1)}x`, _metricRaw: rvol });
+        if (isInWatchlist) {
+            let metCount = 0;
+            let activeParams = [];
+            
+            const isGapGo = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
+            if (isGapGo) { metCount++; activeParams.push('G'); }
+            
+            const isVwapReclaim = close > vwap && close < vwap * 1.015 && intradayScore > 0;
+            if (isVwapReclaim) { metCount++; activeParams.push('V'); }
+            
+            const isHighRvol = rvol >= 1.5;
+            if (isHighRvol) { metCount++; activeParams.push('R'); }
+            
+            const isOverlap = ims === 'strong' && (swing === 'strong' || swing === 'elite');
+            if (isOverlap) { metCount++; activeParams.push('C'); }
+            
+            if (metCount >= 1) {
+                widgetsData['focus'].push({ 
+                    ...s, 
+                    _metricValue: `${metCount}/4`, 
+                    _metricRaw: metCount,
+                    _activeParams: activeParams,
+                    _intradayScore: intradayScore
+                });
+            }
         }
     });
 
@@ -6735,7 +6891,7 @@ function renderIntradayWorkspace() {
         'vwap': { metricLabel: 'Dist', color: '--accent-blue' },
         'rvol': { metricLabel: 'RVOL', color: '--accent-orange' },
         'confluence': { metricLabel: 'Score', color: '--accent-purple' },
-        'focus': { metricLabel: 'RVOL', color: '--accent-blue' }
+        'focus': { metricLabel: 'Confl', color: '--accent-purple' }
     };
 
     Object.keys(widgetsData).forEach(widgetId => {
@@ -6755,6 +6911,11 @@ function renderIntradayWorkspace() {
             } else if (sortState.field === 'metric') {
                 valA = a._metricRaw || 0;
                 valB = b._metricRaw || 0;
+                if (widgetId === 'focus' && valA === valB) {
+                    const scoreA = a._intradayScore || 0;
+                    const scoreB = b._intradayScore || 0;
+                    return sortState.asc ? scoreA - scoreB : scoreB - scoreA;
+                }
             }
             return sortState.asc ? valA - valB : valB - valA;
         });
@@ -6771,14 +6932,31 @@ function renderIntradayWorkspace() {
                 <span style="cursor:pointer; text-align:right; width: 25%;" onclick="sortIntradayWidget('${widgetId}', 'metric')">${metricLabel}${getSortIcon('metric')}</span>
             </div>
         `;
-        
+
         items.forEach(s => {
             const change = parseFloat(s.change) || 0;
             const changeColor = change > 0 ? 'var(--accent-green)' : 'var(--accent-red)';
             const changeSign = change > 0 ? '+' : '';
             let colorClass = widgetConfigs[widgetId].color;
-            if (widgetId === 'focus' && parseFloat(s.relative_volume) > 2) {
-                colorClass = '--accent-orange';
+            
+            let metricHtml = `<span style="color:var(${colorClass}); font-weight:600;">${s._metricValue}</span>`;
+            if (widgetId === 'focus' && s._activeParams) {
+                metricHtml = `
+                    <span style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                        <span style="color:var(${colorClass}); font-weight:600;">${s._metricValue}</span>
+                        <span style="display: flex; gap: 2px;">
+                            ${s._activeParams.map(p => {
+                                let badgeBg = 'rgba(255, 255, 255, 0.1)';
+                                let badgeFg = 'var(--color-text-muted)';
+                                if (p === 'G') { badgeBg = 'rgba(16, 185, 129, 0.15)'; badgeFg = '#10b981'; }
+                                else if (p === 'V') { badgeBg = 'rgba(59, 130, 246, 0.15)'; badgeFg = '#3b82f6'; }
+                                else if (p === 'R') { badgeBg = 'rgba(249, 115, 22, 0.15)'; badgeFg = '#f97316'; }
+                                else if (p === 'C') { badgeBg = 'rgba(139, 92, 246, 0.15)'; badgeFg = '#8b5cf6'; }
+                                return `<span style="font-size: 0.65rem; font-weight: bold; color: ${badgeFg}; background: ${badgeBg}; border: 1px solid ${badgeFg}30; padding: 1px 3px; border-radius: 3px; line-height: 1;" title="${p === 'G' ? 'Gap & Go' : p === 'V' ? 'VWAP Reclaim' : p === 'R' ? 'High RVOL' : 'Confluence Overlap'}">${p}</span>`;
+                            }).join('')}
+                        </span>
+                    </span>
+                `;
             }
             
             html += `
@@ -6788,7 +6966,7 @@ function renderIntradayWorkspace() {
                         <span style="font-size: 0.75rem; color: ${changeColor}; width: 70px; flex-shrink: 0;">${changeSign}${change.toFixed(2)}%</span>
                     </div>
                     <span class="intraday-item-metric" style="text-align: right; width: 25%;">
-                        <span style="color:var(${colorClass}); font-weight:600;">${s._metricValue}</span>
+                        ${metricHtml}
                     </span>
                 </div>
             `;
@@ -8080,7 +8258,73 @@ function renderKronosForecastPanel(data) {
     bandHigh.setData(data.forecast.map(r => ({ time: r.date, value: r.p90_close })));
 
     chart.timeScale().fitContent();
-    
+
+    // Augment with EnsembleCast consensus line and conviction
+    const ticker = data.ticker;
+    const horizon = data.pred_len;
+
+    // Reset conviction badge placeholder in the drawer to avoid stale state while fetching
+    let drawerBadge = document.getElementById('drawer-ensemble-conviction');
+    if (!drawerBadge) {
+        drawerBadge = document.createElement('div');
+        drawerBadge.id = 'drawer-ensemble-conviction';
+        drawerBadge.style.marginTop = '0.5rem';
+        const chartContainer = document.getElementById('drawer-kronos-chart');
+        if (chartContainer) {
+            const parent = chartContainer.parentNode;
+            parent.insertBefore(drawerBadge, chartContainer.nextSibling);
+        }
+    }
+    if (drawerBadge) {
+        drawerBadge.className = 'conviction-badge conviction-loading';
+        drawerBadge.innerHTML = '<span style="margin-right: 4px;">◌</span> Calculating ensemble…';
+    }
+
+    fetch('/api/ensemble_forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ticker, horizon: horizon })
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+    })
+    .then(ensData => {
+        if (ensData && ensData.ensemble_path && activeKronosChart) {
+            // Draw gold ensemble path on the drawer chart
+            const ensembleSeries = activeKronosChart.addSeries(LightweightCharts.LineSeries, {
+                color: '#fbbf24',
+                lineWidth: 2,
+                title: 'Ensemble'
+            });
+            const futureDates = generateFutureTradingDates(ensData.last_close_date, ensData.horizon);
+            ensembleSeries.setData(
+                ensData.ensemble_path.map((close, i) => ({ time: futureDates[i], value: close }))
+            );
+
+            // Add/update conviction badge in the drawer
+            if (drawerBadge) {
+                const ICONS = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴' };
+                const LABELS = { HIGH: 'High Conviction', MODERATE: 'Moderate Conviction', LOW: 'Low Conviction ⚠️' };
+                const conv = ensData.conviction || 'LOW';
+                drawerBadge.className = `conviction-badge ${conv}`;
+                drawerBadge.innerHTML = `<span style="margin-right: 4px;">${ICONS[conv] ?? '●'}</span> ${LABELS[conv] ?? conv}`;
+            }
+        } else {
+            if (drawerBadge) {
+                drawerBadge.className = 'conviction-badge';
+                drawerBadge.innerHTML = '<span style="margin-right: 4px;">●</span> Ensemble unavailable';
+            }
+        }
+    })
+    .catch(err => {
+        console.error('[EnsembleCast Drawer]', err);
+        if (drawerBadge) {
+            drawerBadge.className = 'conviction-badge';
+            drawerBadge.innerHTML = '<span style="margin-right: 4px;">●</span> Ensemble unavailable';
+        }
+    });
+
     const backtestRow = document.getElementById('kronos-backtest-row');
     if (backtestRow) {
         backtestRow.style.display = 'flex';
@@ -8124,15 +8368,46 @@ function renderAIForecastWorkspace(ticker) {
     }
 
     const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+    const isEnsemble = activeBtn && activeBtn.dataset.mode === 'ensemble';
     const predLen = activeBtn ? parseInt(activeBtn.dataset.len) : 5;
 
     const runBtn = document.getElementById('btn-run-kronos');
+
+    if (isEnsemble) {
+        if (runBtn) {
+            runBtn.disabled = true;
+            runBtn.textContent = 'Running...';
+        }
+        document.getElementById('ensemblePanel').style.display = 'block';
+        loadEnsembleForecast(symbol, predLen, true)
+            .finally(() => {
+                if (runBtn) {
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Run Forecast';
+                }
+            });
+        return;
+    }
+
+    // Otherwise standard Kronos mode
+    document.getElementById('ensemblePanel').style.display = 'none';
+
+    // Hide Ensemble Backtest elements
+    document.getElementById('ensembleBacktestTable').style.display = 'none';
+    const btKronosBtn = document.querySelector('.bt-mode-btn[data-mode="kronos"]');
+    if (btKronosBtn) {
+        document.querySelectorAll('.bt-mode-btn').forEach(b => b.classList.remove('active'));
+        btKronosBtn.classList.add('active');
+    }
+    const metricsContainer = document.getElementById('kronos-accuracy-metrics');
+    if (metricsContainer) metricsContainer.style.display = 'flex';
+
     if (runBtn) {
         runBtn.disabled = true;
         runBtn.textContent = 'Running...';
     }
 
-    fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=20`)
+    fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=10`)
         .then(res => res.json())
         .then(data => {
             if (runBtn) {
@@ -8252,6 +8527,23 @@ function loadBacktestingMetrics(symbol) {
     const metricsContainer = document.getElementById('kronos-accuracy-metrics');
     if (!backtestSection || !metricsContainer) return;
 
+    const btModeActive = document.querySelector('.bt-mode-btn.active');
+    const isEnsembleBt = btModeActive && btModeActive.dataset.mode === 'ensemble';
+
+    if (isEnsembleBt) {
+        document.getElementById('ensembleBacktestTable').style.display = 'block';
+        metricsContainer.style.display = 'none';
+        backtestSection.style.display = 'block';
+        const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
+        const horizon = activeBtn ? parseInt(activeBtn.dataset.len) : 10;
+        loadEnsembleBacktest(symbol, horizon);
+        return;
+    }
+
+    // Otherwise standard Kronos metrics
+    document.getElementById('ensembleBacktestTable').style.display = 'none';
+    metricsContainer.style.display = 'flex';
+
     fetch(`/api/kronos-backtest?ticker=${encodeURIComponent(symbol)}`)
         .then(res => res.json())
         .then(data => {
@@ -8364,3 +8656,417 @@ window.renderKronosForecastPanel = renderKronosForecastPanel;
 window.destroyKronosChart = destroyKronosChart;
 window.destroyKronosFullChart = destroyKronosFullChart;
 window.destroyKronosBacktestChart = destroyKronosBacktestChart;
+
+// ── EnsembleCast (Multi-Model Forecast) Helpers ──
+
+function generateFutureTradingDates(lastDate, n) {
+  // If window.nseHolidays is loaded dynamically from the backend, use it.
+  // Otherwise, use a static fallback set spanning 2026 and 2027.
+  const staticFallback = new Set([
+    '2026-01-26','2026-03-03','2026-03-19','2026-04-02',
+    '2026-04-03','2026-04-14','2026-05-01','2026-08-15',
+    '2026-10-02','2026-10-20','2026-11-25','2026-12-25',
+    '2027-01-26','2027-03-24','2027-03-26','2027-04-14',
+    '2027-05-01','2027-08-15','2027-10-02','2027-11-09',
+    '2027-12-25'
+  ]);
+  const holidays = window.nseHolidays || staticFallback;
+  
+  const curYear = new Date(lastDate).getFullYear();
+  if (curYear > 2027 && !window.nseHolidays) {
+    console.warn(`[EnsembleCast] Current year is ${curYear} but trading holidays were not fetched dynamically. Using 2027 fallback.`);
+  }
+
+  const dates = [];
+  const cur = new Date(lastDate);
+  while (dates.length < n) {
+    cur.setDate(cur.getDate() + 1);
+    const dow = cur.getDay();
+    const iso = cur.toISOString().slice(0, 10);
+    if (dow !== 0 && dow !== 6 && !holidays.has(iso)) {
+      dates.push(iso);
+    }
+  }
+  return dates;
+}
+
+function renderEnsembleChart(data) {
+  // Guard: chart must exist before we can add series
+  if (!activeKronosFullChart) {
+    console.warn('[EnsembleCast] renderEnsembleChart called but activeKronosFullChart is null — attempting to create chart');
+    const container = document.getElementById('kronos-full-chart');
+    if (!container || typeof LightweightCharts === 'undefined') {
+      console.error('[EnsembleCast] Cannot create chart: container missing or LightweightCharts not loaded');
+      return;
+    }
+    const isDark = (document.body.getAttribute('data-theme') || 'dark') === 'dark';
+    const chart = LightweightCharts.createChart(container, {
+      width: container.clientWidth,
+      height: 380,
+      layout: { background: { color: 'transparent' }, textColor: isDark ? '#94a3b8' : '#475569' },
+      grid: {
+        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+      },
+      timeScale: { borderVisible: false },
+      rightPriceScale: { borderVisible: false },
+    });
+    activeKronosFullChart = chart;
+    const ro = new ResizeObserver(entries => {
+      if (!entries[0]) return;
+      chart.resize(entries[0].contentRect.width, entries[0].contentRect.height);
+    });
+    ro.observe(container);
+    container.resizeObserver = ro;
+  }
+
+  const MODEL_COLORS = {
+    kronos:  { color: 'rgba(124, 58, 237, 0.45)',  lineWidth: 1 },  // faint purple
+    prophet: { color: 'rgba(234, 88,  12,  0.45)', lineWidth: 1 },  // faint orange
+    arima:   { color: 'rgba(8,   145, 178, 0.45)', lineWidth: 1 },  // faint teal
+  };
+  const ENSEMBLE_STYLE = { color: '#fbbf24', lineWidth: 2.5 };      // gold bold path
+
+  const showIndividual = document.getElementById('showIndividualModels')?.checked ?? false;
+
+  // Generate future date labels aligned to the ensemble path
+  const futureDates = generateFutureTradingDates(data.last_close_date, data.horizon);
+
+  // Remove stale series from activeKronosFullChart
+  Object.keys(activeEnsembleSeries).forEach(key => {
+    if (activeEnsembleSeries[key] && activeKronosFullChart) {
+      try { activeKronosFullChart.removeSeries(activeEnsembleSeries[key]); } catch (_) {}
+    }
+  });
+  activeEnsembleSeries = {};
+
+  // Draw individual model paths (toggled by checkbox)
+  if (showIndividual && activeKronosFullChart) {
+    Object.entries(data.model_paths).forEach(([modelName, path]) => {
+      const style = MODEL_COLORS[modelName] || { color: '#888', lineWidth: 1 };
+      const series = activeKronosFullChart.addSeries(LightweightCharts.LineSeries, {
+        color: style.color,
+        lineWidth: style.lineWidth,
+        lineStyle: 2,   // dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      series.setData(
+        path.map((close, i) => ({ time: futureDates[i], value: close }))
+      );
+      activeEnsembleSeries[`${modelName}Series`] = series;
+    });
+  }
+
+  // Draw bold ensemble path — final null check before calling
+  if (!activeKronosFullChart) {
+    console.error('[EnsembleCast] activeKronosFullChart still null after creation attempt — aborting chart draw');
+    return;
+  }
+  const ensembleSeries = activeKronosFullChart.addSeries(LightweightCharts.LineSeries, {
+    color: ENSEMBLE_STYLE.color,
+    lineWidth: ENSEMBLE_STYLE.lineWidth,
+    priceLineVisible: false,
+    title: 'Ensemble',
+  });
+  ensembleSeries.setData(
+    data.ensemble_path.map((close, i) => ({ time: futureDates[i], value: close }))
+  );
+  activeEnsembleSeries.ensembleSeries = ensembleSeries;
+}
+
+function renderConvictionBadge(conviction, divergenceScore) {
+  const badge  = document.getElementById('convictionBadge');
+  const icon   = document.getElementById('convictionIcon');
+  const label  = document.getElementById('convictionLabel');
+  if (!badge || !icon || !label) return;
+  const ICONS  = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴', UNKNOWN: '⚪' };
+  const LABELS = {
+    HIGH:     `High Conviction  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+    MODERATE: `Moderate Conviction  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+    LOW:      `Low Conviction ⚠️  (divergence: ${(divergenceScore * 100).toFixed(1)}%)`,
+    UNKNOWN:  `Unknown Conviction`
+  };
+  const key = conviction ?? 'UNKNOWN';
+  badge.className = `conviction-badge ${key}`;
+  icon.textContent  = ICONS[key]  ?? '●';
+  label.textContent = LABELS[key] ?? key;
+}
+
+function renderModelWeightsBar(weights = {}) {
+  const models = ['kronos', 'prophet', 'arima'];
+  // Fallback to static weights if weights object is empty
+  const w = (weights && Object.keys(weights).length > 0) ? weights : { kronos: 0.5, prophet: 0.3, arima: 0.2 };
+  models.forEach(m => {
+    const pct = Math.round((w[m] ?? 0) * 100);
+    const seg = document.getElementById(`${m}WeightSeg`);
+    const pctLabel = document.getElementById(`${m}WeightPct`);
+    if (seg) seg.style.width  = `${pct}%`;
+    if (pctLabel) pctLabel.textContent  = `${pct}%`;
+  });
+}
+
+function renderAgreementMatrix(matrix = {}) {
+  const MODELS = ['kronos', 'prophet', 'arima'];
+  const tbody  = document.getElementById('agreementMatrixBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  MODELS.forEach(row => {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.textContent = row.charAt(0).toUpperCase() + row.slice(1);
+    tr.appendChild(th);
+
+    MODELS.forEach(col => {
+      const td = document.createElement('td');
+      if (row === col) {
+        td.textContent = '—';
+      } else {
+        const key = [row, col].sort().join('_vs_');
+        const val = matrix ? matrix[key] : null;
+        if (val != null) {
+          td.textContent = `${val}%`;
+          td.className = val >= 75 ? 'agreement-cell-high'
+                       : val >= 55 ? 'agreement-cell-medium'
+                       :             'agreement-cell-low';
+        } else {
+          td.textContent = 'N/A';
+        }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = false) {
+  const panel = document.getElementById('ensemblePanel');
+  if (panel) panel.style.display = 'block';
+  const convictionLabel = document.getElementById('convictionLabel');
+  const convictionBadge = document.getElementById('convictionBadge');
+  if (convictionLabel) convictionLabel.textContent = 'Calculating\u2026';
+  if (convictionBadge) convictionBadge.className = 'conviction-badge conviction-loading';
+
+  try {
+    const res = await fetch('/api/ensemble_forecast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker, horizon, use_dynamic_weights: useDynamicWeights })
+    });
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      throw e;
+    }
+    if (!res.ok || data.error) {
+      throw new Error(data?.error || 'HTTP ' + res.status);
+    }
+
+    window.lastEnsembleData = data;
+
+    destroyKronosFullChart();
+    const container = document.getElementById('kronos-full-chart');
+
+    // Defer to rAF so the panel is painted and container has a real offsetWidth
+    requestAnimationFrame(() => {
+      if (container && typeof LightweightCharts !== 'undefined') {
+        const isDark = (document.body.getAttribute('data-theme') || 'dark') === 'dark';
+        const chartWidth = container.offsetWidth || container.parentElement?.offsetWidth || 800;
+        const chart = LightweightCharts.createChart(container, {
+          width: chartWidth,
+          height: 380,
+          layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#94a3b8' : '#475569'
+          },
+          grid: {
+            vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+            horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+          },
+          timeScale: { borderVisible: false },
+          rightPriceScale: { borderVisible: false }
+        });
+        activeKronosFullChart = chart;
+        const ro = new ResizeObserver(entries => {
+          if (!entries[0]) return;
+          const { width, height } = entries[0].contentRect;
+          if (width > 0) chart.resize(width, height);
+        });
+        ro.observe(container);
+        container.resizeObserver = ro;
+      }
+
+      renderEnsembleChart(data);
+      renderConvictionBadge(data.conviction, data.divergence_score);
+      renderModelWeightsBar(data.weights);
+      renderAgreementMatrix(data.agreement_matrix);
+
+      const tableWrap = document.getElementById('kronos-full-table-wrap');
+      if (tableWrap) {
+        const lastClose = data.last_close;
+        const futureDates = generateFutureTradingDates(data.last_close_date, data.horizon);
+        const rows = (data.ensemble_path || []).map((val, idx) => {
+          const cls = val >= lastClose ? 'val-up' : 'val-down';
+          const fmt = (arr) => (arr && arr[idx] != null) ? '\u20B9' + arr[idx].toFixed(2) : 'N/A';
+          return '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">'
+            + '<td style="padding:8px;">' + (futureDates[idx] || '') + '</td>'
+            + '<td class="' + cls + '" style="text-align:right;padding:8px;font-weight:700;">\u20B9' + val.toFixed(2) + '</td>'
+            + '<td style="text-align:right;padding:8px;color:var(--color-text-secondary);">' + fmt(data.model_paths.kronos) + '</td>'
+            + '<td style="text-align:right;padding:8px;color:var(--color-text-secondary);">' + fmt(data.model_paths.prophet) + '</td>'
+            + '<td style="text-align:right;padding:8px;color:var(--color-text-secondary);">' + fmt(data.model_paths.arima) + '</td>'
+            + '</tr>';
+        }).join('');
+        tableWrap.innerHTML = '<table class="kronos-forecast-table" style="width:100%;border-collapse:collapse;font-size:0.85rem;margin-top:1rem;">'
+          + '<thead><tr style="border-bottom:2px solid rgba(255,255,255,0.1);">'
+          + '<th style="text-align:left;padding:8px;color:var(--color-text-muted);">Forecast Date</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">Ensemble Close</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">Kronos Close</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">Prophet Close</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">ARIMA Close</th>'
+          + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      }
+
+      loadBacktestingMetrics(ticker);
+    });
+
+  } catch (err) {
+    if (convictionLabel) convictionLabel.textContent = 'Ensemble unavailable';
+    if (convictionBadge) convictionBadge.className = 'conviction-badge';
+    const convictionIcon = document.getElementById('convictionIcon');
+    if (convictionIcon) convictionIcon.textContent = '⚠️';
+    console.error('[EnsembleCast]', err);
+  }
+}
+
+
+async function loadEnsembleBacktest(ticker, horizon = 10) {
+  try {
+    const res = await fetch(`/api/ensemble-backtest?ticker=${ticker}&horizon=${horizon}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    
+    // Cache backtest data for toggle checkbox
+    window.lastEnsembleBacktestData = data;
+
+    renderBacktestComparisonTable(data.per_model_metrics);
+    renderEnsembleBacktestChart(data);
+  } catch (err) {
+    console.error('[EnsembleCast Backtest]', err);
+  }
+}
+
+function renderBacktestComparisonTable(metrics) {
+  const tbody = document.getElementById('btComparisonBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const BT_MODEL_LABELS = {
+    kronos: 'Kronos',
+    prophet: 'Prophet',
+    arima: 'ARIMA',
+    ensemble: '⚡ Ensemble'
+  };
+
+  const ORDER = ['kronos', 'prophet', 'arima', 'ensemble'];
+  ORDER.forEach(name => {
+    const m = metrics[name];
+    if (!m) return;
+    const tr = document.createElement('tr');
+    if (name === 'ensemble') tr.classList.add('ensemble-row');
+    tr.innerHTML = `
+      <td>${BT_MODEL_LABELS[name] ?? name}</td>
+      <td>${m.mae}</td>
+      <td>${m.mape}%</td>
+      <td>${m.direction_accuracy}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderEnsembleBacktestChart(data) {
+    destroyKronosBacktestChart();
+    const container = document.getElementById('kronos-backtest-chart');
+    if (!container || typeof LightweightCharts === 'undefined') return;
+
+    const currentTheme = document.body.getAttribute('data-theme') || 'dark';
+    const isDark = currentTheme === 'dark';
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 280,
+        layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#94a3b8' : '#475569'
+        },
+        grid: {
+            vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+            horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+        },
+        timeScale: { borderVisible: false },
+        rightPriceScale: { borderVisible: false },
+    });
+    activeKronosBacktestChart = chart;
+
+    // Actual series (green)
+    const actualSeries = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#10b981',
+        lineWidth: 2.5,
+        title: 'Actual',
+    });
+    actualSeries.setData(data.comparison_points.map(pt => ({
+        time: pt.date,
+        value: pt.actual
+    })));
+
+    // Ensemble series (gold)
+    const ensembleSeries = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#fbbf24',
+        lineWidth: 2.5,
+        title: 'Ensemble',
+    });
+    ensembleSeries.setData(data.comparison_points.map(pt => ({
+        time: pt.date,
+        value: pt.ensemble
+    })));
+
+    // Individual models faint dashed lines if present
+    const showIndividual = document.getElementById('showIndividualModels')?.checked ?? false;
+    if (showIndividual) {
+        const MODEL_COLORS = {
+            kronos: 'rgba(124, 58, 237, 0.45)',
+            prophet: 'rgba(234, 88, 12, 0.45)',
+            arima: 'rgba(8, 145, 178, 0.45)'
+        };
+        ['kronos', 'prophet', 'arima'].forEach(model => {
+            const path = data.comparison_points.map(pt => pt[model] ? { time: pt.date, value: pt[model] } : null).filter(x => x !== null);
+            if (path.length > 0) {
+                const s = chart.addSeries(LightweightCharts.LineSeries, {
+                    color: MODEL_COLORS[model],
+                    lineWidth: 1,
+                    lineStyle: 2, // dashed
+                    title: model.toUpperCase()
+                });
+                s.setData(path);
+            }
+        });
+    }
+
+    chart.timeScale().fitContent();
+
+    const resizeObserver = new ResizeObserver(entries => {
+        if (entries.length === 0 || !entries[0].contentRect) return;
+        const { width, height } = entries[0].contentRect;
+        chart.resize(width, height);
+    });
+    resizeObserver.observe(container);
+    container.resizeObserver = resizeObserver;
+}
+
+window.loadEnsembleForecast = loadEnsembleForecast;
+window.loadEnsembleBacktest = loadEnsembleBacktest;
+window.renderEnsembleChart = renderEnsembleChart;
+window.renderEnsembleBacktestChart = renderEnsembleBacktestChart;
+window.generateFutureTradingDates = generateFutureTradingDates;
+
