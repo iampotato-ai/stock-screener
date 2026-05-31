@@ -156,6 +156,11 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    try:
+        c.execute("UPDATE kronos_forecasts SET model_type = 'kronos' WHERE model_type IS NULL")
+    except Exception:
+        pass
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS rrg_history (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
