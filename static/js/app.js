@@ -6338,6 +6338,8 @@ function closeTradeDrawer() {
     destroyKronosChart();
     const kronosSection = document.getElementById('drawer-kronos-section');
     if (kronosSection) kronosSection.style.display = 'none';
+    const drawerBadge = document.getElementById('drawer-ensemble-conviction');
+    if (drawerBadge) drawerBadge.remove();
 }
 
 window.openTradeDrawer = openTradeDrawer;
@@ -8129,12 +8131,33 @@ function renderKronosForecastPanel(data) {
     // Augment with EnsembleCast consensus line and conviction
     const ticker = data.ticker;
     const horizon = data.pred_len;
+
+    // Reset conviction badge placeholder in the drawer to avoid stale state while fetching
+    let drawerBadge = document.getElementById('drawer-ensemble-conviction');
+    if (!drawerBadge) {
+        drawerBadge = document.createElement('div');
+        drawerBadge.id = 'drawer-ensemble-conviction';
+        drawerBadge.style.marginTop = '0.5rem';
+        const chartContainer = document.getElementById('drawer-kronos-chart');
+        if (chartContainer) {
+            const parent = chartContainer.parentNode;
+            parent.insertBefore(drawerBadge, chartContainer.nextSibling);
+        }
+    }
+    if (drawerBadge) {
+        drawerBadge.className = 'conviction-badge conviction-loading';
+        drawerBadge.innerHTML = '<span style="margin-right: 4px;">◌</span> Calculating ensemble…';
+    }
+
     fetch('/api/ensemble_forecast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: ticker, horizon: horizon })
     })
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+    })
     .then(ensData => {
         if (ensData && ensData.ensemble_path && activeKronosChart) {
             // Draw gold ensemble path on the drawer chart
@@ -8148,22 +8171,28 @@ function renderKronosForecastPanel(data) {
                 ensData.ensemble_path.map((close, i) => ({ time: futureDates[i], value: close }))
             );
 
-            // Add conviction badge in the drawer
-            let drawerBadge = document.getElementById('drawer-ensemble-conviction');
-            if (!drawerBadge) {
-                drawerBadge = document.createElement('div');
-                drawerBadge.id = 'drawer-ensemble-conviction';
-                drawerBadge.style.marginTop = '0.5rem';
-                const parent = document.getElementById('drawer-kronos-chart').parentNode;
-                parent.insertBefore(drawerBadge, document.getElementById('drawer-kronos-chart').nextSibling);
+            // Add/update conviction badge in the drawer
+            if (drawerBadge) {
+                const ICONS = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴' };
+                const LABELS = { HIGH: 'High Conviction', MODERATE: 'Moderate Conviction', LOW: 'Low Conviction ⚠️' };
+                const conv = ensData.conviction || 'LOW';
+                drawerBadge.className = `conviction-badge ${conv}`;
+                drawerBadge.innerHTML = `<span style="margin-right: 4px;">${ICONS[conv] ?? '●'}</span> ${LABELS[conv] ?? conv}`;
             }
-            const ICONS = { HIGH: '🟢', MODERATE: '🟡', LOW: '🔴' };
-            const LABELS = { HIGH: 'High Conviction', MODERATE: 'Moderate Conviction', LOW: 'Low Conviction ⚠️' };
-            drawerBadge.className = `conviction-badge ${ensData.conviction}`;
-            drawerBadge.innerHTML = `<span style="margin-right: 4px;">${ICONS[ensData.conviction]}</span> ${LABELS[ensData.conviction]}`;
+        } else {
+            if (drawerBadge) {
+                drawerBadge.className = 'conviction-badge';
+                drawerBadge.innerHTML = '<span style="margin-right: 4px;">●</span> Ensemble unavailable';
+            }
         }
     })
-    .catch(err => console.error('[EnsembleCast Drawer]', err));
+    .catch(err => {
+        console.error('[EnsembleCast Drawer]', err);
+        if (drawerBadge) {
+            drawerBadge.className = 'conviction-badge';
+            drawerBadge.innerHTML = '<span style="margin-right: 4px;">●</span> Ensemble unavailable';
+        }
+    });
 
     const backtestRow = document.getElementById('kronos-backtest-row');
     if (backtestRow) {
@@ -8531,6 +8560,35 @@ function generateFutureTradingDates(lastDate, n) {
 }
 
 function renderEnsembleChart(data) {
+  // Guard: chart must exist before we can add series
+  if (!activeKronosFullChart) {
+    console.warn('[EnsembleCast] renderEnsembleChart called but activeKronosFullChart is null — attempting to create chart');
+    const container = document.getElementById('kronos-full-chart');
+    if (!container || typeof LightweightCharts === 'undefined') {
+      console.error('[EnsembleCast] Cannot create chart: container missing or LightweightCharts not loaded');
+      return;
+    }
+    const isDark = (document.body.getAttribute('data-theme') || 'dark') === 'dark';
+    const chart = LightweightCharts.createChart(container, {
+      width: container.clientWidth,
+      height: 380,
+      layout: { background: { color: 'transparent' }, textColor: isDark ? '#94a3b8' : '#475569' },
+      grid: {
+        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+      },
+      timeScale: { borderVisible: false },
+      rightPriceScale: { borderVisible: false },
+    });
+    activeKronosFullChart = chart;
+    const ro = new ResizeObserver(entries => {
+      if (!entries[0]) return;
+      chart.resize(entries[0].contentRect.width, entries[0].contentRect.height);
+    });
+    ro.observe(container);
+    container.resizeObserver = ro;
+  }
+
   const MODEL_COLORS = {
     kronos:  { color: 'rgba(124, 58, 237, 0.45)',  lineWidth: 1 },  // faint purple
     prophet: { color: 'rgba(234, 88,  12,  0.45)', lineWidth: 1 },  // faint orange
@@ -8552,7 +8610,7 @@ function renderEnsembleChart(data) {
   activeEnsembleSeries = {};
 
   // Draw individual model paths (toggled by checkbox)
-  if (showIndividual) {
+  if (showIndividual && activeKronosFullChart) {
     Object.entries(data.model_paths).forEach(([modelName, path]) => {
       const style = MODEL_COLORS[modelName] || { color: '#888', lineWidth: 1 };
       const series = activeKronosFullChart.addLineSeries({
@@ -8569,7 +8627,11 @@ function renderEnsembleChart(data) {
     });
   }
 
-  // Draw bold ensemble path
+  // Draw bold ensemble path — final null check before calling
+  if (!activeKronosFullChart) {
+    console.error('[EnsembleCast] activeKronosFullChart still null after creation attempt — aborting chart draw');
+    return;
+  }
   const ensembleSeries = activeKronosFullChart.addLineSeries({
     color: ENSEMBLE_STYLE.color,
     lineWidth: ENSEMBLE_STYLE.lineWidth,
@@ -8650,7 +8712,7 @@ async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = fa
   if (panel) panel.style.display = 'block';
   const convictionLabel = document.getElementById('convictionLabel');
   const convictionBadge = document.getElementById('convictionBadge');
-  if (convictionLabel) convictionLabel.textContent = 'Calculating…';
+  if (convictionLabel) convictionLabel.textContent = 'Calculating\u2026';
   if (convictionBadge) convictionBadge.className = 'conviction-badge conviction-loading';
 
   try {
@@ -8659,94 +8721,85 @@ async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = fa
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticker, horizon, use_dynamic_weights: useDynamicWeights })
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    
-    // Cache data for toggle checkbox
+
     window.lastEnsembleData = data;
 
-    // Create ensemble chart structure
     destroyKronosFullChart();
     const container = document.getElementById('kronos-full-chart');
-    if (container && typeof LightweightCharts !== 'undefined') {
-        const currentTheme = document.body.getAttribute('data-theme') || 'dark';
-        const isDark = currentTheme === 'dark';
+
+    // Defer to rAF so the panel is painted and container has a real offsetWidth
+    requestAnimationFrame(() => {
+      if (container && typeof LightweightCharts !== 'undefined') {
+        const isDark = (document.body.getAttribute('data-theme') || 'dark') === 'dark';
+        const chartWidth = container.offsetWidth || container.parentElement?.offsetWidth || 800;
         const chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: 380,
-            layout: {
-                background: { color: 'transparent' },
-                textColor: isDark ? '#94a3b8' : '#475569'
-            },
-            grid: {
-                vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
-                horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
-            },
-            timeScale: { borderVisible: false },
-            rightPriceScale: { borderVisible: false },
+          width: chartWidth,
+          height: 380,
+          layout: {
+            background: { color: 'transparent' },
+            textColor: isDark ? '#94a3b8' : '#475569'
+          },
+          grid: {
+            vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
+            horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
+          },
+          timeScale: { borderVisible: false },
+          rightPriceScale: { borderVisible: false }
         });
         activeKronosFullChart = chart;
-        
-        // Add resize listener support
-        const resizeObserver = new ResizeObserver(entries => {
-            if (entries.length === 0 || !entries[0].contentRect) return;
-            const { width, height } = entries[0].contentRect;
-            chart.resize(width, height);
+        const ro = new ResizeObserver(entries => {
+          if (!entries[0]) return;
+          const { width, height } = entries[0].contentRect;
+          if (width > 0) chart.resize(width, height);
         });
-        resizeObserver.observe(container);
-        container.resizeObserver = resizeObserver;
-    }
+        ro.observe(container);
+        container.resizeObserver = ro;
+      }
 
-    renderEnsembleChart(data);
-    renderConvictionBadge(data.conviction, data.divergence_score);
-    renderModelWeightsBar(data.weights);
-    renderAgreementMatrix(data.agreement_matrix);
+      renderEnsembleChart(data);
+      renderConvictionBadge(data.conviction, data.divergence_score);
+      renderModelWeightsBar(data.weights);
+      renderAgreementMatrix(data.agreement_matrix);
 
-    // Render comparison table
-    const tableWrap = document.getElementById('kronos-full-table-wrap');
-    if (tableWrap) {
+      const tableWrap = document.getElementById('kronos-full-table-wrap');
+      if (tableWrap) {
         const lastClose = data.last_close;
         const futureDates = generateFutureTradingDates(data.last_close_date, data.horizon);
-        tableWrap.innerHTML = `
-            <table class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem;">
-                <thead>
-                    <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
-                        <th style="text-align: left; padding: 8px; color: var(--color-text-muted);">Forecast Date</th>
-                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Ensemble Close</th>
-                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Kronos Close</th>
-                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Prophet Close</th>
-                        <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">ARIMA Close</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.ensemble_path.map((val, idx) => {
-                        const closeClass = val >= lastClose ? 'val-up' : 'val-down';
-                        const kVal = data.model_paths.kronos ? `₹${data.model_paths.kronos[idx].toFixed(2)}` : 'N/A';
-                        const pVal = data.model_paths.prophet ? `₹${data.model_paths.prophet[idx].toFixed(2)}` : 'N/A';
-                        const aVal = data.model_paths.arima ? `₹${data.model_paths.arima[idx].toFixed(2)}` : 'N/A';
-                        return `
-                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                <td style="text-align: left; padding: 8px;">${futureDates[idx]}</td>
-                                <td class="${closeClass}" style="text-align: right; padding: 8px; font-weight: 700;">₹${val.toFixed(2)}</td>
-                                <td style="text-align: right; padding: 8px; color: var(--color-text-secondary);">${kVal}</td>
-                                <td style="text-align: right; padding: 8px; color: var(--color-text-secondary);">${pVal}</td>
-                                <td style="text-align: right; padding: 8px; color: var(--color-text-secondary);">${aVal}</td>
-                            </tr>
-                        `;
-                    }).join('')}
-                </tbody>
-            </table>
-        `;
-    }
+        const rows = (data.ensemble_path || []).map((val, idx) => {
+          const cls = val >= lastClose ? 'val-up' : 'val-down';
+          const fmt = (arr) => (arr && arr[idx] != null) ? '\u20B9' + arr[idx].toFixed(2) : 'N/A';
+          return '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">'
+            + '<td style="padding:8px;">' + (futureDates[idx] || '') + '</td>'
+            + '<td class="' + cls + '" style="text-align:right;padding:8px;font-weight:700;">\u20B9' + val.toFixed(2) + '</td>'
+            + '<td style="text-align:right;padding:8px;color:var(--color-text-secondary);">' + fmt(data.model_paths.kronos) + '</td>'
+            + '<td style="text-align:right;padding:8px;color:var(--color-text-secondary);">' + fmt(data.model_paths.prophet) + '</td>'
+            + '<td style="text-align:right;padding:8px;color:var(--color-text-secondary);">' + fmt(data.model_paths.arima) + '</td>'
+            + '</tr>';
+        }).join('');
+        tableWrap.innerHTML = '<table class="kronos-forecast-table" style="width:100%;border-collapse:collapse;font-size:0.85rem;margin-top:1rem;">'
+          + '<thead><tr style="border-bottom:2px solid rgba(255,255,255,0.1);">'
+          + '<th style="text-align:left;padding:8px;color:var(--color-text-muted);">Forecast Date</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">Ensemble Close</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">Kronos Close</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">Prophet Close</th>'
+          + '<th style="text-align:right;padding:8px;color:var(--color-text-muted);">ARIMA Close</th>'
+          + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      }
 
-    // Trigger backtest metrics refresh for ensemble
-    loadBacktestingMetrics(ticker);
+      loadBacktestingMetrics(ticker);
+    });
 
   } catch (err) {
     if (convictionLabel) convictionLabel.textContent = 'Ensemble unavailable';
+    if (convictionBadge) convictionBadge.className = 'conviction-badge';
+    const convictionIcon = document.getElementById('convictionIcon');
+    if (convictionIcon) convictionIcon.textContent = '⚠️';
     console.error('[EnsembleCast]', err);
   }
 }
+
 
 async function loadEnsembleBacktest(ticker, horizon = 10) {
   try {

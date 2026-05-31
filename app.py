@@ -1546,9 +1546,10 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
     # Generate future trading dates skipping weekends and NSE holidays
     last_date_str = df['ds'].iloc[-1].strftime("%Y-%m-%d")
     future_dates = generate_next_trading_days(last_date_str, horizon)
-    # tz_localize(None) on the Series prevents a Prophet ValueError when
-    # generate_next_trading_days returns tz-aware Timestamps
-    future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates).tz_localize(None)})
+    # Build a proper DatetimeIndex then strip tz — avoids TypeError when
+    # pd.to_datetime() on a Series returns a Series (not DatetimeIndex)
+    future_series = pd.to_datetime(future_dates.values)  # ndarray → DatetimeIndex
+    future_df = pd.DataFrame({'ds': future_series.tz_localize(None)})
 
     forecast = model.predict(future_df)
     return forecast['yhat'].tolist()
@@ -1871,6 +1872,11 @@ def api_ensemble_forecast():
     # --- Run models in parallel ---
     results = {'kronos': None, 'prophet': None, 'arima': None}
     errors  = {'kronos': None, 'prophet': None, 'arima': None}
+
+    # Pre-warm the 1y history cache before spawning threads so all three models
+    # get a guaranteed cache hit and never race on the same Yahoo Finance URL.
+    _prefetch_ticker = ticker[4:] if ticker.startswith('NSE:') else ticker
+    fetch_historical_prices(_prefetch_ticker, range_str='1y')
 
     def run_kronos():
         return kronos_predict(ticker, horizon)
