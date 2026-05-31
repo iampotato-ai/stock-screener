@@ -3292,6 +3292,11 @@ def scan_stocks():
         # Run parallel Screener Intelligence setup pattern scanning
         populate_screener_intelligence(filtered_stocks)
         
+        # Run setup classification and volume compression analysis
+        for stock in filtered_stocks:
+            classify_setup(stock)
+            compute_vol_dryup(stock)
+            
         # Hook weekly RRG snapping here
         if universe_stocks:
             try:

@@ -6786,7 +6786,7 @@ let intradayWidgetSort = {
     'vwap': { field: 'change', asc: false },
     'rvol': { field: 'change', asc: false },
     'confluence': { field: 'change', asc: false },
-    'focus': { field: 'change', asc: false }
+    'focus': { field: 'metric', asc: false }
 };
 
 window.sortIntradayWidget = function(widgetId, field) {
@@ -6857,8 +6857,31 @@ function renderIntradayWorkspace() {
         }
         
         // Watchlist Focus
-        if (isInWatchlist && (rvol >= 1.2 || intradayScore >= 50)) {
-            widgetsData['focus'].push({ ...s, _metricValue: `${rvol.toFixed(1)}x`, _metricRaw: rvol });
+        if (isInWatchlist) {
+            let metCount = 0;
+            let activeParams = [];
+            
+            const isGapGo = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
+            if (isGapGo) { metCount++; activeParams.push('G'); }
+            
+            const isVwapReclaim = close > vwap && close < vwap * 1.015 && intradayScore > 0;
+            if (isVwapReclaim) { metCount++; activeParams.push('V'); }
+            
+            const isHighRvol = rvol >= 1.5;
+            if (isHighRvol) { metCount++; activeParams.push('R'); }
+            
+            const isOverlap = ims === 'strong' && (swing === 'strong' || swing === 'elite');
+            if (isOverlap) { metCount++; activeParams.push('C'); }
+            
+            if (metCount >= 1) {
+                widgetsData['focus'].push({ 
+                    ...s, 
+                    _metricValue: `${metCount}/4`, 
+                    _metricRaw: metCount,
+                    _activeParams: activeParams,
+                    _intradayScore: intradayScore
+                });
+            }
         }
     });
 
@@ -6868,7 +6891,7 @@ function renderIntradayWorkspace() {
         'vwap': { metricLabel: 'Dist', color: '--accent-blue' },
         'rvol': { metricLabel: 'RVOL', color: '--accent-orange' },
         'confluence': { metricLabel: 'Score', color: '--accent-purple' },
-        'focus': { metricLabel: 'RVOL', color: '--accent-blue' }
+        'focus': { metricLabel: 'Confl', color: '--accent-purple' }
     };
 
     Object.keys(widgetsData).forEach(widgetId => {
@@ -6888,6 +6911,11 @@ function renderIntradayWorkspace() {
             } else if (sortState.field === 'metric') {
                 valA = a._metricRaw || 0;
                 valB = b._metricRaw || 0;
+                if (widgetId === 'focus' && valA === valB) {
+                    const scoreA = a._intradayScore || 0;
+                    const scoreB = b._intradayScore || 0;
+                    return sortState.asc ? scoreA - scoreB : scoreB - scoreA;
+                }
             }
             return sortState.asc ? valA - valB : valB - valA;
         });
@@ -6904,14 +6932,31 @@ function renderIntradayWorkspace() {
                 <span style="cursor:pointer; text-align:right; width: 25%;" onclick="sortIntradayWidget('${widgetId}', 'metric')">${metricLabel}${getSortIcon('metric')}</span>
             </div>
         `;
-        
+
         items.forEach(s => {
             const change = parseFloat(s.change) || 0;
             const changeColor = change > 0 ? 'var(--accent-green)' : 'var(--accent-red)';
             const changeSign = change > 0 ? '+' : '';
             let colorClass = widgetConfigs[widgetId].color;
-            if (widgetId === 'focus' && parseFloat(s.relative_volume) > 2) {
-                colorClass = '--accent-orange';
+            
+            let metricHtml = `<span style="color:var(${colorClass}); font-weight:600;">${s._metricValue}</span>`;
+            if (widgetId === 'focus' && s._activeParams) {
+                metricHtml = `
+                    <span style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                        <span style="color:var(${colorClass}); font-weight:600;">${s._metricValue}</span>
+                        <span style="display: flex; gap: 2px;">
+                            ${s._activeParams.map(p => {
+                                let badgeBg = 'rgba(255, 255, 255, 0.1)';
+                                let badgeFg = 'var(--color-text-muted)';
+                                if (p === 'G') { badgeBg = 'rgba(16, 185, 129, 0.15)'; badgeFg = '#10b981'; }
+                                else if (p === 'V') { badgeBg = 'rgba(59, 130, 246, 0.15)'; badgeFg = '#3b82f6'; }
+                                else if (p === 'R') { badgeBg = 'rgba(249, 115, 22, 0.15)'; badgeFg = '#f97316'; }
+                                else if (p === 'C') { badgeBg = 'rgba(139, 92, 246, 0.15)'; badgeFg = '#8b5cf6'; }
+                                return `<span style="font-size: 0.65rem; font-weight: bold; color: ${badgeFg}; background: ${badgeBg}; border: 1px solid ${badgeFg}30; padding: 1px 3px; border-radius: 3px; line-height: 1;" title="${p === 'G' ? 'Gap & Go' : p === 'V' ? 'VWAP Reclaim' : p === 'R' ? 'High RVOL' : 'Confluence Overlap'}">${p}</span>`;
+                            }).join('')}
+                        </span>
+                    </span>
+                `;
             }
             
             html += `
@@ -6921,7 +6966,7 @@ function renderIntradayWorkspace() {
                         <span style="font-size: 0.75rem; color: ${changeColor}; width: 70px; flex-shrink: 0;">${changeSign}${change.toFixed(2)}%</span>
                     </div>
                     <span class="intraday-item-metric" style="text-align: right; width: 25%;">
-                        <span style="color:var(${colorClass}); font-weight:600;">${s._metricValue}</span>
+                        ${metricHtml}
                     </span>
                 </div>
             `;
