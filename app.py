@@ -1516,16 +1516,29 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
     Runs Facebook Prophet on `ticker` and returns a list of `horizon`
     predicted closing prices for the next N trading days.
 
-    Tuned for speed: yearly_seasonality only, no weekly/daily seasonality
+    Uses fetch_historical_prices directly with range_str="1y" to reuse the
+    same Yahoo Finance cache key populated by Kronos — avoids a redundant 2y
+    fetch under thread concurrency which often times out.
+
+    Tuned for speed: yearly_seasonality only, no weekly/daily seasonality,
     changepoint_prior_scale=0.05 keeps it fast and avoids overfitting.
     """
-    df = _fetch_price_history(ticker)
+    clean_ticker = ticker
+    if clean_ticker.startswith("NSE:"):
+        clean_ticker = clean_ticker[4:]
+
+    history = fetch_historical_prices(clean_ticker, range_str="1y")
+    if not history or len(history) < 60:
+        raise ValueError(f"insufficient_history: {clean_ticker} has only {len(history)} days (need 60)")
+
+    df = pd.DataFrame([{'ds': pd.to_datetime(d['date']), 'y': float(d['close'])} for d in history])
+    df['ds'] = df['ds'].dt.tz_localize(None)  # ensure tz-naive for Prophet
 
     model = Prophet(
         yearly_seasonality=True,
         weekly_seasonality=False,
         daily_seasonality=False,
-        changepoint_prior_scale=0.05,   # lower = faster, less flexible
+        changepoint_prior_scale=0.05,
         interval_width=0.80
     )
     model.fit(df[['ds', 'y']])
@@ -1533,11 +1546,13 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
     # Generate future trading dates skipping weekends and NSE holidays
     last_date_str = df['ds'].iloc[-1].strftime("%Y-%m-%d")
     future_dates = generate_next_trading_days(last_date_str, horizon)
-    future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates)})
-
+    # tz_localize(None) on the Series prevents a Prophet ValueError when
+    # generate_next_trading_days returns tz-aware Timestamps
+    future_df = pd.DataFrame({'ds': pd.to_datetime(future_dates).tz_localize(None)})
 
     forecast = model.predict(future_df)
     return forecast['yhat'].tolist()
+
 
 def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
     """
@@ -1545,11 +1560,22 @@ def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
     Order (5,1,0): 5 AR lags, 1 differencing (for stationarity), 0 MA terms.
     This is a solid general-purpose order for daily equity price series.
 
+    Uses fetch_historical_prices directly with range_str="1y" to reuse the
+    same Yahoo Finance cache key populated by Kronos — avoids a redundant 2y
+    fetch under thread concurrency which often times out.
+
     Falls back to ARIMA(2,1,0) if the primary order fails to converge
     (common on low-liquidity small-cap stocks).
     """
-    df = _fetch_price_history(ticker)
-    closes = df['y'].values
+    clean_ticker = ticker
+    if clean_ticker.startswith("NSE:"):
+        clean_ticker = clean_ticker[4:]
+
+    history = fetch_historical_prices(clean_ticker, range_str="1y")
+    if not history or len(history) < 60:
+        raise ValueError(f"insufficient_history: {clean_ticker} has only {len(history)} days (need 60)")
+
+    closes = np.array([float(d['close']) for d in history])
 
     try:
         model = ARIMA(closes, order=(5, 1, 0))
@@ -1568,13 +1594,19 @@ _WEIGHT_EMA_ALPHA = 0.4   # higher = faster adaptation; 0.4 is a 4-period EMA
 
 def _compute_rolling_mape(ticker: str, model_fn, horizon: int = 10) -> float:
     """
-    Runs `model_fn(ticker, horizon)` on a held-out window ending 20 trading
-    days ago and returns MAPE (%) against actual closes.
+    Runs `model_fn(ticker, horizon)` on a held-out window ending `horizon`
+    trading days ago and returns MAPE (%) against actual closes.
+
+    Injects the context slice directly into _historical_prices_cache (the
+    fetch_historical_prices LRU cache) so all three models — including
+    prophet_predict and arima_predict which call fetch_historical_prices
+    directly — see the context-only data without triggering a real HTTP fetch.
 
     If the backtest run fails for any reason, returns a neutral fallback
     MAPE of 5.0 so the dynamic weight system degrades gracefully.
     """
     FALLBACK_MAPE = 5.0
+    import threading, time
     try:
         clean_ticker = ticker
         if clean_ticker.startswith("NSE:"):
@@ -1591,24 +1623,28 @@ def _compute_rolling_mape(ticker: str, model_fn, horizon: int = 10) -> float:
         if len(context) < 60:
             return FALLBACK_MAPE
 
-        # Temporarily swap fetch_historical_prices cache so model_fn sees
-        # only the context slice — build a lightweight shim DataFrame
-        import pandas as pd
-        df_ctx = pd.DataFrame([{
-            'ds': pd.to_datetime(d['date']),
-            'y':  float(d['close'])
-        } for d in context])
-        df_ctx['ds'] = df_ctx['ds'].dt.tz_localize(None)
-
-        # Inject context into the module-level cache under a unique thread-scoped key
-        import threading
-        thread_id = threading.get_ident()
-        cache_key = f"{clean_ticker}__mape__{model_fn.__name__}__{thread_id}"
-        _BACKTEST_CTX_CACHE[cache_key] = df_ctx
+        # Inject context slice into _historical_prices_cache under both 1y and 2y
+        # keys so every model variant (kronos→2y, prophet/arima→1y) gets intercepted.
+        # Use a sentinel timestamp far in the future so TTL never expires during the call.
+        FAR_FUTURE = time.time() + 3600
+        ctx_1y_key = (clean_ticker, '1y')
+        ctx_2y_key = (clean_ticker, '2y')
+        old_1y = _historical_prices_cache.get(ctx_1y_key)
+        old_2y = _historical_prices_cache.get(ctx_2y_key)
+        _historical_prices_cache[ctx_1y_key] = (FAR_FUTURE, context)
+        _historical_prices_cache[ctx_2y_key] = (FAR_FUTURE, context)
         try:
             preds = model_fn(ticker, horizon)
         finally:
-            _BACKTEST_CTX_CACHE.pop(cache_key, None)
+            # Restore original cache entries (or remove if they didn't exist)
+            if old_1y is not None:
+                _historical_prices_cache[ctx_1y_key] = old_1y
+            else:
+                _historical_prices_cache.pop(ctx_1y_key, None)
+            if old_2y is not None:
+                _historical_prices_cache[ctx_2y_key] = old_2y
+            else:
+                _historical_prices_cache.pop(ctx_2y_key, None)
 
         if not preds or len(preds) < horizon:
             return FALLBACK_MAPE
@@ -1820,9 +1856,12 @@ def api_ensemble_forecast():
         if cached:
             import json as _json
             result = _json.loads(cached['forecast_json'])
-            result['cached'] = True
-            result['latency_ms'] = round((time.time() - start_time) * 1000)
-            return jsonify(result)
+            # Verify if this is a complete record containing the Phase 2 consensus metrics
+            if 'agreement_matrix' in result and 'weights' in result:
+                result['cached'] = True
+                result['weights_source'] = 'dynamic' if (use_dynamic_weights and not result.get('degraded', False)) else 'static'
+                result['latency_ms'] = round((time.time() - start_time) * 1000)
+                return jsonify(result)
     except Exception as e:
         print(f'[EnsembleCast] Cache lookup error: {e}')
     finally:
@@ -1850,8 +1889,10 @@ def api_ensemble_forecast():
             try:
                 results[name] = future.result(timeout=30)  # 30s hard timeout per model
             except Exception as e:
+                import traceback
                 errors[name] = str(e)
                 print(f'[EnsembleCast] {name} failed: {e}')
+                traceback.print_exc()
 
     # --- Assess which models succeeded ---
     active_models = {k: v for k, v in results.items() if v is not None}
@@ -1986,7 +2027,7 @@ def get_kronos_forecast():
     conn = sqlite3.connect("scan_history.db")
     c = conn.cursor()
     c.execute(
-        "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? ORDER BY id DESC LIMIT 1",
+        "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
         (ticker, pred_len)
     )
     db_row = c.fetchone()
@@ -2119,7 +2160,7 @@ def get_kronos_backtest():
     conn = sqlite3.connect("scan_history.db")
     c = conn.cursor()
     c.execute(
-        "SELECT id, generated_at, pred_len, forecast_json, last_close FROM kronos_forecasts WHERE ticker = ? ORDER BY id DESC",
+        "SELECT id, generated_at, pred_len, forecast_json, last_close FROM kronos_forecasts WHERE ticker = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC",
         (ticker,)
     )
     rows = c.fetchall()
@@ -2373,20 +2414,28 @@ def get_ensemble_backtest():
     model_errors_bt = {}
 
     def _run(name, fn):
-        import threading
-        thread_id = threading.get_ident()
-        cache_key = f"{ticker}__mape__{fn.__name__}__{thread_id}"
-        df_ctx = pd.DataFrame([{
-            'ds': pd.to_datetime(d['date']),
-            'y':  float(d['close'])
-        } for d in context]).assign(ds=lambda df: df['ds'].dt.tz_localize(None))
-        _BACKTEST_CTX_CACHE[cache_key] = df_ctx
+        import time
+        clean_t = ticker[4:] if ticker.startswith("NSE:") else ticker
+        FAR_FUTURE = time.time() + 3600
+        ctx_1y_key = (clean_t, '1y')
+        ctx_2y_key = (clean_t, '2y')
+        old_1y = _historical_prices_cache.get(ctx_1y_key)
+        old_2y = _historical_prices_cache.get(ctx_2y_key)
+        _historical_prices_cache[ctx_1y_key] = (FAR_FUTURE, context)
+        _historical_prices_cache[ctx_2y_key] = (FAR_FUTURE, context)
         try:
             return name, fn(ticker, horizon)
         except Exception as e:
             return name, e
         finally:
-            _BACKTEST_CTX_CACHE.pop(cache_key, None)
+            if old_1y is not None:
+                _historical_prices_cache[ctx_1y_key] = old_1y
+            else:
+                _historical_prices_cache.pop(ctx_1y_key, None)
+            if old_2y is not None:
+                _historical_prices_cache[ctx_2y_key] = old_2y
+            else:
+                _historical_prices_cache.pop(ctx_2y_key, None)
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         futs = [
@@ -2410,9 +2459,9 @@ def get_ensemble_backtest():
     total_w   = sum(default_w[m] for m in active)
     weights   = {m: default_w[m] / total_w for m in active}
     blend     = ensemble_blend(
-        kronos_path=model_preds.get('kronos', []),
-        prophet_path=model_preds.get('prophet', []),
-        arima_path=model_preds.get('arima', []),
+        kronos_path=model_preds.get('kronos') or [],
+        prophet_path=model_preds.get('prophet') or [],
+        arima_path=model_preds.get('arima') or [],
         weights=weights
     )
     active['ensemble'] = blend['ensemble_path']
@@ -4171,7 +4220,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
         conn = sqlite3.connect("scan_history.db")
         c = conn.cursor()
         c.execute(
-            "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? ORDER BY id DESC LIMIT 1",
+            "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
             (ticker, pred_len)
         )
         db_row = c.fetchone()

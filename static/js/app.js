@@ -8598,10 +8598,12 @@ function renderConvictionBadge(conviction, divergenceScore) {
   label.textContent = LABELS[conviction] ?? conviction;
 }
 
-function renderModelWeightsBar(weights) {
+function renderModelWeightsBar(weights = {}) {
   const models = ['kronos', 'prophet', 'arima'];
+  // Fallback to static weights if weights object is empty
+  const w = (weights && Object.keys(weights).length > 0) ? weights : { kronos: 0.5, prophet: 0.3, arima: 0.2 };
   models.forEach(m => {
-    const pct = Math.round((weights[m] ?? 0) * 100);
+    const pct = Math.round((w[m] ?? 0) * 100);
     const seg = document.getElementById(`${m}WeightSeg`);
     const pctLabel = document.getElementById(`${m}WeightPct`);
     if (seg) seg.style.width  = `${pct}%`;
@@ -8609,7 +8611,7 @@ function renderModelWeightsBar(weights) {
   });
 }
 
-function renderAgreementMatrix(matrix) {
+function renderAgreementMatrix(matrix = {}) {
   const MODELS = ['kronos', 'prophet', 'arima'];
   const tbody  = document.getElementById('agreementMatrixBody');
   if (!tbody) return;
@@ -8627,7 +8629,7 @@ function renderAgreementMatrix(matrix) {
         td.textContent = '—';
       } else {
         const key = [row, col].sort().join('_vs_');
-        const val = matrix[key];
+        const val = matrix ? matrix[key] : null;
         if (val != null) {
           td.textContent = `${val}%`;
           td.className = val >= 75 ? 'agreement-cell-high'
