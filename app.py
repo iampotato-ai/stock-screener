@@ -1878,7 +1878,7 @@ def get_kronos_forecast():
         forecast_json_str = json.dumps(forecast_list)
         
         c.execute(
-            "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close, model_type) VALUES (?, ?, ?, ?, ?, 'kronos')",
             (ticker, generated_at, pred_len, forecast_json_str, last_close)
         )
         conn.commit()
@@ -3929,7 +3929,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
         generated_at = datetime.now().isoformat()
         forecast_json_str = json.dumps(forecast_list)
         c.execute(
-            "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close, model_type) VALUES (?, ?, ?, ?, ?, 'kronos')",
             (ticker, generated_at, pred_len, forecast_json_str, last_close)
         )
         conn.commit()
