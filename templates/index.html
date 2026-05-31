@@ -27,10 +27,12 @@
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- CSS stylesheet -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.53">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.54">
 </head>
 <body>
     <script>
@@ -67,199 +69,230 @@
             </div>
         </header>
 
-        <!-- Stats Section -->
-        <!-- Stats Section -->
-        <div class="breadth-bar glass-panel" id="breadth-bar">
-
-          <div class="breadth-regime" id="breadth-regime-badge" data-regime="neutral">
-            <span class="regime-emoji" id="regime-emoji">⚖️</span>
-            <div class="regime-text">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span class="regime-label">Market Regime</span>
-                <button class="breadth-action-btn" id="open-regime-history" title="View historical snapshots">History</button>
-              </div>
-              <span class="regime-band" id="regime-band">Neutral</span>
+        <!-- Main Workspace Navigation Segmented Control -->
+        <nav class="workspace-nav-bar" id="workspace-nav">
+            <div class="workspace-tabs-container glass-panel">
+                <button class="workspace-tab active" data-view="dashboard">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                    <span>Dashboard</span>
+                </button>
+                <button class="workspace-tab" data-view="screener">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                    <span>Screener</span>
+                </button>
+                <button class="workspace-tab" data-view="watchlist">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <span>Watchlist & Journal</span>
+                </button>
+                <button class="workspace-tab" data-view="rrg">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                    <span>RRG Rotation</span>
+                </button>
+                <button class="workspace-tab" data-view="ai-forecast">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"></path><path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"></path></svg>
+                    <span>AI Forecast</span>
+                </button>
+                <div class="workspace-sliding-cap"></div>
             </div>
-            <div class="regime-score-wrap">
-              <div class="regime-gauge-wrap">
-                <svg class="regime-arc" viewBox="0 0 60 34" width="60" height="34">
-                  <defs>
-                    <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stop-color="#ef4444" />
-                      <stop offset="20%" stop-color="#f97316" />
-                      <stop offset="50%" stop-color="#f59e0b" />
-                      <stop offset="75%" stop-color="#14b8a6" />
-                      <stop offset="100%" stop-color="#10b981" />
-                    </linearGradient>
-                  </defs>
-                  <path d="M5,30 A25,25,0,0,1,55,30" fill="none" stroke="url(#gauge-grad)" stroke-width="5" opacity="0.15"/>
-                  <path id="regime-arc-fill" d="M5,30 A25,25,0,0,1,55,30" fill="none"
-                        stroke="url(#gauge-grad)" stroke-width="5" stroke-dasharray="78.5"
-                        stroke-dashoffset="78.5" stroke-linecap="round"/>
-                  <line id="regime-needle" x1="30" y1="30" x2="30" y2="8" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" style="transform-origin: 30px 30px; transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); transform: rotate(-90deg);" />
-                  <circle cx="30" cy="30" r="3.5" fill="#ef4444"/>
-                  <circle cx="30" cy="30" r="1.5" fill="#ffffff"/>
-                </svg>
-                <div class="regime-score-val-wrap">
-                  <span class="regime-score-num" id="regime-score-num">--</span>
-                  <span class="regime-score-delta" id="regime-score-delta">--</span>
+        </nav>
+
+        <!-- Workspace View: Dashboard -->
+        <div class="workspace-view active" id="view-dashboard">
+            <!-- Stats Section -->
+            <div class="breadth-bar glass-panel" id="breadth-bar">
+    
+              <div class="breadth-regime" id="breadth-regime-badge" data-regime="neutral">
+                <span class="regime-emoji" id="regime-emoji">⚖️</span>
+                <div class="regime-text">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="regime-label">Market Regime</span>
+                    <button class="breadth-action-btn" id="open-regime-history" title="View historical snapshots">History</button>
+                  </div>
+                  <span class="regime-band" id="regime-band">Neutral</span>
+                </div>
+                <div class="regime-score-wrap">
+                  <div class="regime-gauge-wrap">
+                    <svg class="regime-arc" viewBox="0 0 60 34" width="60" height="34">
+                      <defs>
+                        <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stop-color="#ef4444" />
+                          <stop offset="20%" stop-color="#f97316" />
+                          <stop offset="50%" stop-color="#f59e0b" />
+                          <stop offset="75%" stop-color="#14b8a6" />
+                          <stop offset="100%" stop-color="#10b981" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M5,30 A25,25,0,0,1,55,30" fill="none" stroke="url(#gauge-grad)" stroke-width="5" opacity="0.15"/>
+                      <path id="regime-arc-fill" d="M5,30 A25,25,0,0,1,55,30" fill="none"
+                            stroke="url(#gauge-grad)" stroke-width="5" stroke-dasharray="78.5"
+                            stroke-dashoffset="78.5" stroke-linecap="round"/>
+                      <line id="regime-needle" x1="30" y1="30" x2="30" y2="8" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" style="transform-origin: 30px 30px; transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); transform: rotate(-90deg);" />
+                      <circle cx="30" cy="30" r="3.5" fill="#ef4444"/>
+                      <circle cx="30" cy="30" r="1.5" fill="#ffffff"/>
+                    </svg>
+                    <div class="regime-score-val-wrap">
+                      <span class="regime-score-num" id="regime-score-num">--</span>
+                      <span class="regime-score-delta" id="regime-score-delta">--</span>
+                    </div>
+                  </div>
                 </div>
               </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <div class="bm-label-wrap">
+                  <span class="bm-label">A / D Ratio</span>
+                  <canvas id="spark-ad" class="metric-spark" width="40" height="16"></canvas>
+                </div>
+                <div class="ad-bar-wrap">
+                  <div class="ad-bar-adv" id="ad-bar-adv" style="width:50%"></div>
+                  <div class="ad-bar-dec" id="ad-bar-dec" style="width:50%"></div>
+                </div>
+                <div class="bm-sub">
+                  <span class="val-up" id="bm-advances">--</span><span class="bm-sep">▲</span>
+                  <span class="val-down" id="bm-declines">--</span><span class="bm-sep">▼</span>
+                  <span class="bm-unch" id="bm-unchanged">--</span><span class="bm-sep">—</span>
+                </div>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <div class="bm-label-wrap">
+                  <span class="bm-label">% Above MA</span>
+                  <canvas id="spark-ma" class="metric-spark" width="40" height="16"></canvas>
+                </div>
+                <div class="bm-dual">
+                  <div class="bm-dual-item"><span class="bm-dual-label">SMA21</span><span class="bm-dual-val" id="bm-sma21">--%</span></div>
+                  <div class="bm-dual-item"><span class="bm-dual-label">SMA50</span><span class="bm-dual-val" id="bm-sma50">--%</span></div>
+                </div>
+                <div class="mini-progress-wrap"><div class="mini-progress-fill" id="bm-ma-fill" style="width:0%"></div></div>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <div class="bm-label-wrap">
+                  <span class="bm-label">Near 52W High</span>
+                  <canvas id="spark-52w" class="metric-spark" width="40" height="16"></canvas>
+                </div>
+                <span class="bm-big-val" id="bm-52high-val">--%</span>
+                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <span class="bm-label">New 52W H / L</span>
+                <div class="bm-sub">
+                  <span class="val-up" id="bm-newhighs">--</span><span class="bm-sep">H</span>
+                  <span class="val-down" id="bm-newlows">--</span><span class="bm-sep">L</span>
+                </div>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <div class="bm-label-wrap">
+                  <span class="bm-label">TV Sentiment</span>
+                  <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
+                </div>
+                <span class="bm-big-val" id="bm-sent-val">--</span>
+                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <span class="bm-label">Scan Hit Rate</span>
+                <span class="bm-big-val" id="bm-scan-val">--%</span>
+                <span class="bm-sub-text" id="bm-scan-sub">-- of -- qualify</span>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric breadth-sectors">
+                <span class="bm-label">Top Breadth Sectors</span>
+                <div class="bm-sector-list" id="bm-top-sectors">
+                  <span style="font-size:0.72rem;color:var(--color-text-muted)">Scanning...</span>
+                </div>
+              </div>
+    
             </div>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric">
-            <div class="bm-label-wrap">
-              <span class="bm-label">A / D Ratio</span>
-              <canvas id="spark-ad" class="metric-spark" width="40" height="16"></canvas>
-            </div>
-            <div class="ad-bar-wrap">
-              <div class="ad-bar-adv" id="ad-bar-adv" style="width:50%"></div>
-              <div class="ad-bar-dec" id="ad-bar-dec" style="width:50%"></div>
-            </div>
-            <div class="bm-sub">
-              <span class="val-up" id="bm-advances">--</span><span class="bm-sep">▲</span>
-              <span class="val-down" id="bm-declines">--</span><span class="bm-sep">▼</span>
-              <span class="bm-unch" id="bm-unchanged">--</span><span class="bm-sep">—</span>
-            </div>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric">
-            <div class="bm-label-wrap">
-              <span class="bm-label">% Above MA</span>
-              <canvas id="spark-ma" class="metric-spark" width="40" height="16"></canvas>
-            </div>
-            <div class="bm-dual">
-              <div class="bm-dual-item"><span class="bm-dual-label">SMA21</span><span class="bm-dual-val" id="bm-sma21">--%</span></div>
-              <div class="bm-dual-item"><span class="bm-dual-label">SMA50</span><span class="bm-dual-val" id="bm-sma50">--%</span></div>
-            </div>
-            <div class="mini-progress-wrap"><div class="mini-progress-fill" id="bm-ma-fill" style="width:0%"></div></div>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric">
-            <div class="bm-label-wrap">
-              <span class="bm-label">Near 52W High</span>
-              <canvas id="spark-52w" class="metric-spark" width="40" height="16"></canvas>
-            </div>
-            <span class="bm-big-val" id="bm-52high-val">--%</span>
-            <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric">
-            <span class="bm-label">New 52W H / L</span>
-            <div class="bm-sub">
-              <span class="val-up" id="bm-newhighs">--</span><span class="bm-sep">H</span>
-              <span class="val-down" id="bm-newlows">--</span><span class="bm-sep">L</span>
-            </div>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric">
-            <div class="bm-label-wrap">
-              <span class="bm-label">TV Sentiment</span>
-              <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
-            </div>
-            <span class="bm-big-val" id="bm-sent-val">--</span>
-            <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric">
-            <span class="bm-label">Scan Hit Rate</span>
-            <span class="bm-big-val" id="bm-scan-val">--%</span>
-            <span class="bm-sub-text" id="bm-scan-sub">-- of -- qualify</span>
-          </div>
-
-          <div class="breadth-divider"></div>
-
-          <div class="breadth-metric breadth-sectors">
-            <span class="bm-label">Top Breadth Sectors</span>
-            <div class="bm-sector-list" id="bm-top-sectors">
-              <span style="font-size:0.72rem;color:var(--color-text-muted)">Scanning...</span>
-            </div>
-          </div>
-
+    
+            <div class="breadth-sector-heatmap" id="breadth-sector-heatmap"></div>
         </div>
 
-        <div class="breadth-sector-heatmap" id="breadth-sector-heatmap"></div>
-
-        <div class="stat-cards-row">
-
-          <div class="stat-card" id="card-total" onclick="applyStatFilter('total')" style="cursor: pointer;">
-            <span class="stat-card-value" id="stat-total">0</span>
-            <span class="stat-card-label">Total Stocks</span>
-          </div>
-
-          <div class="stat-card stat-card--elite" id="card-elite" onclick="applyStatFilter('elite')" style="cursor: pointer;">
-            <span class="stat-card-value" id="stat-elite">0</span>
-            <span class="stat-card-label">Elite Swing</span>
-          </div>
-
-          <div class="stat-card stat-card--strong" id="card-strong" onclick="applyStatFilter('strong')" style="cursor: pointer;">
-            <span class="stat-card-value" id="stat-strong">0</span>
-            <span class="stat-card-label">Strong Swing</span>
-          </div>
-
-          <div class="stat-card stat-card--leader" id="card-leader" onclick="applyStatFilter('leader')" style="cursor: pointer;">
-            <span class="stat-card-value" id="stat-sector-leader">0</span>
-            <span class="stat-card-label">Sector Leaders</span>
-          </div>
-
-          <div class="stat-card stat-card--breakout" id="card-breakout" onclick="applyStatFilter('breakout')" style="cursor: pointer;">
-            <span class="stat-card-value" id="stat-breakout">0</span>
-            <span class="stat-card-label">Breakout Ready</span>
-          </div>
-
-        </div>
-
-        <!-- Main Dashboard Actions -->
-        <section class="dashboard-controls glass-panel">
-            <div class="search-box">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <input type="text" id="search-input" placeholder="Search by ticker or company name...">
+        <!-- Workspace View: Screener -->
+        <div class="workspace-view" id="view-screener">
+            <div class="stat-cards-row">
+    
+              <div class="stat-card" id="card-total" onclick="applyStatFilter('total')" style="cursor: pointer;">
+                <span class="stat-card-value" id="stat-total">0</span>
+                <span class="stat-card-label">Total Stocks</span>
+              </div>
+    
+              <div class="stat-card stat-card--elite" id="card-elite" onclick="applyStatFilter('elite')" style="cursor: pointer;">
+                <span class="stat-card-value" id="stat-elite">0</span>
+                <span class="stat-card-label">Elite Swing</span>
+              </div>
+    
+              <div class="stat-card stat-card--strong" id="card-strong" onclick="applyStatFilter('strong')" style="cursor: pointer;">
+                <span class="stat-card-value" id="stat-strong">0</span>
+                <span class="stat-card-label">Strong Swing</span>
+              </div>
+    
+              <div class="stat-card stat-card--leader" id="card-leader" onclick="applyStatFilter('leader')" style="cursor: pointer;">
+                <span class="stat-card-value" id="stat-sector-leader">0</span>
+                <span class="stat-card-label">Sector Leaders</span>
+              </div>
+    
+              <div class="stat-card stat-card--breakout" id="card-breakout" onclick="applyStatFilter('breakout')" style="cursor: pointer;">
+                <span class="stat-card-value" id="stat-breakout">0</span>
+                <span class="stat-card-label">Breakout Ready</span>
+              </div>
+    
             </div>
-            
-            <div class="filters-and-actions">
-                <div class="custom-select-wrapper" id="sector-select-wrapper">
-                    <button class="btn btn-secondary select-trigger" id="btn-sectors" title="Filter by sector">
-                        <span id="selected-sector-label">All Sectors</span>
-                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="select-dropdown glass-panel hidden" id="sectors-dropdown">
-                        <!-- Sector options will be dynamically rendered here in JS -->
-                    </div>
+    
+            <!-- Main Dashboard Actions -->
+            <section class="dashboard-controls glass-panel">
+                <div class="search-box">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="search-input" placeholder="Search by ticker or company name...">
                 </div>
                 
-                <div class="column-selector-wrapper">
-                    <button class="btn btn-secondary" id="btn-columns" title="Manage table columns">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
-                        <span>Columns</span>
-                    </button>
-                    <div class="column-dropdown glass-panel hidden" id="column-dropdown">
-                        <div class="column-dropdown-header" style="display:flex; justify-content:space-between; align-items:center;">
-                            <span>Visible Columns</span>
-                            <span style="font-size:0.65rem; color:var(--color-text-muted); text-transform:none; font-weight:normal;">Drag to reorder</span>
-                        </div>
-                        <div class="column-checkboxes" id="column-checkboxes">
-                            <!-- Dynamically generated checkboxes go here -->
+                <div class="filters-and-actions">
+                    <div class="custom-select-wrapper" id="sector-select-wrapper">
+                        <button class="btn btn-secondary select-trigger" id="btn-sectors" title="Filter by sector">
+                            <span id="selected-sector-label">All Sectors</span>
+                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="select-dropdown glass-panel hidden" id="sectors-dropdown">
+                            <!-- Sector options will be dynamically rendered here in JS -->
                         </div>
                     </div>
-                </div>
-
-                <button class="btn btn-secondary" id="btn-toggle-watchlist" title="Toggle Watchlist Panel">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
-                    <span>Watchlist</span>
-                </button>
+                    
+                    <div class="column-selector-wrapper">
+                        <button class="btn btn-secondary" id="btn-columns" title="Manage table columns">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+                            <span>Columns</span>
+                        </button>
+                        <div class="column-dropdown glass-panel hidden" id="column-dropdown">
+                            <div class="column-dropdown-header" style="display:flex; justify-content:space-between; align-items:center;">
+                                <span>Visible Columns</span>
+                                <span style="font-size:0.65rem; color:var(--color-text-muted); text-transform:none; font-weight:normal;">Drag to reorder</span>
+                            </div>
+                            <div class="column-checkboxes" id="column-checkboxes">
+                                <!-- Dynamically generated checkboxes go here -->
+                            </div>
+                        </div>
+                    </div>
+    
+                    <button class="btn btn-secondary" id="btn-toggle-density" title="Toggle Compact / Comfortable View">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+                        <span id="density-label">Compact</span>
+                    </button>
 
                 <button class="btn btn-secondary" id="btn-export" title="Export all tabs to a multi-sheet Excel file">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
@@ -360,6 +393,7 @@
                 </div>
             </div>
             
+            
             <!-- Quick Sort Swing Button -->
             <button class="btn btn-primary" id="btn-quick-swing" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; background: var(--accent-blue); border-color: var(--accent-blue); color: #fff;" title="Sort by Swing Score then 1W Perf">
                 <span>🎯</span> Best Swing Setups
@@ -380,6 +414,7 @@
         <section class="filter-chip-bar" id="setup-filter-chips">
             <span style="font-size: 0.8rem; color: var(--color-text-secondary); margin-right: 0.5rem;">Setup Filter:</span>
             <div class="filter-chip active" data-value="all">All</div>
+            <div class="filter-chip" data-value="intel-high-grade" style="border-color: rgba(168, 85, 247, 0.3); color: #a78bfa;">🧠 Elite Setups (A/A+)</div>
             <div class="filter-chip" data-value="Breakout Ready">🚀 Breakout</div>
             <div class="filter-chip" data-value="Pullback to MA">📉 Pullback</div>
             <div class="filter-chip" data-value="Inside Bar Coil">🌀 Coil</div>
@@ -400,10 +435,11 @@
         </section>
 
         <!-- Main Dashboard Content Grid -->
-        <div class="dashboard-grid">
+        <div class="dashboard-grid single-column">
             <!-- Left Column (Screener) -->
             <main class="dashboard-main glass-panel screener-column">
-                <!-- Screener Tab Bar -->
+                
+                <!-- Screener Tab Bar (Removed RRG and Journal) -->
                 <div class="screener-tabs" id="screener-tabs">
                     <button class="tab-btn active" data-tab="overview">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
@@ -421,17 +457,15 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
                         Growth
                     </button>
-                    <button class="tab-btn" data-tab="rrg">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
-                        RRG
-                    </button>
                     <button class="tab-btn" data-tab="intraday">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                         Intraday Pro
                     </button>
-                    <button class="tab-btn" data-tab="journal">
-                        📓 Journal
-                    </button>
+                </div>
+
+                <div id="growth-disclaimer" style="display:none; padding: 10px 14px; margin-bottom: 12px; font-size: 0.78rem; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: #f59e0b; border-radius: 8px; align-items: center; gap: 8px; line-height: 1.4; font-family: 'Outfit', sans-serif;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"></svg>
+                    <span><strong>Simulated Growth Metrics Disclaimer:</strong> QoQ/YoY growth, 3-Year revenue/EBITDA/EPS CAGRs, segment growth breakdown, and order-book metrics are generated for visual simulation purposes and should not be used as real financial data for trading decisions.</span>
                 </div>
 
                 <div class="table-container" id="main-table-container">
@@ -454,26 +488,6 @@
                             </tr>
                         </tbody>
                     </table>
-                </div>
-                
-                <!-- RRG Container (Hidden by default) -->
-                <div class="rrg-container" id="rrg-container" style="padding: 1rem; display: none; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem;">Relative Rotation Graph (Proxy)</div>
-                        <div class="rrg-toggles" style="display: flex; gap: 0.5rem;">
-                            <button class="btn btn-primary" id="btn-rrg-sectors" style="padding: 0.3rem 0.8rem; font-size: 0.8rem; height: auto;">Sectors</button>
-                            <button class="btn btn-secondary" id="btn-rrg-stocks" style="padding: 0.3rem 0.8rem; font-size: 0.8rem; height: auto;">Stocks</button>
-                        </div>
-                    </div>
-                    <div style="height: 500px; position: relative;">
-                        <canvas id="rrgChart"></canvas>
-                    </div>
-                    <div style="text-align: center; font-size: 0.85rem; color: var(--color-text-secondary); margin-top: 1rem; margin-bottom: 2rem;">
-                        <strong>X-Axis:</strong> 1M Perf vs Market Median | <strong>Y-Axis:</strong> 1W Perf vs Market Median
-                    </div>
-                    
-                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05);">Sector Heatmap</div>
-                    <div id="sector-heatmap" class="sector-heatmap"></div>
                 </div>
                 
                 <!-- Intraday Pro Container (Hidden by default) -->
@@ -511,7 +525,25 @@
                     </div>
                 </div>
                 
-                <div class="journal-container" id="journal-container" style="display: none; padding: 1rem; flex-direction: column; flex: 1;">
+                <div class="table-footer" id="table-footer">
+                    <span class="showing-count" id="showing-text">Showing 0 matching stocks</span>
+                    <div class="pagination-controls" id="pagination-controls"></div>
+                    <div class="legend">
+                        <span class="badge badge-trend">SMA 10 > 21 > 50</span>
+                        <span class="badge badge-atr">ATR > 3%</span>
+                        <span class="badge badge-turnover">Turnover > ₹10 Cr</span>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div> <!-- Close Workspace View: Screener -->
+
+    <!-- Workspace View: Watchlist & Journal -->
+    <div class="workspace-view" id="view-watchlist">
+        <div class="watchlist-workspace-grid">
+            <!-- Left Area: Trade Journal -->
+            <div class="journal-workspace-column glass-panel">
+                <div class="journal-container" id="journal-container" style="display: flex; padding: 1rem; flex-direction: column; height: 100%;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                         <h2 style="margin: 0;">Trade Journal</h2>
                         <div style="display: flex; gap: 0.5rem;">
@@ -570,26 +602,25 @@
                         </table>
                     </div>
                 </div>
-                
-                <div class="table-footer" id="table-footer">
-                    <span class="showing-count" id="showing-text">Showing 0 matching stocks</span>
-                    <div class="pagination-controls" id="pagination-controls"></div>
-                    <div class="legend">
-                        <span class="badge badge-trend">SMA 10 > 21 > 50</span>
-                        <span class="badge badge-atr">ATR > 3%</span>
-                        <span class="badge badge-turnover">Turnover > ₹10 Cr</span>
-                    </div>
-                </div>
-            </main>
+            </div>
 
-            <!-- Right Column (Watchlist Sidebar) -->
+            <!-- Right Area: Watchlist Sidebar -->
             <aside class="watchlist-column glass-panel" id="watchlist-panel">
                 <div class="watchlist-header">
-                    <div class="watchlist-title-area">
-                        <h2>Watchlist</h2>
-                        <span class="watchlist-count" id="watchlist-count">0 / 50</span>
+                    <div class="watchlist-title-area" style="display: flex; flex-direction: column; gap: 2px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <h2>Watchlist</h2>
+                            <span class="watchlist-count" id="watchlist-count">0 / 50</span>
+                        </div>
+                        <span id="kronos-last-sorted" style="font-size: 0.65rem; color: var(--color-text-muted); display: none;"></span>
                     </div>
-                    <div class="watchlist-actions">
+                    <div class="watchlist-actions" style="display: flex; gap: 0.4rem; align-items: center;">
+                        <button class="btn-icon" id="btn-kronos-column-toggle" title="Toggle AI Forecast Columns" style="color: var(--color-text-secondary);">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                        <button class="btn-icon" id="btn-kronos-batch-sort" title="Kronos AI Momentum Sort" style="color: #f59e0b;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        </button>
                         <button class="btn-icon" id="btn-add-watchlist-manual" title="Add Ticker Manually">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
@@ -646,6 +677,112 @@
                 </div>
             </aside>
         </div>
+    </div>
+
+    <!-- Workspace View: RRG Rotation -->
+    <div class="workspace-view" id="view-rrg">
+        <div class="rrg-workspace-wrapper glass-panel">
+            <!-- RRG Container -->
+            <div class="rrg-container" id="rrg-container" style="padding: 1rem; display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem;">Relative Rotation Graph (Proxy)</div>
+                    <div class="rrg-toggles" style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-primary" id="btn-rrg-sectors" style="padding: 0.3rem 0.8rem; font-size: 0.8rem; height: auto;">Sectors</button>
+                        <button class="btn btn-secondary" id="btn-rrg-stocks" style="padding: 0.3rem 0.8rem; font-size: 0.8rem; height: auto;">Stocks</button>
+                    </div>
+                </div>
+                <!-- RRG Timeline Bar -->
+                <div id="rrg-timeline-bar" class="rrg-timeline-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md, 8px); margin-bottom: 1rem; flex-wrap: wrap;">
+                    <div class="rrg-timeline-controls" style="display: flex; gap: 0.4rem;">
+                        <button id="btn-rrg-play" class="btn-icon" title="Play animation" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        </button>
+                        <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                        </button>
+                        <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+                        </button>
+                    </div>
+
+                    <input type="range" id="rrg-timeline-scrubber" min="0" max="11" value="11" step="1" class="rrg-scrubber" style="flex: 1; min-width: 120px; max-width: 320px; accent-color: #6366f1; cursor: pointer;" />
+
+                    <span id="rrg-week-label" class="rrg-week-label" style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); min-width: 100px;">Week: --</span>
+
+                    <div class="rrg-timeline-right" style="margin-left: auto; display: flex; gap: 0.5rem; align-items: center;">
+                        <select id="rrg-weeks-select" class="select-sm" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; outline: none; cursor: pointer;">
+                            <option value="4">4 weeks</option>
+                            <option value="8">8 weeks</option>
+                            <option value="12" selected>12 weeks</option>
+                            <option value="26">26 weeks</option>
+                        </select>
+                        <button id="btn-rrg-snapshot-now" class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; height: auto;" title="Save this week's snapshot manually">
+                            📸 Snap
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RRG Sector Filter Label (shown when sector heatmap card is clicked) -->
+                <div id="rrg-sector-label-bar" style="display: none; align-items: center; gap: 0.75rem; padding: 0.4rem 1rem; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); border-radius: 6px; margin-bottom: 0.75rem;">
+                    <span id="rrg-sector-label" style="font-size: 0.85rem; font-weight: 600; color: #a5b4fc;"></span>
+                    <button onclick="clearRRGSectorFilter()" style="margin-left: auto; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 4px; color: #a5b4fc; font-size: 0.75rem; padding: 2px 8px; cursor: pointer;">✕ Show All</button>
+                </div>
+
+                <div style="height: 500px; position: relative;">
+                    <canvas id="rrgChart"></canvas>
+                    <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
+                </div>
+                
+
+
+                <div style="text-align: center; font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 2rem;">
+                    <strong>X-Axis:</strong> 1M Perf vs Market Median | <strong>Y-Axis:</strong> 1W Perf vs Market Median
+                </div>
+                
+                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; margin-bottom: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05);">Sector Heatmap</div>
+                <div id="sector-heatmap" class="sector-heatmap"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workspace View: AI Forecast -->
+    <div class="workspace-view" id="view-ai-forecast">
+        <div class="ai-forecast-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column;">
+            <!-- Stock search to pick a symbol -->
+            <div class="ai-forecast-header" style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">🔮 Kronos AI Price Predictor</h3>
+                <div style="flex-grow: 1;"></div>
+                <input id="kronos-ticker-input" placeholder="Enter NSE ticker (e.g. RELIANCE)..." class="search-input" style="max-width: 250px; padding: 0.5rem 1rem; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;" />
+                <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
+                    <button class="kronos-len-btn" data-len="3" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
+                    <button class="kronos-len-btn active" data-len="5" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
+                    <button class="kronos-len-btn" data-len="10" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
+                </div>
+                <button id="btn-run-kronos" class="btn btn-primary" style="padding: 0.5rem 1.25rem; font-weight: 600;">Run Forecast</button>
+            </div>
+
+            <!-- Full-size chart container -->
+            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                <div id="kronos-full-chart" style="height: 380px; width: 100%;"></div>
+            </div>
+
+            <!-- Forecast + backtest table -->
+            <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
+
+            <!-- Forecast vs Actual section (shown after actuals arrive) -->
+            <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+                <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin-top: 0; margin-bottom: 1rem; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+                    <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                        <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
+                        <!-- Metrics will go here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
         <!-- News Source Modal -->
         <div class="modal-overlay hidden" id="news-source-modal">
@@ -759,6 +896,27 @@
             </div>
             <div class="modal-body" id="regime-history-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 450px;">
                 <!-- populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Expanded Daily Chart Overlay Modal -->
+    <div class="modal-overlay hidden" id="chart-overlay-modal">
+        <div class="modal-container glass-panel" style="max-width: 900px; width: 90vw; height: auto; max-height: 85%;">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem 1.5rem;">
+                <div class="modal-title-area">
+                    <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);" id="overlay-chart-title">
+                        Daily Chart
+                    </h3>
+                </div>
+                <button class="modal-close-btn" id="close-chart-modal" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" id="chart-overlay-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 500px;">
+                <div id="overlay-tv-chart-container" style="height: 400px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.15);">
+                    <div id="overlay-tv-chart" style="width: 100%; height: 400px;"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -939,6 +1097,100 @@
             <!-- Earnings Warning Banner -->
             <div id="drawer-earnings-warning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 500; border-left: 3px solid transparent;"></div>
             
+            <!-- Screener Intelligence AI Setup Analysis -->
+            <div class="drawer-section glass-panel" id="drawer-intelligence-section" style="display: none; border-left: 3px solid var(--accent-purple);">
+                <h3 class="drawer-section-title" style="color: var(--color-text-primary); display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 0.5rem; margin-bottom: 0.75rem;">
+                    <span>🧠</span> Screener Intelligence AI Analysis
+                </h3>
+                <div class="intelligence-card-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="intelligence-pattern-title" id="drawer-intel-pattern" style="font-size: 1.05rem; font-weight: 700; color: #c084fc;">Analyzing Pattern...</span>
+                        <span class="intelligence-grade-badge" id="drawer-intel-grade" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">-</span>
+                    </div>
+                    <p class="intelligence-desc" id="drawer-intel-desc" style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.4; margin: 0;">
+                        Running pattern recognition scans on daily chart history...
+                    </p>
+                    
+                    <!-- Kronos AI Forecast Block -->
+                    <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                🤖 Kronos AI Forecast (10d)
+                            </span>
+                            <span id="drawer-kronos-bias" class="badge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">-</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.6rem;">
+                            <div style="flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; position: relative;">
+                                <div id="drawer-kronos-score-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                            </div>
+                            <span id="drawer-kronos-score" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary); min-width: 32px; text-align: right;">0%</span>
+                        </div>
+                        <!-- Forecast metrics pills: populated by JS when prediction arrives -->
+                        <div id="drawer-kronos-metrics" style="display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                        </div>
+                    </div>
+                    <!-- Technical Checklist -->
+                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>
+                        <div id="drawer-intel-checklist" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.78rem;">
+                            <!-- Dynamically populated -->
+                        </div>
+                    </div>
+
+                    <!-- Kronos AI Forecast Details Section -->
+                    <div id="drawer-kronos-section" style="display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                        <div class="drawer-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                🔮 Interactive AI Forecast
+                            </span>
+                            <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
+                                <button class="kronos-len-btn" data-len="3" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
+                                <button class="kronos-len-btn active" data-len="5" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
+                                <button class="kronos-len-btn" data-len="10" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
+                            </div>
+                            <span id="kronos-confidence-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
+                        </div>
+
+                        <!-- Mini forecast candle chart -->
+                        <div id="drawer-kronos-chart" style="height: 160px; width: 100%; background: rgba(0,0,0,0.1); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.6rem; overflow: hidden;"></div>
+
+                        <!-- Forecast table -->
+                        <div style="overflow-x: auto; max-height: 150px;">
+                            <table id="drawer-kronos-table" class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                        <th style="text-align: left; padding: 4px; color: var(--color-text-muted);">Date</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Open</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">High</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Low</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Close</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Vol</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Band (P10–P90)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="drawer-kronos-tbody"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Forecast vs Actual toggle (shown only when actuals exist) -->
+                        <div id="kronos-backtest-row" style="display: none; margin-top: 0.6rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 0.5rem;">
+                            <button id="btn-kronos-backtest" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: auto;">
+                                📊 Show Backtest History
+                            </button>
+                            <span id="kronos-mae-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 120-Day Interactive Daily Chart -->
+                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">120-Day Daily Chart</div>
+                        <div id="drawer-tv-chart-container" style="height: 200px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.1); cursor: pointer;" title="Click to expand chart to full screen overlay">
+                            <div id="drawer-tv-chart" style="width: 100%; height: 200px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Calculator Config -->
             <div class="drawer-section glass-panel">
                 <h3 class="drawer-section-title">Risk Management</h3>
@@ -1036,6 +1288,6 @@
     </div>
 
     <!-- App Script -->
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.53"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.54"></script>
 </body>
 </html>

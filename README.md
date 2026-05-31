@@ -1,15 +1,18 @@
 # MomentumScan - NSE India Stock Screener
 
-A premium, high-performance Swing & Intraday Momentum stock screener for the National Stock Exchange of India (NSE). Powered by a lightweight Flask backend and an interactive single-page JS frontend, MomentumScan aggregates live data from TradingView, NSE announcements, bulk/block deals, corporate events, and Google News to deliver a institutional-grade trading dashboard.
+A premium, high-performance Swing & Intraday Momentum stock screener for the National Stock Exchange of India (NSE). Powered by a lightweight Flask backend and an interactive single-page JS frontend, MomentumScan aggregates live data from TradingView, NSE announcements, bulk/block deals, corporate events, and Google News, integrating advanced deep learning predictions to deliver an institutional-grade trading dashboard.
 
 ---
 
 ## ⚡ Key Dashboard Highlights
 
 1. **Composite Market Regime Speedometer**: A live circular dial displaying market sentiment (0–100) computed from multi-dimensional breadth signals.
-2. **Interactive Watchlist Center**: Drag-and-drop stock organizing, renameable sections, ex-dates/announcements feed, and bulk deal tracking.
-3. **Advanced Risk-Calculator Drawer**: Automatically calculates target exits, shares, stop-loss lines, and position sizing guidelines tailored to current market conditions.
-4. **Trade Log Journal**: Direct log-to-journal database saving with live performance stats tracking (PnL, Win Rate, Average R).
+2. **Sector Rotation Timeline (RRG)**: An interactive, animated 12-week sector rotation timeline on a custom canvas showing momentum paths (Leading, Weakening, Lagging, Improving).
+3. **Interactive Watchlist Center**: Drag-and-drop stock organizing, renameable sections, ex-dates/announcements feed, bulk deal tracking, and **AI-powered batch sorting**.
+4. **TradingView Lightweight Charts**: Interactive candlestick charting inside the trade drawer and full-screen overlay modals, featuring overlay SMAs, volume bars, and pattern detection.
+5. **Kronos Candlestick AI Predictor**: Direct integration of the `Kronos-small` foundation model for generating multi-day price path predictions, trend bias, and Monte Carlo confidence intervals.
+6. **Advanced Risk-Calculator Drawer**: Automatically calculates target exits, shares, stop-loss lines, and position sizing guidelines tailored to current market conditions.
+7. **Trade Log Journal**: Direct log-to-journal database saving with live performance stats tracking (PnL, Win Rate, Average R) backed by a robust SQLite persistence layer.
 
 ---
 
@@ -32,39 +35,59 @@ Positioned at the top of the dashboard, this panel gives traders a quick pulse o
 * **Sector Rotation Heatmap Pills**: A full row of interactive, color-coded sector pills rendered beneath the breadth bar showing the breadth strength percentage of every sector. Clicking any pill instantly filters the screener table.
 * **Regime History Modal**: A visual overlay modal loaded by clicking the "History" badge. It fetches and displays the last 30 snapshots with historical timestamps, regime bands (color-coded), composite scores, SMA breadth, and 52W high percentages.
 
----
-
 ### 2. Multi-Tab Screener Table
 Filter, sort, and search the NSE universe through dedicated analytical dimensions:
 * **Overview Tab**: Spot core price trends, multi-timeframe confirmations (Weekly + Daily trends), setup labels (e.g. *Breakout Ready*, *Pullback to MA*, *Inside Bar Coil*, *Vol Coil*, *Bullish Div*), ATR metrics, and moving average flirting status.
 * **Valuation Tab**: View fundamental value metrics like P/E, P/B, Debt/Equity, EV/EBITDA, and Quick Ratio.
 * **Quality Tab**: Evaluate capital efficiency via ROE, ROA, Gross/Operating/Net Margins, and basic financial health.
-* **Growth Tab**: Track short-term and long-term momentum through Quarterly and Yearly Revenue and Earnings Growth rates.
-* **RRG (Relative Rotation Graph Proxy)**: A scatter plot mapping short-term (1W) vs. medium-term (1M) relative performance against the market median. Includes a dynamic **Sector Heatmap** grid.
-* **Intraday Pro Tab**: Track real-time day trading configurations including:
-  * *Gap and Go* (strong gaps with volume follow-through).
-  * *VWAP Reclaim* (prices crossing and holding above VWAP).
-  * *High RVOL Movers* (highest relative volume spikes).
-  * *Confluence setups* (overlap of strong daily swing and intraday setups).
+* **Growth Tab**: Track short-term and long-term momentum through Quarterly and Yearly Revenue and Earnings Growth rates. Includes an active warning banner clarifying when simulated metrics are active.
+* **RRG (Relative Rotation Graph Proxy) & Animated Timeline**: A dual-view workspace featuring:
+  * **Stocks View**: A static scatter plot mapping individual stocks' short-term vs. medium-term relative performance.
+  * **Sectors View (Timeline)**: An animated 12-week rotation timeline on a high-DPI custom canvas displaying faded historical trails, playback controls (Play, Pause, Reset, Scrubber, Weeks Select), and click-to-filter sector hit testing that connects directly back to the screener.
+* **Intraday Pro Tab**: Track real-time day trading configurations including *Gap and Go*, *VWAP Reclaim*, *High RVOL Movers*, and *Confluence setups*.
 * **Journal Tab**: Logs and reviews executed trades, complete with metrics showing total trades, win rates, average risk-to-reward (R) achieved, and total PnL.
 
----
+### 3. TradingView Lightweight Charts Integration
+Replaces simple static sparklines with interactive, high-fidelity daily candlestick charts:
+* **Rich Layout**: Plots complete daily OHLCV bars (last 120 bars by default with 2-year history available via scrollback).
+* **Moving Average Lines**: Overlays SMA 10 (Yellow), SMA 21 (Cyan), and SMA 50 (Purple) directly on top of the price bars.
+* **Volume Overlay**: Displays color-coded volume histograms constrained to the bottom of the chart.
+* **Pattern Markers**: Client-side detection displays visual markers for key price patterns:
+  * **Inside Bars**: Yellow/amber circles positioned above coiling ranges.
+  * **Breakouts**: Green upward arrows indicating price breakout on volume expansion.
+* **Full-Screen Overlay Modals**: Clicking the chart inside the drawer opens a modal overlay charting workspace (`90vw` width) with backdrop blurs and ESC-key close handlers.
+* **Responsive Styling**: Automatic chart resizing via `ResizeObserver` and dynamic color scheme adjustment synchronized with the global Light/Dark theme.
 
-### 3. News, Corporate Actions & institutional Catalysts
+### 4. Kronos Candlestick AI Predictor & Tab Workspace
+Integrates the `Kronos-small` foundation model for deep learning time-series forecasting:
+* **Expectations Path**: Projects expected future closes as a dashed purple path (averaged over 10 parallel Monte Carlo runs to filter prediction noise).
+* **Forecast Candlesticks**: Displays future prediction windows (3D, 5D, 10D) as translucent purple/pink forecast candles.
+* **Confidence Envelopes**: Shades the P10 to P90 statistical confidence boundaries to visualize forecast volatility.
+* **Adaptive Volatility Temperature**: Computes the 14-day ATR% of the stock dynamically to scale the model's generation temperature `T`. Uses tighter temperature bounds for consolidations and wider bounds for volatile momentum plays.
+* **Dedicated AI Forecast Tab**: A full workspace containing length selectors, large-scale lightweight forecasting charts, prediction grids, and a "Forecast vs Actual" visualizer to analyze tracking performance.
+* **On-the-Fly Dynamic Backtester**: Computes tracking accuracy metrics (MAE, MAPE, Directional Accuracy %, and Band Hit Rate %) dynamically by slicing historical price ranges on-the-fly for any newly searched ticker.
+
+### 5. AI-Powered Watchlist Batch Sorting
+Sort and prioritize watchlists by predictive strength:
+* **Kronos Sort (⚡)**: Clicking the lightning button triggers parallel batch forecasting on the backend (capping threads at 8 to prevent Yahoo Finance throttling).
+* **Dynamic Table Expansion**: Expands the watchlist sidebar with `# Rank`, `AI Return`, `Bias`, and `Conf.` columns.
+* **Layered Cache Indicator Badges**: Shows `L` for live forecast calculations and `C` for database/memory cache hits. Serving subsequent cache requests in `<0.07` seconds.
+* **Stale Cache Eviction**: Automatically resets in-memory cache elements to prevent memory leaks from deleted tickers.
+* **Adaptive Spinners**: Renders CSS-based `.small-spinner` loader animations inside the row cells during active batch queries.
+* **Last Sorted Label**: Updates a visible timestamp label showing the freshness of current rankings.
+
+### 6. Relational SQLite Backend Persistence
+Migrated from limited local storage to a relational SQLite database (`scan_history.db`):
+* **Relational Schema**: Manages tables for `watchlist_sections`, `watchlist_items`, `trade_journal`, and `kronos_forecasts` with indexing and `ON DELETE CASCADE` integrity rules.
+* **Automatic Browser Migration**: Automatically detects and migrates legacy watchlists and journal entries from browser `localStorage` on first startup, safely clearing local keys upon confirmation.
+* **REST API Architecture**: Exposes RESTful endpoints for sections, individual watchlist items, journal entries, and cache hits.
+
+### 7. Catalysts & News Sidebar Scanner
 The right-hand side panel serves as a real-time catalyst scanner for watchlist stocks:
 * **Corporate Announcements**: Aggregates official filings from NSE. A background keyword classifier tags announcements as *Financials*, *Dividends*, *Catalysts*, or *General Board Meetings*. Clicking an announcement opens a mock **SEBI LODR Filing Document** viewer.
 * **Catalysts & News**: Pulls Google News RSS feeds for the selected ticker.
 * **Corporate Events**: Monitors ex-dates for dividends, splits, bonuses, and AGMs.
 * **Block & Bulk Deals**: Identifies institutional blocks and large market transactions, listing buyer/seller names and transaction values.
-
----
-
-### 4. Interactive UI Utilities
-* **Drag-and-Drop Columns**: Reorder headers on the fly by dragging. Columns can also be dynamically resized.
-* **Custom Filter Presets**: Save your range filters (RVOL limits, P/E limits, change limits, and score values) into custom presets that can be applied or deleted in a click.
-* **Auto-Refresh Engine**: During market hours, the dashboard auto-scans every 2 minutes with an inline countdown timer.
-* **Clickable Stat Cards**: Clicking on cards like *Elite Swing*, *Sector Leaders*, or *Breakout Ready* applies instant filters to the grid.
-* **Excel Exporter**: Downloads the entire filtered dataset across all tabs into a clean, multi-sheet `.xlsx` file.
 
 ---
 
@@ -102,8 +125,14 @@ Make sure you have **Python 3.8+** installed.
 ### 1. Install Dependencies
 Navigate to the root directory and install the necessary libraries:
 ```bash
-pip install flask requests pandas openpyxl
+pip install flask requests pandas openpyxl torch transformers huggingface_hub einops sentencepiece
 ```
+
+> [!NOTE]
+> PyTorch is used for running the local Kronos model prediction pipeline. To install a CPU-only light version of PyTorch on Windows (recommended for faster load times and smaller disk footprint), run:
+> ```bash
+> pip install torch --index-url https://download.pytorch.org/whl/cpu
+> ```
 
 ### 2. Launch the Application
 Run the Flask server:
