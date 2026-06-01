@@ -169,7 +169,7 @@ const masterColumnsConfig = {
         { id: 'description', name: 'Company Name', sortField: 'description', isVisible: true, align: 'left', canToggle: true },
         { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: true, align: 'right', canToggle: true },
         { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: true, align: 'right', canToggle: true },
-        { id: 'day_range', name: 'Day Range', sortField: null, isVisible: true, align: 'center', canToggle: true },
+        { id: 'day_range', name: 'Day Range', sortField: 'day_range_pct', isVisible: true, align: 'center', canToggle: true },
         { id: 'volume', name: 'Volume', sortField: 'volume', isVisible: true, align: 'right', canToggle: true },
         { id: 'perf_w', name: '1W Perf (%)', sortField: 'perf_w', isVisible: true, align: 'right', canToggle: true },
         { id: 'perf_m', name: '1M Perf (%)', sortField: 'perf_m', isVisible: true, align: 'right', canToggle: true },
@@ -1022,6 +1022,12 @@ async function runScan() {
         }
         
         stocksData = result.stocks || [];
+        stocksData.forEach(s => {
+            const h = parseFloat(s.high);
+            const l = parseFloat(s.low);
+            const c = parseFloat(s.close);
+            s.day_range_pct = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
+        });
         universeData = result.universe || [];
         filteredStocks = [...stocksData];
         
@@ -2016,6 +2022,8 @@ function filterAndRender() {
                 matchesSetup = swingStrong && !imsStrong;
             } else if (currentSetupFilter === 'vol_coil') {
                 matchesSetup = stock.volDryUp === true;
+            } else if (currentSetupFilter === 'stage2_camp') {
+                matchesSetup = stock.setupLabel && stock.setupLabel.startsWith('Stage 2 Camp');
             } else if (currentSetupFilter === 'intel-high-grade') {
                 const label = (stock.setupLabel || '').toUpperCase();
                 matchesSetup = label.includes('[A]') || label.includes('[A+]');
@@ -2117,6 +2125,21 @@ function sortStocks() {
     filteredStocks.sort((a, b) => {
         let valA = a[currentSortField];
         let valB = b[currentSortField];
+        
+        if (currentSortField === 'day_range_pct') {
+            if (valA === undefined || valA === null) {
+                const h = parseFloat(a.high);
+                const l = parseFloat(a.low);
+                const c = parseFloat(a.close);
+                valA = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
+            }
+            if (valB === undefined || valB === null) {
+                const h = parseFloat(b.high);
+                const l = parseFloat(b.low);
+                const c = parseFloat(b.close);
+                valB = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
+            }
+        }
         
         // Handle undefined or null values
         if (valA === undefined || valA === null) return 1;
@@ -2287,6 +2310,7 @@ function renderTable() {
                 else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
                 else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
                 else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
+                else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
                 else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
                 else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
                 
@@ -2705,6 +2729,18 @@ function initColumns() {
                 // Ensure all items in default columnsConfig are in parsed config
                 const defaultIds = masterColumnsConfig[currentTab].map(c => c.id);
                 const validParsed = parsed.filter(item => defaultIds.includes(item.id));
+                
+                // Sync sortField and other default settings from master configuration to prevent stale values in localStorage
+                validParsed.forEach(col => {
+                    const defaultCol = masterColumnsConfig[currentTab].find(c => c.id === col.id);
+                    if (defaultCol) {
+                        col.sortField = defaultCol.sortField;
+                        col.tooltip = defaultCol.tooltip;
+                        col.name = defaultCol.name;
+                        col.align = defaultCol.align;
+                    }
+                });
+                
                 const parsedIds = validParsed.map(c => c.id);
                 
                 // Add any missing default columns to the end
@@ -9233,6 +9269,7 @@ function renderRRTable(setups) {
         else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
         else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
         else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
+        else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
         else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
         else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
         
