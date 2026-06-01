@@ -169,7 +169,7 @@ const masterColumnsConfig = {
         { id: 'description', name: 'Company Name', sortField: 'description', isVisible: true, align: 'left', canToggle: true },
         { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: true, align: 'right', canToggle: true },
         { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: true, align: 'right', canToggle: true },
-        { id: 'day_range', name: 'Day Range', sortField: null, isVisible: true, align: 'center', canToggle: true },
+        { id: 'day_range', name: 'Day Range', sortField: 'day_range_pct', isVisible: true, align: 'center', canToggle: true },
         { id: 'volume', name: 'Volume', sortField: 'volume', isVisible: true, align: 'right', canToggle: true },
         { id: 'perf_w', name: '1W Perf (%)', sortField: 'perf_w', isVisible: true, align: 'right', canToggle: true },
         { id: 'perf_m', name: '1M Perf (%)', sortField: 'perf_m', isVisible: true, align: 'right', canToggle: true },
@@ -813,6 +813,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rrgContainer = document.getElementById('rrg-container');
             const intradayContainer = document.getElementById('intraday-container');
             const journalContainer = document.getElementById('journal-container');
+            const rrContainer = document.getElementById('rr-setups-container');
             const tableFooter = document.getElementById('table-footer');
             
             if (currentTab === 'rrg') {
@@ -820,6 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tableFooter) tableFooter.style.display = 'none';
                 if (intradayContainer) intradayContainer.style.display = 'none';
                 if (journalContainer) journalContainer.style.display = 'none';
+                if (rrContainer) rrContainer.style.display = 'none';
                 if (rrgContainer) rrgContainer.style.display = 'flex';
                 if (typeof renderRRG === 'function') renderRRG();
             } else if (currentTab === 'intraday') {
@@ -827,6 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tableFooter) tableFooter.style.display = 'none';
                 if (rrgContainer) rrgContainer.style.display = 'none';
                 if (journalContainer) journalContainer.style.display = 'none';
+                if (rrContainer) rrContainer.style.display = 'none';
                 if (intradayContainer) intradayContainer.style.display = 'flex';
                 if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
             } else if (currentTab === 'journal') {
@@ -834,14 +837,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (tableFooter) tableFooter.style.display = 'none';
                 if (rrgContainer) rrgContainer.style.display = 'none';
                 if (intradayContainer) intradayContainer.style.display = 'none';
+                if (rrContainer) rrContainer.style.display = 'none';
                 if (journalContainer) journalContainer.style.display = 'flex';
                 if (typeof renderJournal === 'function') renderJournal();
+            } else if (currentTab === 'rr-setups') {
+                if (mainContainer) mainContainer.style.display = 'none';
+                if (tableFooter) tableFooter.style.display = 'none';
+                if (rrgContainer) rrgContainer.style.display = 'none';
+                if (intradayContainer) intradayContainer.style.display = 'none';
+                if (journalContainer) journalContainer.style.display = 'none';
+                if (rrContainer) rrContainer.style.display = 'flex';
+                if (typeof runRRScreen === 'function') runRRScreen();
             } else {
                 if (mainContainer) mainContainer.style.display = 'block';
                 if (tableFooter) tableFooter.style.display = 'flex';
                 if (rrgContainer) rrgContainer.style.display = 'none';
                 if (intradayContainer) intradayContainer.style.display = 'none';
                 if (journalContainer) journalContainer.style.display = 'none';
+                if (rrContainer) rrContainer.style.display = 'none';
                 
                 // Clear intraday preset when returning to main tables so it doesn't silently filter
                 if (activeIntradayFilter) {
@@ -860,6 +873,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Restore R:R preferences
+    if (typeof restoreRRPrefs === 'function') {
+        restoreRRPrefs();
+    }
+
+    // Wire R:R inputs change listeners
+    const rrInputs = ['rr-min-input', 'rr-atr-mult', 'rr-target-ext', 'rr-max-risk', 'rr-min-swing'];
+    rrInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => {
+                if (typeof runRRScreen === 'function') runRRScreen();
+            });
+        }
+    });
 });
 
 // Compute changes between scans
@@ -993,6 +1022,12 @@ async function runScan() {
         }
         
         stocksData = result.stocks || [];
+        stocksData.forEach(s => {
+            const h = parseFloat(s.high);
+            const l = parseFloat(s.low);
+            const c = parseFloat(s.close);
+            s.day_range_pct = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
+        });
         universeData = result.universe || [];
         filteredStocks = [...stocksData];
         
@@ -1031,6 +1066,11 @@ async function runScan() {
         
         // Refresh watchlist stock prices/stats after scan
         updateWatchlistData();
+        
+        // Auto-run R:R screen or update count badge
+        if (typeof runRRScreen === 'function') {
+            runRRScreen();
+        }
         
     } catch (e) {
         console.error("Scan error:", e);
@@ -1982,6 +2022,8 @@ function filterAndRender() {
                 matchesSetup = swingStrong && !imsStrong;
             } else if (currentSetupFilter === 'vol_coil') {
                 matchesSetup = stock.volDryUp === true;
+            } else if (currentSetupFilter === 'stage2_camp') {
+                matchesSetup = stock.setupLabel && stock.setupLabel.startsWith('Stage 2 Camp');
             } else if (currentSetupFilter === 'intel-high-grade') {
                 const label = (stock.setupLabel || '').toUpperCase();
                 matchesSetup = label.includes('[A]') || label.includes('[A+]');
@@ -2049,6 +2091,8 @@ function filterAndRender() {
     const activeWorkspace = document.querySelector('.workspace-tab.active')?.dataset.view;
     if (activeWorkspace === 'rrg') {
         if (typeof renderRRG === 'function') renderRRG();
+    } else if (currentTab === 'rr-setups') {
+        if (typeof runRRScreen === 'function') runRRScreen();
     } else if (currentTab === 'intraday') {
         if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
     } else if (currentTab === 'journal') {
@@ -2081,6 +2125,21 @@ function sortStocks() {
     filteredStocks.sort((a, b) => {
         let valA = a[currentSortField];
         let valB = b[currentSortField];
+        
+        if (currentSortField === 'day_range_pct') {
+            if (valA === undefined || valA === null) {
+                const h = parseFloat(a.high);
+                const l = parseFloat(a.low);
+                const c = parseFloat(a.close);
+                valA = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
+            }
+            if (valB === undefined || valB === null) {
+                const h = parseFloat(b.high);
+                const l = parseFloat(b.low);
+                const c = parseFloat(b.close);
+                valB = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
+            }
+        }
         
         // Handle undefined or null values
         if (valA === undefined || valA === null) return 1;
@@ -2251,6 +2310,7 @@ function renderTable() {
                 else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
                 else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
                 else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
+                else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
                 else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
                 else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
                 
@@ -2669,6 +2729,18 @@ function initColumns() {
                 // Ensure all items in default columnsConfig are in parsed config
                 const defaultIds = masterColumnsConfig[currentTab].map(c => c.id);
                 const validParsed = parsed.filter(item => defaultIds.includes(item.id));
+                
+                // Sync sortField and other default settings from master configuration to prevent stale values in localStorage
+                validParsed.forEach(col => {
+                    const defaultCol = masterColumnsConfig[currentTab].find(c => c.id === col.id);
+                    if (defaultCol) {
+                        col.sortField = defaultCol.sortField;
+                        col.tooltip = defaultCol.tooltip;
+                        col.name = defaultCol.name;
+                        col.align = defaultCol.align;
+                    }
+                });
+                
                 const parsedIds = validParsed.map(c => c.id);
                 
                 // Add any missing default columns to the end
@@ -9069,4 +9141,287 @@ window.loadEnsembleBacktest = loadEnsembleBacktest;
 window.renderEnsembleChart = renderEnsembleChart;
 window.renderEnsembleBacktestChart = renderEnsembleBacktestChart;
 window.generateFutureTradingDates = generateFutureTradingDates;
+
+// -----------------------------------------------------------------------------
+// Phase 4: R:R Auto-Screener Logic (FEAT-005)
+// -----------------------------------------------------------------------------
+
+let rrSetupsData = [];
+
+function computeRRSetups(stocks, params) {
+  const {
+    minRR       = 2.5,
+    atrMult     = 1.5,
+    targetExt   = 10.0,
+    maxRiskPct  = 7.0,
+    minSwing    = 5,
+    minRvol     = 0.8,
+  } = params;
+
+  const results = [];
+
+  for (const s of stocks) {
+    const close     = parseFloat(s.close);
+    const atrPct    = parseFloat(s.atr_pct);
+    const high52w   = parseFloat(s.price_52_week_high);
+    const swingscore = parseFloat(s.swingscore) || 0;
+    const rvol      = parseFloat(s.relative_volume) || 0;
+
+    // Quality gates
+    if (!close || !atrPct || !high52w) continue;
+    if (swingscore < minSwing)         continue;
+    if (rvol < minRvol)                continue;
+
+    const atrAbs = close * (atrPct / 100);
+    const isBreakout = ['Breakout Ready', 'Sector Leader'].includes(s.setupLabel);
+
+    // Entry
+    const entry = isBreakout ? high52w * 1.005 : close;
+
+    // Stop — ATR-based with low structural refinement
+    const dayLow = parseFloat(s.day_low) || parseFloat(s.low) || (entry - atrAbs * atrMult);
+    const atrStop = entry - (atrMult * atrAbs);
+    const structStop = (entry - dayLow) < atrAbs ? dayLow * 0.999 : atrStop;
+    const stop = Math.max(structStop, entry * 0.85); // 15% floor
+
+    const risk = entry - stop;
+    if (risk <= 0) continue;
+
+    const riskPct = (risk / entry) * 100;
+    if (riskPct > maxRiskPct) continue;
+
+    // Target
+    const breakoutTarget = high52w * (1 + targetExt / 100);
+    const atrTarget      = entry + (minRR * risk);  // fallback: exactly at min_rr
+    const target = isBreakout
+      ? Math.max(breakoutTarget, atrTarget)
+      : atrTarget;
+
+    const reward = target - entry;
+    if (reward <= 0) continue;
+
+    const rr = reward / risk;
+    if (rr < minRR) continue;
+
+    results.push({
+      ...s,
+      rr_entry:   parseFloat(entry.toFixed(2)),
+      rr_stop:    parseFloat(stop.toFixed(2)),
+      rr_target:  parseFloat(target.toFixed(2)),
+      rr_risk:    parseFloat(risk.toFixed(2)),
+      rr_reward:  parseFloat(reward.toFixed(2)),
+      rr_ratio:   parseFloat(rr.toFixed(2)),
+      rr_risk_pct: parseFloat(riskPct.toFixed(2)),
+      rr_method:  isBreakout ? '52w_breakout' : 'atr_projection',
+    });
+  }
+
+  // Sort by R:R descending, cap at 20 results
+  results.sort((a, b) => b.rr_ratio - a.rr_ratio);
+  return results.slice(0, 20);
+}
+
+function renderRRTable(setups) {
+    const table = document.getElementById('rr-table');
+    const tbody = document.getElementById('rr-table-body');
+    const emptyState = document.getElementById('rr-setups-empty');
+    
+    if (!tbody || !table) return;
+    
+    tbody.innerHTML = '';
+    
+    if (setups.length === 0) {
+        table.style.display = 'none';
+        if (emptyState) {
+            emptyState.style.display = 'block';
+            if (!stocksData || stocksData.length === 0) {
+                emptyState.querySelector('span').textContent = 'Run a scan first to fetch market listings.';
+            } else {
+                emptyState.querySelector('span').textContent = 'No setups meet the current R:R criteria. Try lowering Min R:R or relaxing the quality gates.';
+            }
+        }
+        return;
+    }
+    
+    if (emptyState) emptyState.style.display = 'none';
+    table.style.display = 'table';
+    
+    let html = '';
+    setups.forEach(stock => {
+        let rrClass = '';
+        if (stock.rr_ratio >= 3.0) {
+            rrClass = 'rr-gold';
+        } else if (stock.rr_ratio >= 2.5) {
+            rrClass = 'rr-green';
+        }
+        
+        const methodClass = stock.rr_method === '52w_breakout' ? 'rr-method-breakout' : 'rr-method-atr';
+        const methodLabel = stock.rr_method === '52w_breakout' ? 'Breakout' : 'ATR Proj';
+        const entryStyle = stock.rr_method === '52w_breakout' ? 'color: var(--accent-green); font-weight: 700;' : 'color: var(--color-text-secondary);';
+        
+        const label = stock.setupLabel || 'Early Watch';
+        let pillClass = 'setup-pill-early';
+        let icon = '';
+        if (label.includes('VCP')) { pillClass = 'setup-pill-vcp'; icon = '🌀 '; }
+        else if (label.includes('Cup & Handle')) { pillClass = 'setup-pill-cup'; icon = '🍺 '; }
+        else if (label.includes('High Tight Flag')) { pillClass = 'setup-pill-flag'; icon = '🚩 '; }
+        else if (label.includes('Long Base')) { pillClass = 'setup-pill-base'; icon = '🧱 '; }
+        else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
+        else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
+        else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
+        else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
+        else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
+        else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
+        
+        const swingScore = stock.swingscore != null ? stock.swingscore : 0;
+        const swingBand = stock.swingband || 'weak';
+        const swingBadgeClass = 'badge-swing-' + swingBand;
+        const rvol = parseFloat(stock.relative_volume) || 0;
+        
+        html += `
+            <tr onclick="openTradeDrawerFromRR('${stock.clean_ticker}')">
+                <td class="ticker-col">
+                    <span class="ticker-box">${stock.clean_ticker}</span>
+                </td>
+                <td class="text-center">
+                    <span class="setup-pill ${pillClass}">${icon}${label}</span>
+                </td>
+                <td class="text-right" style="${entryStyle}">₹${stock.rr_entry.toFixed(2)}</td>
+                <td class="text-right" style="color: var(--accent-red); font-weight: 600;">₹${stock.rr_stop.toFixed(2)} <span style="font-size:0.75rem; color: var(--color-text-muted);">(${stock.rr_risk_pct.toFixed(1)}%)</span></td>
+                <td class="text-right" style="color: var(--accent-green); font-weight: 600;">₹${stock.rr_target.toFixed(2)}</td>
+                <td class="text-right">₹${stock.rr_risk.toFixed(2)}</td>
+                <td class="text-right">₹${stock.rr_reward.toFixed(2)}</td>
+                <td class="text-center ${rrClass}" style="font-size: 1rem;">${stock.rr_ratio.toFixed(2)}x</td>
+                <td class="text-center">
+                    <span class="rr-method-badge ${methodClass}">${methodLabel}</span>
+                </td>
+                <td class="text-center">
+                    <span class="badge ${swingBadgeClass}" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; font-weight:700;">${swingScore} (${swingBand.toUpperCase()})</span>
+                </td>
+                <td class="text-right" style="font-weight: 600;">${rvol.toFixed(2)}x</td>
+                <td class="text-center" onclick="event.stopPropagation();">
+                    <button class="btn-table-chart" onclick="openTradeDrawerFromRR('${stock.clean_ticker}')">
+                        📐 Analyse
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+function runRRScreen() {
+    const minRR = parseFloat(document.getElementById('rr-min-input')?.value) || 2.5;
+    const atrMult = parseFloat(document.getElementById('rr-atr-mult')?.value) || 1.5;
+    const targetExt = parseFloat(document.getElementById('rr-target-ext')?.value) || 10.0;
+    const maxRiskPct = parseFloat(document.getElementById('rr-max-risk')?.value) || 7.0;
+    const minSwing = parseFloat(document.getElementById('rr-min-swing')?.value) || 5;
+    
+    const params = {
+        minRR,
+        atrMult,
+        targetExt,
+        maxRiskPct,
+        minSwing,
+        minRvol: 0.8
+    };
+    
+    // Save to localStorage
+    localStorage.setItem('rr_screen_prefs', JSON.stringify(params));
+    
+    // Filter stocksData by global search and sector select before screening
+    const searchVal = document.getElementById('search-input')?.value.toLowerCase().trim() || '';
+    const sectorVal = selectedSector || 'all';
+    
+    let targetStocks = stocksData || [];
+    if (searchVal || sectorVal !== 'all') {
+        targetStocks = targetStocks.filter(stock => {
+            const matchesSearch = !searchVal || 
+                                  stock.clean_ticker.toLowerCase().includes(searchVal) || 
+                                  stock.description.toLowerCase().includes(searchVal) ||
+                                  (stock.setupLabel && stock.setupLabel.toLowerCase().includes(searchVal));
+            const matchesSector = sectorVal === 'all' || stock.sector === sectorVal;
+            return matchesSearch && matchesSector;
+        });
+    }
+    
+    // Run computation
+    rrSetupsData = computeRRSetups(targetStocks, params);
+    
+    // Update badge count on tab button
+    const countBadge = document.getElementById('rr-setups-count');
+    if (countBadge) {
+        countBadge.textContent = rrSetupsData.length;
+        countBadge.style.display = rrSetupsData.length > 0 ? 'inline-flex' : 'none';
+    }
+    
+    // Summary line
+    const summary = document.getElementById('rr-result-summary');
+    if (summary) {
+        summary.textContent = rrSetupsData.length > 0
+            ? `${rrSetupsData.length} setup${rrSetupsData.length > 1 ? 's' : ''} pass ≥${minRR}:1 R:R from ${targetStocks.length} scanned`
+            : `No setups pass ≥${minRR}:1 R:R`;
+        summary.style.color = rrSetupsData.length > 0 ? 'var(--accent-green)' : 'var(--color-text-muted)';
+    }
+    
+    // Render the table
+    renderRRTable(rrSetupsData);
+}
+
+function openTradeDrawerFromRR(ticker) {
+    const stock = rrSetupsData.find(s => s.clean_ticker === ticker) || (stocksData && stocksData.find(s => s.clean_ticker === ticker));
+    if (!stock) return;
+    
+    // Open the drawer as normal
+    openTradeDrawer(stock.clean_ticker);
+    
+    // Pre-fill the Risk Calculator fields if we have R:R values computed
+    if (stock.rr_entry !== undefined) {
+        setTimeout(() => {
+            const entryEl = document.getElementById('drawer-entry-input');
+            const stopEl = document.getElementById('drawer-stop-input');
+            
+            if (entryEl) entryEl.value = stock.rr_entry;
+            if (stopEl) stopEl.value = stock.rr_stop;
+            
+            // Trigger recalculation
+            const calcEvent = new Event('input', { bubbles: true });
+            if (entryEl) entryEl.dispatchEvent(calcEvent);
+        }, 300);
+    }
+}
+
+function restoreRRPrefs() {
+    const saved = localStorage.getItem('rr_screen_prefs');
+    if (saved) {
+        try {
+            const params = JSON.parse(saved);
+            if (params.minRR !== undefined && document.getElementById('rr-min-input')) {
+                document.getElementById('rr-min-input').value = params.minRR;
+            }
+            if (params.atrMult !== undefined && document.getElementById('rr-atr-mult')) {
+                document.getElementById('rr-atr-mult').value = params.atrMult;
+            }
+            if (params.targetExt !== undefined && document.getElementById('rr-target-ext')) {
+                document.getElementById('rr-target-ext').value = params.targetExt;
+            }
+            if (params.maxRiskPct !== undefined && document.getElementById('rr-max-risk')) {
+                document.getElementById('rr-max-risk').value = params.maxRiskPct;
+            }
+            if (params.minSwing !== undefined && document.getElementById('rr-min-swing')) {
+                document.getElementById('rr-min-swing').value = params.minSwing;
+            }
+        } catch(e) {
+            console.error("Error restoring R:R screen preferences:", e);
+        }
+    }
+}
+
+// Expose functions to window
+window.computeRRSetups = computeRRSetups;
+window.renderRRTable = renderRRTable;
+window.runRRScreen = runRRScreen;
+window.openTradeDrawerFromRR = openTradeDrawerFromRR;
+window.restoreRRPrefs = restoreRRPrefs;
 

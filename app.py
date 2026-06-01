@@ -578,7 +578,10 @@ def classify_setup(stock, sector_meta=None):
     
     if pat_name and pat_name != "Trend Continuation":
         primary_label = f"{pat_name} [{pat_grade}]"
-        confidence = 95 if "A+" in pat_grade else 90 if "A" in pat_grade else 85
+        if pat_name == "Stage 2 Camp":
+            confidence = 95
+        else:
+            confidence = 95 if "A+" in pat_grade else 90 if "A" in pat_grade else 85
         tags.insert(0, pat_name)
     else:
         if is_breakout:
@@ -846,11 +849,113 @@ def classify_technical_pattern(history):
     highs = [day["high"] for day in history]
     lows = [day["low"] for day in history]
     volumes = [day["volume"] for day in history]
+    opens = [day["open"] for day in history]
     
     current_close = closes[-1]
     current_volume = volumes[-1]
     avg_volume_50 = sum(volumes[-50:]) / 50 if len(volumes) >= 50 else sum(volumes) / len(volumes)
     vol_ratio = current_volume / avg_volume_50 if avg_volume_50 > 0 else 1.0
+    
+    # 0. Stage 2 Consolidation (The Camp)
+    if len(closes) >= 50:
+        # Flag range over the last 15 days (last 5-20 days consolidation)
+        flag_high = max(highs[-15:])
+        flag_low = min(lows[-15:])
+        flag_range_pct = (flag_high - flag_low) / flag_high * 100
+        
+        # Preceding Stage 1 run (Gain >= 50% in the preceding 30 days before the flag started)
+        slice_start = len(closes) - 45
+        slice_end = len(closes) - 15
+        min_low_in_slice = min(lows[slice_start:slice_end])
+        leg_start_idx = slice_start + lows[slice_start:slice_end].index(min_low_in_slice)
+        
+        stage1_gain = ((flag_high - min_low_in_slice) / min_low_in_slice) * 100
+        
+        # Institutional Signature count during the leg-up
+        baseline_vol_start = max(0, leg_start_idx - 50)
+        baseline_vol_end = leg_start_idx
+        if baseline_vol_end > baseline_vol_start:
+            baseline_avg_vol = sum(volumes[baseline_vol_start:baseline_vol_end]) / (baseline_vol_end - baseline_vol_start)
+        else:
+            baseline_avg_vol = avg_volume_50 if avg_volume_50 > 0 else 1.0
+            
+        inst_days_count = 0
+        for idx in range(leg_start_idx, slice_end):
+            is_green = closes[idx] > (opens[idx] if opens[idx] > 0 else closes[idx])
+            has_vol_spike = volumes[idx] >= 1.6 * baseline_avg_vol
+            if idx >= 14:
+                tr_day_list = []
+                for j in range(idx - 13, idx + 1):
+                    h_val = highs[j]
+                    l_val = lows[j]
+                    p_close = closes[j-1]
+                    tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
+                    tr_day_list.append(tr)
+                atr_day = sum(tr_day_list) / 14
+                atr_pct_day = (atr_day / closes[idx]) * 100 if closes[idx] > 0 else 5.0
+            else:
+                atr_pct_day = 5.0
+                
+            day_range_pct = (highs[idx] - lows[idx]) / closes[idx] * 100 if closes[idx] > 0 else 0
+            has_range_spike = day_range_pct >= 1.5 * atr_pct_day
+            
+            if is_green and has_vol_spike and has_range_spike:
+                inst_days_count += 1
+                
+        if stage1_gain >= 50.0 and flag_range_pct <= 15.0 and inst_days_count >= 2:
+            # Volatility Contraction: last 3 days daily range < 14-day ATR%
+            day_ranges_pct = [((highs[i] - lows[i]) / closes[i] * 100) for i in [-1, -2, -3]]
+            avg_recent_range = sum(day_ranges_pct) / 3
+            
+            # 14-day ATR%
+            tr_list = []
+            for i in range(len(history) - 14, len(history)):
+                h_val = highs[i]
+                l_val = lows[i]
+                p_close = closes[i-1]
+                tr = max(h_val - l_val, abs(h_val - p_close), abs(l_val - p_close))
+                tr_list.append(tr)
+            atr_14 = sum(tr_list) / 14
+            atr_pct_14 = (atr_14 / current_close) * 100 if current_close > 0 else 5.0
+            
+            avg_contraction_pass = avg_recent_range < atr_pct_14
+            all_under_ceiling = all(r < 2.0 for r in day_ranges_pct)
+            is_vol_contract = avg_contraction_pass and all_under_ceiling
+            
+            # Volume Contraction: average volume of last 3 days < 60% of 20-day average volume
+            avg_vol_3d = sum(volumes[-3:]) / 3
+            avg_vol_20d = sum(volumes[-20:]) / 20
+            avg_dryup_pass = avg_vol_3d < avg_vol_20d * 0.60
+            single_dryup_pass = any(volumes[i] < avg_vol_20d * 0.50 for i in [-1, -2, -3])
+            is_vol_dryup = avg_dryup_pass and single_dryup_pass
+            
+            # EMA10 and EMA20 calculations
+            alpha10 = 2 / (10 + 1)
+            ema10 = closes[0]
+            for val in closes:
+                ema10 = val * alpha10 + ema10 * (1 - alpha10)
+                
+            alpha20 = 2 / (20 + 1)
+            ema20 = closes[0]
+            for val in closes:
+                ema20 = val * alpha20 + ema20 * (1 - alpha20)
+                
+            is_ema10_close = abs(current_close - ema10) / ema10 * 100 <= 1.5
+            is_ema20_close = abs(current_close - ema20) / ema20 * 100 <= 1.5
+            is_ema_close = is_ema10_close or is_ema20_close
+            
+            # Higher Low (HL) check: last 4 days low is higher than preceding 4-12 days low
+            hl_pass = min(lows[-4:]) > min(lows[-12:-4])
+            
+            # Higher High (HH) / Accumulation check: recent highs holding close to flag peak
+            hh_pass = max(highs[-4:]) >= flag_high * 0.98
+            
+            if is_vol_contract and is_vol_dryup and is_ema_close and hl_pass and hh_pass:
+                return {
+                    "pattern": "Stage 2 Camp",
+                    "grade": "A+" if flag_range_pct <= 8.0 else "A",
+                    "description": f"Stage 2 consolidation ('The Camp') after a {stage1_gain:.1f}% Stage 1 run with {inst_days_count} institutional buying days. Volatility contracted to {avg_recent_range:.1f}%, volume dryup confirms supply exhaustion."
+                }
     
     # 1. High Tight Flag (HTF)
     if len(closes) >= 45:

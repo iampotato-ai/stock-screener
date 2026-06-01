@@ -550,6 +550,7 @@
             <div class="filter-chip" data-value="Breakout Ready">🚀 Breakout</div>
             <div class="filter-chip" data-value="Pullback to MA">📉 Pullback</div>
             <div class="filter-chip" data-value="Inside Bar Coil">🌀 Coil</div>
+            <div class="filter-chip" data-value="stage2_camp">⛺ Stage 2 Camp</div>
             <div class="filter-chip" data-value="vol_coil">📦 Vol Coil</div>
             <div class="filter-chip" data-value="Bullish Div">🔍 Bullish Div</div>
             <div class="filter-chip" data-value="Sector Leader">👑 Leader</div>
@@ -593,7 +594,12 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                         Intraday Pro
                     </button>
+                    <button class="tab-btn" data-tab="rr-setups">
+                        ⚖️ R:R Setups
+                        <span id="rr-setups-count" class="badge badge-sm" style="display:none;">0</span>
+                    </button>
                 </div>
+
 
                 <div id="growth-disclaimer" style="display:none; padding: 10px 14px; margin-bottom: 12px; font-size: 0.78rem; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: #f59e0b; border-radius: 8px; align-items: center; gap: 8px; line-height: 1.4; font-family: 'Outfit', sans-serif;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"></svg>
@@ -654,6 +660,66 @@
                             <div class="widget-header focus">Watchlist Intraday Focus <span class="widget-count" id="count-focus">0</span></div>
                             <div class="widget-content" id="widget-focus"></div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- R:R Setups Container (Hidden by default) -->
+                <div class="rr-setups-container" id="rr-setups-container" style="display: none; flex-direction: column; gap: 1rem;">
+                    
+                    <!-- R:R Filter Control Bar -->
+                    <div id="rr-control-bar" class="rr-control-bar glass-panel">
+                        <div class="rr-control-group">
+                            <label class="rr-label">Min R:R</label>
+                            <input id="rr-min-input" type="number" min="1" max="10" step="0.5" value="2.5" class="rr-input" />
+                        </div>
+                        <div class="rr-control-group">
+                            <label class="rr-label">ATR Multiplier (Stop)</label>
+                            <input id="rr-atr-mult" type="number" min="0.5" max="3.0" step="0.25" value="1.5" class="rr-input" />
+                        </div>
+                        <div class="rr-control-group">
+                            <label class="rr-label">Target Extension (%)</label>
+                            <input id="rr-target-ext" type="number" min="3" max="30" step="1" value="10" class="rr-input" />
+                        </div>
+                        <div class="rr-control-group">
+                            <label class="rr-label">Max Risk (%)</label>
+                            <input id="rr-max-risk" type="number" min="2" max="15" step="0.5" value="7.0" class="rr-input" />
+                        </div>
+                        <div class="rr-control-group">
+                            <label class="rr-label">Min Swing Score</label>
+                            <input id="rr-min-swing" type="number" min="0" max="10" step="1" value="5" class="rr-input" />
+                        </div>
+                        <button id="btn-run-rr-screen" class="btn btn-primary" onclick="runRRScreen()">
+                            ⚡ Run R:R Screen
+                        </button>
+                        <span id="rr-result-summary" class="rr-result-summary" style="color: var(--color-text-muted);">No setups screened yet</span>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="rr-setups-empty" class="rr-empty-state" style="display: none;">
+                        <span>No setups meet the current R:R criteria. Try lowering Min R:R or relaxing the quality gates.</span>
+                    </div>
+
+                    <!-- R:R Table -->
+                    <div class="table-container" id="rr-table-container">
+                        <table id="rr-table" class="screener-table" style="display: none;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                                    <th>Ticker</th>
+                                    <th>Setup</th>
+                                    <th class="text-right">Entry (₹)</th>
+                                    <th class="text-right">Stop (₹)</th>
+                                    <th class="text-right">Target (₹)</th>
+                                    <th class="text-right">Risk (₹)</th>
+                                    <th class="text-right">Reward (₹)</th>
+                                    <th class="text-center">R:R</th>
+                                    <th class="text-center">Method</th>
+                                    <th class="text-center">Swing</th>
+                                    <th class="text-right">RVOL</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rr-table-body"></tbody>
+                        </table>
                     </div>
                 </div>
                 
