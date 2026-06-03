@@ -149,6 +149,9 @@ const selectedImsLabel = document.getElementById('selected-ims-label');
 const btnSwing = document.getElementById('btn-swing');
 const swingDropdown = document.getElementById('swing-dropdown');
 const selectedSwingLabel = document.getElementById('selected-swing-label');
+const btnCandle = document.getElementById('btn-candle');
+const candleDropdown = document.getElementById('candle-dropdown');
+const selectedCandleLabel = document.getElementById('selected-candle-label');
 const btnQuickSwing = document.getElementById('btn-quick-swing');
 const autoRefreshCheckbox = document.getElementById('auto-refresh-checkbox');
 const autoRefreshCountdownEl = document.getElementById('auto-refresh-countdown');
@@ -460,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'filter-rvol-min', 'filter-rvol-max',
         'filter-change-min', 'filter-change-max',
         'filter-pe-min', 'filter-pe-max',
-        'filter-ims', 'filter-swing'
+        'filter-ims', 'filter-swing', 'filter-candle'
     ];
     rangeFilterInputs.forEach(id => {
         const el = document.getElementById(id);
@@ -486,6 +489,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         el.value = 'all';
                         if (selectedSwingLabel) selectedSwingLabel.textContent = 'All Scores';
                         document.querySelectorAll('#swing-dropdown .select-dropdown-item').forEach(item => {
+                            item.classList.toggle('active', item.dataset.value === 'all');
+                        });
+                    } else if (id === 'filter-candle') {
+                        el.value = 'all';
+                        if (selectedCandleLabel) selectedCandleLabel.textContent = 'All Patterns';
+                        document.querySelectorAll('#candle-dropdown .select-dropdown-item').forEach(item => {
                             item.classList.toggle('active', item.dataset.value === 'all');
                         });
                     } else if (el.tagName === 'SELECT') {
@@ -556,6 +565,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Candlestick Pattern dropdown toggle button listener
+    if (btnCandle && candleDropdown) {
+        btnCandle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            candleDropdown.classList.toggle('hidden');
+            const isExpanded = !candleDropdown.classList.contains('hidden');
+            btnCandle.setAttribute('aria-expanded', isExpanded);
+        });
+    }
+
     // Hide dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         // Sector dropdown
@@ -580,6 +599,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (swingDropdown && !swingDropdown.classList.contains('hidden') && !swingDropdown.contains(e.target) && e.target !== btnSwing) {
             swingDropdown.classList.add('hidden');
             btnSwing.setAttribute('aria-expanded', 'false');
+        }
+
+        // Candlestick Pattern dropdown
+        if (candleDropdown && !candleDropdown.classList.contains('hidden') && !candleDropdown.contains(e.target) && e.target !== btnCandle) {
+            candleDropdown.classList.add('hidden');
+            btnCandle.setAttribute('aria-expanded', 'false');
         }
         
         // Columns dropdown
@@ -654,6 +679,30 @@ document.addEventListener('DOMContentLoaded', () => {
             if (swingDropdown && btnSwing) {
                 swingDropdown.classList.add('hidden');
                 btnSwing.setAttribute('aria-expanded', 'false');
+            }
+            
+            filterAndRender();
+        });
+    });
+
+    // Candlestick Pattern dropdown item click listener
+    document.querySelectorAll('#candle-dropdown .select-dropdown-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const val = item.dataset.value;
+            const input = document.getElementById('filter-candle');
+            if (input) input.value = val;
+            
+            if (selectedCandleLabel) {
+                selectedCandleLabel.innerHTML = item.innerHTML;
+            }
+            
+            document.querySelectorAll('#candle-dropdown .select-dropdown-item').forEach(opt => {
+                opt.classList.toggle('active', opt === item);
+            });
+            
+            if (candleDropdown && btnCandle) {
+                candleDropdown.classList.add('hidden');
+                btnCandle.setAttribute('aria-expanded', 'false');
             }
             
             filterAndRender();
@@ -771,7 +820,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     chartOverlayModal.classList.remove('hidden');
                     document.getElementById('overlay-chart-title').innerHTML = `📈 ${window.currentTradeStock.clean_ticker} - Daily Chart`;
                     setTimeout(() => {
-                        createOverlayChart('overlay-tv-chart', window.currentDrawerChartData, window.currentDrawerForecastData || []);
+                        createOverlayChart('overlay-tv-chart', window.currentDrawerChartData, window.currentDrawerForecastData || [], window.currentDrawerCandlestickPatterns || {});
                     }, 50);
                 }
             }
@@ -2018,7 +2067,19 @@ function filterAndRender() {
             matchesSwing = swingBand === 'elite' || swingBand === 'strong' || swingBand === 'watch';
         }
 
-
+        // Candlestick Pattern Filter
+        const candleFilter = document.getElementById('filter-candle')?.value || 'all';
+        let matchesCandle = true;
+        if (candleFilter !== 'all') {
+            const patterns = stock.candlestick_patterns || {};
+            if (candleFilter === 'Bullish Engulfing') {
+                matchesCandle = patterns['Engulfing'] === 100;
+            } else if (candleFilter === 'Bearish Engulfing') {
+                matchesCandle = patterns['Engulfing'] === -100;
+            } else {
+                matchesCandle = patterns[candleFilter] !== undefined && patterns[candleFilter] !== 0;
+            }
+        }
         
         // Setup Filter
         let matchesSetup = true;
@@ -2094,7 +2155,7 @@ function filterAndRender() {
             matchesMtf = (stock.mtfScore || 0).toString() === currentMtfFilter;
         }
         
-        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesSetup && matchesStatCard && matchesIntraday && matchesMtf;
+        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesSetup && matchesStatCard && matchesIntraday && matchesMtf;
     });
     
     // Clear the active intraday filter after applying so it doesn't stick permanently if the user changes other filters manually
@@ -7790,7 +7851,7 @@ function getChartThemeOptions(theme) {
  * @param {Object[]} rawData - Array of daily bars with open, high, low, close, volume, date.
  * @param {Object[]} [forecastData=[]] - Optional forecasted price bars.
  */
-function createTradeDrawerChart(containerId, rawData, forecastData = []) {
+function createTradeDrawerChart(containerId, rawData, forecastData = [], candlestickPatterns = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -7979,6 +8040,89 @@ function createTradeDrawerChart(containerId, rawData, forecastData = []) {
             }
         }
     }
+
+    // Add custom candlestick patterns on the last bar
+    if (rawData.length > 0) {
+        const lastBar = rawData[rawData.length - 1];
+        Object.entries(candlestickPatterns).forEach(([patternName, value]) => {
+            if (patternName === "Hammer" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'belowBar',
+                    color: '#10b981',
+                    shape: 'arrowUp',
+                    text: 'Hammer 🔨',
+                });
+            }
+            if (patternName === "Shooting Star" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'aboveBar',
+                    color: '#ef4444',
+                    shape: 'arrowDown',
+                    text: 'Shooting Star 🌠',
+                });
+            }
+            if (patternName === "Morning Star" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'belowBar',
+                    color: '#10b981',
+                    shape: 'arrowUp',
+                    text: 'Morning Star 🌅',
+                });
+            }
+            if (patternName === "Evening Star" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'aboveBar',
+                    color: '#ef4444',
+                    shape: 'arrowDown',
+                    text: 'Evening Star 🌌',
+                });
+            }
+            if (patternName === "Engulfing") {
+                if (value > 0) {
+                    markers.push({
+                        time: lastBar.date,
+                        position: 'belowBar',
+                        color: '#10b981',
+                        shape: 'arrowUp',
+                        text: 'Bullish Engulfing 🟢',
+                    });
+                } else if (value < 0) {
+                    markers.push({
+                        time: lastBar.date,
+                        position: 'aboveBar',
+                        color: '#ef4444',
+                        shape: 'arrowDown',
+                        text: 'Bearish Engulfing 🔴',
+                    });
+                }
+            }
+            if (patternName === "Doji" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'aboveBar',
+                    color: '#cbd5e1',
+                    shape: 'circle',
+                    text: 'Doji ⚖️',
+                });
+            }
+        });
+
+        // Add primary setup name if not Continuation
+        if (window.currentTradeStock && window.currentTradeStock.pattern_name && window.currentTradeStock.pattern_name !== "Trend Continuation") {
+            markers.push({
+                time: lastBar.date,
+                position: 'belowBar',
+                color: '#fbbf24',
+                shape: 'arrowUp',
+                text: window.currentTradeStock.pattern_name,
+            });
+        }
+    }
+
     LightweightCharts.createSeriesMarkers(candleSeries, markers);
 
     // Zoom view by default to focus on the last 120 bars + forecast bars
@@ -8026,7 +8170,7 @@ function closeChartOverlay() {
  * @param {Object[]} rawData - Historical chart data bars.
  * @param {Object[]} [forecastData=[]] - Optional forecasted price bars.
  */
-function createOverlayChart(containerId, rawData, forecastData = []) {
+function createOverlayChart(containerId, rawData, forecastData = [], candlestickPatterns = {}) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -8215,6 +8359,89 @@ function createOverlayChart(containerId, rawData, forecastData = []) {
             }
         }
     }
+
+    // Add custom candlestick patterns on the last bar
+    if (rawData.length > 0) {
+        const lastBar = rawData[rawData.length - 1];
+        Object.entries(candlestickPatterns).forEach(([patternName, value]) => {
+            if (patternName === "Hammer" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'belowBar',
+                    color: '#10b981',
+                    shape: 'arrowUp',
+                    text: 'Hammer 🔨',
+                });
+            }
+            if (patternName === "Shooting Star" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'aboveBar',
+                    color: '#ef4444',
+                    shape: 'arrowDown',
+                    text: 'Shooting Star 🌠',
+                });
+            }
+            if (patternName === "Morning Star" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'belowBar',
+                    color: '#10b981',
+                    shape: 'arrowUp',
+                    text: 'Morning Star 🌅',
+                });
+            }
+            if (patternName === "Evening Star" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'aboveBar',
+                    color: '#ef4444',
+                    shape: 'arrowDown',
+                    text: 'Evening Star 🌌',
+                });
+            }
+            if (patternName === "Engulfing") {
+                if (value > 0) {
+                    markers.push({
+                        time: lastBar.date,
+                        position: 'belowBar',
+                        color: '#10b981',
+                        shape: 'arrowUp',
+                        text: 'Bullish Engulfing 🟢',
+                    });
+                } else if (value < 0) {
+                    markers.push({
+                        time: lastBar.date,
+                        position: 'aboveBar',
+                        color: '#ef4444',
+                        shape: 'arrowDown',
+                        text: 'Bearish Engulfing 🔴',
+                    });
+                }
+            }
+            if (patternName === "Doji" && value > 0) {
+                markers.push({
+                    time: lastBar.date,
+                    position: 'aboveBar',
+                    color: '#cbd5e1',
+                    shape: 'circle',
+                    text: 'Doji ⚖️',
+                });
+            }
+        });
+
+        // Add primary setup name if not Continuation
+        if (window.currentTradeStock && window.currentTradeStock.pattern_name && window.currentTradeStock.pattern_name !== "Trend Continuation") {
+            markers.push({
+                time: lastBar.date,
+                position: 'belowBar',
+                color: '#fbbf24',
+                shape: 'arrowUp',
+                text: window.currentTradeStock.pattern_name,
+            });
+        }
+    }
+
     LightweightCharts.createSeriesMarkers(candleSeries, markers);
 
     // Zoom view by default to focus on the last 120 bars + forecast bars

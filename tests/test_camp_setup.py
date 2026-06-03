@@ -90,3 +90,24 @@ def test_stage_2_camp_detection():
     assert setup_res["setupLabel"].startswith("Stage 2 Camp")
     assert setup_res["setupConfidence"] == 95
     assert "Stage 2 Camp" in setup_res["setupTags"]
+
+def test_candlestick_priority_classification():
+    from unittest.mock import patch
+    history = [
+        {"open": 100.0, "high": 125.0, "low": 75.0, "close": 100.0, "volume": 1000}
+        for _ in range(42)
+    ]
+    
+    # Mock same strength (100): Hammer (priority 4) wins over Doji (priority 1)
+    with patch("app.pattern_detection.detect_candlestick_patterns") as mock_detect:
+        mock_detect.return_value = {"Doji": 100, "Hammer": 100}
+        res = classify_technical_pattern(history)
+        assert res["pattern"] == "Hammer"
+        assert res["grade"] == "B+"
+    
+    # Mock different strength: Doji (strength 200) wins over Hammer (strength 100) due to absolute strength
+    with patch("app.pattern_detection.detect_candlestick_patterns") as mock_detect2:
+        mock_detect2.return_value = {"Doji": 200, "Hammer": 100}
+        res2 = classify_technical_pattern(history)
+        assert res2["pattern"] == "Doji"
+        assert res2["grade"] == "B"
