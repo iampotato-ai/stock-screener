@@ -353,7 +353,60 @@
     
             </div>
     
-            <div class="breadth-sector-heatmap" id="breadth-sector-heatmap"></div>
+            <div class="dashboard-workspace-grid" style="display: grid; grid-template-columns: 2.2fr 1fr; gap: 1.25rem; align-items: start; margin-top: 1rem;">
+                <div class="dashboard-left-col">
+                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">Sector Heatmap</div>
+                    <div class="breadth-sector-heatmap" id="breadth-sector-heatmap" style="margin-top: 0;"></div>
+                </div>
+                <aside class="dashboard-sidebar">
+                    <!-- Alert Log Panel -->
+                    <div id="alert-log-panel" class="glass-panel alert-log-panel" style="padding: 1.25rem; border-radius: var(--radius-md, 8px); position: relative;">
+                        <div class="alert-log-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.1rem;">🔔</span>
+                                <h3 style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 1.05rem; font-weight: 600; color: #fff;">Alert Log</h3>
+                                <span id="alert-log-count" class="badge" style="background: var(--accent-purple, #7c3aed); color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 600;">0</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button id="btn-alert-settings" class="btn-ghost btn-xs" title="Alert Settings" style="background: none; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                                </button>
+                                <button id="btn-clear-alerts" class="btn-ghost btn-xs" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-secondary); cursor: pointer; border-radius: 4px; padding: 2px 6px; font-size: 0.75rem;">Clear</button>
+                            </div>
+                        </div>
+
+                        <!-- Alert Settings Panel -->
+                        <div id="alert-settings-panel" class="alert-settings-panel hidden" style="background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.8rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.6rem; font-size: 0.8rem; color: var(--color-text-secondary); position: absolute; z-index: 100; right: 1.25rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); min-width: 210px;">
+                            <div style="font-weight: 600; color: #fff; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 4px; display:flex; justify-content:space-between; align-items:center;">
+                                <span>⚙️ Alert Settings</span>
+                                <button id="btn-close-alert-settings" style="background:none; border:none; color:var(--color-text-muted); cursor:pointer; font-size:0.9rem;">✕</button>
+                            </div>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="alert-set-regime" checked style="cursor: pointer;">
+                                Regime Score Delta Alerts
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="alert-set-swing" checked style="cursor: pointer;">
+                                Swing Score Flip Alerts
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="alert-set-kronos" checked style="cursor: pointer;">
+                                Kronos Forecast Spike Alerts
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="alert-set-deals" checked style="cursor: pointer;">
+                                Bulk/Block Deal Alerts
+                            </label>
+                        </div>
+
+                        <div id="alert-log-body" style="max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.75rem; padding-right: 4px; min-height: 100px;">
+                            <div class="alert-log-empty" style="text-align: center; color: var(--color-text-muted); font-size: 0.8rem; padding: 2rem 0; font-style: italic;">
+                                No alerts triggered in this session.
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
         </div>
 
         <!-- Workspace View: Screener -->
@@ -1561,6 +1614,7 @@
     </div>
 
     <!-- App Script -->
+    <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.54"></script>
 </body>
 </html>
