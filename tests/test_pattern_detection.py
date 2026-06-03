@@ -49,3 +49,25 @@ def test_detect_engulfing():
     result = detect_candlestick_patterns(history)
     assert "Engulfing" in result
     assert result["Engulfing"] == 100
+
+def test_detect_doji_negative():
+    # A large-body candle should NOT be labelled Doji
+    history = [
+        {"open": 100.0, "high": 110.0, "low": 90.0, "close": 100.05, "volume": 1000},
+    ] * 4 + [
+        {"open": 95.0, "high": 112.0, "low": 89.0, "close": 110.0, "volume": 1000}
+    ]
+    result = detect_candlestick_patterns(history)
+    assert "Doji" not in result
+
+def test_detect_bearish_engulfing():
+    history = [
+        {"open": 100.0, "high": 101.0, "low": 98.0, "close": 100.0, "volume": 1000},
+        {"open": 100.0, "high": 101.0, "low": 98.0, "close": 100.0, "volume": 1000},
+        {"open": 100.0, "high": 101.0, "low": 98.0, "close": 100.0, "volume": 1000},
+        {"open": 99.0, "high": 103.0, "low": 98.5, "close": 102.0, "volume": 1000},  # Green
+        {"open": 103.5, "high": 104.0, "low": 98.0, "close": 98.5, "volume": 1000},  # Red engulfs
+    ]
+    result = detect_candlestick_patterns(history)
+    assert "Engulfing" in result
+    assert result["Engulfing"] == -100
