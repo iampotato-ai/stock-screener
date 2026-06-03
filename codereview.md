@@ -578,3 +578,266 @@ warnings.simplefilter('ignore', UserWarning)
 | 2 | Insufficient history errors return 500 instead of 400 | 🔴 High | Map `ValueError` of history to 400 Bad Request |
 | 3 | Prophet future dates omit NSE holidays | 🟡 Medium | Align Prophet to `generate_next_trading_days` |
 | 4 | cmdstanpy and statsmodels stderr log spam | 🟡 Medium | Set log level and filter ConvergenceWarnings |
+
+---
+
+---
+
+# Pattern Detection Integration: TA-Lib + stock-pattern Defect Fixes
+
+**Branch:** `feature/workspace-ui`  
+**Files Reviewed:** `pattern_detection.py`, `app.py`, `tests/test_pattern_detection.py`  
+**Reviewed on:** 2026-06-03  
+**Context:** TA-Lib is not installed in this environment. The codebase gracefully falls back to `_detect_candlestick_fallback()` — a pure-Python engine. All unit tests pass under this fallback mode. The issues below were identified via static code review of the fallback logic, `app.py` integration points, and the test suite.
+
+---
+
+## 🔴 Critical Bugs
+
+### Bug 1 — Engulfing Trend Variable Reused From Hammer Block
+
+**File:** `pattern_detection.py` → `_detect_candlestick_fallback()`
+
+`is_downtrend` and `is_uptrend` are computed once for the Hammer/Shooting Star block (around lines 80–81), then silently reused in the Bullish and Bearish Engulfing checks further down. If the Hammer block already evaluated and set `is_downtrend = True`, the Bearish Engulfing condition will also use the same variable — meaning a bearish candle that engulfs a bullish one in a downtrend can pass the wrong trend guard and be emitted as a bullish signal.
+
+**Current (broken):**
+```python
+# Set once, for Hammer
+is_downtrend = c1 < c2 or c0 < c1
+
+# ...later in the Engulfing block, this same variable is reused implicitly
+if is_downtrend and body0 > 0 and body1 < 0 and o0 < c1 and c0 > o1:
+    results["Engulfing"] = 100  # Bullish Engulfing — uses Hammer's is_downtrend!
+```
+
+**Fix — re-evaluate trend context inline inside each engulfing block:**
+```python
+# Bullish Engulfing — needs a prior downtrend context
+is_downtrend_ctx = (c1 < c2)
+if is_downtrend_ctx and body0 > 0 and body1 < 0 and o0 < c1 and c0 > o1:
+    results["Engulfing"] = 100
+
+# Bearish Engulfing — needs a prior uptrend context
+is_uptrend_ctx = (c1 > c2)
+if is_uptrend_ctx and body0 < 0 and body1 > 0 and o0 > c1 and c0 < o1:
+    results["Engulfing"] = -100
+```
+
+---
+
+### Bug 2 — Hammer Downtrend Condition Too Loose (OR instead of AND)
+
+**File:** `pattern_detection.py` → `_detect_candlestick_fallback()`
+
+`is_downtrend = c1 < c2 or c0 < c1` — the `or` makes the condition true whenever *any single* prior bar is lower, which includes flat and ranging markets. A stock that is sideways but happened to close slightly lower yesterday will trigger Hammer detection incorrectly, generating false bullish signals in non-trending conditions.
+
+**Current (over-fires):**
+```python
+is_downtrend = c1 < c2 or c0 < c1  # True even in sideways markets
+```
+
+**Fix — require both prior bars to be declining (AND):**
+```python
+is_downtrend = c1 < c2 and c0 <= c1  # Both bars must confirm the downtrend
+```
+
+---
+
+### Bug 3 — Morning Star / Evening Star Gap Condition References Wrong Anchor
+
+**File:** `pattern_detection.py` → `_detect_candlestick_fallback()`
+
+The Morning Star gap check `is_gap_down = max(o1, c1) < c2` compares the star candle's body top against `c2` — the *close* of the prior big bearish candle. The correct reference point is the *body of the prior bearish candle* — i.e. `min(o2, c2)` (the bottom of its body). As written, the condition is almost never satisfied on NSE stocks (which rarely gap more than the full prior close) and fires incorrectly when it does satisfy. The Evening Star has the same mirror issue.
+
+**Current (wrong reference):**
+```python
+is_gap_down = max(o1, c1) < c2        # Morning Star — compares against prior CLOSE, not prior body bottom
+is_gap_up   = min(o1, c1) > c2        # Evening Star — compares against prior CLOSE, not prior body top
+```
+
+**Fix — compare against the prior candle's body extremes:**
+```python
+# Morning Star: star body must be below the bottom of the prior bearish candle's body
+is_gap_down = max(o1, c1) < min(o2, c2)
+
+# Evening Star: star body must be above the top of the prior bullish candle's body
+is_gap_up   = min(o1, c1) > max(o2, c2)
+```
+
+---
+
+## 🟡 Logic Issues
+
+### Issue 4 — Zero-Range Candle Guard Triggers Spurious Doji
+
+**File:** `pattern_detection.py` → `_detect_candlestick_fallback()`
+
+When `range0 == 0` (e.g. a trading halt or data gap), you set `range0 = 1e-5` to avoid division by zero. But `body0` will also be ~0 in that case, so `body0 <= 0.1 * 1e-5` evaluates to `True`, labelling every zero-move candle as a Doji. This inflates Doji counts on illiquid NSE stocks that frequently halt mid-session.
+
+**Fix — early exit for zero-range candles before any pattern check:**
+```python
+# At the start of _detect_candlestick_fallback, after building range0:
+if range0 <= 1e-4:
+    return results   # No meaningful candle — skip all pattern detection
+```
+
+---
+
+### Issue 5 — Stage 2 Camp Uses First `.index()` for Minimum Low
+
+**File:** `app.py` → `classify_technical_pattern()`
+
+```python
+leg_start_idx = slice_start + lows[slice_start:slice_end].index(min_low_in_slice)
+```
+
+Python's `list.index()` returns the **first** (earliest) occurrence of the value. If the minimum low appears more than once across the slice (common in consolidating NSE stocks), `leg_start_idx` is anchored to an older, irrelevant low — inflating `stage1_gain` by measuring from an earlier base instead of the most recent impulse start.
+
+**Fix — use the last (most recent) occurrence:**
+```python
+sub = lows[slice_start:slice_end]
+leg_start_idx = slice_start + len(sub) - 1 - sub[::-1].index(min_low_in_slice)
+```
+
+---
+
+### Issue 6 — Cup & Handle Left-Peak Index Same `.index()` Problem
+
+**File:** `app.py` → `classify_technical_pattern()`
+
+```python
+local_idx = highs[slice_start:-25].index(cup_left_high)
+```
+
+Same first-occurrence issue as Issue 5. If the left-cup high appears multiple times, the earliest occurrence is selected — which places the cup-left anchor too far back in history, making the measured cup depth and handle width unreliable.
+
+**Fix — use numpy argmax for the correct (last/most prominent) peak:**
+```python
+sub = highs[slice_start:-25]
+local_idx = int(np.argmax(sub))   # returns index of the maximum value; handles ties predictably
+```
+
+---
+
+### Issue 7 — `cache_valid = True` Set Before JSON Parse (Silent Stale Cache Bug)
+
+**File:** `app.py` → `analyze_single_stock()`
+
+In the DB cache-read block, `cache_valid = True` is set **before** `json.loads(cand_json)` is called. If `cand_json` is `NULL` (a row that was inserted before the `candlestick_json` column was added via `ALTER TABLE`), `json.loads(None)` raises a `TypeError`. The outer `except Exception: pass` catches it — but `cache_valid` is already `True`, so the code never re-fetches live pattern data. That ticker is permanently returned with `candlestick_patterns = {}` until the DB row is manually deleted.
+
+**Current (broken ordering):**
+```python
+try:
+    gen_time = datetime.fromisoformat(gen_at_str)
+    if (datetime.now() - gen_time).total_seconds() < 24 * 3600:
+        cache_valid = True                         # ← set BEFORE the parse
+        stock["candlestick_patterns"] = json.loads(cand_json)  # ← can raise TypeError if NULL
+except Exception:
+    pass   # cache_valid is already True — stale data locked in permanently
+```
+
+**Fix — move `cache_valid = True` to after the successful parse:**
+```python
+try:
+    gen_time = datetime.fromisoformat(gen_at_str)
+    if (datetime.now() - gen_time).total_seconds() < 24 * 3600:
+        stock["pattern_name"]          = p_name
+        stock["pattern_grade"]         = p_grade
+        stock["pattern_desc"]          = p_desc
+        stock["candlestick_patterns"]  = json.loads(cand_json) if cand_json else {}
+        cache_valid = True             # ← set AFTER successful parse
+except Exception:
+    pass   # parse failure → cache_valid stays False → live re-fetch triggered
+```
+
+---
+
+## 🟢 Improvements
+
+### Improvement 8 — TA-Lib Doji Hardcodes Bullish `100` Regardless of Context
+
+**File:** `pattern_detection.py` → `detect_candlestick_patterns()` (TA-Lib path)
+
+```python
+if doji[-1] != 0:
+    results["Doji"] = 100   # ← always bullish, ignores TA-Lib's actual returned sign
+```
+
+TA-Lib's `CDLDOJI` returns `-100` when the doji appears in a bearish context (e.g., as a gravestone doji at the top of an uptrend) and `+100` in a bullish context. Hardcoding `100` masks bearish doji signals entirely, which matters when feeding into the Kronos bias calculation.
+
+**Fix:**
+```python
+if doji[-1] != 0:
+    results["Doji"] = int(doji[-1])   # preserve TA-Lib's directional sign
+```
+
+---
+
+### Improvement 9 — Candlestick Priority List Should Be Signal-Strength Ordered
+
+**File:** `app.py` → `classify_technical_pattern()` (candlestick fallback block)
+
+The fallback iterates a hardcoded list `['Morning Star', 'Evening Star', 'Hammer', 'Shooting Star', 'Engulfing', 'Doji']` and returns on the first match. If two patterns fire simultaneously (e.g., a candle that is both a Hammer and technically a Doji), the first item in the list wins regardless of signal strength. Higher-confidence multi-candle patterns (Morning/Evening Star) should win over single-candle ones, and among same-rank patterns the one with the higher absolute value should win.
+
+**Fix — sort by absolute signal value descending before iterating:**
+```python
+# Instead of iterating the hardcoded priority list:
+for p in sorted(candlesticks, key=lambda k: abs(candlesticks[k]), reverse=True):
+    if candlesticks[p] != 0:
+        # use this pattern as the primary signal
+        break
+```
+
+---
+
+### Improvement 10 — Missing Test Coverage in `tests/test_pattern_detection.py`
+
+Two gaps in the test suite that would have caught Bug #1 earlier:
+
+**Gap A — `test_detect_doji()` has no negative assertions:**
+A Doji candle (tiny body, large wicks) can also superficially resemble a Hammer shape. The test only asserts `'Doji' in result`; it does not verify that Hammer and Shooting Star do NOT co-fire.
+
+```python
+def test_detect_doji():
+    # ... existing assertions ...
+    assert result.get("Doji") != 0, "Doji should be detected"
+    # ADD these negative assertions:
+    assert result.get("Hammer", 0) == 0,         "Hammer must NOT co-fire on a Doji candle"
+    assert result.get("Shooting Star", 0) == 0,  "Shooting Star must NOT co-fire on a Doji candle"
+```
+
+**Gap B — No test for Bearish Engulfing (`result["Engulfing"] == -100`):**
+Only Bullish Engulfing is tested. Bug #1 (shared trend variable) directly affects bearish engulfing detection and would have been caught immediately with this test.
+
+```python
+def test_detect_bearish_engulfing():
+    """Bearish Engulfing: prior uptrend, current red candle fully engulfs prior green candle."""
+    data = {
+        "open":  [95.0, 98.0, 102.0, 97.0, 100.0, 103.0, 96.0],   # uptrend context
+        "high":  [99.0, 102.0, 105.0, 101.0, 104.0, 108.0, 107.0],
+        "low":   [94.0, 97.0, 101.0, 96.0, 99.0, 102.0, 94.0],
+        "close": [98.0, 101.0, 104.0, 100.0, 103.0, 107.0, 95.0],  # last candle: big red engulfer
+    }
+    result = detect_candlestick_patterns(data)
+    assert result.get("Engulfing") == -100, \
+        f"Expected Bearish Engulfing (-100), got {result.get('Engulfing')}"
+```
+
+---
+
+## Consolidated Fix Priority
+
+| # | Severity | File | Impact on Signal Quality |
+|---|----------|------|--------------------------|
+| 1 | 🔴 Critical | `pattern_detection.py` | Wrong engulfing direction due to shared trend variable — directly corrupts bullish/bearish labels |
+| 2 | 🔴 Critical | `pattern_detection.py` | False Hammers in flat/ranging NSE markets — over-fires on sideways consolidation |
+| 3 | 🔴 Critical | `pattern_detection.py` | Morning/Evening Star almost never fires correctly on NSE intraday gaps |
+| 7 | 🟡 High | `app.py` | NULL `cand_json` rows permanently bypass live re-fetch — silent stale data |
+| 4 | 🟡 Medium | `pattern_detection.py` | Trading halt candles falsely labelled Doji |
+| 5 | 🟡 Medium | `app.py` | Stage 2 Camp `stage1_gain` inflated by wrong leg anchor |
+| 6 | 🟡 Medium | `app.py` | Cup & Handle left-peak anchored to earliest (wrong) occurrence |
+| 8 | 🟢 Low | `pattern_detection.py` | TA-Lib Doji always emits bullish `100`, hides bearish context |
+| 9 | 🟢 Low | `app.py` | Fixed-list pattern priority should be signal-strength ordered |
+| 10 | 🟢 Low | `tests/test_pattern_detection.py` | Missing negative assertions + bearish engulfing test case |
+
+> **Fix order recommended:** Bugs 1 → 3 first (they corrupt the signal fed to Kronos), then Issue 7 (silent cache stale), then Issues 4–6, then Improvements 8–10.
