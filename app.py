@@ -882,7 +882,8 @@ def classify_technical_pattern(history):
         slice_start = len(closes) - 45
         slice_end = len(closes) - 15
         min_low_in_slice = min(lows[slice_start:slice_end])
-        leg_start_idx = slice_start + lows[slice_start:slice_end].index(min_low_in_slice)
+        sub_lows = lows[slice_start:slice_end]
+        leg_start_idx = slice_start + len(sub_lows) - 1 - sub_lows[::-1].index(min_low_in_slice)
         
         stage1_gain = ((flag_high - min_low_in_slice) / min_low_in_slice) * 100
         
@@ -1036,7 +1037,8 @@ def classify_technical_pattern(history):
         # Cup left peak (days -70 to -25)
         cup_left_high = max(highs[-70:-25])
         slice_start = len(highs) - 70
-        local_idx = highs[slice_start:-25].index(cup_left_high)
+        sub_highs = highs[slice_start:-25]
+        local_idx = int(np.argmax(sub_highs))
         cup_idx = slice_start + local_idx
         
         # Cup bottom (lowest low inside rounding bottom)
@@ -1090,30 +1092,37 @@ def classify_technical_pattern(history):
     try:
         candlesticks = pattern_detection.detect_candlestick_patterns(history)
         if candlesticks:
-            for p in ["Morning Star", "Evening Star", "Hammer", "Shooting Star", "Engulfing", "Doji"]:
-                if p in candlesticks:
-                    val = candlesticks[p]
-                    if p == "Engulfing":
-                        p_name = "Bullish Engulfing" if val > 0 else "Bearish Engulfing"
-                    else:
-                        p_name = p
-                    
-                    grade = "A" if "Star" in p_name else "B+" if p_name in ["Hammer", "Shooting Star", "Bullish Engulfing", "Bearish Engulfing"] else "B"
-                    
-                    desc_map = {
-                        "Morning Star": "Morning Star: high probability 3-candle bullish reversal.",
-                        "Evening Star": "Evening Star: high probability 3-candle bearish reversal.",
-                        "Hammer": "Hammer candlestick pattern: potential bullish reversal in short-term downtrend.",
-                        "Shooting Star": "Shooting Star candlestick pattern: potential bearish reversal in short-term uptrend.",
-                        "Bullish Engulfing": "Bullish Engulfing: 2-candle bullish engulfing reversal.",
-                        "Bearish Engulfing": "Bearish Engulfing: 2-candle bearish engulfing reversal.",
-                        "Doji": "Doji: Price equilibrium / consolidation candle."
-                    }
-                    return {
-                        "pattern": p_name,
-                        "grade": grade,
-                        "description": desc_map.get(p_name, f"Candlestick pattern {p_name} detected.")
-                    }
+            priority = {"Morning Star": 6, "Evening Star": 5, "Hammer": 4, "Shooting Star": 3, "Engulfing": 2, "Doji": 1}
+            valid_patterns = [p for p in candlesticks if p in priority and candlesticks[p] != 0]
+            if valid_patterns:
+                sorted_patterns = sorted(
+                    valid_patterns,
+                    key=lambda k: (abs(candlesticks[k]), priority[k]),
+                    reverse=True
+                )
+                p = sorted_patterns[0]
+                val = candlesticks[p]
+                if p == "Engulfing":
+                    p_name = "Bullish Engulfing" if val > 0 else "Bearish Engulfing"
+                else:
+                    p_name = p
+                
+                grade = "A" if "Star" in p_name else "B+" if p_name in ["Hammer", "Shooting Star", "Bullish Engulfing", "Bearish Engulfing"] else "B"
+                
+                desc_map = {
+                    "Morning Star": "Morning Star: high probability 3-candle bullish reversal.",
+                    "Evening Star": "Evening Star: high probability 3-candle bearish reversal.",
+                    "Hammer": "Hammer candlestick pattern: potential bullish reversal in short-term downtrend.",
+                    "Shooting Star": "Shooting Star candlestick pattern: potential bearish reversal in short-term uptrend.",
+                    "Bullish Engulfing": "Bullish Engulfing: 2-candle bullish engulfing reversal.",
+                    "Bearish Engulfing": "Bearish Engulfing: 2-candle bearish engulfing reversal.",
+                    "Doji": "Doji: Price equilibrium / consolidation candle."
+                }
+                return {
+                    "pattern": p_name,
+                    "grade": grade,
+                    "description": desc_map.get(p_name, f"Candlestick pattern {p_name} detected.")
+                }
     except Exception as e:
         print(f"[Pattern Integration] Error in fallback candlestick detection: {e}")
 
@@ -1140,11 +1149,11 @@ def analyze_single_stock(stock):
             try:
                 gen_time = datetime.fromisoformat(gen_at_str)
                 if (datetime.now() - gen_time).total_seconds() < 24 * 3600:
-                    cache_valid = True
                     stock["pattern_name"] = p_name
                     stock["pattern_grade"] = p_grade
                     stock["pattern_desc"] = p_desc
                     stock["candlestick_patterns"] = json.loads(cand_json) if cand_json else {}
+                    cache_valid = True
             except Exception:
                 pass
                 
@@ -4711,6 +4720,7 @@ def delete_watchlist_item():
 @app.route('/api/journal', methods=['GET'])
 def get_journal():
     from flask import request
+    conn = None
     try:
         status_filter = request.args.get('status', '').strip().lower()
         limit = request.args.get('limit', '').strip()
@@ -4754,6 +4764,7 @@ def get_journal():
         c.execute(query, tuple(params))
         rows = c.fetchall()
         conn.close()
+        conn = None
         
         cols = ['id', 'ticker', 'name', 'date', 'setupLabel', 'swingband', 'entry', 'stop', 
                 'target1', 'target2', 'target3', 'riskAmount', 'qty', 'status', 
@@ -4762,10 +4773,14 @@ def get_journal():
         return jsonify(trades)
     except Exception as e:
         return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/journal', methods=['POST'])
 def create_journal_entry():
     from flask import request
+    conn = None
     try:
         data = request.get_json() or {}
         trade_id = data.get('id')
@@ -4778,6 +4793,7 @@ def create_journal_entry():
         c.execute("SELECT id FROM trade_journal WHERE id = ?", (trade_id,))
         if c.fetchone():
             conn.close()
+            conn = None
             return jsonify(error="Trade already exists. Use PUT to update."), 409
             
         c.execute("""
@@ -4796,9 +4812,13 @@ def create_journal_entry():
         ))
         conn.commit()
         conn.close()
+        conn = None
         return jsonify(success=True)
     except Exception as e:
         return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/journal/<trade_id>', methods=['PUT'])
 def update_journal_entry(trade_id):
@@ -4892,22 +4912,29 @@ def update_journal_entry(trade_id):
 
 @app.route('/api/journal/<trade_id>', methods=['DELETE'])
 def delete_journal_entry(trade_id):
+    conn = None
     try:
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
         c.execute("DELETE FROM trade_journal WHERE id = ?", (trade_id,))
         if c.rowcount == 0:
             conn.close()
+            conn = None
             return jsonify(error="Trade not found"), 404
         conn.commit()
         conn.close()
+        conn = None
         return jsonify(success=True)
     except Exception as e:
         return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/migrate-local-data', methods=['POST'])
 def migrate_local_data():
     from flask import request
+    conn = None
     try:
         data = request.get_json() or {}
         sections = data.get('watchlist_sections', [])
@@ -4948,9 +4975,13 @@ def migrate_local_data():
                 
         conn.commit()
         conn.close()
+        conn = None
         return jsonify(success=True)
     except Exception as e:
         return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)

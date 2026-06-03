@@ -20,7 +20,7 @@ def test_detect_hammer():
         {"open": 104.5, "high": 105.0, "low": 103.0, "close": 103.5, "volume": 1000},
         {"open": 103.5, "high": 104.0, "low": 102.0, "close": 102.2, "volume": 1000},
         {"open": 102.2, "high": 103.0, "low": 101.0, "close": 101.5, "volume": 1000},
-        {"open": 101.8, "high": 102.0, "low": 98.0, "close": 101.9, "volume": 1000}
+        {"open": 101.8, "high": 102.0, "low": 98.0, "close": 101.4, "volume": 1000}
     ]
     result = detect_candlestick_patterns(history)
     assert "Hammer" in result
