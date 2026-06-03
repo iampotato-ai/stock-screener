@@ -793,9 +793,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Regime history modal listeners
     const btnOpenHistory = document.getElementById('open-regime-history');
     const btnCloseHistory = document.getElementById('close-regime-history');
+    const btnExportRegime = document.getElementById('btn-export-regime-csv');
     const historyModal = document.getElementById('regime-history-modal');
     if (btnOpenHistory) {
         btnOpenHistory.addEventListener('click', openRegimeHistoryModal);
+    }
+    if (btnExportRegime) {
+        btnExportRegime.addEventListener('click', exportRegimeHistoryToCSV);
     }
     if (btnCloseHistory && historyModal) {
         btnCloseHistory.addEventListener('click', () => {
@@ -1518,10 +1522,13 @@ function getRegimeDelta(history) {
   return { value: 0, label: '• 0', cls: 'flat' };
 }
 
+let latestRegimeHistory = [];
+
 async function openRegimeHistoryModal() {
   try {
-    const res = await fetch('/api/breadth-history?limit=30');
+    const res = await fetch('/api/breadth-history?limit=90');
     const data = await res.json();
+    latestRegimeHistory = data.history || [];
     const body = document.getElementById('regime-history-body');
     if (!body) return;
 
@@ -1547,7 +1554,7 @@ async function openRegimeHistoryModal() {
           </tr>
         </thead>
         <tbody>
-          ${(data.history || []).map(r => `
+          ${(latestRegimeHistory).map(r => `
             <tr>
               <td>${r.date}</td>
               <td>${r.time}</td>
@@ -1561,6 +1568,27 @@ async function openRegimeHistoryModal() {
       </table>`;
     document.getElementById('regime-history-modal')?.classList.remove('hidden');
   } catch (_) {}
+}
+
+function exportRegimeHistoryToCSV() {
+  if (!latestRegimeHistory || latestRegimeHistory.length === 0) {
+    alert("No data available to export.");
+    return;
+  }
+  let csv = "Date,Time,Regime Band,Regime Score,Advances,Declines,% Above SMA21,% Above SMA50,% Near 52W High,Avg Analyst Rating\n";
+  latestRegimeHistory.forEach(r => {
+    csv += `"${r.date}","${r.time}","${r.regimeBand}",${r.regimeScore},${r.advances || 0},${r.declines || 0},${r.pctAboveSMA21},${r.pctAboveSMA50},${r.pctNear52High},${r.avgRecommend || 0}\n`;
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", `regime_breadth_history_${new Date().toISOString().split('T')[0]}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 async function getBreadthHistory(limit = 20) {
