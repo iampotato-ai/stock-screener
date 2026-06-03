@@ -5463,3 +5463,73 @@ body[data-theme="light"] .sector-pill-progress-track {
     background: transparent;
     border-right: none;
 }
+
+/* Smart Alert Log Panel Styles */
+.alert-log-panel {
+  display: flex;
+  flex-direction: column;
+  background: rgba(30, 41, 59, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: var(--blur-fx, blur(12px));
+  -webkit-backdrop-filter: var(--blur-fx, blur(12px));
+}
+
+.alert-log-body::-webkit-scrollbar {
+  width: 4px;
+}
+.alert-log-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.alert-log-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+.alert-log-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.alert-log-entry {
+  display: flex;
+  flex-direction: column;
+  padding: 0.65rem 0.8rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--color-text-muted, #94a3b8);
+  transition: transform 0.2s ease, background-color 0.2s ease;
+  animation: alertEntrance 250ms ease-out forwards;
+}
+
+.alert-log-entry:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+@keyframes alertEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Alert log entry type modifiers */
+.alert-log-entry--bullish {
+  border-left-color: var(--color-success, #10b981) !important;
+}
+.alert-log-entry--swing {
+  border-left-color: var(--accent-teal, #14b8a6) !important;
+}
+.alert-log-entry--kronos {
+  border-left-color: var(--accent-amber, #fbbf24) !important;
+}
+.alert-log-entry--deal {
+  border-left-color: var(--accent-orange, #f97316) !important;
+}
+.alert-log-entry--info {
+  border-left-color: var(--color-text-muted, #94a3b8) !important;
+}
+

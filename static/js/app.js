@@ -288,6 +288,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup Watchlist state
     initWatchlist();
 
+    // Initialize Smart Alert Engine UI
+    if (typeof AlertEngine !== 'undefined') {
+        AlertEngine.initUI();
+    }
+
     // Primary Workspace Navigation Tabs
     const workspaceTabs = document.querySelectorAll('.workspace-tab');
     const workspaceViews = document.querySelectorAll('.workspace-view');
@@ -1072,6 +1077,12 @@ async function runScan() {
             runRRScreen();
         }
         
+        // Trigger Smart Alert Engine for swing flips
+        if (typeof AlertEngine !== 'undefined' && previousScanMap && Object.keys(previousScanMap).length > 0) {
+            const wlSymbols = new Set((watchlistStocks || []).map(s => s.split(':').pop().toUpperCase()));
+            AlertEngine.checkSwingFlips(previousScanMap, stocksData, wlSymbols);
+        }
+        
     } catch (e) {
         console.error("Scan error:", e);
         showErrorState("Client Error: " + (e.stack || e.message || String(e)));
@@ -1518,6 +1529,11 @@ async function renderBreadthTrendSparkline() {
   try {
     const history = await getBreadthHistory(20);
     if (!history || history.length < 2) return;
+
+    // Trigger Smart Alert Engine for Regime Delta
+    if (typeof AlertEngine !== 'undefined' && typeof marketBreadth !== 'undefined' && typeof marketBreadth.regimeScore !== 'undefined') {
+        AlertEngine.checkRegimeDelta(marketBreadth.regimeScore, history);
+    }
 
     const delta = getRegimeDelta(history);
     const deltaEl = document.getElementById('regime-score-delta');
@@ -2010,8 +2026,8 @@ function filterAndRender() {
             if (currentSetupFilter === 'Earnings-Safe') {
                 const eDate = stock.upcoming_earnings;
                 if (eDate) {
-                    const diffTime = new Date(eDate) - new Date();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    const [ey, em, ed] = eDate.split('-').map(Number);
+                    const diffDays = Math.round((new Date(ey, em - 1, ed) - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
                     if (diffDays >= 0 && diffDays <= 5) {
                         matchesSetup = false;
                     }
@@ -3255,6 +3271,12 @@ function initWatchlist() {
                         }
                     });
 
+                    // Trigger Smart Alert Engine for Kronos forecast spikes
+                    if (typeof AlertEngine !== 'undefined') {
+                        const wlSymbols = new Set((watchlistStocks || []).map(s => s.split(':').pop().toUpperCase()));
+                        AlertEngine.checkKronosSpikes(watchlistKronosRankings, wlSymbols);
+                    }
+
                     const saveFunc = window.saveWatchlistSections || (typeof saveWatchlistSections === 'function' ? saveWatchlistSections : null);
                     if (saveFunc) {
                         saveFunc(true);
@@ -4369,6 +4391,12 @@ async function fetchDeals(forceFetch = false) {
             dealsTradeDate = data.tradeDate || '';
             dealsMarketStatus = data.marketStatus || '';
             lastFetchedDealsSymbols = [...watchlistStocks];
+            
+            // Trigger Smart Alert Engine for Large Deals
+            if (typeof AlertEngine !== 'undefined') {
+                const wlSymbols = new Set((watchlistStocks || []).map(s => s.split(':').pop().toUpperCase()));
+                AlertEngine.checkLargeDeals(loadedDeals, wlSymbols);
+            }
         }
     } catch (e) {
         console.error('Error fetching deals:', e);
@@ -6043,9 +6071,9 @@ function openTradeDrawer(ticker) {
         warningEl.style.display = 'none';
         const eDate = stock.upcoming_earnings;
         if (eDate) {
-            const diffTime = new Date(eDate) - new Date();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            const formatted = new Date(eDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            const [ey, em, ed] = eDate.split('-').map(Number);
+            const diffDays = Math.round((new Date(ey, em - 1, ed) - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
+            const formatted = new Date(ey, em - 1, ed).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
             
             if (diffDays >= 0 && diffDays <= 5) {
                 warningEl.style.display = 'block';
