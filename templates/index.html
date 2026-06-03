@@ -577,6 +577,28 @@
                     <input type="hidden" id="filter-swing" value="all">
                 </div>
             </div>
+
+            <!-- Candlestick Pattern Filter -->
+            <div class="range-filter-group">
+                <label>Candlestick Pattern</label>
+                <div class="custom-select-wrapper" id="candle-select-wrapper">
+                    <button class="btn btn-secondary select-trigger" id="btn-candle" style="min-width: 150px; height: 32px; padding: 0 0.8rem; font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Candlestick Pattern">
+                        <span id="selected-candle-label">All Patterns</span>
+                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="select-dropdown glass-panel hidden" id="candle-dropdown" style="min-width: 170px; top: calc(100% + 4px); z-index: 10;">
+                        <div class="select-dropdown-item active" data-value="all">All Patterns</div>
+                        <div class="select-dropdown-item" data-value="Hammer">Hammer 🔨</div>
+                        <div class="select-dropdown-item" data-value="Shooting Star">Shooting Star 🌠</div>
+                        <div class="select-dropdown-item" data-value="Morning Star">Morning Star 🌅</div>
+                        <div class="select-dropdown-item" data-value="Evening Star">Evening Star 🌌</div>
+                        <div class="select-dropdown-item" data-value="Bullish Engulfing">Bullish Engulfing 🟢</div>
+                        <div class="select-dropdown-item" data-value="Bearish Engulfing">Bearish Engulfing 🔴</div>
+                        <div class="select-dropdown-item" data-value="Doji">Doji ⚖️</div>
+                    </div>
+                    <input type="hidden" id="filter-candle" value="all">
+                </div>
+            </div>
             
             
             <!-- Quick Sort Swing Button -->

@@ -22,6 +22,7 @@ warnings.simplefilter('ignore', UserWarning)
 from journal_math import compute_pnl_and_r
 from rrg_math import compute_jdk_rs, compute_quadrant
 from forecast_math import compute_forecast_metrics
+import pattern_detection
 
 
 
@@ -186,6 +187,20 @@ def init_db():
             UNIQUE(week, sector)
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS pattern_cache (
+            ticker TEXT PRIMARY KEY,
+            generated_at TEXT NOT NULL,
+            pattern_name TEXT,
+            pattern_grade TEXT,
+            pattern_desc TEXT,
+            candlestick_json TEXT
+        )
+    ''')
+    try:
+        c.execute("ALTER TABLE pattern_cache ADD COLUMN candlestick_json TEXT")
+    except Exception:
+        pass
     
     conn.commit()
     conn.close()
@@ -1071,6 +1086,37 @@ def classify_technical_pattern(history):
                     "description": f"{desc} Sideways consolidation. Price has drifted to the upper base resistance."
                 }
 
+    # Check for Candlestick Patterns as fallback if no geometric pattern matched
+    try:
+        candlesticks = pattern_detection.detect_candlestick_patterns(history)
+        if candlesticks:
+            for p in ["Morning Star", "Evening Star", "Hammer", "Shooting Star", "Engulfing", "Doji"]:
+                if p in candlesticks:
+                    val = candlesticks[p]
+                    if p == "Engulfing":
+                        p_name = "Bullish Engulfing" if val > 0 else "Bearish Engulfing"
+                    else:
+                        p_name = p
+                    
+                    grade = "A" if "Star" in p_name else "B+" if p_name in ["Hammer", "Shooting Star", "Bullish Engulfing", "Bearish Engulfing"] else "B"
+                    
+                    desc_map = {
+                        "Morning Star": "Morning Star: high probability 3-candle bullish reversal.",
+                        "Evening Star": "Evening Star: high probability 3-candle bearish reversal.",
+                        "Hammer": "Hammer candlestick pattern: potential bullish reversal in short-term downtrend.",
+                        "Shooting Star": "Shooting Star candlestick pattern: potential bearish reversal in short-term uptrend.",
+                        "Bullish Engulfing": "Bullish Engulfing: 2-candle bullish engulfing reversal.",
+                        "Bearish Engulfing": "Bearish Engulfing: 2-candle bearish engulfing reversal.",
+                        "Doji": "Doji: Price equilibrium / consolidation candle."
+                    }
+                    return {
+                        "pattern": p_name,
+                        "grade": grade,
+                        "description": desc_map.get(p_name, f"Candlestick pattern {p_name} detected.")
+                    }
+    except Exception as e:
+        print(f"[Pattern Integration] Error in fallback candlestick detection: {e}")
+
     return {
         "pattern": "Trend Continuation",
         "grade": "B",
@@ -1080,42 +1126,71 @@ def classify_technical_pattern(history):
 def analyze_single_stock(stock):
     try:
         ticker = stock["clean_ticker"]
-        history = fetch_historical_prices(ticker, range_str="6mo")
-        if history:
-            result = classify_technical_pattern(history)
-            stock["pattern_name"] = result["pattern"]
-            stock["pattern_grade"] = result["grade"]
-            stock["pattern_desc"] = result["description"]
-        else:
-            print(f"[Yahoo Finance] Fetch failed for {ticker} (silently falling back to Trend Continuation)")
-            stock["pattern_name"] = "Trend Continuation"
-            stock["pattern_grade"] = "B"
-            stock["pattern_desc"] = "Price in standard swing configuration. Historical daily data fetch not available."
+        
+        # 1. Check SQLite Cache First (24-hour TTL)
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("SELECT pattern_name, pattern_grade, pattern_desc, candlestick_json, generated_at FROM pattern_cache WHERE ticker = ?", (ticker,))
+        row = c.fetchone()
+        conn.close()
+        
+        cache_valid = False
+        if row:
+            p_name, p_grade, p_desc, cand_json, gen_at_str = row
+            try:
+                gen_time = datetime.fromisoformat(gen_at_str)
+                if (datetime.now() - gen_time).total_seconds() < 24 * 3600:
+                    cache_valid = True
+                    stock["pattern_name"] = p_name
+                    stock["pattern_grade"] = p_grade
+                    stock["pattern_desc"] = p_desc
+                    stock["candlestick_patterns"] = json.loads(cand_json) if cand_json else {}
+            except Exception:
+                pass
+                
+        # 2. Live Calculation on Cache Miss
+        if not cache_valid:
+            history = fetch_historical_prices(ticker, range_str="6mo")
+            if history:
+                result = classify_technical_pattern(history)
+                cand_patterns = pattern_detection.detect_candlestick_patterns(history)
+                
+                p_name = result["pattern"]
+                p_grade = result["grade"]
+                p_desc = result["description"]
+                
+                stock["pattern_name"] = p_name
+                stock["pattern_grade"] = p_grade
+                stock["pattern_desc"] = p_desc
+                stock["candlestick_patterns"] = cand_patterns
+                
+                # Write back to SQLite
+                conn = sqlite3.connect('scan_history.db')
+                c = conn.cursor()
+                c.execute(
+                    "INSERT OR REPLACE INTO pattern_cache (ticker, generated_at, pattern_name, pattern_grade, pattern_desc, candlestick_json) VALUES (?, ?, ?, ?, ?, ?)",
+                    (ticker, datetime.now().isoformat(), p_name, p_grade, p_desc, json.dumps(cand_patterns))
+                )
+                conn.commit()
+                conn.close()
+            else:
+                stock["pattern_name"] = "Trend Continuation"
+                stock["pattern_grade"] = "B"
+                stock["pattern_desc"] = "Price in standard swing configuration. Historical daily data fetch not available."
+                stock["candlestick_patterns"] = {}
     except Exception as e:
-        print(f"[Yahoo Finance] Error analyzing setup for {ticker}: {e}")
+        print(f"[Pattern Cache/Yahoo Finance] Error analyzing setup for {ticker}: {e}")
         stock["pattern_name"] = "Trend Continuation"
         stock["pattern_grade"] = "B"
         stock["pattern_desc"] = f"Analysis error: {e}"
+        stock["candlestick_patterns"] = {}
 
 def populate_screener_intelligence(stocks_list):
     if not stocks_list:
         return
-    # Analyze the top 50 momentum stocks (sorted by swing score and relative volume)
-    stocks_to_analyze = sorted(
-        stocks_list, 
-        key=lambda x: (x.get("swingscore", 0), x.get("relative_volume", 0)), 
-        reverse=True
-    )[:50]
-    
+    # Run pattern analysis in parallel for ALL matched stocks
     with ThreadPoolExecutor(max_workers=8) as executor:
-        executor.map(analyze_single_stock, stocks_to_analyze)
-        
-    analyzed_tickers = {s["clean_ticker"] for s in stocks_to_analyze}
-    for stock in stocks_list:
-        if stock["clean_ticker"] not in analyzed_tickers:
-            stock["pattern_name"] = "Trend Continuation"
-            stock["pattern_grade"] = "B"
-            stock["pattern_desc"] = "Stock qualifies for momentum trend. Setup analysis limited to top 50 matches."
+        executor.map(analyze_single_stock, stocks_list)
 
 # ── Kronos AI Predictor Loading ──
 kronos_predictor = None
@@ -1268,6 +1343,10 @@ def get_setup_analysis():
         )
         
     result = classify_technical_pattern(history)
+    try:
+        cand_patterns = pattern_detection.detect_candlestick_patterns(history)
+    except Exception:
+        cand_patterns = {}
     
     # Calculate indicators checklist
     closes = [day["close"] for day in history]
@@ -1384,6 +1463,7 @@ def get_setup_analysis():
         ai_confidence_score=ai_confidence_score,
         forecast_metrics=forecast_metrics,
         forecast_data=forecast_list,
+        candlestick_patterns=cand_patterns,
         chart_data=[{
             "date": d["date"],
             "open": d["open"],
