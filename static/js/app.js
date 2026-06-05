@@ -98,6 +98,41 @@ function updateStatCards(stocks) {
   Object.assign(statCardPrev, counts);
 }
 
+// --- Shared UI factories ---
+function makeBadge(text, classNames, title = '') {
+    return `<span class="badge ${classNames}"${title ? ` title="${escapeHtml(title)}"` : ''}>${text}</span>`;
+}
+
+function makeSetupPill(label, confidence, tags = []) {
+    let pillClass = 'setup-pill-early';
+    let icon = '';
+    if (label.includes('VCP')) { pillClass = 'setup-pill-vcp'; icon = '🌀 '; }
+    else if (label.includes('Cup & Handle')) { pillClass = 'setup-pill-cup'; icon = '🍺 '; }
+    else if (label.includes('High Tight Flag')) { pillClass = 'setup-pill-flag'; icon = '🚩 '; }
+    else if (label.includes('Long Base')) { pillClass = 'setup-pill-base'; icon = '🧱 '; }
+    else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
+    else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
+    else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
+    else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
+    else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
+    else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
+    
+    const titleStr = tags && tags.length
+        ? `Tags: ${tags.join(', ')}\nConfidence: ${confidence}%`
+        : `Confidence: ${confidence}%`;
+    return `<span class="setup-pill ${pillClass}" title="${escapeHtml(titleStr)}">${icon}${label}</span>`;
+}
+
+function makeFilterChip(value, label, activeValue, extraClass = '') {
+    const isActive = activeValue === value;
+    return `<button class="filter-chip${isActive ? ' active' : ''}${extraClass ? ' ' + extraClass : ''}" data-value="${value}" role="button" tabindex="0">${label}</button>`;
+}
+
+// Expose factories to window
+window.makeBadge = makeBadge;
+window.makeSetupPill = makeSetupPill;
+window.makeFilterChip = makeFilterChip;
+
 // Auto Refresh state
 let autoRefreshInterval = null;
 let secondsRemaining = 0;
@@ -334,22 +369,40 @@ document.addEventListener('DOMContentLoaded', () => {
             const rc = document.getElementById('rrg-container');
             if (rc) rc.style.display = 'flex';
             if (typeof renderRRG === 'function') renderRRG();
+        } else if (viewName === 'intraday') {
+            const ic = document.getElementById('intraday-container');
+            if (ic) ic.style.display = 'flex';
+            if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
         } else if (viewName === 'ai-forecast') {
             if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
-            if (currentTab === 'rrg' || currentTab === 'journal') {
-                const overviewBtn = document.querySelector('.tab-btn[data-tab="overview"]');
-                if (overviewBtn) {
-                    overviewBtn.click();
+            if (currentTab === 'journal') {
+                const watchlistTab = document.querySelector('.workspace-tab[data-view="watchlist"]');
+                if (watchlistTab) {
+                    watchlistTab.click();
                 } else {
-                    currentTab = 'overview';
-                    const mainContainer = document.getElementById('main-table-container');
-                    const tableFooter = document.getElementById('table-footer');
-                    if (mainContainer) mainContainer.style.display = 'block';
-                    if (tableFooter) tableFooter.style.display = 'flex';
-                    filterAndRender();
+                    switchWorkspace('watchlist');
                 }
+                return;
+            }
+            if (currentTab === 'rrg') {
+                const rrgTab = document.querySelector('.workspace-tab[data-view="rrg"]');
+                if (rrgTab) {
+                    rrgTab.click();
+                } else {
+                    switchWorkspace('rrg');
+                }
+                return;
+            }
+            if (currentTab === 'intraday') {
+                const intradayTab = document.querySelector('.workspace-tab[data-view="intraday"]');
+                if (intradayTab) {
+                    intradayTab.click();
+                } else {
+                    switchWorkspace('intraday');
+                }
+                return;
             }
         }
         
@@ -855,6 +908,36 @@ document.addEventListener('DOMContentLoaded', () => {
             const btn = e.target.closest('.tab-btn');
             if (!btn || btn.classList.contains('active')) return;
             
+            // Redirect from sub-tabs promoted to top-level workspaces
+            const tabName = btn.dataset.tab;
+            if (tabName === 'journal') {
+                const watchlistTab = document.querySelector('.workspace-tab[data-view="watchlist"]');
+                if (watchlistTab) {
+                    watchlistTab.click();
+                } else {
+                    switchWorkspace('watchlist');
+                }
+                return;
+            }
+            if (tabName === 'rrg') {
+                const rrgTab = document.querySelector('.workspace-tab[data-view="rrg"]');
+                if (rrgTab) {
+                    rrgTab.click();
+                } else {
+                    switchWorkspace('rrg');
+                }
+                return;
+            }
+            if (tabName === 'intraday') {
+                const intradayTab = document.querySelector('.workspace-tab[data-view="intraday"]');
+                if (intradayTab) {
+                    intradayTab.click();
+                } else {
+                    switchWorkspace('intraday');
+                }
+                return;
+            }
+
             // Update active tab button
             screenerTabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
@@ -2331,7 +2414,7 @@ function renderTable() {
         if (stock.scanDelta) {
             rowClass += ' row-highlight-change';
         }
-        html += `<tr class="${rowClass.trim()}" onclick="openTradeDrawer('${stock.clean_ticker}')">`;
+        html += `<tr data-ticker="${stock.clean_ticker}" class="${rowClass.trim()}" onclick="openTradeDrawer('${stock.clean_ticker}')">`;
         
         columnsConfig.forEach(col => {
             if (!col.isVisible) return;
@@ -2386,12 +2469,21 @@ function renderTable() {
                 if (stock.scanDelta && stock.scanDelta.message) {
                     changeRibbonHtml = `<div class="change-ribbon" title="Recently updated">${stock.scanDelta.message}</div>`;
                 }
+
+                // Group minor signals in popover
+                const inPopover = [insideBarDotHtml, volDryUpDotHtml, maFlirtingDotHtml, divergenceDotHtml].filter(Boolean);
+                const popoverHtml = inPopover.length
+                    ? `<span class="signal-strip" tabindex="0" title="${inPopover.length} minor signals — hover or focus to view">
+                         ···
+                         <span class="signal-popover">${inPopover.join('')}</span>
+                       </span>`
+                    : '';
                 
                 html += `
                     <td data-column="ticker" class="ticker-col" style="position:relative;">
                         ${changeRibbonHtml}
                         <div class="symbol-cell">
-                            <span class="ticker-box">${stock.clean_ticker}${sectorDotHtml}${insideBarDotHtml}${volDryUpDotHtml}${maFlirtingDotHtml}${divergenceDotHtml}${high52wDotHtml}</span>
+                            <span class="ticker-box">${stock.clean_ticker}${sectorDotHtml}${high52wDotHtml}${popoverHtml}</span>
                             <div style="display: flex; gap: 0.25rem;">
                                 <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); openTradingView('${stock.clean_ticker}')" title="Open Chart">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -2406,25 +2498,11 @@ function renderTable() {
             } else if (col.id === 'setupLabel') {
                 const label = stock.setupLabel || 'Early Watch';
                 const conf = stock.setupConfidence || 0;
-                let pillClass = 'setup-pill-early';
-                let icon = '';
-                if (label.includes('VCP')) { pillClass = 'setup-pill-vcp'; icon = '🌀 '; }
-                else if (label.includes('Cup & Handle')) { pillClass = 'setup-pill-cup'; icon = '🍺 '; }
-                else if (label.includes('High Tight Flag')) { pillClass = 'setup-pill-flag'; icon = '🚩 '; }
-                else if (label.includes('Long Base')) { pillClass = 'setup-pill-base'; icon = '🧱 '; }
-                else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
-                else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
-                else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
-                else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
-                else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
-                else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
-                
-                const tagsStr = (stock.setupTags || []).join(', ');
-                const titleStr = tagsStr ? `Tags: ${tagsStr}\nConfidence: ${conf}%` : `Confidence: ${conf}%`;
+                const setupPillHtml = makeSetupPill(label, conf, stock.setupTags);
                 
                 html += `
                     <td data-column="setupLabel" class="text-center">
-                        <span class="setup-pill ${pillClass}" title="${escapeHtml(titleStr)}">${icon}${label}</span>
+                        ${setupPillHtml}
                     </td>
                 `;
             } else if (col.id === 'mtfScore') {
@@ -6559,6 +6637,7 @@ function updateTradeParams() {
     const entry = parseFloat(entryEl.value) || 0;
     const stop = parseFloat(stopEl.value) || 0;
     
+    let riskPct = 0;
     if (entry <= 0 || stop >= entry) {
         document.getElementById('drawer-risk-per-share').textContent = '₹0.00';
         document.getElementById('drawer-risk-pct').textContent = '0.00%';
@@ -6569,7 +6648,7 @@ function updateTradeParams() {
         document.getElementById('drawer-t3').textContent = '₹0.00';
     } else {
         const riskPerShare = entry - stop;
-        const riskPct = (riskPerShare / entry) * 100;
+        riskPct = (riskPerShare / entry) * 100;
         let qty = Math.floor(riskAmount / riskPerShare);
         if (qty < 1) qty = 0;
         const capitalReq = qty * entry;
@@ -6584,6 +6663,36 @@ function updateTradeParams() {
         document.getElementById('drawer-t1').textContent = `₹${t1.toFixed(2)}`;
         document.getElementById('drawer-t2').textContent = `₹${t2.toFixed(2)}`;
         document.getElementById('drawer-t3').textContent = `₹${t3.toFixed(2)}`;
+    }
+    
+    // Risk Warning Banner logic
+    const bannerEl = document.getElementById('drawer-risk-banner');
+    if (bannerEl) {
+        bannerEl.innerHTML = '';
+        bannerEl.style.display = 'none';
+        
+        const warnings = [];
+        
+        // 1. Stop loss risk > 15%
+        if (riskPct > 15) {
+            warnings.push(`⚠️ Stop loss risk is extremely high (${riskPct.toFixed(2)}% > 15% safety floor). Tighten stop or reduce sizing!`);
+        }
+        
+        // 2. Upcoming earnings within 3 days
+        if (window.currentTradeStock && window.currentTradeStock.upcoming_earnings) {
+            const eDate = window.currentTradeStock.upcoming_earnings;
+            const [ey, em, ed] = eDate.split('-').map(Number);
+            const diffDays = Math.round((new Date(ey, em - 1, ed) - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 0 && diffDays <= 3) {
+                const formatted = new Date(ey, em - 1, ed).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                warnings.push(`⚠️ Upcoming Earnings in ${diffDays} day(s) (${formatted}). High gap risk!`);
+            }
+        }
+        
+        if (warnings.length > 0) {
+            bannerEl.innerHTML = warnings.map(w => `<div class="risk-warning-item">${w}</div>`).join('');
+            bannerEl.style.display = 'flex';
+        }
     }
     
     const notesEl = document.getElementById('drawer-notes');
@@ -9543,18 +9652,7 @@ function renderRRTable(setups) {
         const entryStyle = stock.rr_method === '52w_breakout' ? 'color: var(--accent-green); font-weight: 700;' : 'color: var(--color-text-secondary);';
         
         const label = stock.setupLabel || 'Early Watch';
-        let pillClass = 'setup-pill-early';
-        let icon = '';
-        if (label.includes('VCP')) { pillClass = 'setup-pill-vcp'; icon = '🌀 '; }
-        else if (label.includes('Cup & Handle')) { pillClass = 'setup-pill-cup'; icon = '🍺 '; }
-        else if (label.includes('High Tight Flag')) { pillClass = 'setup-pill-flag'; icon = '🚩 '; }
-        else if (label.includes('Long Base')) { pillClass = 'setup-pill-base'; icon = '🧱 '; }
-        else if (label.startsWith('Breakout Ready')) { pillClass = 'setup-pill-breakout'; icon = '🚀 '; }
-        else if (label.startsWith('Pullback to MA')) { pillClass = 'setup-pill-pullback'; icon = '📉 '; }
-        else if (label.startsWith('Inside Bar Coil')) { pillClass = 'setup-pill-coil'; icon = '🌀 '; }
-        else if (label.startsWith('Stage 2 Camp')) { pillClass = 'setup-pill-camp'; icon = '⛺ '; }
-        else if (label.startsWith('Sector Leader')) { pillClass = 'setup-pill-leader'; icon = '👑 '; }
-        else if (label.startsWith('Momentum Continuation')) { pillClass = 'setup-pill-cont'; icon = '📈 '; }
+        const setupPillHtml = makeSetupPill(label, stock.setupConfidence || 0, stock.setupTags || []);
         
         const swingScore = stock.swingscore != null ? stock.swingscore : 0;
         const swingBand = stock.swingband || 'weak';
@@ -9567,7 +9665,7 @@ function renderRRTable(setups) {
                     <span class="ticker-box">${stock.clean_ticker}</span>
                 </td>
                 <td class="text-center">
-                    <span class="setup-pill ${pillClass}">${icon}${label}</span>
+                    ${setupPillHtml}
                 </td>
                 <td class="text-right" style="${entryStyle}">₹${stock.rr_entry.toFixed(2)}</td>
                 <td class="text-right" style="color: var(--accent-red); font-weight: 600;">₹${stock.rr_stop.toFixed(2)} <span style="font-size:0.75rem; color: var(--color-text-muted);">(${stock.rr_risk_pct.toFixed(1)}%)</span></td>
