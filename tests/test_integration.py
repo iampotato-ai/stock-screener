@@ -59,6 +59,28 @@ def use_test_db(monkeypatch, tmp_path):
             generated_at TEXT
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS scan_stats (
+            date TEXT PRIMARY KEY,
+            total_scanned INTEGER,
+            green_dots INTEGER,
+            orange_dots INTEGER,
+            red_dots INTEGER,
+            avg_swing_score REAL,
+            breadth_ratio REAL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS market_regime_history (
+            date TEXT PRIMARY KEY,
+            state TEXT,
+            index_level REAL,
+            ma20 REAL,
+            ma50 REAL,
+            breadth_ratio REAL,
+            change_reason TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
     
@@ -229,3 +251,39 @@ def test_ensemble_forecast_route(client, monkeypatch):
     assert pytest.approx(data["ensemble_path"][0]) == 101.2
     assert "conviction" in data
     assert "agreement_matrix" in data
+
+
+def test_breadth_history_limit(client):
+    # Insert multiple breadth history records
+    db_file = sqlite3.connect("scan_history.db")
+    c = db_file.cursor()
+    c.execute("DELETE FROM breadth_history")
+    for i in range(15):
+        date_str = f"2026-06-{i+1:02d}"
+        c.execute("""
+            INSERT INTO breadth_history (date, time, advances, declines, unchanged, pct_sma21, pct_sma50, pct_52high, avg_recommend, regime_score, regime_band)
+            VALUES (?, '15:30', 200, 100, 50, 0.65, 0.55, 0.45, 1.8, 8, 'Bullish')
+        """, (date_str,))
+    db_file.commit()
+    db_file.close()
+
+    # Limit to 5
+    res = client.get("/api/breadth-history?limit=5")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert "history" in data
+    history = data["history"]
+    assert len(history) == 5
+    # Order should be descending by date
+    assert history[0]["date"] == "2026-06-15"
+    assert history[4]["date"] == "2026-06-11"
+
+    # Default limit is 30, which should return all 15 we inserted
+    res_all = client.get("/api/breadth-history")
+    assert res_all.status_code == 200
+    data_all = res_all.get_json()
+    assert "history" in data_all
+    history_all = data_all["history"]
+    assert len(history_all) == 15
+
+

@@ -12,6 +12,8 @@ def test_detect_doji():
     ]
     result = detect_candlestick_patterns(history)
     assert "Doji" in result
+    assert result.get("Hammer", 0) == 0, "Hammer must NOT co-fire on a Doji candle"
+    assert result.get("Shooting Star", 0) == 0, "Shooting Star must NOT co-fire on a Doji candle"
 
 def test_detect_hammer():
     # Hammer: small body near high, long lower shadow in downtrend

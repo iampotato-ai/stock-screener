@@ -220,6 +220,10 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
                     <span>RRG Rotation</span>
                 </button>
+                <button class="workspace-tab" data-view="intraday">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <span>Intraday Pro</span>
+                </button>
                 <button class="workspace-tab" data-view="ai-forecast">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"></path><path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"></path></svg>
                     <span>AI Forecast</span>
@@ -441,75 +445,86 @@
             </div>
     
             <!-- Main Dashboard Actions -->
-            <section class="dashboard-controls glass-panel">
-                <div class="search-box">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <input type="text" id="search-input" placeholder="Search by ticker or company name...">
+            <!-- Main Dashboard Actions -->
+            <section class="dashboard-controls glass-panel" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem;">
+                <div class="screener-header-primary" style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; flex-wrap: wrap;">
+                        <div class="search-box" style="margin-right: 0; min-width: 250px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <input type="text" id="search-input" placeholder="Search by ticker or company name...">
+                        </div>
+                        
+                        <div class="custom-select-wrapper" id="sector-select-wrapper">
+                            <button class="btn btn-secondary select-trigger" id="btn-sectors" title="Filter by sector">
+                                <span id="selected-sector-label">All Sectors</span>
+                                <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <div class="select-dropdown glass-panel hidden" id="sectors-dropdown">
+                                <!-- Sector options will be dynamically rendered here in JS -->
+                            </div>
+                        </div>
+
+                        <div class="custom-select-wrapper" id="preset-select-wrapper">
+                            <button class="btn btn-secondary select-trigger" id="btn-presets" style="min-width: 160px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Load Filter Preset">
+                                <span id="selected-preset-label">Load Preset...</span>
+                                <svg class="select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <div class="select-dropdown glass-panel hidden" id="preset-dropdown" style="min-width: 200px; top: calc(100% + 4px);">
+                                <!-- populated via JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" id="btn-scan" style="flex-shrink: 0;">
+                        <span class="btn-spinner hidden" id="scan-spinner"></span>
+                        <span class="btn-text">Scan Now</span>
+                    </button>
                 </div>
                 
-                <div class="filters-and-actions">
-                    <div class="custom-select-wrapper" id="sector-select-wrapper">
-                        <button class="btn btn-secondary select-trigger" id="btn-sectors" title="Filter by sector">
-                            <span id="selected-sector-label">All Sectors</span>
-                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                        </button>
-                        <div class="select-dropdown glass-panel hidden" id="sectors-dropdown">
-                            <!-- Sector options will be dynamically rendered here in JS -->
-                        </div>
-                    </div>
-                    
-                    <div class="column-selector-wrapper">
-                        <button class="btn btn-secondary" id="btn-columns" title="Manage table columns">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
-                            <span>Columns</span>
-                        </button>
-                        <div class="column-dropdown glass-panel hidden" id="column-dropdown">
-                            <div class="column-dropdown-header" style="display:flex; justify-content:space-between; align-items:center;">
-                                <span>Visible Columns</span>
-                                <span style="font-size:0.65rem; color:var(--color-text-muted); text-transform:none; font-weight:normal;">Drag to reorder</span>
-                            </div>
-                            <div class="column-checkboxes" id="column-checkboxes">
-                                <!-- Dynamically generated checkboxes go here -->
+                <div class="screener-header-secondary" style="display: flex; align-items: center; justify-content: space-between; width: 100%; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 0.75rem; gap: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <div class="column-selector-wrapper">
+                            <button class="btn btn-secondary" id="btn-columns" title="Manage table columns">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+                                <span class="btn-label">Columns</span>
+                            </button>
+                            <div class="column-dropdown glass-panel hidden" id="column-dropdown">
+                                <div class="column-dropdown-header" style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span>Visible Columns</span>
+                                    <span style="font-size:0.65rem; color:var(--color-text-muted); text-transform:none; font-weight:normal;">Drag to reorder</span>
+                                </div>
+                                <div class="column-checkboxes" id="column-checkboxes">
+                                    <!-- Dynamically generated checkboxes go here -->
+                                </div>
                             </div>
                         </div>
+        
+                        <button class="btn btn-secondary" id="btn-toggle-density" title="Toggle Compact / Comfortable View">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+                            <span id="density-label" class="btn-label">Compact</span>
+                        </button>
                     </div>
-    
-                    <button class="btn btn-secondary" id="btn-toggle-density" title="Toggle Compact / Comfortable View">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
-                        <span id="density-label">Compact</span>
-                    </button>
 
-                <button class="btn btn-secondary" id="btn-export" title="Export all tabs to a multi-sheet Excel file">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    <span>Export Excel</span>
-                </button>
-                <button class="btn btn-secondary" id="btn-save-snapshot" title="Save current base scan to history for metric tracking">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                    <span>Snapshot</span>
-                </button>
-                <div class="custom-select-wrapper" id="preset-select-wrapper" style="margin-right: 1rem;">
-                    <button class="btn btn-secondary select-trigger" id="btn-presets" style="min-width: 160px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Load Filter Preset">
-                        <span id="selected-preset-label">Load Preset...</span>
-                        <svg class="select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="select-dropdown glass-panel hidden" id="preset-dropdown" style="min-width: 200px; top: calc(100% + 4px);">
-                        <!-- populated via JS -->
+                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                        <div class="auto-refresh-toggle" style="display: flex; align-items: center; gap: 0.5rem;">
+                            <label class="switch" title="Auto-refresh every 2 minutes during market hours">
+                                <input type="checkbox" id="auto-refresh-checkbox">
+                                <span class="slider round"></span>
+                            </label>
+                            <span style="font-size: 0.8rem; color: var(--color-text-secondary);" class="btn-label">Auto Refresh</span>
+                            <span id="auto-refresh-countdown" style="font-size: 0.75rem; color: var(--accent-blue); width: 25px; display: inline-block;"></span>
+                        </div>
+
+                        <button class="btn btn-secondary" id="btn-export" title="Export all tabs to a multi-sheet Excel file">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span class="btn-label">Export Excel</span>
+                        </button>
+                        <button class="btn btn-secondary" id="btn-save-snapshot" title="Save current base scan to history for metric tracking">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                            <span class="btn-label">Snapshot</span>
+                        </button>
                     </div>
                 </div>
-
-                <div class="auto-refresh-toggle" style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.5rem;">
-                    <label class="switch" title="Auto-refresh every 2 minutes during market hours">
-                        <input type="checkbox" id="auto-refresh-checkbox">
-                        <span class="slider round"></span>
-                    </label>
-                    <span style="font-size: 0.8rem; color: var(--color-text-secondary);">Auto Refresh</span>
-                    <span id="auto-refresh-countdown" style="font-size: 0.75rem; color: var(--accent-blue); width: 25px; display: inline-block;"></span>
-                </div>
-                <button class="btn btn-primary" id="btn-scan">
-                    <span class="btn-spinner hidden" id="scan-spinner"></span>
-                    <span class="btn-text">Scan Now</span>
-                </button>
-            </div>
         </section>
 
         <!-- Range Filters Panel -->
@@ -703,40 +718,7 @@
                     </table>
                 </div>
                 
-                <!-- Intraday Pro Container (Hidden by default) -->
-                <div class="intraday-container" id="intraday-container" style="display: none; flex-direction: column;">
-                    <div class="intraday-header-chips">
-                        <span style="font-weight:600; color:var(--color-text-primary); margin-right: 0.5rem; display: flex; align-items: center;">Presets:</span>
-                        <button class="intraday-chip" onclick="applyIntradayFilter('gap_go')">Gap Up + Follow Through</button>
-                        <button class="intraday-chip" onclick="applyIntradayFilter('vwap_leaders')">VWAP Leaders</button>
-                        <button class="intraday-chip" onclick="applyIntradayFilter('high_rvol')">High RVOL</button>
-                        <button class="intraday-chip" onclick="applyIntradayFilter('strong_ims')">Strong IMS Only</button>
-                        <button class="intraday-chip" onclick="applyIntradayFilter('confluence')">Swing + Intraday Confluence</button>
-                    </div>
-                    
-                    <div class="intraday-grid">
-                        <div class="intraday-widget">
-                            <div class="widget-header gap-go">Gap and Go <span class="widget-count" id="count-gap-go">0</span></div>
-                            <div class="widget-content" id="widget-gap-go"></div>
-                        </div>
-                        <div class="intraday-widget">
-                            <div class="widget-header vwap">VWAP Reclaim <span class="widget-count" id="count-vwap">0</span></div>
-                            <div class="widget-content" id="widget-vwap"></div>
-                        </div>
-                        <div class="intraday-widget">
-                            <div class="widget-header rvol">High RVOL Movers <span class="widget-count" id="count-rvol">0</span></div>
-                            <div class="widget-content" id="widget-rvol"></div>
-                        </div>
-                        <div class="intraday-widget">
-                            <div class="widget-header confluence">IMS + Swing Overlap <span class="widget-count" id="count-confluence">0</span></div>
-                            <div class="widget-content" id="widget-confluence"></div>
-                        </div>
-                        <div class="intraday-widget">
-                            <div class="widget-header focus">Watchlist Intraday Focus <span class="widget-count" id="count-focus">0</span></div>
-                            <div class="widget-content" id="widget-focus"></div>
-                        </div>
-                    </div>
-                </div>
+
                 
                 <!-- R:R Setups Container (Hidden by default) -->
                 <div class="rr-setups-container" id="rr-setups-container" style="display: none; flex-direction: column; gap: 1rem;">
@@ -950,6 +932,56 @@
                     </div>
                 </div>
             </aside>
+        </div>
+    </div>
+
+    <!-- Workspace View: Intraday Pro -->
+    <div class="workspace-view" id="view-intraday">
+        <div class="intraday-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+            <div class="intraday-header-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 1rem;">
+                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; align-items: center; gap: 8px;">
+                    <span>⚡</span> Intraday Pro Cockpit
+                </div>
+                <!-- Delay Disclaimer -->
+                <div class="intraday-delay-disclaimer" style="display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem;">
+                    <span>⚠️</span> Note: Intraday charts and indicators refresh on a 2-minute interval.
+                </div>
+            </div>
+
+            <!-- Intraday Pro Container -->
+            <div class="intraday-container" id="intraday-container" style="display: flex; flex-direction: column;">
+                <div class="intraday-header-chips">
+                    <span style="font-weight:600; color:var(--color-text-primary); margin-right: 0.5rem; display: flex; align-items: center;">Presets:</span>
+                    <button class="intraday-chip" onclick="applyIntradayFilter('gap_go')">Gap Up + Follow Through</button>
+                    <button class="intraday-chip" onclick="applyIntradayFilter('vwap_leaders')">VWAP Leaders</button>
+                    <button class="intraday-chip" onclick="applyIntradayFilter('high_rvol')">High RVOL</button>
+                    <button class="intraday-chip" onclick="applyIntradayFilter('strong_ims')">Strong IMS Only</button>
+                    <button class="intraday-chip" onclick="applyIntradayFilter('confluence')">Swing + Intraday Confluence</button>
+                </div>
+                
+                <div class="intraday-grid">
+                    <div class="intraday-widget">
+                        <div class="widget-header gap-go">Gap and Go <span class="widget-count" id="count-gap-go">0</span></div>
+                        <div class="widget-content" id="widget-gap-go"></div>
+                    </div>
+                    <div class="intraday-widget">
+                        <div class="widget-header vwap">VWAP Reclaim <span class="widget-count" id="count-vwap">0</span></div>
+                        <div class="widget-content" id="widget-vwap"></div>
+                    </div>
+                    <div class="intraday-widget">
+                        <div class="widget-header rvol">High RVOL Movers <span class="widget-count" id="count-rvol">0</span></div>
+                        <div class="widget-content" id="widget-rvol"></div>
+                    </div>
+                    <div class="intraday-widget">
+                        <div class="widget-header confluence">IMS + Swing Overlap <span class="widget-count" id="count-confluence">0</span></div>
+                        <div class="widget-content" id="widget-confluence"></div>
+                    </div>
+                    <div class="intraday-widget">
+                        <div class="widget-header focus">Watchlist Intraday Focus <span class="widget-count" id="count-focus">0</span></div>
+                        <div class="widget-content" id="widget-focus"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1235,12 +1267,17 @@
                         <span>⏳</span> Regime Breadth History
                     </h3>
                     <p style="margin: 0.2rem 0 0 0; font-size: 0.75rem; color: var(--color-text-muted);">
-                        Last 30 snapshots recorded from scan runs
+                        Last 90 snapshots recorded from scan runs
                     </p>
                 </div>
-                <button class="modal-close-btn" id="close-regime-history" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
+                <div style="display: flex; align-items: center; margin-left: auto;">
+                    <button id="btn-export-regime-csv" style="padding: 0.35rem 0.8rem; font-size: 0.72rem; height: auto; margin-right: 0.8rem; border-radius: 4px; display: flex; align-items: center; gap: 4px; cursor: pointer; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--color-text-primary); transition: var(--transition-smooth);" title="Export history to Excel/CSV">
+                        📥 Export Excel
+                    </button>
+                    <button class="modal-close-btn" id="close-regime-history" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
             </div>
             <div class="modal-body" id="regime-history-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 450px;">
                 <!-- populated dynamically -->
@@ -1442,184 +1479,193 @@
         </div>
 
         <div class="drawer-content">
-            <!-- Earnings Warning Banner -->
+            <!-- Risk Warning Banner -->
+            <div id="drawer-risk-banner" class="drawer-risk-banner" style="display: none;"></div>
+
+            <!-- Earnings Warning Banner (legacy) -->
             <div id="drawer-earnings-warning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 500; border-left: 3px solid transparent;"></div>
             
-            <!-- Screener Intelligence AI Setup Analysis -->
-            <div class="drawer-section glass-panel" id="drawer-intelligence-section" style="display: none; border-left: 3px solid var(--accent-purple);">
-                <h3 class="drawer-section-title" style="color: var(--color-text-primary); display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 0.5rem; margin-bottom: 0.75rem;">
-                    <span>🧠</span> Screener Intelligence AI Analysis
-                </h3>
-                <div class="intelligence-card-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span class="intelligence-pattern-title" id="drawer-intel-pattern" style="font-size: 1.05rem; font-weight: 700; color: #c084fc;">Analyzing Pattern...</span>
-                        <span class="intelligence-grade-badge" id="drawer-intel-grade" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">-</span>
-                    </div>
-                    <p class="intelligence-desc" id="drawer-intel-desc" style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.4; margin: 0;">
-                        Running pattern recognition scans on daily chart history...
-                    </p>
-                    
-                    <!-- Kronos AI Forecast Block -->
-                    <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.1rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
-                                🤖 Kronos AI Forecast (10d)
-                            </span>
-                            <span id="drawer-kronos-bias" class="badge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">-</span>
+            <!-- Screener Intelligence AI Setup Analysis (Collapsible details) -->
+            <details open class="drawer-section" id="drawer-intelligence-section" style="display: none; border-left: 3px solid var(--accent-purple);">
+                <summary>🧠 Screener Intelligence AI Analysis</summary>
+                <div class="drawer-section-content">
+                    <div class="intelligence-card-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="intelligence-pattern-title" id="drawer-intel-pattern" style="font-size: 1.05rem; font-weight: 700; color: #c084fc;">Analyzing Pattern...</span>
+                            <span class="intelligence-grade-badge" id="drawer-intel-grade" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">-</span>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 0.6rem;">
-                            <div style="flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; position: relative;">
-                                <div id="drawer-kronos-score-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                        <p class="intelligence-desc" id="drawer-intel-desc" style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.4; margin: 0;">
+                            Running pattern recognition scans on daily chart history...
+                        </p>
+                        
+                        <!-- Kronos AI Forecast Block -->
+                        <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                                <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                    🤖 Kronos AI Forecast (10d)
+                                </span>
+                                <span id="drawer-kronos-bias" class="badge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">-</span>
                             </div>
-                            <span id="drawer-kronos-score" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary); min-width: 32px; text-align: right;">0%</span>
-                        </div>
-                        <!-- Forecast metrics pills: populated by JS when prediction arrives -->
-                        <div id="drawer-kronos-metrics" style="display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-                        </div>
-                    </div>
-                    <!-- Technical Checklist -->
-                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
-                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>
-                        <div id="drawer-intel-checklist" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.78rem;">
-                            <!-- Dynamically populated -->
-                        </div>
-                    </div>
-
-                    <!-- Kronos AI Forecast Details Section -->
-                    <div id="drawer-kronos-section" style="display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
-                        <div class="drawer-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
-                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
-                                🔮 Interactive AI Forecast
-                            </span>
-                            <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
-                                <button class="kronos-len-btn" data-len="3" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
-                                <button class="kronos-len-btn active" data-len="5" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
-                                <button class="kronos-len-btn" data-len="10" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
+                            <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                <div style="flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; position: relative;">
+                                    <div id="drawer-kronos-score-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
+                                </div>
+                                <span id="drawer-kronos-score" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary); min-width: 32px; text-align: right;">0%</span>
                             </div>
-                            <span id="kronos-confidence-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
+                            <!-- Forecast metrics pills: populated by JS when prediction arrives -->
+                            <div id="drawer-kronos-metrics" style="display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
+                            </div>
+                        </div>
+                        <!-- Technical Checklist -->
+                        <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
+                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>
+                            <div id="drawer-intel-checklist" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.78rem;">
+                                <!-- Dynamically populated -->
+                            </div>
                         </div>
 
-                        <!-- Mini forecast candle chart -->
-                        <div id="drawer-kronos-chart" style="height: 160px; width: 100%; background: rgba(0,0,0,0.1); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.6rem; overflow: hidden;"></div>
+                        <!-- Kronos AI Forecast Details Section -->
+                        <div id="drawer-kronos-section" style="display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                            <div class="drawer-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                                <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                    🔮 Interactive AI Forecast
+                                </span>
+                                <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
+                                    <button class="kronos-len-btn" data-len="3" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
+                                    <button class="kronos-len-btn active" data-len="5" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
+                                    <button class="kronos-len-btn" data-len="10" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
+                                </div>
+                                <span id="kronos-confidence-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
+                            </div>
 
-                        <!-- Forecast table -->
-                        <div style="overflow-x: auto; max-height: 150px;">
-                            <table id="drawer-kronos-table" class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
-                                <thead>
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
-                                        <th style="text-align: left; padding: 4px; color: var(--color-text-muted);">Date</th>
-                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Open</th>
-                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">High</th>
-                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Low</th>
-                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Close</th>
-                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Vol</th>
-                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Band (P10–P90)</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="drawer-kronos-tbody"></tbody>
-                            </table>
+                            <!-- Mini forecast candle chart -->
+                            <div id="drawer-kronos-chart" style="height: 160px; width: 100%; background: rgba(0,0,0,0.1); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.6rem; overflow: hidden;"></div>
+
+                            <!-- Forecast table -->
+                            <div style="overflow-x: auto; max-height: 150px;">
+                                <table id="drawer-kronos-table" class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                            <th style="text-align: left; padding: 4px; color: var(--color-text-muted);">Date</th>
+                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Open</th>
+                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">High</th>
+                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Low</th>
+                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Close</th>
+                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Vol</th>
+                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Band (P10–P90)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="drawer-kronos-tbody"></tbody>
+                                </table>
+                            </div>
+
+                            <!-- Forecast vs Actual toggle (shown only when actuals exist) -->
+                            <div id="kronos-backtest-row" style="display: none; margin-top: 0.6rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 0.5rem;">
+                                <button id="btn-kronos-backtest" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: auto;">
+                                    📊 Show Backtest History
+                                </button>
+                                <span id="kronos-mae-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
+                            </div>
                         </div>
-
-                        <!-- Forecast vs Actual toggle (shown only when actuals exist) -->
-                        <div id="kronos-backtest-row" style="display: none; margin-top: 0.6rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 0.5rem;">
-                            <button id="btn-kronos-backtest" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: auto;">
-                                📊 Show Backtest History
-                            </button>
-                            <span id="kronos-mae-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
-                        </div>
-                    </div>
-                    
-                    <!-- 120-Day Interactive Daily Chart -->
-                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
-                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">120-Day Daily Chart</div>
-                        <div id="drawer-tv-chart-container" style="height: 200px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.1); cursor: pointer;" title="Click to expand chart to full screen overlay">
-                            <div id="drawer-tv-chart" style="width: 100%; height: 200px;"></div>
+                        
+                        <!-- 120-Day Interactive Daily Chart -->
+                        <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
+                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">120-Day Daily Chart</div>
+                            <div id="drawer-tv-chart-container" style="height: 200px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.1); cursor: pointer;" title="Click to expand chart to full screen overlay">
+                                <div id="drawer-tv-chart" style="width: 100%; height: 200px;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </details>
 
-            <!-- Calculator Config -->
-            <div class="drawer-section glass-panel">
-                <h3 class="drawer-section-title">Risk Management</h3>
-                <div class="risk-input-group">
-                    <label for="drawer-risk-amount">Risk Amount (₹)</label>
-                    <input type="number" id="drawer-risk-amount" value="1000" min="100" step="100" class="risk-input">
-                </div>
-                <div class="drawer-calc-result">
-                    <div class="calc-label">Suggested Qty</div>
-                    <div class="calc-value" id="drawer-qty">0</div>
-                    <div class="calc-subtext" id="drawer-capital-req">Capital Required: ₹0</div>
-                </div>
-                <div class="drawer-regime-hint regime-hint--neutral" id="drawer-regime-hint">
-                  <span class="regime-hint-label">Market Regime</span>
-                  <span class="regime-hint-band">Loading...</span>
-                  <span class="regime-hint-guidance">Checking market conditions...</span>
-                </div>
-            </div>
-
-            <!-- Trade Parameters -->
-            <div class="drawer-section glass-panel">
-                <h3 class="drawer-section-title">Trade Parameters</h3>
-                <div class="trade-params-grid">
-                    <div class="param-card param-entry">
-                        <div class="param-label">Entry Price</div>
-                        <div class="param-value-wrapper">
-                            <span class="currency-symbol">₹</span>
-                            <input type="number" id="drawer-entry-input" class="param-input param-value-entry" value="0.00" step="0.05">
+            <!-- Risk Management & Parameters (Collapsible details) -->
+            <details open class="drawer-section">
+                <summary>🛡️ Risk & Parameters</summary>
+                <div class="drawer-section-content">
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                        <div class="risk-input-group" style="flex: 1; min-width: 120px;">
+                            <label for="drawer-risk-amount" style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 600;">Risk Amount (₹)</label>
+                            <input type="number" id="drawer-risk-amount" value="1000" min="100" step="100" class="risk-input" style="width: 100%; margin-top: 0.25rem;">
                         </div>
-                        <div class="param-type" id="drawer-entry-type">Breakout</div>
-                    </div>
-                    <div class="param-card param-stop">
-                        <div class="param-label">Stop Loss</div>
-                        <div class="param-value-wrapper">
-                            <span class="currency-symbol">₹</span>
-                            <input type="number" id="drawer-stop-input" class="param-input param-value-stop" value="0.00" step="0.05">
+                        <div class="drawer-calc-result" style="flex: 1.5; min-width: 160px; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
+                            <div class="calc-label" style="font-size: 0.7rem; color: var(--color-text-muted);">Suggested Qty</div>
+                            <div class="calc-value" id="drawer-qty" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-teal);">0</div>
+                            <div class="calc-subtext" id="drawer-capital-req" style="font-size: 0.75rem; color: var(--color-text-secondary);">Capital Required: ₹0</div>
                         </div>
-                        <div class="param-type" id="drawer-stop-type">ATR (1.5)</div>
                     </div>
-                    <div class="param-card param-risk">
-                        <div class="param-label">Risk / Share</div>
-                        <div class="param-value" id="drawer-risk-per-share">₹0.00</div>
-                        <div class="param-type" id="drawer-risk-pct">0.00%</div>
+                    <div class="drawer-regime-hint regime-hint--neutral" id="drawer-regime-hint" style="margin-bottom: 1rem;">
+                      <span class="regime-hint-label">Market Regime</span>
+                      <span class="regime-hint-band">Loading...</span>
+                      <span class="regime-hint-guidance">Checking market conditions...</span>
+                    </div>
+
+                    <div class="trade-params-grid">
+                        <div class="param-card param-entry">
+                            <div class="param-label">Entry Price</div>
+                            <div class="param-value-wrapper">
+                                <span class="currency-symbol">₹</span>
+                                <input type="number" id="drawer-entry-input" class="param-input param-value-entry" value="0.00" step="0.05">
+                            </div>
+                            <div class="param-type" id="drawer-entry-type">Breakout</div>
+                        </div>
+                        <div class="param-card param-stop">
+                            <div class="param-label">Stop Loss</div>
+                            <div class="param-value-wrapper">
+                                <span class="currency-symbol">₹</span>
+                                <input type="number" id="drawer-stop-input" class="param-input param-value-stop" value="0.00" step="0.05">
+                            </div>
+                            <div class="param-type" id="drawer-stop-type">ATR (1.5)</div>
+                        </div>
+                        <div class="param-card param-risk">
+                            <div class="param-label">Risk / Share</div>
+                            <div class="param-value" id="drawer-risk-per-share">₹0.00</div>
+                            <div class="param-type" id="drawer-risk-pct">0.00%</div>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </details>
 
-            <!-- Targets -->
-            <div class="drawer-section glass-panel">
-                <h3 class="drawer-section-title">Targets</h3>
-                <div class="targets-list">
-                    <div class="target-row">
-                        <span class="target-label">Target 1 (1.5R)</span>
-                        <span class="target-value" id="drawer-t1">₹0.00</span>
-                    </div>
-                    <div class="target-row">
-                        <span class="target-label">Target 2 (2.0R)</span>
-                        <span class="target-value" id="drawer-t2">₹0.00</span>
-                    </div>
-                    <div class="target-row">
-                        <span class="target-label">Target 3 (3.0R)</span>
-                        <span class="target-value" id="drawer-t3">₹0.00</span>
+            <!-- Targets (Collapsible details) -->
+            <details class="drawer-section">
+                <summary>🎯 Exit Targets</summary>
+                <div class="drawer-section-content">
+                    <div class="targets-list">
+                        <div class="target-row">
+                            <span class="target-label">Target 1 (1.5R)</span>
+                            <span class="target-value" id="drawer-t1">₹0.00</span>
+                        </div>
+                        <div class="target-row">
+                            <span class="target-label">Target 2 (2.0R)</span>
+                            <span class="target-value" id="drawer-t2">₹0.00</span>
+                        </div>
+                        <div class="target-row">
+                            <span class="target-label">Target 3 (3.0R)</span>
+                            <span class="target-value" id="drawer-t3">₹0.00</span>
+                        </div>
                     </div>
                 </div>
-            </div>
+            </details>
 
-            <!-- Scan History -->
-            <div class="drawer-section glass-panel">
-                <h3 class="drawer-section-title">Scan History</h3>
-                <div class="history-stats-grid" id="drawer-history-content">
-                    <div style="font-size: 0.8rem; color: var(--color-text-muted);">Loading history...</div>
+            <!-- Scan History (Collapsible details) -->
+            <details class="drawer-section">
+                <summary>⏳ Scan History</summary>
+                <div class="drawer-section-content">
+                    <div class="history-stats-grid" id="drawer-history-content">
+                        <div style="font-size: 0.8rem; color: var(--color-text-muted);">Loading history...</div>
+                    </div>
                 </div>
-            </div>
+            </details>
 
-            <!-- Notes -->
-            <div class="drawer-section glass-panel">
-                <h3 class="drawer-section-title">Trade Notes</h3>
-                <textarea class="notes-textarea" id="drawer-notes" placeholder="Add your pre-trade checklist or notes here..."></textarea>
-            </div>
+            <!-- Notes (Collapsible details) -->
+            <details class="drawer-section">
+                <summary>📝 Trade Notes</summary>
+                <div class="drawer-section-content">
+                    <textarea class="notes-textarea" id="drawer-notes" placeholder="Add your pre-trade checklist or notes here..." style="min-height: 80px;"></textarea>
+                </div>
+            </details>
             
-            <div class="drawer-actions">
+            <div class="drawer-actions-sticky">
                 <button class="btn btn-primary" id="btn-drawer-chart" style="flex: 1;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     Open Chart
