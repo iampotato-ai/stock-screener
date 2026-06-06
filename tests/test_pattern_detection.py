@@ -125,3 +125,29 @@ def test_detect_chart_patterns_double_bottom():
         })
     results = detect_chart_patterns(history)
     assert isinstance(results, list)
+
+def test_detect_three_black_crows():
+    from pattern_detection import detect_candlestick_patterns
+    history = [
+        {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 1000},
+        {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 1000},
+        {"open": 102.0, "high": 102.2, "low": 97.8, "close": 98.0, "volume": 1000},
+        {"open": 98.0, "high": 98.2, "low": 93.8, "close": 94.0, "volume": 1000},
+        {"open": 94.0, "high": 94.2, "low": 89.8, "close": 90.0, "volume": 1000}
+    ]
+    result = detect_candlestick_patterns(history)
+    assert "Three Black Crows" in result
+    assert result["Three Black Crows"] == -100
+
+def test_detect_morning_star_relaxed_gap():
+    from pattern_detection import detect_candlestick_patterns
+    history = [
+        {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 1000},
+        {"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 1000},
+        {"open": 100.0, "high": 101.0, "low": 95.0, "close": 96.0, "volume": 1000},
+        {"open": 95.8, "high": 96.0, "low": 94.5, "close": 95.0, "volume": 1000},
+        {"open": 96.2, "high": 99.5, "low": 96.0, "close": 99.0, "volume": 1000}
+    ]
+    result = detect_candlestick_patterns(history)
+    assert "Morning Star" in result
+    assert result["Morning Star"] == 100

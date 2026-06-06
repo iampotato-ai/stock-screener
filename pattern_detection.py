@@ -153,12 +153,12 @@ def _detect_candlestick_fallback(opens, highs, lows, closes):
 
     # 6. Morning Star (3-candle)
     if (c2 < o2 and abs(c1-o1) <= 0.25*body2 and c0 > o0 and
-            c0 >= (c2 + 0.5*body2) and max(o1, c1) < min(o2, c2)):
+            c0 >= (c2 + 0.5*body2) and max(o1, c1) <= min(o2, c2) * 1.005):
         results["Morning Star"] = 100
 
     # 7. Evening Star (3-candle)
     if (c2 > o2 and abs(c1-o1) <= 0.25*body2 and c0 < o0 and
-            c0 <= (c2 - 0.5*body2) and min(o1, c1) > max(o2, c2)):
+            c0 <= (c2 - 0.5*body2) and min(o1, c1) >= max(o2, c2) * 0.995):
         results["Evening Star"] = -100
 
     # 8. Piercing Line
@@ -178,6 +178,13 @@ def _detect_candlestick_fallback(opens, highs, lows, closes):
     # 10. Bullish Harami
     if c1 < o1 and c0 > o0 and o0 > c1 and c0 < o1 and body0 < 0.5 * body1:
         results["Bullish Harami"] = 100
+
+    # 11. Three Black Crows
+    if n >= 3:
+        if (c0 < c1 < c2 and
+                c0 < o0 and c1 < o1 and c2 < o2 and
+                abs(c0 - o0) > 0.5 * (h0 - l0) and abs(c1 - o1) > 0.5 * (h1 - l1)):
+            results["Three Black Crows"] = -100
 
     return results
 
@@ -462,13 +469,16 @@ def candle_pattern_bias(candle_results: dict, chart_results: list) -> float:
     LOW_BEAR   = {"Bearish Harami", "Tweezer Top"}
 
     total = 0.0
-    for name in candle_results:
-        if name in HIGH_BULL:   total += 0.6
-        elif name in MED_BULL:  total += 0.4
-        elif name in LOW_BULL:  total += 0.2
-        elif name in HIGH_BEAR: total -= 0.6
-        elif name in MED_BEAR:  total -= 0.4
-        elif name in LOW_BEAR:  total -= 0.2
+    for name, val in candle_results.items():
+        if name in HIGH_BULL and val > 0:    total += 0.6
+        elif name in MED_BULL and val > 0:   total += 0.4
+        elif name in LOW_BULL and val > 0:   total += 0.2
+        elif name in HIGH_BEAR and val < 0:  total -= 0.6
+        elif name in MED_BEAR and val < 0:   total -= 0.4
+        elif name in LOW_BEAR and val < 0:   total -= 0.2
+        elif name == "Engulfing":
+            if "Bullish Engulfing" not in candle_results and "Bearish Engulfing" not in candle_results:
+                total += 0.4 if val > 0 else -0.4
 
     for cp in chart_results:
         pname = cp.get("pattern", "")

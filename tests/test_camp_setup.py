@@ -92,22 +92,22 @@ def test_stage_2_camp_detection():
     assert "Stage 2 Camp" in setup_res["setupTags"]
 
 def test_candlestick_priority_classification():
-    from unittest.mock import patch
-    history = [
-        {"open": 100.0, "high": 125.0, "low": 75.0, "close": 100.0, "volume": 1000}
-        for _ in range(42)
-    ]
+    from app import merge_candlestick_fallback
     
-    # Mock same strength (100): Hammer (priority 4) wins over Doji (priority 1)
-    with patch("app.pattern_detection.detect_candlestick_patterns") as mock_detect:
-        mock_detect.return_value = {"Doji": 100, "Hammer": 100}
-        res = classify_technical_pattern(history)
-        assert res["pattern"] == "Hammer"
-        assert res["grade"] == "B+"
+    base_res = {
+        "pattern": "Trend Continuation",
+        "grade": "B",
+        "description": "No specialized pattern detected."
+    }
     
-    # Mock different strength: Doji (strength 200) wins over Hammer (strength 100) due to absolute strength
-    with patch("app.pattern_detection.detect_candlestick_patterns") as mock_detect2:
-        mock_detect2.return_value = {"Doji": 200, "Hammer": 100}
-        res2 = classify_technical_pattern(history)
-        assert res2["pattern"] == "Doji"
-        assert res2["grade"] == "B"
+    # Hammer (priority 4) wins over Doji (priority 1) when same strength (100)
+    cand_patterns1 = {"Doji": 100, "Hammer": 100}
+    res = merge_candlestick_fallback(base_res, cand_patterns1)
+    assert res["pattern"] == "Hammer"
+    assert res["grade"] == "B+"
+    
+    # Doji (strength 200) wins over Hammer (strength 100) due to absolute strength
+    cand_patterns2 = {"Doji": 200, "Hammer": 100}
+    res2 = merge_candlestick_fallback(base_res, cand_patterns2)
+    assert res2["pattern"] == "Doji"
+    assert res2["grade"] == "B"

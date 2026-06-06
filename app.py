@@ -1184,49 +1184,41 @@ def classify_technical_pattern(history):
                     "description": f"{desc} Sideways consolidation. Price has drifted to the upper base resistance."
                 }
 
-    # Check for Candlestick Patterns as fallback if no geometric pattern matched
-    try:
-        candlesticks = pattern_detection.detect_candlestick_patterns(history)
-        if candlesticks:
-            priority = {"Morning Star": 6, "Evening Star": 5, "Hammer": 4, "Shooting Star": 3, "Engulfing": 2, "Doji": 1}
-            valid_patterns = [p for p in candlesticks if p in priority and candlesticks[p] != 0]
-            if valid_patterns:
-                sorted_patterns = sorted(
-                    valid_patterns,
-                    key=lambda k: (abs(candlesticks[k]), priority[k]),
-                    reverse=True
-                )
-                p = sorted_patterns[0]
-                val = candlesticks[p]
-                if p == "Engulfing":
-                    p_name = "Bullish Engulfing" if val > 0 else "Bearish Engulfing"
-                else:
-                    p_name = p
-                
-                grade = "A" if "Star" in p_name else "B+" if p_name in ["Hammer", "Shooting Star", "Bullish Engulfing", "Bearish Engulfing"] else "B"
-                
-                desc_map = {
-                    "Morning Star": "Morning Star: high probability 3-candle bullish reversal.",
-                    "Evening Star": "Evening Star: high probability 3-candle bearish reversal.",
-                    "Hammer": "Hammer candlestick pattern: potential bullish reversal in short-term downtrend.",
-                    "Shooting Star": "Shooting Star candlestick pattern: potential bearish reversal in short-term uptrend.",
-                    "Bullish Engulfing": "Bullish Engulfing: 2-candle bullish engulfing reversal.",
-                    "Bearish Engulfing": "Bearish Engulfing: 2-candle bearish engulfing reversal.",
-                    "Doji": "Doji: Price equilibrium / consolidation candle."
-                }
-                return {
-                    "pattern": p_name,
-                    "grade": grade,
-                    "description": desc_map.get(p_name, f"Candlestick pattern {p_name} detected.")
-                }
-    except Exception as e:
-        print(f"[Pattern Integration] Error in fallback candlestick detection: {e}")
-
     return {
         "pattern": "Trend Continuation",
         "grade": "B",
         "description": "Stock is in standard bullish breakout alignment (SMA 10 > 21 > 50). No specialized pattern detected."
     }
+
+def merge_candlestick_fallback(result, cand_patterns):
+    if result["pattern"] == "Trend Continuation" and cand_patterns:
+        priority = {
+            "Morning Star": 6, "Evening Star": 5, "Hammer": 4, "Shooting Star": 3,
+            "Bullish Engulfing": 2, "Bearish Engulfing": 2, "Engulfing": 2, "Doji": 1
+        }
+        valid = [p for p in cand_patterns if p in priority and cand_patterns[p] != 0]
+        if valid:
+            best_p = max(valid, key=lambda k: (abs(cand_patterns[k]), priority[k]))
+            val = cand_patterns[best_p]
+            p_name = ("Bullish Engulfing" if val > 0 else "Bearish Engulfing") \
+                      if best_p == "Engulfing" else best_p
+            grade = "A" if "Star" in p_name else "B+" if p_name in ["Hammer", "Shooting Star", "Bullish Engulfing", "Bearish Engulfing"] else "B"
+            
+            desc_map = {
+                "Morning Star": "Morning Star: high probability 3-candle bullish reversal.",
+                "Evening Star": "Evening Star: high probability 3-candle bearish reversal.",
+                "Hammer": "Hammer candlestick pattern: potential bullish reversal in short-term downtrend.",
+                "Shooting Star": "Shooting Star candlestick pattern: potential bearish reversal in short-term uptrend.",
+                "Bullish Engulfing": "Bullish Engulfing: 2-candle bullish engulfing reversal.",
+                "Bearish Engulfing": "Bearish Engulfing: 2-candle bearish engulfing reversal.",
+                "Doji": "Doji: Price equilibrium / consolidation candle."
+            }
+            return {
+                "pattern": p_name,
+                "grade": grade,
+                "description": desc_map.get(p_name, f"Candlestick pattern {p_name} detected.")
+            }
+    return result
 
 def analyze_single_stock(stock):
     try:
@@ -1260,6 +1252,7 @@ def analyze_single_stock(stock):
             if history:
                 result = classify_technical_pattern(history)
                 cand_patterns = pattern_detection.detect_candlestick_patterns(history)
+                result = merge_candlestick_fallback(result, cand_patterns)
                 chart_results = pattern_detection.detect_chart_patterns(history, lookback=60)
                 
                 # Persist signals (never let DB write crash the scan)
@@ -1530,6 +1523,52 @@ def get_setup_analysis():
         cand_patterns = pattern_detection.detect_candlestick_patterns(history)
     except Exception:
         cand_patterns = {}
+    result = merge_candlestick_fallback(result, cand_patterns)
+
+    # Compute chart patterns on-the-fly (Phase 3 addition alignment)
+    try:
+        chart_results = pattern_detection.detect_chart_patterns(history, lookback=60)
+    except Exception:
+        chart_results = []
+
+    p_name = result["pattern"]
+    p_grade = result["grade"]
+    p_desc = result["description"]
+    
+    if chart_results:
+        best = max(chart_results, key=lambda x: x.get("confidence", 0))
+        if not p_name or p_name == "Trend Continuation":
+            p_name = best["pattern"]
+            p_grade = "A+" if best["confidence"] >= 0.85 else "A"
+            p_desc = best["description"]
+            result["pattern"] = p_name
+            result["grade"] = p_grade
+            result["description"] = p_desc
+
+    p_bias = pattern_detection.candle_pattern_bias(cand_patterns, chart_results)
+
+    # Persist signals to sqlite
+    bar_date = history[-1].get("date") if history else None
+    try:
+        persist_pattern_signals(ticker, cand_patterns, chart_results, bar_date)
+    except Exception as db_ex:
+        print(f"[Pattern DB] Error persisting signals for {ticker} in setup-analysis: {db_ex}")
+
+    # Write to pattern_cache (upsert)
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        c.execute("""
+            INSERT OR REPLACE INTO pattern_cache
+                (ticker, generated_at, pattern_name, pattern_grade, pattern_desc,
+                 candlestick_json, pattern_bias)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (ticker, datetime.now().isoformat(), p_name,
+              p_grade, p_desc, json.dumps(cand_patterns), p_bias))
+        conn.commit()
+        conn.close()
+    except Exception as db_ex:
+        print(f"[Pattern Cache] Error writing cache for {ticker} in setup-analysis: {db_ex}")
     
     # Calculate indicators checklist
     closes = [day["close"] for day in history]
