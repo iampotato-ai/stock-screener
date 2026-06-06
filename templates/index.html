@@ -446,14 +446,13 @@
     
             <!-- Main Dashboard Actions -->
             <!-- Main Dashboard Actions -->
-            <section class="dashboard-controls glass-panel" style="display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem;">
-                <div class="screener-header-primary" style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 1rem;">
-                    <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1; flex-wrap: wrap;">
-                        <div class="search-box" style="margin-right: 0; min-width: 250px;">
+            <section class="dashboard-controls glass-panel" id="screener-controls">
+                <div class="screener-header-primary">
+                    <div class="screener-header-primary-left">
+                        <div class="search-box">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                             <input type="text" id="search-input" placeholder="Search by ticker or company name...">
                         </div>
-                        
                         <div class="custom-select-wrapper" id="sector-select-wrapper">
                             <button class="btn btn-secondary select-trigger" id="btn-sectors" title="Filter by sector">
                                 <span id="selected-sector-label">All Sectors</span>
@@ -465,33 +464,33 @@
                         </div>
 
                         <div class="custom-select-wrapper" id="preset-select-wrapper">
-                            <button class="btn btn-secondary select-trigger" id="btn-presets" style="min-width: 160px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Load Filter Preset">
+                            <button class="btn btn-secondary select-trigger" id="btn-presets" title="Load Filter Preset">
                                 <span id="selected-preset-label">Load Preset...</span>
                                 <svg class="select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </button>
-                            <div class="select-dropdown glass-panel hidden" id="preset-dropdown" style="min-width: 200px; top: calc(100% + 4px);">
+                            <div class="select-dropdown glass-panel hidden" id="preset-dropdown">
                                 <!-- populated via JS -->
                             </div>
                         </div>
                     </div>
 
-                    <button class="btn btn-primary" id="btn-scan" style="flex-shrink: 0;">
+                    <button class="btn btn-primary" id="btn-scan">
                         <span class="btn-spinner hidden" id="scan-spinner"></span>
                         <span class="btn-text">Scan Now</span>
                     </button>
                 </div>
                 
-                <div class="screener-header-secondary" style="display: flex; align-items: center; justify-content: space-between; width: 100%; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 0.75rem; gap: 1rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <div class="screener-header-secondary" id="screener-advanced-controls">
+                    <div class="screener-header-secondary-left">
                         <div class="column-selector-wrapper">
                             <button class="btn btn-secondary" id="btn-columns" title="Manage table columns">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
                                 <span class="btn-label">Columns</span>
                             </button>
                             <div class="column-dropdown glass-panel hidden" id="column-dropdown">
-                                <div class="column-dropdown-header" style="display:flex; justify-content:space-between; align-items:center;">
+                                <div class="column-dropdown-header">
                                     <span>Visible Columns</span>
-                                    <span style="font-size:0.65rem; color:var(--color-text-muted); text-transform:none; font-weight:normal;">Drag to reorder</span>
+                                    <span>Drag to reorder</span>
                                 </div>
                                 <div class="column-checkboxes" id="column-checkboxes">
                                     <!-- Dynamically generated checkboxes go here -->
@@ -505,14 +504,14 @@
                         </button>
                     </div>
 
-                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                        <div class="auto-refresh-toggle" style="display: flex; align-items: center; gap: 0.5rem;">
+                    <div class="screener-header-secondary-right">
+                        <div class="auto-refresh-toggle">
                             <label class="switch" title="Auto-refresh every 2 minutes during market hours">
                                 <input type="checkbox" id="auto-refresh-checkbox">
                                 <span class="slider round"></span>
                             </label>
-                            <span style="font-size: 0.8rem; color: var(--color-text-secondary);" class="btn-label">Auto Refresh</span>
-                            <span id="auto-refresh-countdown" style="font-size: 0.75rem; color: var(--accent-blue); width: 25px; display: inline-block;"></span>
+                            <span class="btn-label auto-refresh-text">Auto Refresh</span>
+                            <span id="auto-refresh-countdown"></span>
                         </div>
 
                         <button class="btn btn-secondary" id="btn-export" title="Export all tabs to a multi-sheet Excel file">
@@ -935,8 +934,13 @@
     <div class="workspace-view" id="view-intraday">
         <div class="intraday-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
             <div class="intraday-header-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 1rem;">
-                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; align-items: center; gap: 8px;">
-                    <span>⚡</span> Intraday Pro Cockpit
+                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>⚡</span> Intraday Pro Cockpit
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: normal;">
+                        Currently viewing: <span id="intraday-active-preset-label" style="font-weight: 600; color: var(--accent-blue);">All Presets</span>
+                    </div>
                 </div>
                 <!-- Delay Disclaimer -->
                 <div class="intraday-delay-disclaimer" style="display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem;">
@@ -948,6 +952,7 @@
             <div class="intraday-container" id="intraday-container" style="display: flex; flex-direction: column;">
                 <div class="intraday-header-chips">
                     <span style="font-weight:600; color:var(--color-text-primary); margin-right: 0.5rem; display: flex; align-items: center;">Presets:</span>
+                    <button class="intraday-chip active" onclick="applyIntradayFilter('all')">All Presets</button>
                     <button class="intraday-chip" onclick="applyIntradayFilter('gap_go')">Gap Up + Follow Through</button>
                     <button class="intraday-chip" onclick="applyIntradayFilter('vwap_leaders')">VWAP Leaders</button>
                     <button class="intraday-chip" onclick="applyIntradayFilter('high_rvol')">High RVOL</button>
@@ -957,23 +962,53 @@
                 
                 <div class="intraday-grid">
                     <div class="intraday-widget">
-                        <div class="widget-header gap-go">Gap and Go <span class="widget-count" id="count-gap-go">0</span></div>
+                        <div class="widget-header gap-go" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>Gap and Go</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-gap-go">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-gap-go"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header vwap">VWAP Reclaim <span class="widget-count" id="count-vwap">0</span></div>
+                        <div class="widget-header vwap" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>VWAP Reclaim</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-vwap">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-vwap"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header rvol">High RVOL Movers <span class="widget-count" id="count-rvol">0</span></div>
+                        <div class="widget-header rvol" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>High RVOL Movers</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-rvol">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-rvol"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header confluence">IMS + Swing Overlap <span class="widget-count" id="count-confluence">0</span></div>
+                        <div class="widget-header confluence" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>IMS + Swing Overlap</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-confluence">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-confluence"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header focus">Watchlist Intraday Focus <span class="widget-count" id="count-focus">0</span></div>
+                        <div class="widget-header focus" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>Watchlist Intraday Focus</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-focus">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-focus"></div>
                     </div>
                 </div>
@@ -1035,15 +1070,24 @@
                         <canvas id="rrgChart"></canvas>
                         <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
                     </div>
-                    <div class="rrg-guide-card glass-panel" style="width: 260px; padding: 1.25rem; font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.75rem; flex-shrink: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--panel-border);">
-                        <p class="guide-title" style="font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 0.25rem;">How to Use RRG Today</p>
-                        <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem;">
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-green); font-weight: 600;">🟢 Leading</span> <span>Overweight, favour breakout entries</span></li>
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🟡 Improving</span> <span>Build watchlists, size small</span></li>
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🔴 Weakening</span> <span>Reduce exposure, tighten stops</span></li>
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--color-text-muted); font-weight: 600;">⚪ Lagging</span> <span>Avoid fresh entries</span></li>
-                        </ul>
-                    </div>
+                    <aside class="rrg-results-column glass-panel">
+                        <div class="rrg-guide-section" style="font-size: 0.78rem;">
+                            <p class="guide-title" style="font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; color: #fff; margin: 0 0 0.4rem 0;">How to Use RRG Today</p>
+                            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem;">
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-green); font-weight: 600;">🟢 Leading</span> <span>Overweight, breakouts</span></li>
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🟡 Improving</span> <span>Build watchlists</span></li>
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🔴 Weakening</span> <span>Tighten stops</span></li>
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--color-text-muted); font-weight: 600;">⚪ Lagging</span> <span>Avoid entry</span></li>
+                            </ul>
+                        </div>
+                        <div style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 0.75rem;">
+                            <h3 style="font-family: var(--font-display); font-weight: 700; font-size: 0.92rem; color: #fff; margin: 0 0 0.25rem 0;">Rotation Opportunities</h3>
+                            <p style="font-size: 0.7rem; color: var(--color-text-muted); margin: 0 0 0.5rem 0;">Top leading & improving names.</p>
+                            <ul id="rrg-results-list" class="rrg-results-list">
+                                <li style="font-size: 0.78rem; color: var(--color-text-muted); text-align: center; padding: 1rem 0;">Loading opportunities...</li>
+                            </ul>
+                        </div>
+                    </aside>
                 </div>
                 
 
@@ -1063,7 +1107,7 @@
         <div class="ai-forecast-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column;">
             <!-- Stock search to pick a symbol -->
             <div class="ai-forecast-header" style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">🔮 Kronos AI Price Predictor</h3>
+                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">Kronos AI Price Predictor</h3>
                 <div style="flex-grow: 1;"></div>
                 <input id="kronos-ticker-input" placeholder="Enter NSE ticker (e.g. RELIANCE)..." class="search-input" style="max-width: 250px; padding: 0.5rem 1rem; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;" />
                 <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
@@ -1133,48 +1177,48 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Forecast + backtest table -->
+                    <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
+
+                    <!-- Forecast vs Actual section (shown after actuals arrive) -->
+                    <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin: 0; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
+                            <!-- Backtester Mode Toggle -->
+                            <div class="backtest-mode-toggle">
+                                <button class="bt-mode-btn active" data-mode="kronos">Kronos Only</button>
+                                <button class="bt-mode-btn" data-mode="ensemble">⚡ Ensemble</button>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+                            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                                <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
+                            </div>
+                            <div>
+                                <!-- Normal Kronos Metrics Container -->
+                                <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
+                                    <!-- Metrics will go here -->
+                                </div>
+                                <!-- Ensemble Comparison Table (hidden by default) -->
+                                <div id="ensembleBacktestTable" style="display:none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem; height: 100%; box-sizing: border-box;">
+                                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1rem; color: #fff; margin-bottom: 0.8rem;">Multi-Model Comparison</div>
+                                    <table class="bt-comparison-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Model</th>
+                                                <th>MAE</th>
+                                                <th>MAPE %</th>
+                                                <th>Dir. Acc %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="btComparisonBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </details>
-            </div>
-
-            <!-- Forecast + backtest table -->
-            <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
-
-            <!-- Forecast vs Actual section (shown after actuals arrive) -->
-            <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin: 0; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
-                    <!-- Backtester Mode Toggle -->
-                    <div class="backtest-mode-toggle">
-                        <button class="bt-mode-btn active" data-mode="kronos">Kronos Only</button>
-                        <button class="bt-mode-btn" data-mode="ensemble">⚡ Ensemble</button>
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-                    <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
-                        <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
-                    </div>
-                    <div>
-                        <!-- Normal Kronos Metrics Container -->
-                        <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
-                            <!-- Metrics will go here -->
-                        </div>
-                        <!-- Ensemble Comparison Table (hidden by default) -->
-                        <div id="ensembleBacktestTable" style="display:none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem; height: 100%; box-sizing: border-box;">
-                            <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1rem; color: #fff; margin-bottom: 0.8rem;">Multi-Model Comparison</div>
-                            <table class="bt-comparison-table">
-                                <thead>
-                                    <tr>
-                                        <th>Model</th>
-                                        <th>MAE</th>
-                                        <th>MAPE %</th>
-                                        <th>Dir. Acc %</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="btComparisonBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -1187,7 +1231,7 @@
                         <h3>Corporate Announcement Source</h3>
                         <p><span id="source-modal-ticker" style="font-weight: 700; color: var(--accent-blue);"></span> | <span id="source-modal-date" style="color: var(--color-text-secondary);"></span></p>
                     </div>
-                    <button class="modal-close-btn" id="btn-close-source-modal" title="Close Modal">
+                    <button class="modal-close-btn" id="btn-close-source-modal" data-modal-close title="Close Modal">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
@@ -1244,7 +1288,7 @@
                             <span id="sent-modal-date"></span>
                         </p>
                     </div>
-                    <button class="modal-close-btn" id="btn-close-sent-modal" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                    <button class="modal-close-btn" id="btn-close-sent-modal" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
@@ -1289,7 +1333,7 @@
                     <button id="btn-export-regime-csv" style="padding: 0.35rem 0.8rem; font-size: 0.72rem; height: auto; margin-right: 0.8rem; border-radius: 4px; display: flex; align-items: center; gap: 4px; cursor: pointer; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--color-text-primary); transition: var(--transition-smooth);" title="Export history to Excel/CSV">
                         📥 Export Excel
                     </button>
-                    <button class="modal-close-btn" id="close-regime-history" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                    <button class="modal-close-btn" id="close-regime-history" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
@@ -1309,7 +1353,7 @@
                         Daily Chart
                     </h3>
                 </div>
-                <button class="modal-close-btn" id="close-chart-modal" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                <button class="modal-close-btn" id="close-chart-modal" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -1328,7 +1372,7 @@
                 <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
                     <span>💾</span> Save Filter Preset
                 </div>
-                <button class="modal-close-btn" id="btn-close-preset-modal" title="Cancel">
+                <button class="modal-close-btn" id="btn-close-preset-modal" data-modal-close title="Cancel">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -1336,7 +1380,7 @@
                 <p style="font-size: 0.85rem; color: var(--color-text-secondary); margin-bottom: 1rem;">Enter a name for your custom preset. It will be saved to your browser.</p>
                 <input type="text" id="preset-name-input" class="search-input" placeholder="e.g. My Swing Strategy" style="width: 100%; margin-bottom: 1.5rem; padding: 0.75rem;">
                 <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
-                    <button class="btn btn-secondary" id="btn-cancel-preset">Cancel</button>
+                    <button class="btn btn-secondary" id="btn-cancel-preset" data-modal-close>Cancel</button>
                     <button class="btn btn-primary" id="btn-confirm-save-preset">Save Preset</button>
                 </div>
             </div>
@@ -1350,7 +1394,7 @@
                 <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
                     <span>➕</span> Add Manual Trade
                 </div>
-                <button class="modal-close-btn" onclick="window.closeManualTradeModal()" title="Cancel">
+                <button class="modal-close-btn" onclick="window.closeManualTradeModal()" data-modal-close title="Cancel">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -1388,7 +1432,7 @@
                     <textarea id="manual-trade-notes" class="search-input" rows="3" placeholder="Why did you take this trade?" style="width: 100%; padding: 0.6rem; resize: vertical;"></textarea>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="window.closeManualTradeModal()">Cancel</button>
+                    <button class="btn btn-secondary" onclick="window.closeManualTradeModal()" data-modal-close>Cancel</button>
                     <button class="btn btn-primary" onclick="window.saveManualTrade()">Add Trade</button>
                 </div>
             </div>
@@ -1402,7 +1446,7 @@
                 <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
                     <span>✏️</span> Edit Trade Entry
                 </div>
-                <button class="modal-close-btn" onclick="window.closeEditTradeModal()" title="Cancel">
+                <button class="modal-close-btn" onclick="window.closeEditTradeModal()" data-modal-close title="Cancel">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -1458,7 +1502,7 @@
                     <textarea id="edit-trade-notes" class="search-input" rows="3" style="width: 100%; padding: 0.6rem; resize: vertical;"></textarea>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="window.closeEditTradeModal()">Cancel</button>
+                    <button class="btn btn-secondary" onclick="window.closeEditTradeModal()" data-modal-close>Cancel</button>
                     <button class="btn btn-primary" onclick="window.saveEditedTrade()">Save Changes</button>
                 </div>
             </div>
@@ -1484,209 +1528,221 @@
                 <span id="drawer-setup-pill" class="setup-pill"></span>
                 <span id="drawer-current-price" class="drawer-price">₹0.00</span>
             </div>
-            <!-- MTF Warning Container -->
-            <div id="drawer-mtf-warning" style="display: none; background: rgba(255,170,0,0.1); border: 1px solid rgba(255,170,0,0.3); border-radius: 6px; padding: 0.5rem; margin-top: 0.75rem; color: #ffaa00; font-size: 0.85rem; align-items: center; gap: 0.4rem;">
-                ⚠️ Weekly not aligned
-            </div>
+
             <div id="drawer-vol-warning" style="display: none; background: rgba(76, 175, 80, 0.15); border: 1px solid rgba(76, 175, 80, 0.3); border-radius: 6px; padding: 0.5rem; margin-top: 0.75rem; color: #4CAF50; font-size: 0.85rem; align-items: center; gap: 0.4rem;">
                 📦 Volume Compression detected — energy building
             </div>
         </div>
 
         <div class="drawer-content">
-            <!-- Risk Warning Banner -->
+            <!-- Consolidated Risk Warning Banner -->
             <div id="drawer-risk-banner" class="drawer-risk-banner" style="display: none;"></div>
 
-            <!-- Earnings Warning Banner (legacy) -->
-            <div id="drawer-earnings-warning" style="display: none; margin-bottom: 1rem; padding: 0.75rem; border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 500; border-left: 3px solid transparent;"></div>
-            
-            <!-- Screener Intelligence AI Setup Analysis (Collapsible details) -->
-            <details open class="drawer-section" id="drawer-intelligence-section" style="display: none; border-left: 3px solid var(--accent-purple);">
-                <summary>🧠 Screener Intelligence AI Analysis</summary>
-                <div class="drawer-section-content">
-                    <div class="intelligence-card-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="intelligence-pattern-title" id="drawer-intel-pattern" style="font-size: 1.05rem; font-weight: 700; color: #c084fc;">Analyzing Pattern...</span>
-                            <span class="intelligence-grade-badge" id="drawer-intel-grade" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">-</span>
-                        </div>
-                        <p class="intelligence-desc" id="drawer-intel-desc" style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.4; margin: 0;">
-                            Running pattern recognition scans on daily chart history...
-                        </p>
-                        
-                        <!-- Kronos AI Forecast Block -->
-                        <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.1rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-                                <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
-                                    🤖 Kronos AI Forecast (10d)
-                                </span>
-                                <span id="drawer-kronos-bias" class="badge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">-</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 0.6rem;">
-                                <div style="flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; position: relative;">
-                                    <div id="drawer-kronos-score-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
-                                </div>
-                                <span id="drawer-kronos-score" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary); min-width: 32px; text-align: right;">0%</span>
-                            </div>
-                            <!-- Forecast metrics pills: populated by JS when prediction arrives -->
-                            <div id="drawer-kronos-metrics" style="display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-                            </div>
-                        </div>
-                        <!-- Technical Checklist -->
-                        <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
-                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>
-                            <div id="drawer-intel-checklist" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.78rem;">
-                                <!-- Dynamically populated -->
-                            </div>
-                        </div>
+            <!-- Legacy Earnings Warning (controlled by JS, we keep it for safety but consolidate it) -->
+            <div id="drawer-earnings-warning" style="display: none;"></div>
 
-                        <!-- Pattern Chips (Phase 7 addition) -->
-                        <div id="drawer-patterns-section" class="pattern-chips-row" style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem; display: none;">
-                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em;">Active Candlestick & Chart Patterns</div>
-                            <div id="pattern-chips-container" class="pattern-chips-container">
-                                <!-- Dynamically populated pattern chips -->
-                            </div>
+            <!-- Compact Trade Ticket Section -->
+            <section class="trade-ticket">
+                <div class="trade-ticket-row">
+                    <div class="tt-field">
+                        <label for="drawer-entry-input">Entry Price</label>
+                        <div class="param-value-wrapper">
+                            <span class="currency-symbol">₹</span>
+                            <input type="number" id="drawer-entry-input" class="param-input" value="0.00" step="0.05">
                         </div>
-
-                        <!-- Kronos AI Forecast Details Section -->
-                        <div id="drawer-kronos-section" style="display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
-                            <div class="drawer-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
-                                <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
-                                    🔮 Interactive AI Forecast
-                                </span>
-                                <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
-                                    <button class="kronos-len-btn" data-len="3" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
-                                    <button class="kronos-len-btn active" data-len="5" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
-                                    <button class="kronos-len-btn" data-len="10" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
-                                </div>
-                                <span id="kronos-confidence-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
-                            </div>
-
-                            <!-- Mini forecast candle chart -->
-                            <div id="drawer-kronos-chart" style="height: 160px; width: 100%; background: rgba(0,0,0,0.1); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.6rem; overflow: hidden;"></div>
-
-                            <!-- Forecast table -->
-                            <div style="overflow-x: auto; max-height: 150px;">
-                                <table id="drawer-kronos-table" class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
-                                    <thead>
-                                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
-                                            <th style="text-align: left; padding: 4px; color: var(--color-text-muted);">Date</th>
-                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Open</th>
-                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">High</th>
-                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Low</th>
-                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Close</th>
-                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Vol</th>
-                                            <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Band (P10–P90)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="drawer-kronos-tbody"></tbody>
-                                </table>
-                            </div>
-
-                            <!-- Forecast vs Actual toggle (shown only when actuals exist) -->
-                            <div id="kronos-backtest-row" style="display: none; margin-top: 0.6rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 0.5rem;">
-                                <button id="btn-kronos-backtest" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: auto;">
-                                    📊 Show Backtest History
-                                </button>
-                                <span id="kronos-mae-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
-                            </div>
+                        <div class="param-type" id="drawer-entry-type">Breakout</div>
+                    </div>
+                    <div class="tt-field">
+                        <label for="drawer-stop-input">Stop Loss</label>
+                        <div class="param-value-wrapper">
+                            <span class="currency-symbol">₹</span>
+                            <input type="number" id="drawer-stop-input" class="param-input" value="0.00" step="0.05">
                         </div>
-                        
-                        <!-- 120-Day Interactive Daily Chart -->
-                        <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
-                            <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">120-Day Daily Chart</div>
-                            <div id="drawer-tv-chart-container" style="height: 200px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.1); cursor: pointer;" title="Click to expand chart to full screen overlay">
-                                <div id="drawer-tv-chart" style="width: 100%; height: 200px;"></div>
-                            </div>
+                        <div class="param-type" id="drawer-stop-type">ATR (1.5)</div>
+                    </div>
+                    <div class="tt-field">
+                        <label for="drawer-risk-amount">Risk Amount</label>
+                        <div class="param-value-wrapper">
+                            <span class="currency-symbol">₹</span>
+                            <input type="number" id="drawer-risk-amount" value="1000" min="100" step="100" class="risk-input">
                         </div>
                     </div>
                 </div>
-            </details>
 
-            <!-- Risk Management & Parameters (Collapsible details) -->
-            <details open class="drawer-section">
-                <summary>🛡️ Risk & Parameters</summary>
-                <div class="drawer-section-content">
-                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
-                        <div class="risk-input-group" style="flex: 1; min-width: 120px;">
-                            <label for="drawer-risk-amount" style="font-size: 0.75rem; color: var(--color-text-muted); font-weight: 600;">Risk Amount (₹)</label>
-                            <input type="number" id="drawer-risk-amount" value="1000" min="100" step="100" class="risk-input" style="width: 100%; margin-top: 0.25rem;">
-                        </div>
-                        <div class="drawer-calc-result" style="flex: 1.5; min-width: 160px; padding: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
-                            <div class="calc-label" style="font-size: 0.7rem; color: var(--color-text-muted);">Suggested Qty</div>
-                            <div class="calc-value" id="drawer-qty" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-teal);">0</div>
-                            <div class="calc-subtext" id="drawer-capital-req" style="font-size: 0.75rem; color: var(--color-text-secondary);">Capital Required: ₹0</div>
+                <div class="trade-ticket-row">
+                    <div class="tt-field tt-field--readonly">
+                        <label>Risk / Share</label>
+                        <div class="tt-value-wrapper">
+                            <div id="drawer-risk-per-share" class="tt-value">₹0.00</div>
+                            <span id="drawer-risk-pct" class="param-type">0.00%</span>
                         </div>
                     </div>
-                    <div class="drawer-regime-hint regime-hint--neutral" id="drawer-regime-hint" style="margin-bottom: 1rem;">
+                    <div class="tt-field tt-field--readonly">
+                        <label>Position Size</label>
+                        <div id="drawer-qty" class="tt-value font-highlight">0</div>
+                        <span id="drawer-capital-req" class="param-type">Capital Required: ₹0</span>
+                    </div>
+                    <div class="tt-field tt-field--readonly">
+                        <label>R : R (to T1)</label>
+                        <div id="tt-rr-multiple" class="tt-value font-highlight">1.50R</div>
+                    </div>
+                </div>
+
+                <div class="trade-ticket-row trade-ticket-row--targets">
+                    <div class="tt-target">
+                        <span class="tt-target-label">Target 1 (1.5R)</span>
+                        <span class="tt-target-price" id="drawer-t1">₹0.00</span>
+                    </div>
+                    <div class="tt-target">
+                        <span class="tt-target-label">Target 2 (2.0R)</span>
+                        <span class="tt-target-price" id="drawer-t2">₹0.00</span>
+                    </div>
+                    <div class="tt-target">
+                        <span class="tt-target-label">Target 3 (3.0R)</span>
+                        <span class="tt-target-price" id="drawer-t3">₹0.00</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 1. Market & Regime Context Details -->
+            <details class="drawer-section" open>
+                <summary>Market & Regime Context</summary>
+                <div class="drawer-section-content">
+                    <div class="drawer-regime-hint regime-hint--neutral" id="drawer-regime-hint" style="margin-bottom: 0.5rem;">
                       <span class="regime-hint-label">Market Regime</span>
                       <span class="regime-hint-band">Loading...</span>
                       <span class="regime-hint-guidance">Checking market conditions...</span>
                     </div>
+                </div>
+            </details>
 
-                    <div class="trade-params-grid">
-                        <div class="param-card param-entry">
-                            <div class="param-label">Entry Price</div>
-                            <div class="param-value-wrapper">
-                                <span class="currency-symbol">₹</span>
-                                <input type="number" id="drawer-entry-input" class="param-input param-value-entry" value="0.00" step="0.05">
+            <div id="drawer-intelligence-section" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- 2. AI Forecast (Kronos Ensemble) Details -->
+                <details class="drawer-section">
+                <summary>AI Forecast (Kronos Ensemble)</summary>
+                <div class="drawer-section-content">
+                    <!-- Kronos AI Forecast Block -->
+                    <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                🤖 Kronos AI Forecast (10d)
+                            </span>
+                            <span id="drawer-kronos-bias" class="badge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">-</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.6rem;">
+                            <div style="flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; position: relative;">
+                                <div id="drawer-kronos-score-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-red), var(--accent-green)); border-radius: 3px; transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);"></div>
                             </div>
-                            <div class="param-type" id="drawer-entry-type">Breakout</div>
+                            <span id="drawer-kronos-score" style="font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary); min-width: 32px; text-align: right;">0%</span>
                         </div>
-                        <div class="param-card param-stop">
-                            <div class="param-label">Stop Loss</div>
-                            <div class="param-value-wrapper">
-                                <span class="currency-symbol">₹</span>
-                                <input type="number" id="drawer-stop-input" class="param-input param-value-stop" value="0.00" step="0.05">
+                        <!-- Forecast metrics pills: populated by JS when prediction arrives -->
+                        <div id="drawer-kronos-metrics" style="display: none; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
+                    </div>
+
+                    <!-- Kronos AI Forecast Details Section -->
+                    <div id="drawer-kronos-section" style="display: none; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                        <div class="drawer-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.3rem;">
+                                🔮 Interactive AI Forecast
+                            </span>
+                            <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
+                                <button class="kronos-len-btn" data-len="3" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
+                                <button class="kronos-len-btn active" data-len="5" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
+                                <button class="kronos-len-btn" data-len="10" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
                             </div>
-                            <div class="param-type" id="drawer-stop-type">ATR (1.5)</div>
+                            <span id="kronos-confidence-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
                         </div>
-                        <div class="param-card param-risk">
-                            <div class="param-label">Risk / Share</div>
-                            <div class="param-value" id="drawer-risk-per-share">₹0.00</div>
-                            <div class="param-type" id="drawer-risk-pct">0.00%</div>
+
+                        <!-- Mini forecast candle chart -->
+                        <div id="drawer-kronos-chart" style="height: 160px; width: 100%; background: rgba(0,0,0,0.1); border-radius: 4px; border: 1px solid rgba(255,255,255,0.03); margin-bottom: 0.6rem; overflow: hidden;"></div>
+
+                        <!-- Forecast table -->
+                        <div style="overflow-x: auto; max-height: 150px;">
+                            <table id="drawer-kronos-table" class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                        <th style="text-align: left; padding: 4px; color: var(--color-text-muted);">Date</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Open</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">High</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Low</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Close</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Vol</th>
+                                        <th style="text-align: right; padding: 4px; color: var(--color-text-muted);">Band (P10–P90)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="drawer-kronos-tbody"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Forecast vs Actual toggle (shown only when actuals exist) -->
+                        <div id="kronos-backtest-row" style="display: none; margin-top: 0.6rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 0.5rem;">
+                            <button id="btn-kronos-backtest" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: auto;">
+                                📊 Show Backtest History
+                            </button>
+                            <span id="kronos-mae-badge" class="badge" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">-</span>
                         </div>
                     </div>
                 </div>
             </details>
 
-            <!-- Targets (Collapsible details) -->
+            <!-- 3. Pattern Intelligence Details -->
             <details class="drawer-section">
-                <summary>🎯 Exit Targets</summary>
-                <div class="drawer-section-content">
-                    <div class="targets-list">
-                        <div class="target-row">
-                            <span class="target-label">Target 1 (1.5R)</span>
-                            <span class="target-value" id="drawer-t1">₹0.00</span>
+                <summary>Pattern Intelligence</summary>
+                <div class="drawer-section-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="intelligence-pattern-title" id="drawer-intel-pattern" style="font-size: 1.05rem; font-weight: 700; color: #c084fc;">Analyzing Pattern...</span>
+                        <span class="intelligence-grade-badge" id="drawer-intel-grade" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-size: 0.8rem; padding: 2px 8px; border-radius: 4px; font-weight: 700;">-</span>
+                    </div>
+                    <p class="intelligence-desc" id="drawer-intel-desc" style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.4; margin: 0;">
+                        Running pattern recognition scans on daily chart history...
+                    </p>
+                    
+                    <!-- Technical Checklist -->
+                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Setup Checklist</div>
+                        <div id="drawer-intel-checklist" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.78rem;">
+                            <!-- Dynamically populated -->
                         </div>
-                        <div class="target-row">
-                            <span class="target-label">Target 2 (2.0R)</span>
-                            <span class="target-value" id="drawer-t2">₹0.00</span>
+                    </div>
+
+                    <!-- Pattern Chips (Phase 7 addition) -->
+                    <div id="drawer-patterns-section" class="pattern-chips-row" style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem; display: none;">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em;">Active Candlestick & Chart Patterns</div>
+                        <div id="pattern-chips-container" class="pattern-chips-container">
+                            <!-- Dynamically populated pattern chips -->
                         </div>
-                        <div class="target-row">
-                            <span class="target-label">Target 3 (3.0R)</span>
-                            <span class="target-value" id="drawer-t3">₹0.00</span>
+                    </div>
+                    
+                    <!-- 120-Day Interactive Daily Chart -->
+                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem;">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem;">120-Day Daily Chart</div>
+                        <div id="drawer-tv-chart-container" style="height: 200px; width: 100%; position: relative; border-radius: 6px; overflow: hidden; border: 1px solid var(--panel-border); background: rgba(0, 0, 0, 0.1); cursor: pointer;" title="Click to expand chart to full screen overlay">
+                            <div id="drawer-tv-chart" style="width: 100%; height: 200px;"></div>
                         </div>
                     </div>
                 </div>
             </details>
+            </div>
 
-            <!-- Scan History (Collapsible details) -->
+            <!-- 4. History & Notes Details -->
             <details class="drawer-section">
-                <summary>⏳ Scan History</summary>
-                <div class="drawer-section-content">
-                    <div class="history-stats-grid" id="drawer-history-content">
-                        <div style="font-size: 0.8rem; color: var(--color-text-muted);">Loading history...</div>
+                <summary>History & Notes</summary>
+                <div class="drawer-section-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <!-- Scan History -->
+                    <div>
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.4rem;">Scan History</div>
+                        <div class="history-stats-grid" id="drawer-history-content">
+                            <div style="font-size: 0.8rem; color: var(--color-text-muted);">Loading history...</div>
+                        </div>
+                    </div>
+                    <!-- Trade Notes -->
+                    <div style="border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 0.75rem; margin-top: 0.25rem;">
+                        <div style="font-size: 0.72rem; text-transform: uppercase; color: var(--color-text-muted); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.4rem;">Trade Notes</div>
+                        <textarea class="notes-textarea" id="drawer-notes" placeholder="Add your pre-trade checklist or notes here..." style="min-height: 80px; width: 100%;"></textarea>
                     </div>
                 </div>
             </details>
-
-            <!-- Notes (Collapsible details) -->
-            <details class="drawer-section">
-                <summary>📝 Trade Notes</summary>
-                <div class="drawer-section-content">
-                    <textarea class="notes-textarea" id="drawer-notes" placeholder="Add your pre-trade checklist or notes here..." style="min-height: 80px;"></textarea>
-                </div>
-            </details>
+        </div>
             
             <div class="drawer-actions-sticky">
                 <button class="btn btn-primary" id="btn-drawer-chart" style="flex: 1;">
