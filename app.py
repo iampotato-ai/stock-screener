@@ -194,13 +194,43 @@ def init_db():
             pattern_name TEXT,
             pattern_grade TEXT,
             pattern_desc TEXT,
-            candlestick_json TEXT
+            candlestick_json TEXT,
+            pattern_bias REAL DEFAULT 0.0
         )
     ''')
     try:
         c.execute("ALTER TABLE pattern_cache ADD COLUMN candlestick_json TEXT")
     except Exception:
         pass
+    try:
+        c.execute("ALTER TABLE pattern_cache ADD COLUMN pattern_bias REAL DEFAULT 0.0")
+    except Exception:
+        pass
+        
+    # ---------- pattern_signals (Phase 2 addition) ----------
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS pattern_signals (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker      TEXT NOT NULL,
+            timeframe   TEXT NOT NULL DEFAULT 'D',
+            signal_type TEXT NOT NULL,           -- 'candle' | 'chart'
+            pattern     TEXT NOT NULL,
+            direction   INTEGER NOT NULL,        -- 100 bullish, -100 bearish
+            confidence  REAL,                    -- 0.0-1.0 (chart patterns only)
+            description TEXT,
+            detected_at TEXT NOT NULL,
+            bar_date    TEXT                     -- date of the last bar in the signal
+        )
+    ''')
+    # Index for fast per-ticker lookups
+    c.execute('''
+        CREATE INDEX IF NOT EXISTS idx_pattern_signals_ticker
+        ON pattern_signals (ticker, detected_at DESC)
+    ''')
+    try:
+        c.execute("ALTER TABLE pattern_signals ADD COLUMN bar_date TEXT")
+    except Exception:
+        pass  # already exists
     
     conn.commit()
     conn.close()
@@ -757,6 +787,72 @@ def compute_vol_dryup(stock):
     stock["volDryUp"] = vol_dryup
     return stock
 
+def persist_pattern_signals(ticker: str, candle_results: dict,
+                             chart_results: list, bar_date: str = None):
+    """
+    Write detected patterns for a ticker into pattern_signals table.
+    Clears today's rows for the ticker first to avoid duplicates.
+    """
+    now   = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+
+    # Remove today's signals for this ticker to avoid duplication on re-scans
+    c.execute(
+        "DELETE FROM pattern_signals WHERE ticker = ? AND detected_at LIKE ?",
+        (ticker, f"{today}%")
+    )
+
+    # Insert candle signals
+    for pat_name, direction in candle_results.items():
+        c.execute('''
+            INSERT INTO pattern_signals
+                (ticker, timeframe, signal_type, pattern, direction,
+                 confidence, description, detected_at, bar_date)
+            VALUES (?, 'D', 'candle', ?, ?, NULL, NULL, ?, ?)
+        ''', (ticker, pat_name, direction, now, bar_date or today))
+
+    # Insert chart signals
+    for cp in chart_results:
+        c.execute('''
+            INSERT INTO pattern_signals
+                (ticker, timeframe, signal_type, pattern, direction,
+                 confidence, description, detected_at, bar_date)
+            VALUES (?, 'D', 'chart', ?, ?, ?, ?, ?, ?)
+        ''', (
+            ticker,
+            cp.get("pattern"),
+            cp.get("direction"),
+            cp.get("confidence"),
+            cp.get("description"),
+            now,
+            bar_date or today
+        ))
+
+    conn.commit()
+    conn.close()
+
+def get_cached_pattern_bias(ticker: str) -> float:
+    """
+    Retrieve cached pattern_bias from pattern_cache for the ticker.
+    Defaults to 0.0 if not found or on error.
+    """
+    import sqlite3
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        clean_tk = ticker.split(':')[-1].upper()
+        c.execute("SELECT pattern_bias FROM pattern_cache WHERE ticker = ?", (clean_tk,))
+        row = c.fetchone()
+        conn.close()
+        if row and row[0] is not None:
+            return float(row[0])
+    except Exception as e:
+        print(f"[Pattern Cache] Error fetching pattern_bias for {ticker}: {e}")
+    return 0.0
+
 # -----------------------------------------------------------------------------
 # Screener Intelligence: Chart Fetching & Pattern Recognition Engine
 # -----------------------------------------------------------------------------
@@ -1139,13 +1235,13 @@ def analyze_single_stock(stock):
         # 1. Check SQLite Cache First (24-hour TTL)
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
-        c.execute("SELECT pattern_name, pattern_grade, pattern_desc, candlestick_json, generated_at FROM pattern_cache WHERE ticker = ?", (ticker,))
+        c.execute("SELECT pattern_name, pattern_grade, pattern_desc, candlestick_json, generated_at, pattern_bias FROM pattern_cache WHERE ticker = ?", (ticker,))
         row = c.fetchone()
         conn.close()
         
         cache_valid = False
         if row:
-            p_name, p_grade, p_desc, cand_json, gen_at_str = row
+            p_name, p_grade, p_desc, cand_json, gen_at_str, pat_bias = row
             try:
                 gen_time = datetime.fromisoformat(gen_at_str)
                 if (datetime.now() - gen_time).total_seconds() < 24 * 3600:
@@ -1153,6 +1249,7 @@ def analyze_single_stock(stock):
                     stock["pattern_grade"] = p_grade
                     stock["pattern_desc"] = p_desc
                     stock["candlestick_patterns"] = json.loads(cand_json) if cand_json else {}
+                    stock["pattern_bias"] = pat_bias if pat_bias is not None else 0.0
                     cache_valid = True
             except Exception:
                 pass
@@ -1163,10 +1260,30 @@ def analyze_single_stock(stock):
             if history:
                 result = classify_technical_pattern(history)
                 cand_patterns = pattern_detection.detect_candlestick_patterns(history)
+                chart_results = pattern_detection.detect_chart_patterns(history, lookback=60)
                 
+                # Persist signals (never let DB write crash the scan)
+                bar_date = history[-1].get("date") if history else None
+                try:
+                    persist_pattern_signals(ticker, cand_patterns, chart_results, bar_date)
+                except Exception as db_ex:
+                    print(f"[Pattern DB] Error persisting signals for {ticker}: {db_ex}")
+                
+                # Compute bias adjustment
+                pattern_bias = pattern_detection.candle_pattern_bias(cand_patterns, chart_results)
+                stock["pattern_bias"] = pattern_bias
+                
+                # Merge best chart pattern into stock dict for classify_setup()
                 p_name = result["pattern"]
                 p_grade = result["grade"]
                 p_desc = result["description"]
+                
+                if chart_results:
+                    best = max(chart_results, key=lambda x: x.get("confidence", 0))
+                    if not p_name or p_name == "Trend Continuation":
+                        p_name = best["pattern"]
+                        p_grade = "A+" if best["confidence"] >= 0.85 else "A"
+                        p_desc = best["description"]
                 
                 stock["pattern_name"] = p_name
                 stock["pattern_grade"] = p_grade
@@ -1177,8 +1294,8 @@ def analyze_single_stock(stock):
                 conn = sqlite3.connect('scan_history.db')
                 c = conn.cursor()
                 c.execute(
-                    "INSERT OR REPLACE INTO pattern_cache (ticker, generated_at, pattern_name, pattern_grade, pattern_desc, candlestick_json) VALUES (?, ?, ?, ?, ?, ?)",
-                    (ticker, datetime.now().isoformat(), p_name, p_grade, p_desc, json.dumps(cand_patterns))
+                    "INSERT OR REPLACE INTO pattern_cache (ticker, generated_at, pattern_name, pattern_grade, pattern_desc, candlestick_json, pattern_bias) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (ticker, datetime.now().isoformat(), p_name, p_grade, p_desc, json.dumps(cand_patterns), pattern_bias)
                 )
                 conn.commit()
                 conn.close()
@@ -1187,12 +1304,14 @@ def analyze_single_stock(stock):
                 stock["pattern_grade"] = "B"
                 stock["pattern_desc"] = "Price in standard swing configuration. Historical daily data fetch not available."
                 stock["candlestick_patterns"] = {}
+                stock["pattern_bias"] = 0.0
     except Exception as e:
         print(f"[Pattern Cache/Yahoo Finance] Error analyzing setup for {ticker}: {e}")
         stock["pattern_name"] = "Trend Continuation"
         stock["pattern_grade"] = "B"
         stock["pattern_desc"] = f"Analysis error: {e}"
         stock["candlestick_patterns"] = {}
+        stock["pattern_bias"] = 0.0
 
 def populate_screener_intelligence(stocks_list):
     if not stocks_list:
@@ -1324,9 +1443,64 @@ def generate_next_trading_days(last_date_str, num_days=10):
             trading_days.append(current_date)
     return pd.Series(trading_days)
 
-def compute_forecast_metrics(forecast_list, last_close, history):
+def compute_forecast_metrics(forecast_list, last_close, history, extra_context=None):
     from forecast_math import compute_forecast_metrics as _cfm
-    return _cfm(forecast_list, last_close, history)
+    return _cfm(forecast_list, last_close, history, extra_context=extra_context)
+
+@app.route('/api/pattern-signals', methods=['GET'])
+def get_pattern_signals():
+    from flask import request
+    from datetime import datetime, timedelta
+    import sqlite3
+    
+    ticker = request.args.get('ticker', '').strip().upper()
+    if ticker.startswith("NSE:"):
+        ticker = ticker[4:]
+
+    try:
+        days = int(request.args.get('days', 7))
+    except ValueError:
+        days = 7
+
+    signal_type_filter = request.args.get('type', 'both').strip().lower()
+
+    threshold_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+
+    query = "SELECT ticker, timeframe, signal_type, pattern, direction, confidence, description, detected_at, bar_date FROM pattern_signals WHERE bar_date >= ?"
+    params = [threshold_date]
+
+    if ticker:
+        query += " AND ticker = ?"
+        params.append(ticker)
+
+    if signal_type_filter in ('candle', 'chart'):
+        query += " AND signal_type = ?"
+        params.append(signal_type_filter)
+
+    query += " ORDER BY bar_date DESC, detected_at DESC"
+
+    c.execute(query, params)
+    rows = c.fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        results.append({
+            "ticker": row[0],
+            "timeframe": row[1],
+            "signal_type": row[2],
+            "pattern": row[3],
+            "direction": row[4],
+            "confidence": row[5],
+            "description": row[6],
+            "detected_at": row[7],
+            "bar_date": row[8]
+        })
+
+    return jsonify(results)
 
 @app.route('/api/setup-analysis', methods=['GET'])
 def get_setup_analysis():
@@ -1438,8 +1612,9 @@ def get_setup_analysis():
                     })
 
                 if forecast_list:
+                    p_bias = get_cached_pattern_bias(ticker)
                     ai_forecast_bias, ai_confidence_score, forecast_metrics = compute_forecast_metrics(
-                        forecast_list, current_close, history
+                        forecast_list, current_close, history, extra_context={"pattern_bias": p_bias}
                     )
                     _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics)
 
@@ -4292,6 +4467,8 @@ def _run_kronos_for_ticker(ticker, pred_len):
     Returns: build_ranking_entry(ticker, bias, score, metrics, cache_hit)
     """
     import threading
+    p_bias = get_cached_pattern_bias(ticker)
+    extra_ctx = {"pattern_bias": p_bias}
     cache_key = (ticker, pred_len)
     is_duplicate = False
     
@@ -4314,7 +4491,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
                 if history:
                     last_close = float(history[-1]["close"])
                     sliced_forecast = forecast_list[:pred_len]
-                    b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history)
+                    b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history, extra_context=extra_ctx)
                     return build_ranking_entry(ticker, b, s, m, cache_hit=True)
             except Exception:
                 pass
@@ -4340,7 +4517,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
             bias, score, forecast_list, forecast_metrics = mem_cached
             if len(forecast_list) >= pred_len:
                 sliced_forecast = forecast_list[:pred_len]
-                b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history)
+                b, s, m = compute_forecast_metrics(sliced_forecast, last_close, history, extra_context=extra_ctx)
                 return build_ranking_entry(ticker, b, s, m, cache_hit=True)
 
         # 2. Check Database Cache
@@ -4359,7 +4536,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
                 if (datetime.now() - gen_time).total_seconds() < 4 * 3600:
                     conn.close()
                     forecast_list = json.loads(stored_forecast_json)
-                    b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history)
+                    b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history, extra_context=extra_ctx)
                     _set_kronos_cache(ticker, b, s, forecast_list, m)
                     return build_ranking_entry(ticker, b, s, m, cache_hit=True)
             except Exception:
@@ -4371,7 +4548,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
             if db_row: # Fallback to stale db cache if available
                 conn.close()
                 forecast_list = json.loads(stored_forecast_json)
-                b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history)
+                b, s, m = compute_forecast_metrics(forecast_list, db_last_close, history, extra_context=extra_ctx)
                 return build_ranking_entry(ticker, b, s, m, cache_hit=True)
             conn.close()
             return build_ranking_entry(ticker, None, 0, {}, cache_hit=False)
@@ -4435,7 +4612,7 @@ def _run_kronos_for_ticker(ticker, pred_len):
         conn.close()
 
         # Compute metrics
-        b, s, m = compute_forecast_metrics(forecast_list, last_close, history)
+        b, s, m = compute_forecast_metrics(forecast_list, last_close, history, extra_context=extra_ctx)
         _set_kronos_cache(ticker, b, s, forecast_list, m)
         return build_ranking_entry(ticker, b, s, m, cache_hit=False)
 

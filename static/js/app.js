@@ -6308,6 +6308,76 @@ document.getElementById('btn-rrg-stocks')?.addEventListener('click', (e) => {
     renderRRG();
 });
 
+function openTradeDrawerFromRR(ticker) {
+    const stock = stocksData.find(s => s.clean_ticker === ticker);
+    if (!stock) return;
+    openTradeDrawer(stock.clean_ticker);
+}
+window.openTradeDrawerFromRR = openTradeDrawerFromRR;
+
+// Phase 7: Pattern Signals Integration
+function loadPatternSignals(ticker) {
+    const sectionEl = document.getElementById('drawer-patterns-section');
+    const containerEl = document.getElementById('pattern-chips-container');
+    if (!sectionEl || !containerEl) return;
+
+    sectionEl.style.display = 'none';
+    containerEl.innerHTML = '';
+
+    fetch(`/api/pattern-signals?ticker=${encodeURIComponent(ticker)}&days=7`)
+        .then(res => res.json())
+        .then(signals => {
+            if (!signals || signals.length === 0) {
+                sectionEl.style.display = 'none';
+                return;
+            }
+
+            renderPatternChips(signals, containerEl);
+            sectionEl.style.display = 'block';
+        })
+        .catch(err => {
+            console.error("Error fetching pattern signals:", err);
+            sectionEl.style.display = 'none';
+        });
+}
+
+function renderPatternChips(signals, containerEl) {
+    containerEl.innerHTML = '';
+    const seen = new Set();
+    
+    signals.forEach(sig => {
+        const key = `${sig.signal_type}_${sig.pattern}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        const chip = document.createElement('div');
+        chip.className = 'pattern-chip';
+        
+        let dirClass = 'pattern-chip--neutral';
+        let dirEmoji = '⚪';
+        if (sig.direction > 0) {
+            dirClass = 'pattern-chip--bull';
+            dirEmoji = '🟢';
+        } else if (sig.direction < 0) {
+            dirClass = 'pattern-chip--bear';
+            dirEmoji = '🔴';
+        }
+        
+        chip.classList.add(dirClass);
+        
+        let confHtml = '';
+        if (sig.signal_type === 'chart' && sig.confidence !== null && sig.confidence !== undefined) {
+            const pct = Math.round(sig.confidence * 100);
+            confHtml = `<span class="pattern-chip__conf">${pct}%</span>`;
+        }
+        
+        const tooltip = sig.description ? sig.description : `${sig.pattern} pattern detected`;
+        chip.title = tooltip;
+        
+        chip.innerHTML = `${dirEmoji} <strong>${sig.pattern}</strong>${confHtml}`;
+        containerEl.appendChild(chip);
+    });
+}
 // -----------------------------------------------------------------------------
 // Phase 3: Trade Setup Drawer Logic
 // -----------------------------------------------------------------------------
@@ -6511,6 +6581,9 @@ function openTradeDrawer(ticker) {
             }
             activeDrawerChart = null;
         }
+        
+        // Load active pattern signals (Phase 7 addition)
+        loadPatternSignals(stock.clean_ticker);
         
         fetch(`/api/setup-analysis?ticker=${encodeURIComponent(stock.clean_ticker)}`)
             .then(res => res.json())

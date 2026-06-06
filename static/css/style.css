@@ -5614,5 +5614,73 @@ body[data-theme="light"] .sector-pill-progress-track {
   height: clamp(250px, 30vh, 400px);
 }
 
+/* Phase 7: Pattern Chips in detail drawer */
+.pattern-chips-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pattern-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.pattern-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-text-primary);
+  transition: var(--transition-smooth);
+  cursor: pointer;
+}
+.pattern-chip:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.06);
+}
+.pattern-chip--bull {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: var(--accent-green);
+}
+.pattern-chip--bull:hover {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: var(--accent-green);
+}
+.pattern-chip--bear {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: var(--accent-red);
+}
+.pattern-chip--bear:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: var(--accent-red);
+}
+.pattern-chip--neutral {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.25);
+  color: var(--accent-blue);
+}
+.pattern-chip--neutral:hover {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: var(--accent-blue);
+}
+.pattern-chip__conf {
+  opacity: 0.85;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  margin-left: 0.25rem;
+}
+
 
 
