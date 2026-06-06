@@ -821,64 +821,63 @@ document.addEventListener('DOMContentLoaded', () => {
     // Column preferences and reordering setup
     initColumns();
 
-    // News source modal close listeners
-    const btnCloseSourceModal = document.getElementById('btn-close-source-modal');
-    const newsSourceModal = document.getElementById('news-source-modal');
-    if (btnCloseSourceModal && newsSourceModal) {
-        btnCloseSourceModal.addEventListener('click', () => {
-            newsSourceModal.classList.add('hidden');
-        });
-        newsSourceModal.addEventListener('click', (e) => {
-            if (e.target === newsSourceModal) {
-                newsSourceModal.classList.add('hidden');
+    // Universal modal event listeners (backdrops and close buttons)
+    document.addEventListener('click', (e) => {
+        // 1. Delegated backdrop click
+        const overlay = e.target.closest('.modal-overlay');
+        if (overlay && e.target === overlay) {
+            const closeBtn = overlay.querySelector('[data-modal-close]');
+            if (closeBtn) {
+                closeBtn.click();
+            } else {
+                overlay.classList.add('hidden');
             }
-        });
-    }
+            return;
+        }
 
-    // Sentiment explanation modal close listeners
-    const btnCloseSentModal = document.getElementById('btn-close-sent-modal');
-    const sentimentModal = document.getElementById('sentiment-explanation-modal');
-    if (btnCloseSentModal && sentimentModal) {
-        btnCloseSentModal.addEventListener('click', () => {
-            sentimentModal.classList.add('hidden');
-        });
-        sentimentModal.addEventListener('click', (e) => {
-            if (e.target === sentimentModal) {
-                sentimentModal.classList.add('hidden');
+        // 2. Delegated close button click (for buttons without inline/custom event handlers or as fallback)
+        const closeBtn = e.target.closest('[data-modal-close]');
+        if (closeBtn) {
+            const modal = closeBtn.closest('.modal-overlay');
+            if (modal) {
+                modal.classList.add('hidden');
             }
-        });
-    }
+        }
+    });
 
-    // Regime history modal listeners
+    // Universal Escape keydown listener
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modals = document.querySelectorAll('.modal-overlay:not(.hidden)');
+            modals.forEach(modal => {
+                const closeBtn = modal.querySelector('[data-modal-close]');
+                if (closeBtn) {
+                    closeBtn.click();
+                } else {
+                    modal.classList.add('hidden');
+                }
+            });
+        }
+    });
+
+    // Regime history modal open/export listeners
     const btnOpenHistory = document.getElementById('open-regime-history');
-    const btnCloseHistory = document.getElementById('close-regime-history');
     const btnExportRegime = document.getElementById('btn-export-regime-csv');
-    const historyModal = document.getElementById('regime-history-modal');
     if (btnOpenHistory) {
         btnOpenHistory.addEventListener('click', openRegimeHistoryModal);
     }
     if (btnExportRegime) {
         btnExportRegime.addEventListener('click', exportRegimeHistoryToCSV);
     }
-    if (btnCloseHistory && historyModal) {
-        btnCloseHistory.addEventListener('click', () => {
-            historyModal.classList.add('hidden');
-        });
-        historyModal.addEventListener('click', (e) => {
-            if (e.target === historyModal) {
-                historyModal.classList.add('hidden');
-            }
-        });
-    }
 
     // Chart overlay modal listeners
     const drawerChartContainer = document.getElementById('drawer-tv-chart-container');
     const closeChartModalBtn = document.getElementById('close-chart-modal');
-    const chartOverlayModal = document.getElementById('chart-overlay-modal');
     
     if (drawerChartContainer) {
         drawerChartContainer.addEventListener('click', () => {
             if (window.currentDrawerChartData && window.currentTradeStock) {
+                const chartOverlayModal = document.getElementById('chart-overlay-modal');
                 if (chartOverlayModal) {
                     chartOverlayModal.classList.remove('hidden');
                     document.getElementById('overlay-chart-title').innerHTML = `📈 ${window.currentTradeStock.clean_ticker} - Daily Chart`;
@@ -893,19 +892,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeChartModalBtn) {
         closeChartModalBtn.addEventListener('click', closeChartOverlay);
     }
-    if (chartOverlayModal) {
-        chartOverlayModal.addEventListener('click', (e) => {
-            if (e.target === chartOverlayModal) {
-                closeChartOverlay();
-            }
-        });
-    }
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeChartOverlay();
-        }
-    });
 
     // Tab switching event listeners
     const screenerTabs = document.getElementById('screener-tabs');
@@ -10245,7 +10231,9 @@ function updateRRGResultsUI(leaders, improving, type) {
             
         const actionClick = isSect 
             ? `window.openScreenerWithSector('${item.name}')` 
-            : `window.openScreenerWithTicker('${item.ticker}')`;
+            : (item.isScreener 
+                ? `window.openScreenerWithTicker('${item.ticker}')` 
+                : `openTradingView('${item.ticker}')`);
             
         return `
             <li class="rrg-result-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.6rem; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; font-size: 0.8rem; gap: 0.5rem;">
