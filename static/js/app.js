@@ -584,6 +584,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
+
+
     // Sector dropdown toggle button listener
     if (btnSectors && sectorsDropdown) {
         btnSectors.addEventListener('click', (e) => {
