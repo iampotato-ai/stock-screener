@@ -4,9 +4,9 @@
     --font-display: 'Cabinet Grotesk', 'Outfit', ui-sans-serif, system-ui, sans-serif;
 
     /* Type scale */
-    --text-xs:   0.70rem;
+    --text-xs:   0.75rem;
     --text-sm:   0.80rem;
-    --text-base: 0.875rem;
+    --text-base: 0.90rem;
     --text-md:   1.00rem;
     --text-lg:   1.125rem;
 
@@ -2529,6 +2529,85 @@ body[data-theme="light"] .imp-order-book { color: hsl(217, 80%, 40%); }
 body[data-theme="light"] .imp-governance { color: hsl(28, 80%, 35%); }
 body[data-theme="light"] .sent-neutral { color: hsl(45, 85%, 35%); }
 
+/* Light Mode Screener Table Overrides */
+body[data-theme="light"] .screener-table th {
+    background: rgba(243, 244, 246, 0.85);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    color: var(--color-text-secondary);
+}
+
+body[data-theme="light"] .screener-table th:hover {
+    background: rgba(0, 0, 0, 0.03);
+    color: var(--color-text-primary);
+}
+
+body[data-theme="light"] .screener-table td {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    color: var(--color-text-secondary);
+}
+
+body[data-theme="light"] .screener-table tbody tr:hover td {
+    background: rgba(0, 0, 0, 0.015);
+    color: var(--color-text-primary);
+}
+
+body[data-theme="light"] .screener-table th:nth-child(1),
+body[data-theme="light"] .screener-table td:nth-child(1) {
+    background: #ffffff;
+    color: var(--color-text-primary);
+}
+
+body[data-theme="light"] .screener-table th:nth-child(2),
+body[data-theme="light"] .screener-table td:nth-child(2) {
+    background: #ffffff;
+    color: var(--color-text-primary);
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+body[data-theme="light"] .screener-table th:nth-child(1),
+body[data-theme="light"] .screener-table th:nth-child(2) {
+    background: #f3f4f6;
+}
+
+body[data-theme="light"] .screener-table tbody tr:hover td:nth-child(1),
+body[data-theme="light"] .screener-table tbody tr:hover td:nth-child(2) {
+    background: #f9fafb;
+}
+
+body[data-theme="light"] .screener-table tbody tr.ims-strong-row td:nth-child(1),
+body[data-theme="light"] .screener-table tbody tr.ims-strong-row td:nth-child(2) {
+    background: #f0fdf4;
+}
+
+body[data-theme="light"] .screener-table tbody tr.ims-strong-row:hover td:nth-child(1),
+body[data-theme="light"] .screener-table tbody tr.ims-strong-row:hover td:nth-child(2) {
+    background: #dcfce7;
+}
+
+body[data-theme="light"] .table-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+body[data-theme="light"] .table-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* Light Mode Watchlist Table Overrides */
+body[data-theme="light"] .watchlist-table th {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+body[data-theme="light"] .watchlist-table td {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+body[data-theme="light"] .watchlist-table tbody tr:hover td {
+    background: rgba(0, 0, 0, 0.015);
+}
+
+body[data-theme="light"] .watchlist-table tbody tr.active-row td {
+    background: rgba(59, 130, 246, 0.06);
+}
 
 /* ============================
    NSE Event Calendar Section
@@ -5680,6 +5759,299 @@ body[data-theme="light"] .sector-pill-progress-track {
   border-radius: 3px;
   font-size: 0.65rem;
   margin-left: 0.25rem;
+}
+
+/* Screener Header Primary and Secondary Layouts */
+.screener-header-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.75rem 0.5rem;
+  width: 100%;
+}
+
+.screener-header-primary-left {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.screener-header-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(15, 23, 42, 0.25);
+  width: 100%;
+}
+
+.screener-header-secondary-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.screener-header-secondary-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.auto-refresh-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.auto-refresh-toggle .auto-refresh-text {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+#auto-refresh-countdown {
+  font-size: 0.75rem;
+  color: var(--accent-blue);
+  width: 25px;
+  display: inline-block;
+}
+
+@media (max-width: 1100px) {
+  .screener-header-secondary button .btn-label,
+  .screener-header-secondary .auto-refresh-toggle .btn-label {
+    display: none !important;
+  }
+  .screener-header-secondary button {
+    padding: 0.4rem 0.5rem !important;
+  }
+}
+
+/* Compact Trade Ticket Section */
+.trade-ticket {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  margin: 0.75rem 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.trade-ticket-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.trade-ticket-row--targets {
+  justify-content: space-between;
+}
+
+.tt-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tt-field label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.tt-field input {
+  background: rgba(15, 23, 42, 0.9);
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  padding: 0.4rem 0.55rem;
+  font-size: 0.82rem;
+  color: var(--color-text-primary);
+  width: 100%;
+}
+
+.tt-field .param-value-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.tt-field .param-value-wrapper .currency-symbol {
+  position: absolute;
+  left: 8px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.tt-field .param-value-wrapper input {
+  padding-left: 20px;
+}
+
+.tt-field .param-type {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 0.1rem;
+}
+
+.tt-field--readonly .tt-value {
+  min-height: 2.2rem;
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 0.82rem;
+  color: var(--color-text-primary);
+}
+
+.tt-field--readonly .tt-value-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.tt-field--readonly .font-highlight {
+  font-weight: 700;
+  color: var(--accent-teal, #14b8a6) !important;
+}
+
+.tt-target {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+.tt-target-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.tt-target-price {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+@media (max-width: 1000px) {
+  .trade-ticket-row {
+    flex-direction: column;
+  }
+}
+
+/* Collapsible Drawer Sections Styles */
+.drawer-section {
+  margin-bottom: 0.75rem;
+}
+
+.drawer-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.6rem 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.drawer-section[open] > summary {
+  color: var(--color-text-primary);
+}
+
+.drawer-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.drawer-section > summary::after {
+  content: '▾';
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.drawer-section[open] > summary::after {
+  content: '▴';
+}
+
+.drawer-section-content {
+  padding: 0.5rem 0 0.75rem;
+}
+
+/* Consolidated Drawer Risk Banner Styles */
+.drawer-risk-banner {
+  margin: 0.35rem 0 0.8rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm, 6px);
+  border-left: 4px solid var(--accent-orange, #f97316);
+  background: rgba(249, 115, 22, 0.12);
+  color: #ffedd5;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.risk-warning-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  line-height: 1.4;
+}
+
+/* Light Theme Overrides for Sticky Drawer Actions and Inputs */
+body[data-theme="light"] .drawer-actions-sticky {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.05) !important;
+}
+
+body[data-theme="light"] .trade-ticket {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+body[data-theme="light"] .trade-ticket input {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+  color: var(--color-text-primary) !important;
+}
+
+body[data-theme="light"] .tt-field--readonly .tt-value,
+body[data-theme="light"] .tt-target {
+  background: #f9fafb !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: var(--color-text-primary) !important;
+}
+
+body[data-theme="light"] .tt-target-price {
+  color: var(--color-text-primary) !important;
+}
+
+body[data-theme="light"] .drawer-risk-banner {
+  background: rgba(249, 115, 22, 0.1) !important;
+  color: #c2410c !important;
+  border-left-color: #f97316 !important;
 }
 
 

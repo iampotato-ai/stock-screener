@@ -6837,6 +6837,8 @@ function updateTradeParams() {
         document.getElementById('drawer-t1').textContent = '₹0.00';
         document.getElementById('drawer-t2').textContent = '₹0.00';
         document.getElementById('drawer-t3').textContent = '₹0.00';
+        const rrEl = document.getElementById('tt-rr-multiple');
+        if (rrEl) rrEl.textContent = '--';
     } else {
         const riskPerShare = entry - stop;
         riskPct = (riskPerShare / entry) * 100;
@@ -6854,6 +6856,11 @@ function updateTradeParams() {
         document.getElementById('drawer-t1').textContent = `₹${t1.toFixed(2)}`;
         document.getElementById('drawer-t2').textContent = `₹${t2.toFixed(2)}`;
         document.getElementById('drawer-t3').textContent = `₹${t3.toFixed(2)}`;
+        
+        const rewardPerShare = Math.max(t1 - entry, 0);
+        const rr = riskPerShare ? (rewardPerShare / riskPerShare) : 0;
+        const rrEl = document.getElementById('tt-rr-multiple');
+        if (rrEl) rrEl.textContent = rr ? rr.toFixed(2) + 'R' : '--';
     }
     
     // Risk Warning Banner logic
@@ -6866,22 +6873,27 @@ function updateTradeParams() {
         
         // 1. Stop loss risk > 15%
         if (riskPct > 15) {
-            warnings.push(`⚠️ Stop loss risk is extremely high (${riskPct.toFixed(2)}% > 15% safety floor). Tighten stop or reduce sizing!`);
+            warnings.push(`Stop loss risk is extremely high (${riskPct.toFixed(2)}% > 15% safety floor). Tighten stop or reduce sizing!`);
         }
         
-        // 2. Upcoming earnings within 3 days
+        // 2. Upcoming earnings within 5 days
         if (window.currentTradeStock && window.currentTradeStock.upcoming_earnings) {
             const eDate = window.currentTradeStock.upcoming_earnings;
             const [ey, em, ed] = eDate.split('-').map(Number);
             const diffDays = Math.round((new Date(ey, em - 1, ed) - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24));
-            if (diffDays >= 0 && diffDays <= 3) {
+            if (diffDays >= 0 && diffDays <= 5) {
                 const formatted = new Date(ey, em - 1, ed).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-                warnings.push(`⚠️ Upcoming Earnings in ${diffDays} day(s) (${formatted}). High gap risk!`);
+                warnings.push(`Upcoming Earnings in ${diffDays} day(s) (${formatted}). Consider reducing position size!`);
             }
+        }
+
+        // 3. Weekly Multi-Timeframe Alignment
+        if (window.currentTradeStock && window.currentTradeStock.mtfScore !== undefined && window.currentTradeStock.mtfScore < 1) {
+            warnings.push(`No weekly multi-timeframe trend alignment!`);
         }
         
         if (warnings.length > 0) {
-            bannerEl.innerHTML = warnings.map(w => `<div class="risk-warning-item">${w}</div>`).join('');
+            bannerEl.innerHTML = warnings.map(w => `<div class="risk-warning-item">⚠️ ${w}</div>`).join('');
             bannerEl.style.display = 'flex';
         }
     }
