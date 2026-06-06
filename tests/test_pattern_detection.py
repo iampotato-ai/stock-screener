@@ -151,3 +151,18 @@ def test_detect_morning_star_relaxed_gap():
     result = detect_candlestick_patterns(history)
     assert "Morning Star" in result
     assert result["Morning Star"] == 100
+
+def test_candle_pattern_bias_engulfing_collision():
+    from pattern_detection import candle_pattern_bias
+    candle_results = {
+        "Bullish Engulfing": 100,
+        "Bearish Engulfing": -100,
+        "Engulfing": 100
+    }
+    bias = candle_pattern_bias(candle_results, [])
+    assert abs(bias - 0.0) < 1e-6
+
+def test_detect_chart_patterns_short_history():
+    from pattern_detection import detect_chart_patterns
+    history = [{"close": 100} for _ in range(19)]
+    assert detect_chart_patterns(history) == []
