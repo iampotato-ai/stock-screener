@@ -5,7 +5,9 @@ __pycache__/
 *.pyd
 
 # Local Database & Scan Results
+*.db
 scan_history.db
+stocks.db
 scan_result.txt
 
 # Virtual Environments

@@ -16,7 +16,7 @@ def compute_atr_pct(history, window=14):
     curr_close = float(history[-1]["close"])
     return (atr / curr_close) * 100 if curr_close > 0 else 5.0
 
-def compute_forecast_metrics(forecast_list, last_close, history):
+def compute_forecast_metrics(forecast_list, last_close, history, extra_context=None):
     """
     Computes forecast scoring metrics, forecast bias, and confidence score.
     Returns: (ai_forecast_bias, ai_confidence_score, forecast_metrics)
@@ -79,6 +79,11 @@ def compute_forecast_metrics(forecast_list, last_close, history):
 
     weighted_score = (0.30 * s1 + 0.25 * s2 + 0.20 * s3
                       + 0.15 * s4 + 0.10 * s5)
+
+    if extra_context is not None:
+        pattern_bias = extra_context.get("pattern_bias", 0.0)
+        weighted_score = weighted_score + pattern_bias * 0.05
+    weighted_score = float(np.clip(weighted_score, -1.0, 1.0))
 
     # ── 5-Label Bias ───────────────────────────────────────────────────
     if weighted_score > 0.40:
