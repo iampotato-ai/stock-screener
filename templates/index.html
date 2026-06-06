@@ -935,8 +935,13 @@
     <div class="workspace-view" id="view-intraday">
         <div class="intraday-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
             <div class="intraday-header-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 1rem;">
-                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; align-items: center; gap: 8px;">
-                    <span>⚡</span> Intraday Pro Cockpit
+                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>⚡</span> Intraday Pro Cockpit
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: normal;">
+                        Currently viewing: <span id="intraday-active-preset-label" style="font-weight: 600; color: var(--accent-blue);">All Presets</span>
+                    </div>
                 </div>
                 <!-- Delay Disclaimer -->
                 <div class="intraday-delay-disclaimer" style="display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem;">
@@ -948,6 +953,7 @@
             <div class="intraday-container" id="intraday-container" style="display: flex; flex-direction: column;">
                 <div class="intraday-header-chips">
                     <span style="font-weight:600; color:var(--color-text-primary); margin-right: 0.5rem; display: flex; align-items: center;">Presets:</span>
+                    <button class="intraday-chip active" onclick="applyIntradayFilter('all')">All Presets</button>
                     <button class="intraday-chip" onclick="applyIntradayFilter('gap_go')">Gap Up + Follow Through</button>
                     <button class="intraday-chip" onclick="applyIntradayFilter('vwap_leaders')">VWAP Leaders</button>
                     <button class="intraday-chip" onclick="applyIntradayFilter('high_rvol')">High RVOL</button>
@@ -957,23 +963,53 @@
                 
                 <div class="intraday-grid">
                     <div class="intraday-widget">
-                        <div class="widget-header gap-go">Gap and Go <span class="widget-count" id="count-gap-go">0</span></div>
+                        <div class="widget-header gap-go" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>Gap and Go</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-gap-go">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-gap-go"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header vwap">VWAP Reclaim <span class="widget-count" id="count-vwap">0</span></div>
+                        <div class="widget-header vwap" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>VWAP Reclaim</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-vwap">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-vwap"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header rvol">High RVOL Movers <span class="widget-count" id="count-rvol">0</span></div>
+                        <div class="widget-header rvol" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>High RVOL Movers</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-rvol">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-rvol"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header confluence">IMS + Swing Overlap <span class="widget-count" id="count-confluence">0</span></div>
+                        <div class="widget-header confluence" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>IMS + Swing Overlap</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-confluence">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-confluence"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header focus">Watchlist Intraday Focus <span class="widget-count" id="count-focus">0</span></div>
+                        <div class="widget-header focus" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
+                            <span>Watchlist Intraday Focus</span>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <span class="widget-count" id="count-focus">0</span>
+                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                            </div>
+                        </div>
                         <div class="widget-content" id="widget-focus"></div>
                     </div>
                 </div>
@@ -1035,15 +1071,24 @@
                         <canvas id="rrgChart"></canvas>
                         <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
                     </div>
-                    <div class="rrg-guide-card glass-panel" style="width: 260px; padding: 1.25rem; font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.75rem; flex-shrink: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--panel-border);">
-                        <p class="guide-title" style="font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 0.25rem;">How to Use RRG Today</p>
-                        <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem;">
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-green); font-weight: 600;">🟢 Leading</span> <span>Overweight, favour breakout entries</span></li>
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🟡 Improving</span> <span>Build watchlists, size small</span></li>
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🔴 Weakening</span> <span>Reduce exposure, tighten stops</span></li>
-                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--color-text-muted); font-weight: 600;">⚪ Lagging</span> <span>Avoid fresh entries</span></li>
-                        </ul>
-                    </div>
+                    <aside class="rrg-results-column glass-panel">
+                        <div class="rrg-guide-section" style="font-size: 0.78rem;">
+                            <p class="guide-title" style="font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; color: #fff; margin: 0 0 0.4rem 0;">How to Use RRG Today</p>
+                            <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem;">
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-green); font-weight: 600;">🟢 Leading</span> <span>Overweight, breakouts</span></li>
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🟡 Improving</span> <span>Build watchlists</span></li>
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🔴 Weakening</span> <span>Tighten stops</span></li>
+                                <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--color-text-muted); font-weight: 600;">⚪ Lagging</span> <span>Avoid entry</span></li>
+                            </ul>
+                        </div>
+                        <div style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 0.75rem;">
+                            <h3 style="font-family: var(--font-display); font-weight: 700; font-size: 0.92rem; color: #fff; margin: 0 0 0.25rem 0;">Rotation Opportunities</h3>
+                            <p style="font-size: 0.7rem; color: var(--color-text-muted); margin: 0 0 0.5rem 0;">Top leading & improving names.</p>
+                            <ul id="rrg-results-list" class="rrg-results-list">
+                                <li style="font-size: 0.78rem; color: var(--color-text-muted); text-align: center; padding: 1rem 0;">Loading opportunities...</li>
+                            </ul>
+                        </div>
+                    </aside>
                 </div>
                 
 
@@ -1063,7 +1108,7 @@
         <div class="ai-forecast-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column;">
             <!-- Stock search to pick a symbol -->
             <div class="ai-forecast-header" style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">🔮 Kronos AI Price Predictor</h3>
+                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">Kronos AI Price Predictor</h3>
                 <div style="flex-grow: 1;"></div>
                 <input id="kronos-ticker-input" placeholder="Enter NSE ticker (e.g. RELIANCE)..." class="search-input" style="max-width: 250px; padding: 0.5rem 1rem; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;" />
                 <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
@@ -1133,51 +1178,49 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Forecast + backtest table -->
+                    <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
+
+                    <!-- Forecast vs Actual section (shown after actuals arrive) -->
+                    <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                            <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin: 0; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
+                            <!-- Backtester Mode Toggle -->
+                            <div class="backtest-mode-toggle">
+                                <button class="bt-mode-btn active" data-mode="kronos">Kronos Only</button>
+                                <button class="bt-mode-btn" data-mode="ensemble">⚡ Ensemble</button>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
+                            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                                <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
+                            </div>
+                            <div>
+                                <!-- Normal Kronos Metrics Container -->
+                                <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
+                                    <!-- Metrics will go here -->
+                                </div>
+                                <!-- Ensemble Comparison Table (hidden by default) -->
+                                <div id="ensembleBacktestTable" style="display:none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem; height: 100%; box-sizing: border-box;">
+                                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1rem; color: #fff; margin-bottom: 0.8rem;">Multi-Model Comparison</div>
+                                    <table class="bt-comparison-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Model</th>
+                                                <th>MAE</th>
+                                                <th>MAPE %</th>
+                                                <th>Dir. Acc %</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="btComparisonBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </details>
             </div>
-
-            <!-- Forecast + backtest table -->
-            <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
-
-            <!-- Forecast vs Actual section (shown after actuals arrive) -->
-            <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin: 0; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
-                    <!-- Backtester Mode Toggle -->
-                    <div class="backtest-mode-toggle">
-                        <button class="bt-mode-btn active" data-mode="kronos">Kronos Only</button>
-                        <button class="bt-mode-btn" data-mode="ensemble">⚡ Ensemble</button>
-                    </div>
-                </div>
-                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-                    <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
-                        <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
-                    </div>
-                    <div>
-                        <!-- Normal Kronos Metrics Container -->
-                        <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
-                            <!-- Metrics will go here -->
-                        </div>
-                        <!-- Ensemble Comparison Table (hidden by default) -->
-                        <div id="ensembleBacktestTable" style="display:none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem; height: 100%; box-sizing: border-box;">
-                            <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1rem; color: #fff; margin-bottom: 0.8rem;">Multi-Model Comparison</div>
-                            <table class="bt-comparison-table">
-                                <thead>
-                                    <tr>
-                                        <th>Model</th>
-                                        <th>MAE</th>
-                                        <th>MAPE %</th>
-                                        <th>Dir. Acc %</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="btComparisonBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
         <!-- News Source Modal -->
         <div class="modal-overlay hidden" id="news-source-modal">
@@ -1562,7 +1605,7 @@
 
             <!-- 1. Market & Regime Context Details -->
             <details class="drawer-section" open>
-                <summary>🛡️ Market & Regime Context</summary>
+                <summary>Market & Regime Context</summary>
                 <div class="drawer-section-content">
                     <div class="drawer-regime-hint regime-hint--neutral" id="drawer-regime-hint" style="margin-bottom: 0.5rem;">
                       <span class="regime-hint-label">Market Regime</span>
@@ -1575,7 +1618,7 @@
             <div id="drawer-intelligence-section" style="display: flex; flex-direction: column; gap: 1.5rem;">
                 <!-- 2. AI Forecast (Kronos Ensemble) Details -->
                 <details class="drawer-section">
-                <summary>🔮 AI Forecast (Kronos Ensemble)</summary>
+                <summary>AI Forecast (Kronos Ensemble)</summary>
                 <div class="drawer-section-content">
                     <!-- Kronos AI Forecast Block -->
                     <div id="drawer-kronos-forecast-row" style="display: none; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 0.6rem; margin-top: 0.1rem; margin-bottom: 0.5rem;">
@@ -1643,7 +1686,7 @@
 
             <!-- 3. Pattern Intelligence Details -->
             <details class="drawer-section">
-                <summary>🧠 Pattern Intelligence</summary>
+                <summary>Pattern Intelligence</summary>
                 <div class="drawer-section-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span class="intelligence-pattern-title" id="drawer-intel-pattern" style="font-size: 1.05rem; font-weight: 700; color: #c084fc;">Analyzing Pattern...</span>
@@ -1682,7 +1725,7 @@
 
             <!-- 4. History & Notes Details -->
             <details class="drawer-section">
-                <summary>📝 History & Notes</summary>
+                <summary>History & Notes</summary>
                 <div class="drawer-section-content" style="display: flex; flex-direction: column; gap: 0.75rem;">
                     <!-- Scan History -->
                     <div>

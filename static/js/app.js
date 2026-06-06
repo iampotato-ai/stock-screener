@@ -202,79 +202,83 @@ let currentTab = 'overview';
 const masterColumnsConfig = {
     overview: [
         { id: 'ticker', name: 'Ticker', sortField: 'clean_ticker', isVisible: true, align: 'left', canToggle: false },
+        { id: 'sector', name: 'Sector', sortField: 'sector', isVisible: true, align: 'left', canToggle: true },
         { id: 'setupLabel', name: 'Setup', sortField: 'setupLabel', isVisible: true, align: 'center', canToggle: true },
         { id: 'mtfScore', name: 'MTF', sortField: 'mtfScore', isVisible: true, align: 'center', canToggle: true, tooltip: 'Multi-Timeframe Confirmation: checks if weekly and monthly trends align with the setup.' },
-        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: true, align: 'left', canToggle: true },
-        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: true, align: 'right', canToggle: true },
-        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: true, align: 'right', canToggle: true },
-        { id: 'day_range', name: 'Day Range', sortField: 'day_range_pct', isVisible: true, align: 'center', canToggle: true },
+        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: false, align: 'left', canToggle: true },
+        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: false, align: 'right', canToggle: true },
+        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: false, align: 'right', canToggle: true },
+        { id: 'day_range', name: 'Day Range', sortField: 'day_range_pct', isVisible: false, align: 'center', canToggle: true },
         { id: 'volume', name: 'Volume', sortField: 'volume', isVisible: true, align: 'right', canToggle: true },
-        { id: 'perf_w', name: '1W Perf (%)', sortField: 'perf_w', isVisible: true, align: 'right', canToggle: true },
-        { id: 'perf_m', name: '1M Perf (%)', sortField: 'perf_m', isVisible: true, align: 'right', canToggle: true },
-        { id: 'perf_3m', name: '3M Perf (%)', sortField: 'perf_3m', isVisible: true, align: 'right', canToggle: true },
-        { id: 'mkt_cap_cr', name: 'Mkt Cap (Cr)', sortField: 'mkt_cap_cr', isVisible: true, align: 'right', canToggle: true },
+        { id: 'perf_w', name: '1W Perf (%)', sortField: 'perf_w', isVisible: false, align: 'right', canToggle: true },
+        { id: 'perf_m', name: '1M Perf (%)', sortField: 'perf_m', isVisible: false, align: 'right', canToggle: true },
+        { id: 'perf_3m', name: '3M Perf (%)', sortField: 'perf_3m', isVisible: false, align: 'right', canToggle: true },
+        { id: 'mkt_cap_cr', name: 'Mkt Cap (Cr)', sortField: 'mkt_cap_cr', isVisible: false, align: 'right', canToggle: true },
         { id: 'atr_pct', name: 'ATR (%)', sortField: 'atr_pct', isVisible: true, align: 'right', canToggle: true },
-        { id: 'relative_volume', name: 'RVOL (10d)', sortField: 'relative_volume', isVisible: true, align: 'right', canToggle: true },
+        { id: 'relative_volume', name: 'RVOL (10d)', sortField: 'relative_volume', isVisible: false, align: 'right', canToggle: true },
         { id: 'intraday_score', name: 'IMS', sortField: 'intraday_score', isVisible: true, align: 'center', canToggle: true },
         { id: 'swingscore', name: 'Swing', sortField: 'swingscore', isVisible: true, align: 'center', canToggle: true },
-        { id: 'gap', name: 'Gap (%)', sortField: 'gap', isVisible: true, align: 'right', canToggle: true },
-        { id: 'change_from_open', name: 'Chg from Open (%)', sortField: 'change_from_open', isVisible: true, align: 'right', canToggle: true },
-        { id: 'vwap', name: 'VWAP (₹)', sortField: 'VWAP', isVisible: true, align: 'right', canToggle: true },
-        { id: 'rsi', name: 'RSI', sortField: 'RSI', isVisible: true, align: 'right', canToggle: true },
-        { id: 'pct_above_low', name: 'Above 52W Low (%)', sortField: 'pct_above_low', isVisible: true, align: 'right', canToggle: true },
-        { id: 'turnover_m', name: 'Avg Turnover (Cr)', sortField: 'turnover_m', isVisible: true, align: 'right', canToggle: true },
-        { id: 'days_in_scan', name: 'Days in Scan', sortField: 'days_in_scan', isVisible: true, align: 'center', canToggle: true, tooltip: 'Consecutive trading days this stock has been in the scan.' },
-        { id: 'first_seen', name: 'First Seen', sortField: 'first_seen', isVisible: true, align: 'center', canToggle: true, tooltip: 'First date this stock appeared in the scan.' },
-        { id: 'times_seen_20d', name: 'Seen (20d)', sortField: 'times_seen_20d', isVisible: true, align: 'center', canToggle: true, tooltip: 'Number of times this stock appeared in the scan in the last 20 days.' },
-        { id: 're_entry', name: 'Re-entry', sortField: 're_entry', isVisible: true, align: 'center', canToggle: true, tooltip: 'Indicates if the stock fell off the scan previously and has returned today.' },
+        { id: 'gap', name: 'Gap (%)', sortField: 'gap', isVisible: false, align: 'right', canToggle: true },
+        { id: 'change_from_open', name: 'Chg from Open (%)', sortField: 'change_from_open', isVisible: false, align: 'right', canToggle: true },
+        { id: 'vwap', name: 'VWAP (₹)', sortField: 'VWAP', isVisible: false, align: 'right', canToggle: true },
+        { id: 'rsi', name: 'RSI', sortField: 'RSI', isVisible: false, align: 'right', canToggle: true },
+        { id: 'pct_above_low', name: 'Above 52W Low (%)', sortField: 'pct_above_low', isVisible: false, align: 'right', canToggle: true },
+        { id: 'turnover_m', name: 'Avg Turnover (Cr)', sortField: 'turnover_m', isVisible: false, align: 'right', canToggle: true },
+        { id: 'days_in_scan', name: 'Days in Scan', sortField: 'days_in_scan', isVisible: false, align: 'center', canToggle: true, tooltip: 'Consecutive trading days this stock has been in the scan.' },
+        { id: 'first_seen', name: 'First Seen', sortField: 'first_seen', isVisible: false, align: 'center', canToggle: true, tooltip: 'First date this stock appeared in the scan.' },
+        { id: 'times_seen_20d', name: 'Seen (20d)', sortField: 'times_seen_20d', isVisible: false, align: 'center', canToggle: true, tooltip: 'Number of times this stock appeared in the scan in the last 20 days.' },
+        { id: 're_entry', name: 'Re-entry', sortField: 're_entry', isVisible: false, align: 'center', canToggle: true, tooltip: 'Indicates if the stock fell off the scan previously and has returned today.' },
         { id: 'upcoming_earnings', name: 'Earnings', sortField: 'upcoming_earnings', isVisible: true, align: 'center', canToggle: true, tooltip: 'Next upcoming earnings report date.' },
         { id: 'action', name: 'Action', sortField: null, isVisible: true, align: 'center', canToggle: true }
     ],
     valuation: [
         { id: 'ticker', name: 'Ticker', sortField: 'clean_ticker', isVisible: true, align: 'left', canToggle: false },
-        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: true, align: 'left', canToggle: true },
-        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: true, align: 'right', canToggle: true },
-        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: true, align: 'right', canToggle: true },
+        { id: 'sector', name: 'Sector', sortField: 'sector', isVisible: true, align: 'left', canToggle: true },
+        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: false, align: 'left', canToggle: true },
+        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: false, align: 'right', canToggle: true },
+        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: false, align: 'right', canToggle: true },
         { id: 'mkt_cap_cr', name: 'Mkt Cap (Cr)', sortField: 'mkt_cap_cr', isVisible: true, align: 'right', canToggle: true },
         { id: 'pe_ratio', name: 'P/E', sortField: 'pe_ratio', isVisible: true, align: 'right', canToggle: true, tooltip: 'Price to Earnings Ratio. Lower means the stock is cheaper relative to its earnings.' },
-        { id: 'ev_ebitda', name: 'EV/EBITDA', sortField: 'ev_ebitda', isVisible: true, align: 'right', canToggle: true, tooltip: 'Enterprise Value to EBITDA. A valuation metric often used as an alternative to P/E, considering debt.' },
+        { id: 'ev_ebitda', name: 'EV/EBITDA', sortField: 'ev_ebitda', isVisible: false, align: 'right', canToggle: true, tooltip: 'Enterprise Value to EBITDA. A valuation metric often used as an alternative to P/E, considering debt.' },
         { id: 'pb_ratio', name: 'P/B', sortField: 'pb_ratio', isVisible: true, align: 'right', canToggle: true, tooltip: 'Price to Book Ratio. Compares a firm\'s market value to its book value.' },
-        { id: 'ps_ratio', name: 'P/S', sortField: 'ps_ratio', isVisible: true, align: 'right', canToggle: true, tooltip: 'Price to Sales Ratio. Shows how much investors pay per rupee of sales.' },
+        { id: 'ps_ratio', name: 'P/S', sortField: 'ps_ratio', isVisible: false, align: 'right', canToggle: true, tooltip: 'Price to Sales Ratio. Shows how much investors pay per rupee of sales.' },
         { id: 'div_yield', name: 'Div Yield (%)', sortField: 'div_yield', isVisible: true, align: 'right', canToggle: true, tooltip: 'Dividend Yield. The annual dividend payment relative to the stock price.' },
-        { id: 'fcf_yield', name: 'FCF Yield (%)', sortField: 'fcf_yield', isVisible: true, align: 'right', canToggle: true, tooltip: 'Free Cash Flow Yield. Higher yield indicates the company is generating more cash relative to its market value.' },
-        { id: 'ev_cr', name: 'EV (Cr)', sortField: 'ev_cr', isVisible: true, align: 'right', canToggle: true, tooltip: 'Enterprise Value in Crores. Total valuation of the company including debt, minus cash.' },
+        { id: 'fcf_yield', name: 'FCF Yield (%)', sortField: 'fcf_yield', isVisible: false, align: 'right', canToggle: true, tooltip: 'Free Cash Flow Yield. Higher yield indicates the company is generating more cash relative to its market value.' },
+        { id: 'ev_cr', name: 'EV (Cr)', sortField: 'ev_cr', isVisible: false, align: 'right', canToggle: true, tooltip: 'Enterprise Value in Crores. Total valuation of the company including debt, minus cash.' },
         { id: 'action', name: 'Action', sortField: null, isVisible: true, align: 'center', canToggle: true }
     ],
     quality: [
         { id: 'ticker', name: 'Ticker', sortField: 'clean_ticker', isVisible: true, align: 'left', canToggle: false },
-        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: true, align: 'left', canToggle: true },
-        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: true, align: 'right', canToggle: true },
-        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: true, align: 'right', canToggle: true },
+        { id: 'sector', name: 'Sector', sortField: 'sector', isVisible: true, align: 'left', canToggle: true },
+        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: false, align: 'left', canToggle: true },
+        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: false, align: 'right', canToggle: true },
+        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: false, align: 'right', canToggle: true },
         { id: 'roe', name: 'ROE (%)', sortField: 'roe', isVisible: true, align: 'right', canToggle: true, tooltip: 'Return on Equity. Measures profitability generated from shareholders\' equity. >15% is good.' },
         { id: 'roce', name: 'ROCE (%)', sortField: 'roce', isVisible: true, align: 'right', canToggle: true, tooltip: 'Return on Capital Employed. Profitability metric including debt. >15% indicates strong capital efficiency.' },
-        { id: 'roa', name: 'ROA (%)', sortField: 'roa', isVisible: true, align: 'right', canToggle: true, tooltip: 'Return on Assets. Shows how profitable a company is relative to its total assets.' },
-        { id: 'gross_margin', name: 'Gross Margin (%)', sortField: 'gross_margin', isVisible: true, align: 'right', canToggle: true, tooltip: 'Percentage of revenue left after deducting the cost of goods sold.' },
+        { id: 'roa', name: 'ROA (%)', sortField: 'roa', isVisible: false, align: 'right', canToggle: true, tooltip: 'Return on Assets. Shows how profitable a company is relative to its total assets.' },
+        { id: 'gross_margin', name: 'Gross Margin (%)', sortField: 'gross_margin', isVisible: false, align: 'right', canToggle: true, tooltip: 'Percentage of revenue left after deducting the cost of goods sold.' },
         { id: 'ebitda_margin', name: 'EBITDA Margin (%)', sortField: 'ebitda_margin', isVisible: true, align: 'right', canToggle: true, tooltip: 'Operating profitability as a percentage of revenue. >20% is typically strong.' },
-        { id: 'cfo_ebitda', name: 'CFO/EBITDA (%)', sortField: 'cfo_ebitda', isVisible: true, align: 'right', canToggle: true, tooltip: 'Cash Flow to EBITDA ratio. Measures how well operating profits convert to cash. >70% is healthy.' },
+        { id: 'cfo_ebitda', name: 'CFO/EBITDA (%)', sortField: 'cfo_ebitda', isVisible: false, align: 'right', canToggle: true, tooltip: 'Cash Flow to EBITDA ratio. Measures how well operating profits convert to cash. >70% is healthy.' },
         { id: 'cfo_pat', name: 'CFO/PAT (%)', sortField: 'cfo_pat', isVisible: true, align: 'right', canToggle: true, tooltip: 'Cash Flow to Net Profit ratio. Indicates earnings quality. >80% means profits are backed by real cash.' },
         { id: 'debt_to_equity', name: 'D/E Ratio', sortField: 'debt_to_equity', isVisible: true, align: 'right', canToggle: true, tooltip: 'Debt to Equity ratio. <0.5 is generally safe, >1.5 may indicate high financial risk depending on the sector.' },
-        { id: 'interest_coverage', name: 'Interest Cov.', sortField: 'interest_coverage', isVisible: true, align: 'right', canToggle: true, tooltip: 'Interest Coverage Ratio. How easily a company can pay interest on its debt. >3x is considered safe.' },
-        { id: 'wc_intensity', name: 'WC Intensity (%)', sortField: 'wc_intensity', isVisible: true, align: 'right', canToggle: true, tooltip: 'Working Capital Intensity. Shows how much working capital is tied up per rupee of sales. Lower is better.' },
+        { id: 'interest_coverage', name: 'Interest Cov.', sortField: 'interest_coverage', isVisible: false, align: 'right', canToggle: true, tooltip: 'Interest Coverage Ratio. How easily a company can pay interest on its debt. >3x is considered safe.' },
+        { id: 'wc_intensity', name: 'WC Intensity (%)', sortField: 'wc_intensity', isVisible: false, align: 'right', canToggle: true, tooltip: 'Working Capital Intensity. Shows how much working capital is tied up per rupee of sales. Lower is better.' },
         { id: 'action', name: 'Action', sortField: null, isVisible: true, align: 'center', canToggle: true }
     ],
     growth: [
         { id: 'ticker', name: 'Ticker', sortField: 'clean_ticker', isVisible: true, align: 'left', canToggle: false },
-        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: true, align: 'left', canToggle: true },
-        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: true, align: 'right', canToggle: true },
-        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: true, align: 'right', canToggle: true },
+        { id: 'sector', name: 'Sector', sortField: 'sector', isVisible: true, align: 'left', canToggle: true },
+        { id: 'description', name: 'Company Name', sortField: 'description', isVisible: false, align: 'left', canToggle: true },
+        { id: 'close', name: 'Price (₹)', sortField: 'close', isVisible: false, align: 'right', canToggle: true },
+        { id: 'change', name: 'Change (%)', sortField: 'change', isVisible: false, align: 'right', canToggle: true },
         { id: 'revenue_growth_qoq', name: 'Revenue Growth QoQ (%)', sortField: 'revenue_growth_qoq', isVisible: true, align: 'right', canToggle: true, tooltip: 'Quarter-over-Quarter revenue growth.' },
         { id: 'revenue_growth_yoy', name: 'Revenue Growth YoY (%)', sortField: 'revenue_growth_yoy', isVisible: true, align: 'right', canToggle: true, tooltip: 'Year-over-Year revenue growth.' },
         { id: 'revenue_growth_3y', name: 'Revenue Growth 3Y (CAGR %)', sortField: 'revenue_growth_3y', isVisible: true, align: 'right', canToggle: true, tooltip: '3-Year Compound Annual Growth Rate for revenue.' },
-        { id: 'ebitda_cagr', name: 'EBITDA CAGR (3Y)', sortField: 'ebitda_cagr', isVisible: true, align: 'right', canToggle: true, tooltip: '3-Year Compound Annual Growth Rate for EBITDA.' },
+        { id: 'ebitda_cagr', name: 'EBITDA CAGR (3Y)', sortField: 'ebitda_cagr', isVisible: false, align: 'right', canToggle: true, tooltip: '3-Year Compound Annual Growth Rate for EBITDA.' },
         { id: 'eps_cagr', name: 'EPS CAGR (3Y)', sortField: 'eps_cagr', isVisible: true, align: 'right', canToggle: true, tooltip: '3-Year Compound Annual Growth Rate for Earnings Per Share.' },
-        { id: 'bv_growth', name: 'Book Value Growth (%)', sortField: 'bv_growth', isVisible: true, align: 'right', canToggle: true, tooltip: 'Growth in Book Value per share. Important for financial and asset-heavy companies.' },
-        { id: 'order_growth', name: 'Order-Book Growth (%)', sortField: 'order_growth', isVisible: true, align: 'right', canToggle: true, tooltip: 'Growth in the company\'s order book, indicating future revenue visibility.' },
-        { id: 'segment_growth', name: 'Segment Growth', sortField: 'segment_growth', isVisible: true, align: 'left', canToggle: true },
+        { id: 'bv_growth', name: 'Book Value Growth (%)', sortField: 'bv_growth', isVisible: false, align: 'right', canToggle: true, tooltip: 'Growth in Book Value per share. Important for financial and asset-heavy companies.' },
+        { id: 'order_growth', name: 'Order-Book Growth (%)', sortField: 'order_growth', isVisible: false, align: 'right', canToggle: true, tooltip: 'Growth in the company\'s order book, indicating future revenue visibility.' },
+        { id: 'segment_growth', name: 'Segment Growth', sortField: 'segment_growth', isVisible: false, align: 'left', canToggle: true },
         { id: 'action', name: 'Action', sortField: null, isVisible: true, align: 'center', canToggle: true }
     ]
 };
@@ -913,6 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Redirect from sub-tabs promoted to top-level workspaces
             const tabName = btn.dataset.tab;
             if (tabName === 'journal') {
+                showToast('Journal lives in Watchlist view →', 'info');
                 const watchlistTab = document.querySelector('.workspace-tab[data-view="watchlist"]');
                 if (watchlistTab) {
                     watchlistTab.click();
@@ -2608,6 +2613,10 @@ function renderTable() {
                             </div>
                         </div>
                     </td>
+                `;
+            } else if (col.id === 'sector') {
+                html += `
+                    <td data-column="sector" style="color:var(--color-text-secondary); text-align:left; font-size: 0.8rem; font-family: 'Outfit', sans-serif;">${stock.sector || '—'}</td>
                 `;
             } else if (col.id === 'setupLabel') {
                 const label = stock.setupLabel || 'Early Watch';
@@ -5495,6 +5504,42 @@ function renderStaticStocksRRG() {
         order: 1   // rendered on top
     };
     
+    // Compile Stock Rotation Opportunities
+    const leaders = [];
+    const improving = [];
+    const allPoints = [...screenerPoints, ...universeOnlyPoints];
+    
+    allPoints.forEach(p => {
+        const dist = Math.sqrt(p.x * p.x + p.y * p.y);
+        const quadrant = (p.x >= 0 && p.y >= 0) ? 'Leading'
+                       : (p.x < 0 && p.y >= 0) ? 'Improving'
+                       : (p.x < 0 && p.y < 0) ? 'Lagging'
+                       : 'Weakening';
+                       
+        const item = {
+            ticker: p.label,
+            quadrant: quadrant,
+            dist: dist,
+            rs: p.x,
+            mom: p.y,
+            isScreener: p.isScreener,
+            sector: p.sector
+        };
+        
+        if (quadrant === 'Leading') {
+            leaders.push(item);
+        } else if (quadrant === 'Improving') {
+            improving.push(item);
+        }
+    });
+    
+    leaders.sort((a, b) => b.dist - a.dist);
+    improving.sort((a, b) => b.dist - a.dist);
+    
+    if (typeof updateRRGResultsUI === 'function') {
+        updateRRGResultsUI(leaders, improving, 'stocks');
+    }
+    
     const canvas = document.getElementById('rrgChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -5977,6 +6022,41 @@ function renderRRGTimeline(frames, frameIdx) {
     // --- Scrubber sync ---
     const scrubber = document.getElementById('rrg-timeline-scrubber');
     if (scrubber) scrubber.value = frameIdx;
+
+    // Compile Sector Rotation Opportunities
+    const currentFrame = frames[frameIdx];
+    if (currentFrame && currentFrame.sectors) {
+        const sectorLeaders = [];
+        const sectorImproving = [];
+        currentFrame.sectors.forEach(s => {
+            const rs = s.jdk_rs;
+            const mom = s.jdk_rs_momentum;
+            const dist = Math.sqrt((rs - 100) * (rs - 100) + (mom - 100) * (mom - 100));
+            const quadrant = (rs >= 100 && mom >= 100) ? 'Leading'
+                           : (rs < 100 && mom >= 100) ? 'Improving'
+                           : (rs < 100 && mom < 100) ? 'Lagging'
+                           : 'Weakening';
+            const item = {
+                name: s.sector,
+                quadrant: quadrant,
+                dist: dist,
+                rs: rs,
+                mom: mom
+            };
+            if (quadrant === 'Leading') {
+                sectorLeaders.push(item);
+            } else if (quadrant === 'Improving') {
+                sectorImproving.push(item);
+            }
+        });
+        
+        sectorLeaders.sort((a, b) => b.dist - a.dist);
+        sectorImproving.sort((a, b) => b.dist - a.dist);
+        
+        if (typeof updateRRGResultsUI === 'function') {
+            updateRRGResultsUI(sectorLeaders, sectorImproving, 'sectors');
+        }
+    }
 }
 
 function startRRGAnimation() {
@@ -7535,8 +7615,44 @@ window.applyIntradayFilter = function(filterName) {
     // Inject custom function into filter pipeline
     activeIntradayFilter = filterName;
     
+    // Update active chip class
+    document.querySelectorAll('.intraday-chip').forEach(chip => {
+        const onClickAttr = chip.getAttribute('onclick') || '';
+        chip.classList.toggle('active', onClickAttr.includes(`'${filterName}'`));
+    });
+    
+    // Update active preset label
+    const presetLabels = {
+        'all': 'All Presets',
+        'gap_go': 'Gap Up + Follow Through',
+        'vwap_leaders': 'VWAP Leaders',
+        'high_rvol': 'High RVOL Movers',
+        'strong_ims': 'Strong IMS Only',
+        'confluence': 'Swing + Intraday Confluence'
+    };
+    const activeLabelEl = document.getElementById('intraday-active-preset-label');
+    if (activeLabelEl) {
+        activeLabelEl.textContent = presetLabels[filterName] || 'Custom Filter';
+    }
+    
     // Apply filters and re-render current tab
     filterAndRender();
+};
+
+window.toggleIntradayWidget = function(headerEl) {
+    const widget = headerEl.closest('.intraday-widget');
+    if (!widget) return;
+    const content = widget.querySelector('.widget-content');
+    if (!content) return;
+    const toggleIcon = widget.querySelector('.widget-toggle-icon');
+    const isCollapsed = content.style.display === 'none';
+    if (isCollapsed) {
+        content.style.display = '';
+        if (toggleIcon) toggleIcon.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        if (toggleIcon) toggleIcon.textContent = '▶';
+    }
 };
 
 function openPresetModal() {
@@ -7587,8 +7703,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // Initialize presets UI
-    // Initialize presets UI
     renderPresetsDropdown();
+
+    // Global Modal Normalization (ESC & backdrop click to close)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const openOverlay = document.querySelector('.modal-overlay:not(.hidden)');
+            if (openOverlay) {
+                const closeBtn = openOverlay.querySelector('.modal-close-btn');
+                if (closeBtn) {
+                    closeBtn.click();
+                } else {
+                    openOverlay.classList.add('hidden');
+                }
+            }
+        }
+    });
+    
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                const closeBtn = overlay.querySelector('.modal-close-btn');
+                if (closeBtn) {
+                    closeBtn.click();
+                } else {
+                    overlay.classList.add('hidden');
+                }
+            }
+        });
+    });
 });
 
 // ==========================================
@@ -7652,10 +7795,13 @@ window.saveTradeToJournal = function() {
     .then(resData => {
         if (resData.success) {
             journalData.unshift(trade);
+            window.lastJournalId = trade.id;
+            switchWorkspace('watchlist');
             renderJournal();
-            alert(`Trade for ${trade.ticker} saved to Journal!`);
+            showToast(`Trade for ${trade.ticker} saved to Journal!`, "success");
+            closeTradeDrawer();
         } else {
-            alert("Failed to save trade: " + resData.error);
+            showToast("Failed to save trade: " + resData.error, "error");
         }
     })
     .catch(err => console.error("Error saving trade to journal:", err));
@@ -7702,7 +7848,9 @@ function renderJournal() {
         const rText = displayR !== null ? `${displayR.toFixed(2)}R` : '-';
         const currentPriceText = currentPrice !== null ? `₹${currentPrice.toFixed(2)}` : (trade.exitPrice ? `₹${trade.exitPrice.toFixed(2)}` : '-');
         
-        html += `<tr>
+        const isRecent = (trade.id === window.lastJournalId);
+        const rowClass = isRecent ? 'class="journal-row--recent"' : '';
+        html += `<tr ${rowClass}>
             <td>${trade.date}</td>
             <td style="font-weight: 700; text-decoration: underline;" onclick="event.stopPropagation(); openTradingView('${trade.ticker}')">${trade.ticker}</td>
             <td style="font-weight: 600;">${currentPriceText}</td>
@@ -10069,4 +10217,76 @@ window.renderRRTable = renderRRTable;
 window.runRRScreen = runRRScreen;
 window.openTradeDrawerFromRR = openTradeDrawerFromRR;
 window.restoreRRPrefs = restoreRRPrefs;
+
+// Actionable RRG Rotation Sidebar Helpers
+function updateRRGResultsUI(leaders, improving, type) {
+    const list = document.getElementById('rrg-results-list');
+    if (!list) return;
+    
+    const topLeaders = leaders.slice(0, 3);
+    const topImproving = improving.slice(0, 3);
+    const combined = [...topLeaders, ...topImproving];
+    
+    if (combined.length === 0) {
+        list.innerHTML = `<li style="font-size: 0.78rem; color: var(--color-text-muted); text-align: center; padding: 1rem 0;">No opportunities found</li>`;
+        return;
+    }
+    
+    list.innerHTML = combined.map(item => {
+        const isSect = (type === 'sectors');
+        const displayLabel = isSect ? item.name : item.ticker;
+        const subtext = isSect 
+            ? `${item.quadrant} (RS: ${item.rs.toFixed(1)})` 
+            : `${item.quadrant} (1M: ${item.rs >= 0 ? '+' : ''}${item.rs.toFixed(1)}%)`;
+            
+        const screenerBadge = (!isSect && item.isScreener) 
+            ? `<span class="badge" style="background-color: rgba(251, 146, 60, 0.15); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.3); font-size: 0.65rem; padding: 1px 4px;">Screener</span>` 
+            : '';
+            
+        const actionClick = isSect 
+            ? `window.openScreenerWithSector('${item.name}')` 
+            : `window.openScreenerWithTicker('${item.ticker}')`;
+            
+        return `
+            <li class="rrg-result-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.6rem; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; font-size: 0.8rem; gap: 0.5rem;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <div style="font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.4rem; font-family: 'Outfit', sans-serif;">
+                        ${displayLabel} ${screenerBadge}
+                    </div>
+                    <div style="font-size: 0.72rem; color: var(--color-text-muted);">${subtext}</div>
+                </div>
+                <button class="btn btn-xs btn-outline" onclick="${actionClick}" style="padding: 2px 6px; font-size: 0.7rem; height: auto;">View</button>
+            </li>
+        `;
+    }).join('');
+}
+
+window.openScreenerWithTicker = function(ticker) {
+    const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
+    if (screenerTab) {
+        screenerTab.click();
+    } else {
+        switchWorkspace('screener');
+    }
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) {
+        searchInput.value = ticker;
+        const event = new Event('input', { bubbles: true });
+        searchInput.dispatchEvent(event);
+    }
+};
+
+window.openScreenerWithSector = function(sector) {
+    const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
+    if (screenerTab) {
+        screenerTab.click();
+    } else {
+        switchWorkspace('screener');
+    }
+    if (typeof selectSector === 'function') {
+        selectSector(sector);
+    }
+};
+
+window.updateRRGResultsUI = updateRRGResultsUI;
 
