@@ -3,6 +3,21 @@
     --font-body:    'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-display: 'Cabinet Grotesk', 'Outfit', ui-sans-serif, system-ui, sans-serif;
 
+    /* Type scale */
+    --text-xs:   0.70rem;
+    --text-sm:   0.80rem;
+    --text-base: 0.875rem;
+    --text-md:   1.00rem;
+    --text-lg:   1.125rem;
+
+    /* Spacing scale */
+    --space-1: 0.25rem;
+    --space-2: 0.50rem;
+    --space-3: 0.75rem;
+    --space-4: 1.00rem;
+    --space-6: 1.50rem;
+    --space-8: 2.00rem;
+
     --bg-main: hsl(230, 20%, 8%);
     --bg-gradient: linear-gradient(135deg, hsl(230, 22%, 10%) 0%, hsl(225, 25%, 6%) 100%);
     --panel-bg: rgba(22, 28, 45, 0.45);
@@ -5539,5 +5554,65 @@ body[data-theme="light"] .sector-pill-progress-track {
   margin-right: 0.2rem;
   user-select: none;
 }
+
+/* AI Forecast Verdict Banner */
+.ai-verdict-strip {
+  border-left: 4px solid var(--accent-blue);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--accent-blue);
+}
+.ai-verdict-strip.ai-verdict--bullish {
+  border-left-color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--accent-green);
+}
+.ai-verdict-strip.ai-verdict--bearish {
+  border-left-color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--accent-red);
+}
+.ai-verdict-strip.ai-verdict--neutral {
+  border-left-color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-secondary);
+}
+
+/* Details summary toggle arrow styles for AI internals */
+.ai-internals[open] summary span {
+  transform: rotate(90deg);
+}
+.ai-internals summary span {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+/* Wide monitor side-by-side table + drawer layout */
+@media (min-width: 1440px) {
+  body {
+    transition: padding-right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  body:has(.trade-drawer.open) {
+    padding-right: 420px;
+  }
+  body:has(.trade-drawer.open) .trade-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 400px;
+    height: 100vh;
+    box-shadow: none;
+    border-left: 1px solid var(--panel-border);
+    z-index: 1000;
+  }
+  body:has(.trade-drawer.open) .trade-drawer-overlay {
+    display: none !important;
+  }
+}
+
+/* Prevent fixed 400px chart height from breaking narrow views */
+#drawer-tv-chart-container {
+  height: clamp(250px, 30vh, 400px);
+}
+
 
 

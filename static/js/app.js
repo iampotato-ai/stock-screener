@@ -465,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
     runScan();
     
     // Scan button listener
-    btnScan.addEventListener('click', runScan);
+    if (btnScan) btnScan.addEventListener('click', runScan);
     
     // Export button listener
     if (btnExport) btnExport.addEventListener('click', exportToExcel);
@@ -581,12 +581,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Sector dropdown toggle button listener
-    btnSectors.addEventListener('click', (e) => {
-        e.stopPropagation();
-        sectorsDropdown.classList.toggle('hidden');
-        const isExpanded = !sectorsDropdown.classList.contains('hidden');
-        btnSectors.setAttribute('aria-expanded', isExpanded);
-    });
+    if (btnSectors && sectorsDropdown) {
+        btnSectors.addEventListener('click', (e) => {
+            e.stopPropagation();
+            sectorsDropdown.classList.toggle('hidden');
+            const isExpanded = !sectorsDropdown.classList.contains('hidden');
+            btnSectors.setAttribute('aria-expanded', isExpanded);
+        });
+    }
 
     // Dot Indicators dropdown toggle button listener
     if (btnDots && dotsDropdown) {
@@ -631,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Hide dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         // Sector dropdown
-        if (!sectorsDropdown.classList.contains('hidden') && !sectorsDropdown.contains(e.target) && e.target !== btnSectors) {
+        if (sectorsDropdown && btnSectors && !sectorsDropdown.classList.contains('hidden') && !sectorsDropdown.contains(e.target) && e.target !== btnSectors) {
             sectorsDropdown.classList.add('hidden');
             btnSectors.setAttribute('aria-expanded', 'false');
         }
@@ -1030,6 +1032,71 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
+
+    // --- Table Keyboard Navigation (Item 6) ---
+    let selectedRowIndex = -1;
+
+    document.addEventListener('keydown', (e) => {
+        const activeWorkspace = document.querySelector('.workspace-tab.active')?.dataset.view;
+        if (activeWorkspace !== 'screener') return;
+        if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+        if (!tableBody) return;
+        const rows = tableBody.querySelectorAll('tr:not(.skeleton-row)');
+        if (!rows.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            selectedRowIndex = Math.min(selectedRowIndex + 1, rows.length - 1);
+            highlightSelectedRow(rows);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedRowIndex = Math.max(selectedRowIndex - 1, 0);
+            highlightSelectedRow(rows);
+        } else if (e.key === 'Enter' && selectedRowIndex >= 0) {
+            rows[selectedRowIndex]?.click();
+        } else if ((e.key === 'w' || e.key === 'W') && selectedRowIndex >= 0) {
+            const ticker = rows[selectedRowIndex]?.dataset.ticker;
+            if (ticker) addToWatchlist(ticker, e);
+        }
+    });
+
+    function highlightSelectedRow(rows) {
+        rows.forEach(r => r.classList.remove('row-keyboard-selected'));
+        const target = rows[selectedRowIndex];
+        if (target) {
+            target.classList.add('row-keyboard-selected');
+            target.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    // --- ARIA + Keyboard Accessibility (Item 7) ---
+    function makeKeyboardClickable(selector) {
+        document.querySelectorAll(selector).forEach(el => {
+            if (!el.getAttribute('role')) el.setAttribute('role', 'button');
+            if (!el.getAttribute('tabindex')) el.setAttribute('tabindex', '0');
+            
+            // Remove existing keydown if any, then add
+            el.removeEventListener('keydown', handleElementKeydown);
+            el.addEventListener('keydown', handleElementKeydown);
+        });
+    }
+
+    function handleElementKeydown(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.currentTarget.click();
+        }
+    }
+
+    // Expose accessibility helper so it can be called after render cycles
+    window.makeKeyboardClickable = makeKeyboardClickable;
+
+    // Run accessibility pass on initial cards and elements
+    setTimeout(() => {
+        makeKeyboardClickable('.stat-card');
+        makeKeyboardClickable('.bm-sector-row');
+    }, 500);
 });
 
 // Compute changes between scans
@@ -1105,8 +1172,8 @@ function computeScanDelta(oldStock, newStock) {
 // Run scan from Flask backend API
 async function runScan() {
     // UI Loading state
-    btnScan.disabled = true;
-    scanSpinner.classList.remove('hidden');
+    if (btnScan) btnScan.disabled = true;
+    if (scanSpinner) scanSpinner.classList.remove('hidden');
     
     const visibleCount = columnsConfig.filter(c => c.isVisible).length;
     let skeletonHtml = '';
@@ -1114,7 +1181,7 @@ async function runScan() {
         skeletonHtml += `
             <tr class="skeleton-row">
                 ${columnsConfig.filter(c => c.isVisible).map(col => {
-                    const widthPercent = (col.field === 'ticker' || col.field === 'change') 
+                    const widthPercent = (col.id === 'ticker' || col.id === 'change') 
                         ? '60%' 
                         : `${Math.floor(Math.random() * 40) + 40}%`;
                     return `
@@ -1126,7 +1193,7 @@ async function runScan() {
             </tr>
         `;
     }
-    tableBody.innerHTML = skeletonHtml;
+    if (tableBody) tableBody.innerHTML = skeletonHtml;
     
     // Reset stats
     if (window.valScanned) valScanned.textContent = "-";
@@ -1198,7 +1265,11 @@ async function runScan() {
             });
         }
         
-        populateSectors(stocksData);
+        if (universeData && universeData.length > 0) {
+            populateSectors(universeData);
+        } else {
+            populateSectors(stocksData);
+        }
         if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
         filterAndRender();
         // Update new animated stat cards
@@ -1215,18 +1286,19 @@ async function runScan() {
         
         // Trigger Smart Alert Engine for swing flips
         if (typeof AlertEngine !== 'undefined' && previousScanMap && Object.keys(previousScanMap).length > 0) {
-            const wlSymbols = new Set((watchlistStocks || []).map(s => s.split(':').pop().toUpperCase()));
+            const wlRaw = (typeof watchlistStocks !== 'undefined' && Array.isArray(watchlistStocks)) ? watchlistStocks : [];
+            const wlSymbols = new Set(wlRaw.map(s => s.split(':').pop().toUpperCase()));
             AlertEngine.checkSwingFlips(previousScanMap, stocksData, wlSymbols);
         }
         
     } catch (e) {
         console.error("Scan error:", e);
         showErrorState("Client Error: " + (e.stack || e.message || String(e)));
-        scanSpinner.classList.add('hidden');
-        btnScan.disabled = false;
+        if (scanSpinner) scanSpinner.classList.add('hidden');
+        if (btnScan) btnScan.disabled = false;
     } finally {
-        btnScan.disabled = false;
-        scanSpinner.classList.add('hidden');
+        if (btnScan) btnScan.disabled = false;
+        if (scanSpinner) scanSpinner.classList.add('hidden');
     }
 }
 
@@ -1291,7 +1363,7 @@ function populateSectors(stocks) {
     });
     
     // Reset dropdown
-    sectorsDropdown.innerHTML = '';
+    if (sectorsDropdown) sectorsDropdown.innerHTML = '';
     
     // Add "All Sectors" option
     const allOption = document.createElement('div');
@@ -1299,7 +1371,7 @@ function populateSectors(stocks) {
     allOption.dataset.sector = 'all';
     allOption.textContent = 'All Sectors';
     allOption.addEventListener('click', () => selectSector('all'));
-    sectorsDropdown.appendChild(allOption);
+    if (sectorsDropdown) sectorsDropdown.appendChild(allOption);
     
     // Sort sectors by their score in descending order
     const sortedSectors = Array.from(sectors).sort((a, b) => {
@@ -1326,20 +1398,20 @@ function populateSectors(stocks) {
             </span>
         `;
         option.addEventListener('click', () => selectSector(sector));
-        sectorsDropdown.appendChild(option);
+        if (sectorsDropdown) sectorsDropdown.appendChild(option);
     });
 }
 
 function selectSector(sector) {
     selectedSector = sector;
-    selectedSectorLabel.textContent = sector === 'all' ? 'All Sectors' : sector;
+    if (selectedSectorLabel) selectedSectorLabel.textContent = sector === 'all' ? 'All Sectors' : sector;
     
     document.querySelectorAll('#sectors-dropdown .select-dropdown-item').forEach(item => {
         item.classList.toggle('active', item.dataset.sector === sector);
     });
     
-    sectorsDropdown.classList.add('hidden');
-    btnSectors.setAttribute('aria-expanded', 'false');
+    if (sectorsDropdown) sectorsDropdown.classList.add('hidden');
+    if (btnSectors) btnSectors.setAttribute('aria-expanded', 'false');
     filterAndRender();
 }
 
@@ -1395,8 +1467,8 @@ function computeMarketBreadth(universe, filtered) {
     const close  = parseFloat(s.close  ?? 0);
     const sma21  = parseFloat(s.SMA21  ?? 0);
     const sma50  = parseFloat(s.SMA50  ?? 0);
-    const hi52   = parseFloat(s.price52weekhigh ?? 0);
-    const lo52   = parseFloat(s.price52weeklow  ?? 0);
+    const hi52   = parseFloat(s.price52weekhigh ?? s.price_52_week_high ?? 0);
+    const lo52   = parseFloat(s.price52weeklow  ?? s.price_52_week_low  ?? 0);
     const rec    = parseFloat(s['Recommend.All'] ?? 0);
     const sector = s.sector || 'Unknown';
 
@@ -1545,14 +1617,17 @@ function renderBreadthPanel() {
 
   renderRegimeWarning();
   renderBreadthTrendSparkline();
+  if (typeof makeKeyboardClickable === 'function') {
+      makeKeyboardClickable('.bm-sector-row');
+  }
 }
 
 const REGIME_MESSAGES = {
-  'Bull Run':    { text: 'Market in full bull run — favour breakouts and momentum continuation setups.', type: 'bullish' },
-  'Bullish':     { text: 'Broad market is bullish — good environment to enter swing setups with conviction.', type: 'bullish' },
-  'Neutral':     { text: 'Mixed breadth — prefer high-quality setups only. Tighten stops by 20%.', type: 'neutral' },
-  'Bearish':     { text: 'Deteriorating breadth — avoid new long entries. Focus on managing open positions.', type: 'bearish' },
-  'Bear Market': { text: 'Bear market conditions — no new swing longs. Defensive stance only.', type: 'danger' },
+  'Bull Run':    { text: 'Market in full bull run — favour breakouts and momentum continuation setups.', type: 'bullish', preset: 'elite', presetLabel: 'Use Aggressive Preset →' },
+  'Bullish':     { text: 'Broad market is bullish — good environment to enter swing setups with conviction.', type: 'bullish', preset: 'strong', presetLabel: 'Use Breakout Preset →' },
+  'Neutral':     { text: 'Mixed breadth — prefer high-quality setups only. Tighten stops by 20%.', type: 'neutral', preset: null, presetLabel: null },
+  'Bearish':     { text: 'Deteriorating breadth — avoid new long entries. Focus on managing open positions.', type: 'bearish', preset: 'watch', presetLabel: 'Use Defensive Preset →' },
+  'Bear Market': { text: 'Bear market conditions — no new swing longs. Defensive stance only.', type: 'danger', preset: null, presetLabel: null },
 };
 
 function renderRegimeWarning() {
@@ -1566,23 +1641,58 @@ function renderRegimeWarning() {
     if (bar) bar.insertAdjacentElement('afterend', el); else return;
   }
   el.className = `regime-banner regime-banner--${msg.type}`;
+  
+  const presetBtnHtml = msg.preset
+    ? `<button class="btn-regime-preset" onclick="applyRegimePreset('${msg.preset}')" style="margin-right: 0.5rem; background: var(--accent-blue); border: none; border-radius: 4px; padding: 0.35rem 0.75rem; color: #fff; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: var(--transition-smooth);">
+         ${msg.presetLabel}
+       </button>`
+    : '';
+
   el.innerHTML = `
-    <div class="regime-banner-left">
-      <span class="regime-banner-icon">${marketBreadth.regimeEmoji}</span>
-      <div class="regime-banner-content">
-        <span class="regime-banner-title">${marketBreadth.regimeBand.toUpperCase()} REGIME ACTIVE</span>
-        <span class="regime-banner-text">${msg.text}</span>
+    <div class="regime-banner-left" style="display: flex; align-items: center; gap: 0.8rem; flex: 1;">
+      <span class="regime-banner-icon" style="font-size: 1.5rem;">${marketBreadth.regimeEmoji}</span>
+      <div class="regime-banner-content" style="display: flex; flex-direction: column;">
+        <span class="regime-banner-title" style="font-weight: 700; font-size: 0.8rem; letter-spacing: 0.05em; color: var(--color-text-primary);">${marketBreadth.regimeBand.toUpperCase()} REGIME ACTIVE</span>
+        <span class="regime-banner-text" style="font-size: 0.8rem; color: var(--color-text-secondary);">${msg.text}</span>
       </div>
     </div>
-    <div class="regime-banner-right">
-      <div class="regime-banner-score-badge">
-        <span class="score-label">SCORE</span>
-        <span class="score-value">${marketBreadth.regimeScore}</span>
-        <span class="score-max">/100</span>
+    <div class="regime-banner-right" style="display: flex; align-items: center; gap: 1rem;">
+      ${presetBtnHtml}
+      <div class="regime-banner-score-badge" style="display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 0.25rem 0.6rem;">
+        <span class="score-label" style="font-size: 0.6rem; color: var(--color-text-muted); font-weight: 700;">SCORE</span>
+        <div style="display: flex; align-items: baseline;">
+          <span class="score-value" style="font-size: 1rem; font-weight: 800; color: var(--color-text-primary);">${marketBreadth.regimeScore}</span>
+          <span class="score-max" style="font-size: 0.7rem; color: var(--color-text-muted);">/100</span>
+        </div>
       </div>
     </div>
   `;
 }
+
+function applyRegimePreset(swingBand) {
+  const swingFilterInput = document.getElementById('filter-swing');
+  if (swingFilterInput) {
+    swingFilterInput.value = swingBand;
+    
+    // Also update dropdown visual label if it exists
+    const label = document.getElementById('selected-swing-label');
+    if (label) {
+      label.textContent = swingBand.charAt(0).toUpperCase() + swingBand.slice(1);
+    }
+    
+    // Reset other filters to ensure preset runs cleanly
+    const imsFilterInput = document.getElementById('filter-ims');
+    if (imsFilterInput) imsFilterInput.value = 'all';
+    const imsLabel = document.getElementById('selected-ims-label');
+    if (imsLabel) imsLabel.textContent = 'All Scores';
+
+    filterAndRender();
+  }
+  const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
+  if (screenerTab) screenerTab.click();
+}
+
+window.applyRegimePreset = applyRegimePreset;
 
 async function saveBreadthSnapshot() {
   if (!marketBreadth.total) return;
@@ -2040,16 +2150,18 @@ function calculateStats(stocks, calculateSectors = true) {
 // Show error message in table body
 function showErrorState(message) {
     const visibleCount = columnsConfig.filter(c => c.isVisible).length;
-    tableBody.innerHTML = `
-        <tr>
-            <td colspan="${visibleCount}" class="table-empty-state">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="hsl(350, 80%, 55%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <p style="color:var(--accent-red); font-weight:600;">Scan Failed</p>
-                <p style="font-size:0.85rem; max-width:500px; margin:0.5rem auto 0 auto;">${message}</p>
-            </td>
-        </tr>
-    `;
-    showingText.textContent = "Scan failed";
+    if (tableBody) {
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="${visibleCount}" class="table-empty-state">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="hsl(350, 80%, 55%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <p style="color:var(--accent-red); font-weight:600;">Scan Failed</p>
+                    <p style="font-size:0.85rem; max-width:500px; margin:0.5rem auto 0 auto;">${message}</p>
+                </td>
+            </tr>
+        `;
+    }
+    if (showingText) showingText.textContent = "Scan failed";
 }
 
 // Helper to check if stock close is flirting with or between 10, 21, and 50 MA/EMA
@@ -2383,15 +2495,17 @@ function renderTable() {
     const visibleCount = columnsConfig.filter(c => c.isVisible).length;
     
     if (filteredStocks.length === 0) {
-        tableBody.innerHTML = `
-            <tr>
-                <td colspan="${visibleCount}" class="table-empty-state">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                    <p>No matching stocks found</p>
-                    <p style="font-size:0.8rem;">Try adjusting your search criteria or choosing a different sector.</p>
-                </td>
-            </tr>
-        `;
+        if (tableBody) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="${visibleCount}" class="table-empty-state">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <p>No matching stocks found</p>
+                        <p style="font-size:0.8rem;">Try adjusting your search criteria or choosing a different sector.</p>
+                    </td>
+                </tr>
+            `;
+        }
         showingText.textContent = "Showing 0 stocks";
         const pagControls = document.getElementById('pagination-controls');
         if (pagControls) pagControls.innerHTML = '';
@@ -2531,8 +2645,11 @@ function renderTable() {
             } else if (col.id === 'change') {
                 const changeClass = stock.change >= 0 ? 'val-up' : 'val-down';
                 const changeSign = stock.change > 0 ? '+' : '';
+                const arrow = stock.change >= 0 ? '▲' : '▼';
                 html += `
-                    <td data-column="change" class="text-right ${changeClass}">${changeSign}${stock.change.toFixed(2)}%</td>
+                    <td data-column="change" class="text-right ${changeClass}" aria-label="${changeSign}${stock.change.toFixed(2)} percent change">
+                        <span class="colorblind-arrow">${arrow}</span>${changeSign}${stock.change.toFixed(2)}%
+                    </td>
                 `;
             } else if (col.id === 'day_range') {
                 const high = parseFloat(stock.high);
@@ -2763,8 +2880,8 @@ function renderTable() {
         html += `</tr>`;
     });
     
-    tableBody.innerHTML = html;
-    showingText.textContent = `Showing ${startIndex + 1}-${endIndex} of ${filteredStocks.length} matching stocks`;
+    if (tableBody) tableBody.innerHTML = html;
+    if (showingText) showingText.textContent = `Showing ${startIndex + 1}-${endIndex} of ${filteredStocks.length} matching stocks`;
     renderPagination(totalPages);
 }
 
@@ -6029,6 +6146,7 @@ document.getElementById('rrg-canvas')?.addEventListener('click', e => {
         if (typeof selectSector === 'function') {
             selectSector(clickedSector);
             switchWorkspace('screener');
+            showToast(`Screener filtered to ${clickedSector} — check the table below`, 'info');
         }
     }
 });
@@ -7099,12 +7217,27 @@ window.sortIntradayWidget = function(widgetId, field) {
 
 // --- Intraday Workspace ---
 function renderIntradayWorkspace() {
+    const presetDescriptions = {
+        'gap-go': 'Gap & Go — Stocks gapping >1% above VWAP with positive momentum.',
+        'vwap': 'VWAP Reclaim — Trading close to and above VWAP with active intraday score.',
+        'rvol': 'High RVOL — Relative Volume ≥ 1.5x (unusual volume activity).',
+        'confluence': 'Confluence — Strong IMS + Elite/Strong Swing score.',
+        'focus': 'Watchlist Focus — Watchlist stocks meeting at least 1 intraday signal.'
+    };
+
     if (!filteredStocks || filteredStocks.length === 0) {
         // Fallback or empty state
         const updateWidget = (id) => {
             const contentEl = document.getElementById(`widget-${id}`);
             const countEl = document.getElementById(`count-${id}`);
-            if (contentEl) contentEl.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--color-text-muted); font-size:0.85rem;">No matches currently</div>';
+            if (contentEl) {
+                contentEl.innerHTML = `
+                    <div class="intraday-empty-state" style="padding:1.5rem 1rem; text-align:center; color:var(--color-text-muted); font-size:0.8rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center; align-items:center;">
+                        <p style="margin:0; font-weight: 500; font-style: italic;">${presetDescriptions[id]}</p>
+                        <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now. Check back during active trading hours.</p>
+                    </div>
+                `;
+            }
             if (countEl) countEl.textContent = '0';
         };
         updateWidget('gap-go'); updateWidget('vwap'); updateWidget('rvol'); updateWidget('confluence'); updateWidget('focus');
@@ -7221,13 +7354,13 @@ function renderIntradayWorkspace() {
         const metricLabel = widgetConfigs[widgetId].metricLabel;
         const getSortIcon = (field) => sortState.field === field ? (sortState.asc ? ' ↑' : ' ↓') : '';
         
+        const metricWidth = widgetId === 'focus' ? '85px' : '60px';
         let html = `
-            <div style="display: flex; justify-content: space-between; padding: 0.5rem 0.2rem; border-bottom: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.5rem; user-select: none;">
-                <div style="display:flex; gap: 0.5rem; width: 75%;">
-                    <span style="cursor:pointer; width: 110px; flex-shrink: 0;" onclick="sortIntradayWidget('${widgetId}', 'ticker')">Ticker${getSortIcon('ticker')}</span>
-                    <span style="cursor:pointer; width: 70px; flex-shrink: 0;" onclick="sortIntradayWidget('${widgetId}', 'change')">Change%${getSortIcon('change')}</span>
-                </div>
-                <span style="cursor:pointer; text-align:right; width: 25%;" onclick="sortIntradayWidget('${widgetId}', 'metric')">${metricLabel}${getSortIcon('metric')}</span>
+            <div style="display: flex; align-items: center; padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.5rem; user-select: none; gap: 0.5rem;">
+                <span style="width: 20px; flex-shrink: 0;"></span>
+                <span style="cursor:pointer; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="sortIntradayWidget('${widgetId}', 'ticker')">Ticker${getSortIcon('ticker')}</span>
+                <span style="cursor:pointer; width: 65px; flex-shrink: 0; text-align: right;" onclick="sortIntradayWidget('${widgetId}', 'change')">Change%${getSortIcon('change')}</span>
+                <span style="cursor:pointer; text-align:right; width: ${metricWidth}; flex-shrink: 0;" onclick="sortIntradayWidget('${widgetId}', 'metric')">${metricLabel}${getSortIcon('metric')}</span>
             </div>
         `;
 
@@ -7258,12 +7391,11 @@ function renderIntradayWorkspace() {
             }
             
             html += `
-                <div class="intraday-item" onclick="openTradeDrawer('${s.clean_ticker || s.ticker}')" style="display: flex; align-items: center; justify-content: space-between;">
-                    <div style="display: flex; gap: 0.5rem; align-items: center; width: 75%;">
-                        <span class="intraday-item-ticker" style="width: 110px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.clean_ticker || s.ticker}</span>
-                        <span style="font-size: 0.75rem; color: ${changeColor}; width: 70px; flex-shrink: 0;">${changeSign}${change.toFixed(2)}%</span>
-                    </div>
-                    <span class="intraday-item-metric" style="text-align: right; width: 25%;">
+                <div class="intraday-item" onclick="openTradeDrawer('${s.clean_ticker || s.ticker}')" style="display: flex; align-items: center; cursor: pointer; padding: 0.5rem 0.25rem; border-radius: 4px; transition: var(--transition-smooth); gap: 0.5rem;">
+                    <button onclick="event.stopPropagation(); openTradingView('${s.clean_ticker || s.ticker}')" title="Open in TradingView" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--accent-blue); font-size: 0.8rem; display: flex; align-items: center; justify-content: center; width: 20px; flex-shrink: 0;">📈</button>
+                    <span class="intraday-item-ticker" style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--color-text-primary);">${s.clean_ticker || s.ticker}</span>
+                    <span style="font-size: 0.75rem; color: ${changeColor}; width: 65px; flex-shrink: 0; text-align: right;">${changeSign}${change.toFixed(2)}%</span>
+                    <span class="intraday-item-metric" style="justify-content: flex-end; width: ${metricWidth}; flex-shrink: 0;">
                         ${metricHtml}
                     </span>
                 </div>
@@ -7272,7 +7404,14 @@ function renderIntradayWorkspace() {
         
         const contentEl = document.getElementById(`widget-${widgetId}`);
         const countEl = document.getElementById(`count-${widgetId}`);
-        if (contentEl) contentEl.innerHTML = items.length > 0 ? html : '<div style="padding:1rem; text-align:center; color:var(--color-text-muted); font-size:0.85rem;">No matches currently</div>';
+        if (contentEl) {
+            contentEl.innerHTML = items.length > 0 ? html : `
+                <div class="intraday-empty-state" style="padding:1.5rem 1rem; text-align:center; color:var(--color-text-muted); font-size:0.8rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center; align-items:center;">
+                    <p style="margin:0; font-weight: 500; font-style: italic;">${presetDescriptions[widgetId]}</p>
+                    <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now.</p>
+                </div>
+            `;
+        }
         if (countEl) countEl.textContent = items.length;
     });
 }
@@ -8883,6 +9022,26 @@ function renderAIForecastWorkspace(ticker) {
                 return;
             }
 
+            // Render Verdict Strip (Item 11.1)
+            const verdictContainer = document.getElementById('ai-verdict-container');
+            if (verdictContainer) {
+                const closeValues = data.forecast.map(f => f.close);
+                const firstClose = data.last_close;
+                const finalClose = closeValues[closeValues.length - 1];
+                const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
+                
+                const direction = returnPct > 1.5 ? 'Bullish' : returnPct < -1.5 ? 'Bearish' : 'Neutral';
+                const verdictClass = returnPct > 1.5 ? 'ai-verdict--bullish' : returnPct < -1.5 ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
+                
+                verdictContainer.innerHTML = `
+                    <div class="ai-verdict-strip ${verdictClass}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
+                        <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">AI Forecast View: ${direction}</span>
+                        <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
+                        <span class="verdict-conf">Confidence Score: ${data.ai_confidence_score || 0}%</span>
+                    </div>
+                `;
+            }
+
             destroyKronosFullChart();
             const container = document.getElementById('kronos-full-chart');
             if (container && typeof LightweightCharts !== 'undefined') {
@@ -9361,6 +9520,26 @@ async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = fa
         });
         ro.observe(container);
         container.resizeObserver = ro;
+      }
+
+      // Render Verdict Strip (Item 11.1)
+      const verdictContainer = document.getElementById('ai-verdict-container');
+      if (verdictContainer) {
+        const closeValues = data.ensemble_path || [];
+        const firstClose = data.last_close;
+        const finalClose = closeValues[closeValues.length - 1];
+        const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
+        
+        const direction = returnPct > 1.5 ? 'Bullish' : returnPct < -1.5 ? 'Bearish' : 'Neutral';
+        const verdictClass = returnPct > 1.5 ? 'ai-verdict--bullish' : returnPct < -1.5 ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
+        
+        verdictContainer.innerHTML = `
+            <div class="ai-verdict-strip ${verdictClass}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
+                <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">⚡ Ensemble View: ${direction}</span>
+                <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
+                <span class="verdict-conf">Consensus Conviction: ${data.conviction}</span>
+            </div>
+        `;
       }
 
       renderEnsembleChart(data);

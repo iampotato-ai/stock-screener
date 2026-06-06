@@ -680,10 +680,6 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
                         Growth
                     </button>
-                    <button class="tab-btn" data-tab="intraday">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-                        Intraday Pro
-                    </button>
                     <button class="tab-btn" data-tab="rr-setups">
                         ⚖️ R:R Setups
                         <span id="rr-setups-count" class="badge badge-sm" style="display:none;">0</span>
@@ -1034,9 +1030,20 @@
                     <button onclick="clearRRGSectorFilter()" style="margin-left: auto; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 4px; color: #a5b4fc; font-size: 0.75rem; padding: 2px 8px; cursor: pointer;">✕ Show All</button>
                 </div>
 
-                <div style="height: 500px; position: relative;">
-                    <canvas id="rrgChart"></canvas>
-                    <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
+                <div class="rrg-layout-wrapper" style="display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: 1rem;">
+                    <div style="height: 500px; position: relative; flex-grow: 1;">
+                        <canvas id="rrgChart"></canvas>
+                        <canvas id="rrg-canvas" width="600" height="500" style="display: none; width: 100%; height: 100%;"></canvas>
+                    </div>
+                    <div class="rrg-guide-card glass-panel" style="width: 260px; padding: 1.25rem; font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.75rem; flex-shrink: 0; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--panel-border);">
+                        <p class="guide-title" style="font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 0.25rem;">How to Use RRG Today</p>
+                        <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.6rem;">
+                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-green); font-weight: 600;">🟢 Leading</span> <span>Overweight, favour breakout entries</span></li>
+                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🟡 Improving</span> <span>Build watchlists, size small</span></li>
+                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🔴 Weakening</span> <span>Reduce exposure, tighten stops</span></li>
+                            <li style="display: flex; gap: 0.4rem; align-items: flex-start;"><span style="color: var(--color-text-muted); font-weight: 600;">⚪ Lagging</span> <span>Avoid fresh entries</span></li>
+                        </ul>
+                    </div>
                 </div>
                 
 
@@ -1070,6 +1077,7 @@
 
             <!-- Full-size chart container -->
             <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
+                <div id="ai-verdict-container" style="margin-bottom: 0.75rem;"></div>
                 <div id="kronos-full-chart" style="height: 380px; width: 100%;"></div>
             </div>
 
@@ -1091,34 +1099,41 @@
                     </label>
                 </div>
 
-                <!-- Model Weights Contribution Bar -->
-                <div style="margin-bottom: 1.2rem;">
-                    <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.4rem;">Model Weight Contribution</div>
-                    <div class="model-weights-bar" id="modelWeightsBar">
-                        <div class="weight-segment kronos-segment" id="kronosWeightSeg" style="width:50%">
-                            Kronos <span class="weight-pct" id="kronosWeightPct">50%</span>
+                <details class="ai-internals" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.8rem; margin-top: 0.5rem; cursor: pointer;">
+                    <summary style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 600; outline: none; list-style: none; display: flex; align-items: center; gap: 4px; user-select: none;">
+                        <span>▶</span> Show Model Internals (weights, agreement)
+                    </summary>
+                    <div class="ai-internals-content" style="cursor: default; margin-top: 1rem;">
+                        <!-- Model Weights Contribution Bar -->
+                        <div style="margin-bottom: 1.2rem;">
+                            <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.4rem;">Model Weight Contribution</div>
+                            <div class="model-weights-bar" id="modelWeightsBar">
+                                <div class="weight-segment kronos-segment" id="kronosWeightSeg" style="width:50%">
+                                    Kronos <span class="weight-pct" id="kronosWeightPct">50%</span>
+                                </div>
+                                <div class="weight-segment prophet-segment" id="prophetWeightSeg" style="width:30%">
+                                    Prophet <span class="weight-pct" id="prophetWeightPct">30%</span>
+                                </div>
+                                <div class="weight-segment arima-segment" id="arimaWeightSeg" style="width:20%">
+                                    ARIMA <span class="weight-pct" id="arimaWeightPct">20%</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="weight-segment prophet-segment" id="prophetWeightSeg" style="width:30%">
-                            Prophet <span class="weight-pct" id="prophetWeightPct">30%</span>
-                        </div>
-                        <div class="weight-segment arima-segment" id="arimaWeightSeg" style="width:20%">
-                            ARIMA <span class="weight-pct" id="arimaWeightPct">20%</span>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Model Agreement Matrix -->
-                <div>
-                    <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.4rem;">Pairwise Directional Agreement Matrix</div>
-                    <div class="agreement-matrix" id="agreementMatrix">
-                        <table>
-                            <thead>
-                                <tr><th></th><th>Kronos</th><th>Prophet</th><th>ARIMA</th></tr>
-                            </thead>
-                            <tbody id="agreementMatrixBody"></tbody>
-                        </table>
+                        <!-- Model Agreement Matrix -->
+                        <div>
+                            <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.4rem;">Pairwise Directional Agreement Matrix</div>
+                            <div class="agreement-matrix" id="agreementMatrix">
+                                <table>
+                                    <thead>
+                                        <tr><th></th><th>Kronos</th><th>Prophet</th><th>ARIMA</th></tr>
+                                    </thead>
+                                    <tbody id="agreementMatrixBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                </details>
             </div>
 
             <!-- Forecast + backtest table -->
@@ -1424,7 +1439,7 @@
                 <div style="display: flex; gap: 1rem;">
                     <div style="flex: 1;">
                         <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Status</label>
-                        <select id="edit-trade-status" class="search-input" style="width: 100%; padding: 0.6rem; background: var(--bg-input);">
+                        <select id="edit-trade-status" class="search-input" style="width: 100%; padding: 0.6rem; background-color: #ffffff; color: #111827; border: 1px solid #ccc; border-radius: 4px;">
                             <option value="open">Open</option>
                             <option value="hit-t1">Hit T1</option>
                             <option value="hit-t2">Hit T2</option>
