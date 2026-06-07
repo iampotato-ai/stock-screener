@@ -613,6 +613,32 @@
                     <input type="hidden" id="filter-candle" value="all">
                 </div>
             </div>
+
+            <!-- Volume Alert Filter -->
+            <div class="range-filter-group">
+                <label>Volume Alert</label>
+                <div class="custom-select-wrapper" id="volume-select-wrapper">
+                    <button class="btn btn-secondary select-trigger" id="btn-volume-filter" style="min-width: 150px; height: 32px; padding: 0 0.8rem; font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Volume Alert Status">
+                        <span id="selected-volume-filter-label">All Volume</span>
+                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="select-dropdown glass-panel hidden" id="volume-filter-dropdown" style="min-width: 175px; top: calc(100% + 4px); z-index: 10; padding: 6px 0;">
+                        <div class="select-dropdown-item" data-value="ppv" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                            <span>🔵 Pocket Pivot</span>
+                        </div>
+                        <div class="select-dropdown-item" data-value="vol-surge" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                            <span>🟢 Volume Surge</span>
+                        </div>
+                        <div class="select-dropdown-item" data-value="dry-vol" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                            <span>🟠 Dry Volume</span>
+                        </div>
+                    </div>
+                    <input type="hidden" id="filter-volume-alert" value="all">
+                </div>
+            </div>
             
             
             <!-- Quick Sort Swing Button -->
