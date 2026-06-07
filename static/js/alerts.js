@@ -14,19 +14,58 @@ const AlertEngine = (() => {
     }
   }
 
+  const _firedKeys = new Set();
+
   function _canFire(key, type) {
     if (!_isSettingEnabled(type)) return false;
-    const dedupKey = DEDUP_PREFIX + key;
-    if (sessionStorage.getItem(dedupKey)) return false;
-    sessionStorage.setItem(dedupKey, '1');
+    if (_firedKeys.has(key)) return false;
+    _firedKeys.add(key);
     return true;
   }
 
-  function _updateAlertCount(delta) {
-    _alertCount += delta;
+  function filterAlertLogVisibility() {
+    const settingsStr = localStorage.getItem('alert_settings');
+    let settings = { regime: true, swing: true, kronos: true, deals: true };
+    if (settingsStr) {
+      try {
+        settings = { ...settings, ...JSON.parse(settingsStr) };
+      } catch (e) {}
+    }
+
+    const mapping = {
+      'regime': ['bullish', 'bearish', 'info'],
+      'swing': ['swing'],
+      'kronos': ['kronos'],
+      'deals': ['deal']
+    };
+
+    const logBody = document.getElementById('alert-log-body');
+    if (!logBody) return;
+
+    const entries = logBody.querySelectorAll('.alert-log-entry');
+    let visibleCount = 0;
+    entries.forEach(entry => {
+      let visible = true;
+      for (const [settingKey, types] of Object.entries(mapping)) {
+        const isMatch = types.some(t => entry.classList.contains(`alert-log-entry--${t}`));
+        if (isMatch) {
+          if (settings[settingKey] === false) {
+            visible = false;
+          }
+          break;
+        }
+      }
+      if (visible) {
+        entry.classList.remove('hidden');
+        visibleCount++;
+      } else {
+        entry.classList.add('hidden');
+      }
+    });
+
     const countBadge = document.getElementById('alert-log-count');
     if (countBadge) {
-      countBadge.textContent = _alertCount.toString();
+      countBadge.textContent = visibleCount.toString();
     }
   }
 
@@ -53,7 +92,7 @@ const AlertEngine = (() => {
     `;
 
     logBody.insertBefore(entry, logBody.firstChild);
-    _updateAlertCount(1);
+    filterAlertLogVisibility();
   }
 
   function _fire(title, body, type = 'info') {
@@ -153,6 +192,7 @@ const AlertEngine = (() => {
       </div>
     `;
     _alertCount = 0;
+    _firedKeys.clear();
     const countBadge = document.getElementById('alert-log-count');
     if (countBadge) {
       countBadge.textContent = '0';
@@ -176,9 +216,13 @@ const AlertEngine = (() => {
         checkbox.addEventListener('change', () => {
           settings[t] = checkbox.checked;
           localStorage.setItem('alert_settings', JSON.stringify(settings));
+          filterAlertLogVisibility();
         });
       }
     });
+
+    // Run initial filter on load
+    filterAlertLogVisibility();
 
     const clearBtn = document.getElementById('btn-clear-alerts');
     if (clearBtn) {

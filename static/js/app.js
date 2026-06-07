@@ -187,6 +187,9 @@ const selectedSwingLabel = document.getElementById('selected-swing-label');
 const btnCandle = document.getElementById('btn-candle');
 const candleDropdown = document.getElementById('candle-dropdown');
 const selectedCandleLabel = document.getElementById('selected-candle-label');
+const btnVolumeFilter = document.getElementById('btn-volume-filter');
+const volumeFilterDropdown = document.getElementById('volume-filter-dropdown');
+const selectedVolumeFilterLabel = document.getElementById('selected-volume-filter-label');
 const btnQuickSwing = document.getElementById('btn-quick-swing');
 const autoRefreshCheckbox = document.getElementById('auto-refresh-checkbox');
 const autoRefreshCountdownEl = document.getElementById('auto-refresh-countdown');
@@ -520,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'filter-rvol-min', 'filter-rvol-max',
         'filter-change-min', 'filter-change-max',
         'filter-pe-min', 'filter-pe-max',
-        'filter-ims', 'filter-swing', 'filter-candle'
+        'filter-ims', 'filter-swing', 'filter-candle', 'filter-volume-alert'
     ];
     rangeFilterInputs.forEach(id => {
         const el = document.getElementById(id);
@@ -553,6 +556,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (selectedCandleLabel) selectedCandleLabel.textContent = 'All Patterns';
                         document.querySelectorAll('#candle-dropdown .select-dropdown-item').forEach(item => {
                             item.classList.toggle('active', item.dataset.value === 'all');
+                        });
+                    } else if (id === 'filter-volume-alert') {
+                        el.value = 'all';
+                        if (selectedVolumeFilterLabel) selectedVolumeFilterLabel.textContent = 'All Volume';
+                        document.querySelectorAll('#volume-filter-dropdown .select-dropdown-item').forEach(item => {
+                            item.classList.remove('active');
+                            const chk = item.querySelector('input[type="checkbox"]');
+                            if (chk) chk.checked = false;
                         });
                     } else if (el.tagName === 'SELECT') {
                         el.value = 'all';
@@ -636,6 +647,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Volume Alert dropdown toggle button listener
+    if (btnVolumeFilter && volumeFilterDropdown) {
+        btnVolumeFilter.addEventListener('click', (e) => {
+            e.stopPropagation();
+            volumeFilterDropdown.classList.toggle('hidden');
+            const isExpanded = !volumeFilterDropdown.classList.contains('hidden');
+            btnVolumeFilter.setAttribute('aria-expanded', isExpanded);
+        });
+    }
+
     // Hide dropdowns when clicking outside
     document.addEventListener('click', (e) => {
         // Sector dropdown
@@ -666,6 +687,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (candleDropdown && !candleDropdown.classList.contains('hidden') && !candleDropdown.contains(e.target) && e.target !== btnCandle) {
             candleDropdown.classList.add('hidden');
             btnCandle.setAttribute('aria-expanded', 'false');
+        }
+
+        // Volume Alert dropdown
+        if (volumeFilterDropdown && !volumeFilterDropdown.classList.contains('hidden') && !volumeFilterDropdown.contains(e.target) && e.target !== btnVolumeFilter) {
+            volumeFilterDropdown.classList.add('hidden');
+            btnVolumeFilter.setAttribute('aria-expanded', 'false');
         }
         
         // Columns dropdown
@@ -764,6 +791,45 @@ document.addEventListener('DOMContentLoaded', () => {
             if (candleDropdown && btnCandle) {
                 candleDropdown.classList.add('hidden');
                 btnCandle.setAttribute('aria-expanded', 'false');
+            }
+            
+            filterAndRender();
+        });
+    });
+
+    // Volume Alert dropdown item click listener (Multiple Selection)
+    document.querySelectorAll('#volume-filter-dropdown .select-dropdown-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+            item.classList.toggle('active', checkbox ? checkbox.checked : false);
+            
+            const selected = [];
+            const labels = [];
+            document.querySelectorAll('#volume-filter-dropdown .select-dropdown-item').forEach(opt => {
+                const chk = opt.querySelector('input[type="checkbox"]');
+                if (chk && chk.checked) {
+                    selected.push(opt.dataset.value);
+                    if (opt.dataset.value === 'ppv') labels.push('🔵 PPV');
+                    else if (opt.dataset.value === 'vol-surge') labels.push('🟢 Surge');
+                    else if (opt.dataset.value === 'dry-vol') labels.push('🟠 Dry');
+                }
+            });
+            
+            const input = document.getElementById('filter-volume-alert');
+            if (input) {
+                input.value = selected.length > 0 ? selected.join(',') : 'all';
+            }
+            
+            if (selectedVolumeFilterLabel) {
+                if (selected.length === 0) {
+                    selectedVolumeFilterLabel.textContent = 'All Volume';
+                } else {
+                    selectedVolumeFilterLabel.textContent = labels.join(' + ');
+                }
             }
             
             filterAndRender();
@@ -2365,13 +2431,31 @@ function filterAndRender() {
             }
         }
         
+        // Volume Alert Filter (Multiple Selection)
+        const volumeFilter = document.getElementById('filter-volume-alert')?.value || 'all';
+        let matchesVolume = true;
+        if (volumeFilter !== 'all') {
+            const selectedFilters = volumeFilter.split(',');
+            matchesVolume = false;
+            if (selectedFilters.includes('ppv') && stock.is_blue_bar) {
+                matchesVolume = true;
+            }
+            if (selectedFilters.includes('vol-surge') && stock.is_green_bar) {
+                matchesVolume = true;
+            }
+            if (selectedFilters.includes('dry-vol') && stock.is_orange_bar) {
+                matchesVolume = true;
+            }
+        }
+        
         // MTF Filter
         let matchesMtf = true;
         if (currentMtfFilter !== 'all') {
-            matchesMtf = (stock.mtfScore || 0).toString() === currentMtfFilter;
+            const mtfVal = stock.mtfScore !== undefined ? stock.mtfScore : 0;
+            matchesMtf = mtfVal === parseInt(currentMtfFilter);
         }
         
-        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesSetup && matchesStatCard && matchesIntraday && matchesMtf;
+        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesIntraday && matchesMtf;
     });
     
     // Clear the active intraday filter after applying so it doesn't stick permanently if the user changes other filters manually
@@ -2673,8 +2757,16 @@ function renderTable() {
                     <td data-column="day_range" class="text-center">${rangeHtml}</td>
                 `;
             } else if (col.id === 'volume') {
+                let volContent = formatVolume(stock.volume);
+                if (stock.is_blue_bar) {
+                    volContent = `<span class="vol-capsule vol-capsule--ppv" title="Pocket Pivot (Blue Bar)">${volContent}</span>`;
+                } else if (stock.is_green_bar) {
+                    volContent = `<span class="vol-capsule vol-capsule--vol-surge" title="Volume Surge (Green Bar)">${volContent}</span>`;
+                } else if (stock.is_orange_bar) {
+                    volContent = `<span class="vol-capsule vol-capsule--dry-vol" title="Dry Volume (Orange Bar)">${volContent}</span>`;
+                }
                 html += `
-                    <td data-column="volume" class="text-right" style="color:var(--color-text-secondary); font-family: 'Outfit', sans-serif;">${formatVolume(stock.volume)}</td>
+                    <td data-column="volume" class="text-right" style="font-family: 'Outfit', sans-serif;">${volContent}</td>
                 `;
             } else if (col.id === 'perf_w') {
                 const perfWClass = stock.perf_w >= 0 ? 'val-up' : 'val-down';

@@ -195,7 +195,9 @@ def init_db():
             pattern_grade TEXT,
             pattern_desc TEXT,
             candlestick_json TEXT,
-            pattern_bias REAL DEFAULT 0.0
+            pattern_bias REAL DEFAULT 0.0,
+            max_down_vol_10 REAL,
+            volume_sma_50 REAL
         )
     ''')
     try:
@@ -204,6 +206,14 @@ def init_db():
         pass
     try:
         c.execute("ALTER TABLE pattern_cache ADD COLUMN pattern_bias REAL DEFAULT 0.0")
+    except Exception:
+        pass
+    try:
+        c.execute("ALTER TABLE pattern_cache ADD COLUMN max_down_vol_10 REAL")
+    except Exception:
+        pass
+    try:
+        c.execute("ALTER TABLE pattern_cache ADD COLUMN volume_sma_50 REAL")
     except Exception:
         pass
         
@@ -1227,21 +1237,23 @@ def analyze_single_stock(stock):
         # 1. Check SQLite Cache First (24-hour TTL)
         conn = sqlite3.connect('scan_history.db')
         c = conn.cursor()
-        c.execute("SELECT pattern_name, pattern_grade, pattern_desc, candlestick_json, generated_at, pattern_bias FROM pattern_cache WHERE ticker = ?", (ticker,))
+        c.execute("SELECT pattern_name, pattern_grade, pattern_desc, candlestick_json, generated_at, pattern_bias, max_down_vol_10, volume_sma_50 FROM pattern_cache WHERE ticker = ?", (ticker,))
         row = c.fetchone()
         conn.close()
         
         cache_valid = False
         if row:
-            p_name, p_grade, p_desc, cand_json, gen_at_str, pat_bias = row
+            p_name, p_grade, p_desc, cand_json, gen_at_str, pat_bias, db_max_down_vol_10, db_volume_sma_50 = row
             try:
                 gen_time = datetime.fromisoformat(gen_at_str)
-                if (datetime.now() - gen_time).total_seconds() < 24 * 3600:
+                if (datetime.now() - gen_time).total_seconds() < 24 * 3600 and db_max_down_vol_10 is not None and db_volume_sma_50 is not None:
                     stock["pattern_name"] = p_name
                     stock["pattern_grade"] = p_grade
                     stock["pattern_desc"] = p_desc
                     stock["candlestick_patterns"] = json.loads(cand_json) if cand_json else {}
                     stock["pattern_bias"] = pat_bias if pat_bias is not None else 0.0
+                    stock["max_down_vol_10"] = db_max_down_vol_10
+                    stock["volume_sma_50"] = db_volume_sma_50
                     cache_valid = True
             except Exception:
                 pass
@@ -1254,6 +1266,34 @@ def analyze_single_stock(stock):
                 cand_patterns = pattern_detection.detect_candlestick_patterns(history)
                 result = merge_candlestick_fallback(result, cand_patterns)
                 chart_results = pattern_detection.detect_chart_patterns(history, lookback=60)
+                
+                # Calculate volume indicators
+                # 50-period Volume SMA
+                vols = [float(h["volume"]) for h in history if h.get("volume") is not None]
+                if len(vols) >= 50:
+                    volume_sma_50 = sum(vols[-50:]) / 50.0
+                elif vols:
+                    volume_sma_50 = sum(vols) / len(vols)
+                else:
+                    volume_sma_50 = 0.0
+
+                # Highest down-day volume of the last 10 down-days
+                down_day_vols = []
+                for i in range(1, len(history)):
+                    current_close = float(history[i]["close"])
+                    prev_close = float(history[i-1]["close"])
+                    if current_close < prev_close:
+                        down_day_vols.append(float(history[i]["volume"]))
+                
+                if len(down_day_vols) >= 10:
+                    max_down_vol_10 = max(down_day_vols[-10:])
+                elif down_day_vols:
+                    max_down_vol_10 = max(down_day_vols)
+                else:
+                    max_down_vol_10 = 0.0
+
+                stock["max_down_vol_10"] = max_down_vol_10
+                stock["volume_sma_50"] = volume_sma_50
                 
                 # Persist signals (never let DB write crash the scan)
                 bar_date = history[-1].get("date") if history else None
@@ -1287,8 +1327,8 @@ def analyze_single_stock(stock):
                 conn = sqlite3.connect('scan_history.db')
                 c = conn.cursor()
                 c.execute(
-                    "INSERT OR REPLACE INTO pattern_cache (ticker, generated_at, pattern_name, pattern_grade, pattern_desc, candlestick_json, pattern_bias) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (ticker, datetime.now().isoformat(), p_name, p_grade, p_desc, json.dumps(cand_patterns), pattern_bias)
+                    "INSERT OR REPLACE INTO pattern_cache (ticker, generated_at, pattern_name, pattern_grade, pattern_desc, candlestick_json, pattern_bias, max_down_vol_10, volume_sma_50) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (ticker, datetime.now().isoformat(), p_name, p_grade, p_desc, json.dumps(cand_patterns), pattern_bias, max_down_vol_10, volume_sma_50)
                 )
                 conn.commit()
                 conn.close()
@@ -1298,6 +1338,8 @@ def analyze_single_stock(stock):
                 stock["pattern_desc"] = "Price in standard swing configuration. Historical daily data fetch not available."
                 stock["candlestick_patterns"] = {}
                 stock["pattern_bias"] = 0.0
+                stock["max_down_vol_10"] = 0.0
+                stock["volume_sma_50"] = 0.0
     except Exception as e:
         print(f"[Pattern Cache/Yahoo Finance] Error analyzing setup for {ticker}: {e}")
         stock["pattern_name"] = "Trend Continuation"
@@ -1305,6 +1347,8 @@ def analyze_single_stock(stock):
         stock["pattern_desc"] = f"Analysis error: {e}"
         stock["candlestick_patterns"] = {}
         stock["pattern_bias"] = 0.0
+        stock["max_down_vol_10"] = 0.0
+        stock["volume_sma_50"] = 0.0
 
 def populate_screener_intelligence(stocks_list):
     if not stocks_list:
@@ -3579,6 +3623,26 @@ def scan_stocks():
         for stock in filtered_stocks:
             classify_setup(stock)
             compute_vol_dryup(stock)
+            
+        # Run real-time volume alert flags evaluation
+        for stock in filtered_stocks:
+            try:
+                close = float(stock.get("close") or 0)
+                prev_close = float(stock.get("close[1]") or 0)
+                volume = float(stock.get("volume") or 0)
+                max_down_vol = float(stock.get("max_down_vol_10") or 0)
+                vol_sma = float(stock.get("volume_sma_50") or 0)
+                
+                is_up_day = close > prev_close
+                is_blue = bool(is_up_day and max_down_vol > 0 and volume > max_down_vol)
+                stock["is_blue_bar"] = is_blue
+                stock["is_green_bar"] = bool(is_up_day and vol_sma > 0 and volume > vol_sma and not is_blue)
+                stock["is_orange_bar"] = bool(vol_sma > 0 and volume <= vol_sma / 5.0)
+            except Exception as e_alert:
+                print(f"[Volume Alerts Backend] Error evaluating alert flags for {stock.get('clean_ticker')}: {e_alert}")
+                stock["is_blue_bar"] = False
+                stock["is_green_bar"] = False
+                stock["is_orange_bar"] = False
             
         # Hook weekly RRG snapping here
         if universe_stocks:
