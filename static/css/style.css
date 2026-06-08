@@ -7,7 +7,7 @@
     --text-xs:   0.75rem;
     --text-sm:   0.80rem;
     --text-base: 0.90rem;
-    --text-md:   1.00rem;
+    --text-md:   var(--text-base); /* alias — use --text-base as canonical 1rem body token */
     --text-lg:   1.125rem;
 
     /* Spacing scale */
@@ -6086,6 +6086,17 @@ body[data-theme="light"] .drawer-risk-banner {
 }
 .rrg-result-item:hover {
   background: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* RRG responsive: stack layout vertically on narrow viewports */
+@media (max-width: 1024px) {
+  .rrg-layout-wrapper {
+    flex-direction: column !important;
+  }
+  .rrg-results-column {
+    width: 100% !important;
+    max-height: none;
+  }
 }
 
 /* Reduced Motion Support */

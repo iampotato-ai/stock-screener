@@ -1,4 +1,4 @@
-// App state variables
+﻿// App state variables
 let previousScanMap = {};
 let stocksData = [];
 let universeData = [];
@@ -1155,12 +1155,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Expose accessibility helper so it can be called after render cycles
     window.makeKeyboardClickable = makeKeyboardClickable;
 
-    // Run accessibility pass on initial cards and elements
-    setTimeout(() => {
-        makeKeyboardClickable('.stat-card');
-        makeKeyboardClickable('.bm-sector-row');
-    }, 500);
+    // makeKeyboardClickable for stat-cards and sector rows is now called
+    // at the end of calculateStats() and renderBreadthPanel() respectively,
+    // ensuring the DOM elements exist before the accessibility pass runs.
 });
+
+
+
+
 
 // Compute changes between scans
 function computeScanDelta(oldStock, newStock) {
@@ -1328,11 +1330,11 @@ async function runScan() {
             });
         }
         
-        if (universeData && universeData.length > 0) {
-            populateSectors(universeData);
-        } else {
-            populateSectors(stocksData);
-        }
+        // Always use scored stocksData for sector population;
+        // universeData contains unscored tickers which lack sector keys, causing sector filter breakage.
+        populateSectors(stocksData);
+
+
         if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
         filterAndRender();
         // Update new animated stat cards
@@ -1804,14 +1806,18 @@ function applyRegimePreset(swingBand) {
   // Apply filters
   filterAndRender();
 
-  // Switch to screener tab
+  // Switch to screener tab only if not already active (avoids re-triggering runScan mid-filter)
   const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
   if (screenerTab) {
-    screenerTab.click();
+    if (document.getElementById('view-screener')?.classList.contains('active') === false) {
+      screenerTab.click();
+    }
   } else {
     switchWorkspace('screener');
   }
 }
+
+
 
 window.applyRegimePreset = applyRegimePreset;
 
@@ -2265,6 +2271,10 @@ function calculateStats(stocks, calculateSectors = true) {
                 `;
             }).join('');
         }
+    }
+    // Accessibility: run after cards have been rendered
+    if (typeof makeKeyboardClickable === 'function') {
+        makeKeyboardClickable('.stat-card');
     }
 }
 
@@ -6343,7 +6353,7 @@ document.getElementById('rrg-canvas')?.addEventListener('click', e => {
         if (typeof selectSector === 'function') {
             selectSector(clickedSector);
             switchWorkspace('screener');
-            showToast(`Screener filtered to ${clickedSector} — check the table below`, 'info');
+            if (typeof showToast === 'function') showToast(`Screener filtered to ${clickedSector} — check the table below`, 'info');
         }
     }
 });
@@ -7483,14 +7493,23 @@ window.sortIntradayWidget = function(widgetId, field) {
 };
 
 // --- Intraday Workspace ---
+// Preset descriptions - static map, hoisted to module scope to avoid re-allocation on every render
+const INTRADAY_PRESET_DESCRIPTIONS = {
+    'gap-go':      'Gap & Go - Stocks gapping >1% above VWAP with positive momentum.',
+    'vwap':        'VWAP Reclaim - Trading close to and above VWAP with active intraday score.',
+    'rvol':        'High RVOL - Relative Volume >= 1.5x (unusual volume activity).',
+    'confluence':  'Confluence - Strong IMS + Elite/Strong Swing score.',
+    'focus':       'Watchlist Focus - Watchlist stocks meeting at least 1 intraday signal.'
+};
+
 function renderIntradayWorkspace() {
-    const presetDescriptions = {
-        'gap-go': 'Gap & Go — Stocks gapping >1% above VWAP with positive momentum.',
-        'vwap': 'VWAP Reclaim — Trading close to and above VWAP with active intraday score.',
-        'rvol': 'High RVOL — Relative Volume ≥ 1.5x (unusual volume activity).',
-        'confluence': 'Confluence — Strong IMS + Elite/Strong Swing score.',
-        'focus': 'Watchlist Focus — Watchlist stocks meeting at least 1 intraday signal.'
-    };
+
+
+
+
+
+
+
 
     // Filter stocks locally by the active preset filter (without affecting the global filteredStocks)
     let stocksToProcess = filteredStocks || [];
@@ -7528,7 +7547,7 @@ function renderIntradayWorkspace() {
             if (contentEl) {
                 contentEl.innerHTML = `
                     <div class="intraday-empty-state" style="padding:1.5rem 1rem; text-align:center; color:var(--color-text-muted); font-size:0.8rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center; align-items:center;">
-                        <p style="margin:0; font-weight: 500; font-style: italic;">${presetDescriptions[id]}</p>
+                        <p style="margin:0; font-weight: 500; font-style: italic;">${INTRADAY_PRESET_DESCRIPTIONS[id]}</p>
                         <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now. Check back during active trading hours.</p>
                     </div>
                 `;
@@ -7700,7 +7719,7 @@ function renderIntradayWorkspace() {
         if (contentEl) {
             contentEl.innerHTML = items.length > 0 ? html : `
                 <div class="intraday-empty-state" style="padding:1.5rem 1rem; text-align:center; color:var(--color-text-muted); font-size:0.8rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center; align-items:center;">
-                    <p style="margin:0; font-weight: 500; font-style: italic;">${presetDescriptions[widgetId]}</p>
+                    <p style="margin:0; font-weight: 500; font-style: italic;">${INTRADAY_PRESET_DESCRIPTIONS[widgetId]}</p>
                     <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now.</p>
                 </div>
             `;
@@ -9388,24 +9407,17 @@ function renderAIForecastWorkspace(ticker) {
             }
 
             // Render Verdict Strip (Item 11.1)
-            const verdictContainer = document.getElementById('ai-verdict-container');
-            if (verdictContainer) {
-                const closeValues = data.forecast.map(f => f.close);
-                const firstClose = data.last_close;
-                const finalClose = closeValues[closeValues.length - 1];
-                const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
-                
-                const direction = returnPct > 1.5 ? 'Bullish' : returnPct < -1.5 ? 'Bearish' : 'Neutral';
-                const verdictClass = returnPct > 1.5 ? 'ai-verdict--bullish' : returnPct < -1.5 ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
-                
-                verdictContainer.innerHTML = `
-                    <div class="ai-verdict-strip ${verdictClass}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
-                        <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">AI Forecast View: ${direction}</span>
-                        <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
-                        <span class="verdict-conf">Confidence Score: ${data.ai_confidence_score || 0}%</span>
-                    </div>
-                `;
-            }
+            const closeValues = data.forecast.map(f => f.close);
+            const firstClose = data.last_close;
+            const finalClose = closeValues[closeValues.length - 1];
+            const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
+            renderVerdictStrip(
+                'ai-verdict-container',
+                'AI Forecast View',
+                returnPct,
+                'Confidence Score',
+                `${data.ai_confidence_score || 0}%`
+            );
 
             destroyKronosFullChart();
             const container = document.getElementById('kronos-full-chart');
@@ -9888,24 +9900,17 @@ async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = fa
       }
 
       // Render Verdict Strip (Item 11.1)
-      const verdictContainer = document.getElementById('ai-verdict-container');
-      if (verdictContainer) {
-        const closeValues = data.ensemble_path || [];
-        const firstClose = data.last_close;
-        const finalClose = closeValues[closeValues.length - 1];
-        const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
-        
-        const direction = returnPct > 1.5 ? 'Bullish' : returnPct < -1.5 ? 'Bearish' : 'Neutral';
-        const verdictClass = returnPct > 1.5 ? 'ai-verdict--bullish' : returnPct < -1.5 ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
-        
-        verdictContainer.innerHTML = `
-            <div class="ai-verdict-strip ${verdictClass}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
-                <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">⚡ Ensemble View: ${direction}</span>
-                <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
-                <span class="verdict-conf">Consensus Conviction: ${data.conviction}</span>
-            </div>
-        `;
-      }
+      const closeValues = data.ensemble_path || [];
+      const firstClose = data.last_close;
+      const finalClose = closeValues[closeValues.length - 1];
+      const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
+      renderVerdictStrip(
+          'ai-verdict-container',
+          '⚡ Ensemble View',
+          returnPct,
+          'Consensus Conviction',
+          data.conviction
+      );
 
       renderEnsembleChart(data);
       renderConvictionBadge(data.conviction, data.divergence_score);
@@ -10398,7 +10403,9 @@ function updateRRGResultsUI(leaders, improving, type) {
 window.openScreenerWithTicker = function(ticker) {
     const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
     if (screenerTab) {
-        screenerTab.click();
+        if (document.getElementById('view-screener')?.classList.contains('active') === false) {
+            screenerTab.click();
+        }
     } else {
         switchWorkspace('screener');
     }
@@ -10413,7 +10420,9 @@ window.openScreenerWithTicker = function(ticker) {
 window.openScreenerWithSector = function(sector) {
     const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
     if (screenerTab) {
-        screenerTab.click();
+        if (document.getElementById('view-screener')?.classList.contains('active') === false) {
+            screenerTab.click();
+        }
     } else {
         switchWorkspace('screener');
     }
@@ -10421,6 +10430,7 @@ window.openScreenerWithSector = function(sector) {
         selectSector(sector);
     }
 };
+
 
 window.updateRRGResultsUI = updateRRGResultsUI;
 
@@ -10733,6 +10743,21 @@ function triggerIPOSync() {
     }
 }
 
+// Verdict strip threshold: % move required to classify as Bullish or Bearish
+const VERDICT_THRESHOLD_PCT = 1.5;
 
-
-
+// Shared helper to render AI and Ensemble verdict strips
+function renderVerdictStrip(containerId, label, returnPct, confidenceLabel, confidenceValue) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const direction = returnPct > VERDICT_THRESHOLD_PCT ? 'Bullish' : returnPct < -VERDICT_THRESHOLD_PCT ? 'Bearish' : 'Neutral';
+    const cls = returnPct > VERDICT_THRESHOLD_PCT ? 'ai-verdict--bullish' : returnPct < -VERDICT_THRESHOLD_PCT ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
+    
+    el.innerHTML = `
+        <div class="ai-verdict-strip ${cls}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
+            <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">${label}: ${direction}</span>
+            <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
+            <span class="verdict-conf">${confidenceLabel}: ${confidenceValue}</span>
+        </div>
+    `;
+}
