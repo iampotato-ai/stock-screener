@@ -338,6 +338,8 @@ document.addEventListener('DOMContentLoaded', () => {
         AlertEngine.initUI();
     }
 
+
+
     // Primary Workspace Navigation Tabs
     const workspaceTabs = document.querySelectorAll('.workspace-tab');
     const workspaceViews = document.querySelectorAll('.workspace-view');
@@ -382,6 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
         } else if (viewName === 'ai-forecast') {
             if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
+
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
             if (currentTab === 'journal') {
@@ -2464,31 +2467,6 @@ function filterAndRender() {
             }
         }
         
-        // Intraday Pro Preset Filters
-        let matchesIntraday = true;
-        if (activeIntradayFilter) {
-            const gap = parseFloat(stock.gap) || 0;
-            const changeFromOpen = parseFloat(stock.change_from_open) || 0;
-            const vwap = parseFloat(stock.VWAP) || 0;
-            const close = parseFloat(stock.close) || 0;
-            const rvol = parseFloat(stock.relative_volume) || 0;
-            const ims = (stock.ims_band || '').toLowerCase();
-            const swing = (stock.swingband || '').toLowerCase();
-            const intradayScore = parseFloat(stock.intraday_score) || 0;
-            
-            if (activeIntradayFilter === 'gap_go') {
-                matchesIntraday = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
-            } else if (activeIntradayFilter === 'vwap_leaders') {
-                matchesIntraday = close > vwap && close < vwap * 1.015 && intradayScore > 0;
-            } else if (activeIntradayFilter === 'high_rvol') {
-                matchesIntraday = rvol >= 1.5;
-            } else if (activeIntradayFilter === 'strong_ims') {
-                matchesIntraday = ims === 'strong';
-            } else if (activeIntradayFilter === 'confluence') {
-                matchesIntraday = ims === 'strong' && (swing === 'strong' || swing === 'elite');
-            }
-        }
-        
         // Volume Alert Filter (Multiple Selection)
         const volumeFilter = document.getElementById('filter-volume-alert')?.value || 'all';
         let matchesVolume = true;
@@ -2513,7 +2491,7 @@ function filterAndRender() {
             matchesMtf = mtfVal === parseInt(currentMtfFilter);
         }
         
-        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesIntraday && matchesMtf;
+        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesMtf;
     });
     
     // Clear the active intraday filter after applying so it doesn't stick permanently if the user changes other filters manually
@@ -2526,10 +2504,10 @@ function filterAndRender() {
     const activeWorkspace = document.querySelector('.workspace-tab.active')?.dataset.view;
     if (activeWorkspace === 'rrg') {
         if (typeof renderRRG === 'function') renderRRG();
+    } else if (activeWorkspace === 'intraday' || currentTab === 'intraday') {
+        if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
     } else if (currentTab === 'rr-setups') {
         if (typeof runRRScreen === 'function') runRRScreen();
-    } else if (currentTab === 'intraday') {
-        if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
     } else if (currentTab === 'journal') {
         if (typeof renderJournal === 'function') renderJournal();
     } else {
@@ -7513,7 +7491,35 @@ function renderIntradayWorkspace() {
         'focus': 'Watchlist Focus — Watchlist stocks meeting at least 1 intraday signal.'
     };
 
-    if (!filteredStocks || filteredStocks.length === 0) {
+    // Filter stocks locally by the active preset filter (without affecting the global filteredStocks)
+    let stocksToProcess = filteredStocks || [];
+    if (activeIntradayFilter && activeIntradayFilter !== 'all') {
+        stocksToProcess = stocksToProcess.filter(stock => {
+            const gap = parseFloat(stock.gap) || 0;
+            const changeFromOpen = parseFloat(stock.change_from_open) || 0;
+            const vwap = parseFloat(stock.VWAP) || 0;
+            const close = parseFloat(stock.close) || 0;
+            const rvol = parseFloat(stock.relative_volume) || 0;
+            const ims = (stock.ims_band || '').toLowerCase();
+            const swing = (stock.swingband || '').toLowerCase();
+            const intradayScore = parseFloat(stock.intraday_score) || 0;
+            
+            if (activeIntradayFilter === 'gap_go') {
+                return gap >= 1.0 && changeFromOpen > 0 && close > vwap;
+            } else if (activeIntradayFilter === 'vwap_leaders') {
+                return close > vwap && close < vwap * 1.015 && intradayScore > 0;
+            } else if (activeIntradayFilter === 'high_rvol') {
+                return rvol >= 1.5;
+            } else if (activeIntradayFilter === 'strong_ims') {
+                return ims === 'strong';
+            } else if (activeIntradayFilter === 'confluence') {
+                return ims === 'strong' && (swing === 'strong' || swing === 'elite');
+            }
+            return true;
+        });
+    }
+
+    if (stocksToProcess.length === 0) {
         // Fallback or empty state
         const updateWidget = (id) => {
             const contentEl = document.getElementById(`widget-${id}`);
@@ -7542,13 +7548,13 @@ function renderIntradayWorkspace() {
     };
     
     // Sort all stocks by relative volume descending for the RVOL widget base dataset
-    const sortedByRvol = [...filteredStocks].sort((a, b) => (parseFloat(b.relative_volume) || 0) - (parseFloat(a.relative_volume) || 0));
+    const sortedByRvol = [...stocksToProcess].sort((a, b) => (parseFloat(b.relative_volume) || 0) - (parseFloat(a.relative_volume) || 0));
     widgetsData['rvol'] = sortedByRvol.filter(s => parseFloat(s.relative_volume) >= 1.5).slice(0, 30).map(s => {
         const rvol = parseFloat(s.relative_volume) || 0;
         return { ...s, _metricValue: `${rvol.toFixed(1)}x`, _metricRaw: rvol };
     });
     
-    filteredStocks.forEach(s => {
+    stocksToProcess.forEach(s => {
         const gap = parseFloat(s.gap) || 0;
         const changeFromOpen = parseFloat(s.change_from_open) || 0;
         const vwap = parseFloat(s.VWAP) || 0;
@@ -7575,32 +7581,30 @@ function renderIntradayWorkspace() {
             widgetsData['confluence'].push({ ...s, _metricValue: `${intradayScore.toFixed(0)}`, _metricRaw: intradayScore });
         }
         
-        // Watchlist Focus
-        if (isInWatchlist) {
-            let metCount = 0;
-            let activeParams = [];
-            
-            const isGapGo = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
-            if (isGapGo) { metCount++; activeParams.push('G'); }
-            
-            const isVwapReclaim = close > vwap && close < vwap * 1.015 && intradayScore > 0;
-            if (isVwapReclaim) { metCount++; activeParams.push('V'); }
-            
-            const isHighRvol = rvol >= 1.5;
-            if (isHighRvol) { metCount++; activeParams.push('R'); }
-            
-            const isOverlap = ims === 'strong' && (swing === 'strong' || swing === 'elite');
-            if (isOverlap) { metCount++; activeParams.push('C'); }
-            
-            if (metCount >= 1) {
-                widgetsData['focus'].push({ 
-                    ...s, 
-                    _metricValue: `${metCount}/4`, 
-                    _metricRaw: metCount,
-                    _activeParams: activeParams,
-                    _intradayScore: intradayScore
-                });
-            }
+        // Watchlist Focus (now Multi-Criteria Intraday Confluence Focus)
+        let metCount = 0;
+        let activeParams = [];
+        
+        const isGapGo = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
+        if (isGapGo) { metCount++; activeParams.push('G'); }
+        
+        const isVwapReclaim = close > vwap && close < vwap * 1.015 && intradayScore > 0;
+        if (isVwapReclaim) { metCount++; activeParams.push('V'); }
+        
+        const isHighRvol = rvol >= 1.5;
+        if (isHighRvol) { metCount++; activeParams.push('R'); }
+        
+        const isOverlap = ims === 'strong' && (swing === 'strong' || swing === 'elite');
+        if (isOverlap) { metCount++; activeParams.push('C'); }
+        
+        if (metCount >= 2) {
+            widgetsData['focus'].push({ 
+                ...s, 
+                _metricValue: `${metCount}/4`, 
+                _metricRaw: metCount,
+                _activeParams: activeParams,
+                _intradayScore: intradayScore
+            });
         }
     });
 
@@ -10418,4 +10422,6 @@ window.openScreenerWithSector = function(sector) {
 };
 
 window.updateRRGResultsUI = updateRRGResultsUI;
+
+
 
