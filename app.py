@@ -242,10 +242,235 @@ def init_db():
     except Exception:
         pass  # already exists
     
+    # ---------- IPO / SME Momentum Tab Tables ----------
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ipo_listings (
+            ticker          TEXT PRIMARY KEY,
+            company_name    TEXT NOT NULL,
+            listing_date    TEXT NOT NULL,
+            issue_price     REAL,
+            listing_open    REAL,
+            listing_close   REAL,
+            exchange        TEXT DEFAULT 'NSE',
+            sector          TEXT,
+            issue_size_cr   REAL,
+            lot_size        INTEGER,
+            gmp_at_listing  REAL,
+            added_at        TEXT DEFAULT (datetime('now'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_ipo_listing_date ON ipo_listings(listing_date DESC)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_ipo_exchange ON ipo_listings(exchange)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ipo_metrics_cache (
+            ticker                  TEXT PRIMARY KEY,
+            company_name            TEXT NOT NULL,
+            listing_date            TEXT NOT NULL,
+            exchange                TEXT NOT NULL,
+            sector                  TEXT,
+            issue_price             REAL,
+            listing_gain_pct        REAL,
+            current_vs_issue_pct    REAL,
+            current_vs_listing_pct  REAL,
+            days_since_listing      INTEGER,
+            rvol_ratio              REAL,
+            above_listing_high      INTEGER,
+            drawdown_from_ath       REAL,
+            swing_score             INTEGER,
+            pattern_name            TEXT,
+            momentum_phase          TEXT,
+            current_price           REAL,
+            cached_at               TEXT NOT NULL
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_ipo_metrics_phase ON ipo_metrics_cache(momentum_phase)')
+    
+    conn.commit()
+    conn.close()
+
+def seed_ipo_listings():
+    """
+    Seeds the ipo_listings table with ~25 mock/realistic IPO and SME listings from the last 12 months (relative to June 2026).
+    """
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM ipo_listings")
+    
+    seed_data = [
+        # Mainboard - NSE
+        ("OLAELEC.NS", "Ola Electric Mobility Ltd", "2025-08-09", 76.0, 75.0, 91.0, "NSE", "Automobile", 6145.0, 195, 15.0),
+        ("PREMIERENE.NS", "Premier Energies Ltd", "2025-09-03", 450.0, 840.0, 838.0, "NSE", "Capital Goods", 2830.0, 33, 350.0),
+        ("HYUNDAI.NS", "Hyundai Motor India Ltd", "2025-10-22", 1960.0, 1931.0, 1845.0, "NSE", "Automobile", 27870.0, 7, -40.0),
+        ("WAAREEENER.NS", "Waaree Energies Ltd", "2025-10-28", 1503.0, 2550.0, 2340.0, "NSE", "Capital Goods", 4321.0, 9, 1200.0),
+        ("SWIGGY.NS", "Swiggy Ltd", "2025-11-13", 390.0, 420.0, 455.0, "NSE", "Services", 11327.0, 38, 25.0),
+        ("BAJAJHFL.NS", "Bajaj Housing Finance Ltd", "2025-09-16", 70.0, 150.0, 165.0, "NSE", "Financial Services", 6560.0, 214, 80.0),
+        ("FIRSTCRY.NS", "Brainbees Solutions Ltd (FirstCry)", "2025-08-13", 465.0, 651.0, 673.0, "NSE", "Services", 4193.0, 32, 80.0),
+        ("KRN.NS", "KRN Heat Exchanger Ltd", "2025-10-03", 220.0, 480.0, 478.0, "NSE", "Capital Goods", 342.0, 65, 240.0),
+        ("TATATECH.NS", "Tata Technologies Ltd", "2025-06-15", 500.0, 1200.0, 1313.0, "NSE", "IT", 3042.0, 30, 700.0),
+        ("IREDA.NS", "Indian Renewable Energy Development Agency", "2025-06-20", 32.0, 50.0, 60.0, "NSE", "Financial Services", 2150.0, 460, 15.0),
+        ("DOMS.NS", "DOMS Industries Ltd", "2025-07-05", 790.0, 1400.0, 1395.0, "NSE", "Consumer Durables", 1200.0, 18, 500.0),
+        ("MUTHOOTMF.NS", "Muthoot Microfin Ltd", "2025-07-28", 291.0, 275.0, 266.0, "NSE", "Financial Services", 960.0, 51, -10.0),
+        ("HAPPYFORGE.NS", "Happy Forgings Ltd", "2025-08-05", 850.0, 1000.0, 985.0, "NSE", "Capital Goods", 1008.0, 17, 120.0),
+        ("EXICOM.NS", "Exicom Tele-Systems Ltd", "2025-09-20", 142.0, 265.0, 259.0, "NSE", "Telecommunication", 429.0, 100, 110.0),
+        ("JAYBARMAR.NS", "Jay Bee Laminations Ltd", "2025-09-28", 146.0, 290.0, 310.0, "NSE", "Capital Goods", 89.0, 1000, 120.0),
+        ("UNIPARTS.NS", "Uniparts India Ltd", "2025-10-10", 577.0, 575.0, 540.0, "NSE", "Capital Goods", 835.0, 25, -20.0),
+        
+        # Mainboard - BSE
+        ("BSE.NS", "BSE Limited", "2025-06-01", 400.0, 420.0, 450.0, "BSE", "Financial Services", 5000.0, 30, 20.0),
+        
+        # SME Listings
+        ("PARAS.NS", "Paras Defence and Space Technologies", "2025-11-01", 175.0, 475.0, 498.0, "SME-NSE", "Capital Goods", 170.0, 85, 250.0),
+        ("SBC.NS", "SBC Exports Ltd", "2025-12-15", 30.0, 35.0, 32.0, "SME-BSE", "Textiles", 45.0, 4000, 5.0),
+        ("RAMCOSYS.NS", "Ramco Systems Ltd", "2026-01-20", 250.0, 290.0, 310.0, "SME-NSE", "IT", 120.0, 50, 40.0),
+        ("DEEDEV.NS", "Dee Development Engineers Ltd", "2026-02-15", 203.0, 325.0, 340.0, "SME-NSE", "Capital Goods", 325.0, 73, 110.0),
+        ("UFBL.NS", "United Cotfab Ltd", "2026-03-10", 70.0, 75.0, 83.0, "SME-NSE", "Textiles", 36.0, 2000, 10.0),
+        ("GOCOLORS.NS", "Go Fashion India Ltd", "2026-04-05", 690.0, 1250.0, 1200.0, "SME-NSE", "Apparels", 1013.0, 21, 400.0),
+        ("BAJAJCON.NS", "Bajaj Consumer Care Ltd", "2026-05-02", 290.0, 300.0, 285.0, "SME-NSE", "FMCG", 350.0, 50, 5.0)
+    ]
+    
+    for row in seed_data:
+        c.execute('''
+            INSERT OR IGNORE INTO ipo_listings (
+                ticker, company_name, listing_date, issue_price, listing_open, listing_close, exchange, sector, issue_size_cr, lot_size, gmp_at_listing
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', row)
+        
     conn.commit()
     conn.close()
 
 init_db()
+seed_ipo_listings()
+
+def classify_momentum_phase(days_since, current_vs_issue, current_vs_listing, is_sme=False):
+    hot_threshold    = 30 if is_sme else 15
+    broken_threshold = -20 if is_sme else -10
+
+    if days_since <= 10 and current_vs_issue > hot_threshold:
+        return "HOT"
+    elif days_since <= 60 and current_vs_listing > 5:
+        return "STABLE"
+    elif current_vs_listing < broken_threshold:
+        return "BROKEN"
+    else:
+        return "FADING"
+
+def refresh_ipo_metrics():
+    """
+    Refreshes metrics for all IPO listings in parallel and updates the ipo_metrics_cache table.
+    """
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+    c.execute("SELECT ticker, company_name, listing_date, issue_price, listing_close, exchange, sector FROM ipo_listings")
+    listings = c.fetchall()
+    conn.close()
+    
+    from datetime import datetime
+    import time
+    
+    def _update_single(row):
+        ticker, company_name, listing_date, issue_price, listing_close, exchange, sector = row
+        try:
+            # Fetch history
+            history = fetch_historical_prices(ticker, range_str="1y")
+            if not history:
+                return
+                
+            closes = [float(h["close"]) for h in history]
+            highs = [float(h["high"]) for h in history]
+            volumes = [float(h["volume"]) for h in history]
+            lows = [float(h["low"]) for h in history]
+            
+            if not closes:
+                return
+                
+            current_price = closes[-1]
+            current_vol = volumes[-1]
+            avg_vol_20d = sum(volumes[-20:]) / len(volumes[-20:]) if volumes else 1.0
+            
+            # Listing close
+            lst_close = listing_close if listing_close else closes[0]
+            
+            # Calculations
+            listing_gain_pct = ((lst_close - issue_price) / issue_price * 100) if issue_price else 0.0
+            current_vs_issue_pct = ((current_price - issue_price) / issue_price * 100) if issue_price else 0.0
+            current_vs_listing_pct = ((current_price - lst_close) / lst_close * 100) if lst_close else 0.0
+            
+            # Days since listing
+            from datetime import datetime
+            try:
+                lst_dt = datetime.strptime(listing_date, "%Y-%m-%d").date()
+                days_since = (datetime.now().date() - lst_dt).days
+            except Exception:
+                days_since = 0
+                
+            rvol_ratio = (current_vol / avg_vol_20d) if avg_vol_20d > 0 else 1.0
+            ath = max(highs) if highs else current_price
+            above_listing_high = 1 if current_price >= max(closes) * 0.98 else 0
+            drawdown_from_ath = ((current_price - ath) / ath * 100) if ath else 0.0
+            
+            # Mock stock dict for swing score
+            sma10 = sum(closes[-10:]) / len(closes[-10:]) if len(closes) >= 10 else current_price
+            sma21 = sum(closes[-21:]) / len(closes[-21:]) if len(closes) >= 21 else current_price
+            sma50 = sum(closes[-50:]) / len(closes[-50:]) if len(closes) >= 50 else current_price
+            
+            stock_dict = {
+                "ticker": ticker,
+                "clean_ticker": ticker.replace(".NS", "").replace(".BO", ""),
+                "close": current_price,
+                "SMA10": sma10,
+                "SMA21": sma21,
+                "SMA50": sma50,
+                "price_52_week_high": max(highs) if highs else current_price,
+                "price_52_week_low": min(lows) if lows else current_price,
+                "average_volume": avg_vol_20d,
+                "Recommend.All": 0.5,
+                "sector": sector,
+                "Perf.W": 0.0,
+                "Perf.1M": 0.0,
+                "Perf.3M": 0.0,
+                "change": 0.0
+            }
+            
+            swing_res = compute_swing_score(stock_dict)
+            swing_score = swing_res.get("swingscore", 0) if isinstance(swing_res, dict) else 0
+            pattern_res = classify_technical_pattern(history)
+            pattern_name = "None"
+            if isinstance(pattern_res, dict):
+                pattern_name = pattern_res.get("pattern", "None")
+            elif isinstance(pattern_res, str):
+                pattern_name = pattern_res
+            
+            is_sme = "SME" in exchange
+            phase = classify_momentum_phase(days_since, current_vs_issue_pct, current_vs_listing_pct, is_sme)
+            
+            # Write to cache
+            conn2 = sqlite3.connect('scan_history.db')
+            c2 = conn2.cursor()
+            c2.execute('''
+                INSERT OR REPLACE INTO ipo_metrics_cache (
+                    ticker, company_name, listing_date, exchange, sector, issue_price,
+                    listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
+                    rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
+                    momentum_phase, current_price, cached_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ''', (
+                ticker, company_name, listing_date, exchange, sector, issue_price,
+                round(listing_gain_pct, 2), round(current_vs_issue_pct, 2), round(current_vs_listing_pct, 2), days_since,
+                round(rvol_ratio, 2), above_listing_high, round(drawdown_from_ath, 2), swing_score, pattern_name,
+                phase, current_price
+            ))
+            conn2.commit()
+            conn2.close()
+        except Exception as e:
+            print(f"Error computing IPO metrics for {ticker}: {e}")
+            
+    # Run in parallel
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        executor.map(_update_single, listings)
+        
+    print("IPO metrics cache refreshed successfully.")
 
 # Global lock to prevent concurrent NSE API fetches across threads
 nse_fetch_lock = threading.Lock()
@@ -5262,6 +5487,205 @@ def migrate_local_data():
     finally:
         if conn:
             conn.close()
+
+# ---------- IPO / SME API ENDPOINTS ----------
+
+ipo_refresh_lock = threading.Lock()
+last_ipo_refresh_time = 0.0
+
+@app.route('/api/ipo/listings', methods=['GET'])
+def get_ipo_listings():
+    from flask import request
+    conn = None
+    try:
+        exchange_param = request.args.get('exchange', 'all').strip()
+        days_param = request.args.get('days', 'all').strip()
+        phase_param = request.args.get('phase', 'all').strip()
+        limit = request.args.get('limit', '').strip()
+        offset = request.args.get('offset', '').strip()
+        
+        where_clauses = []
+        params = []
+        
+        if exchange_param != 'all':
+            if exchange_param == 'SME':
+                where_clauses.append("exchange LIKE '%SME%'")
+            elif exchange_param == 'NSE':
+                where_clauses.append("exchange = 'NSE'")
+            elif exchange_param == 'BSE':
+                where_clauses.append("exchange = 'BSE'")
+                
+        if days_param != 'all':
+            max_days = None
+            if days_param == '1m': max_days = 30
+            elif days_param == '3m': max_days = 90
+            elif days_param == '6m': max_days = 180
+            elif days_param == '1y': max_days = 365
+            else:
+                try:
+                    max_days = int(days_param)
+                except ValueError:
+                    pass
+            if max_days is not None:
+                where_clauses.append("days_since_listing <= ?")
+                params.append(max_days)
+                
+        if phase_param != 'all':
+            where_clauses.append("momentum_phase = ?")
+            params.append(phase_param)
+            
+        where_str = ""
+        if where_clauses:
+            where_str = f" WHERE {' AND '.join(where_clauses)}"
+            
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute(f"SELECT COUNT(*) FROM ipo_metrics_cache{where_str}", tuple(params))
+        total_count = c.fetchone()[0]
+        
+        c.execute("SELECT momentum_phase, COUNT(*) FROM ipo_metrics_cache GROUP BY momentum_phase")
+        summary_rows = c.fetchall()
+        summary = {"HOT": 0, "STABLE": 0, "FADING": 0, "BROKEN": 0}
+        for phase, cnt in summary_rows:
+            if phase in summary:
+                summary[phase] = cnt
+                
+        sort_by = request.args.get('sort_by', 'listing_date').strip()
+        order = request.args.get('order', 'desc').strip().upper()
+        if order not in ['ASC', 'DESC']:
+            order = 'DESC'
+            
+        allowed_sort_cols = [
+            'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
+            'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
+            'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
+            'momentum_phase', 'current_price'
+        ]
+        if sort_by not in allowed_sort_cols:
+            sort_by = 'listing_date'
+            
+        query = f"""
+            SELECT ticker, company_name, listing_date, exchange, sector, issue_price,
+                   listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
+                   rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
+                   momentum_phase, current_price, cached_at
+            FROM ipo_metrics_cache
+            {where_str}
+            ORDER BY {sort_by} {order}
+        """
+        
+        limit_offset_params = list(params)
+        if limit:
+            try:
+                limit_val = int(limit)
+                query += " LIMIT ?"
+                limit_offset_params.append(limit_val)
+                if offset:
+                    try:
+                        offset_val = int(offset)
+                        query += " OFFSET ?"
+                        limit_offset_params.append(offset_val)
+                    except ValueError:
+                        pass
+            except ValueError:
+                pass
+                
+        c.execute(query, tuple(limit_offset_params))
+        rows = c.fetchall()
+        conn.close()
+        conn = None
+        
+        cols = [
+            'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
+            'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
+            'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
+            'momentum_phase', 'current_price', 'cached_at'
+        ]
+        
+        listings = []
+        for r in rows:
+            listings.append(dict(zip(cols, r)))
+            
+        return jsonify(listings=listings, total=total_count, summary=summary)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/ipo/detail/<ticker>', methods=['GET'])
+def get_ipo_detail(ticker):
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        c.execute("SELECT * FROM ipo_metrics_cache WHERE ticker = ?", (ticker,))
+        row = c.fetchone()
+        
+        if not row:
+            # Check if exists in ipo_listings at least
+            c.execute("SELECT ticker FROM ipo_listings WHERE ticker = ?", (ticker,))
+            exists = c.fetchone()
+            conn.close()
+            conn = None
+            if not exists:
+                return jsonify(error=f"Ticker {ticker} not found in IPO listings"), 404
+            return jsonify(error=f"Ticker {ticker} is not cached yet"), 404
+            
+        cols = [description[0] for description in c.description]
+        detail = dict(zip(cols, row))
+        
+        # Get price history
+        history = fetch_historical_prices(ticker, range_str="1y")
+        detail["history"] = history or []
+        
+        conn.close()
+        conn = None
+        return jsonify(detail)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/ipo/refresh', methods=['POST'])
+def api_refresh_ipo():
+    global last_ipo_refresh_time
+    import time
+    
+    current_time = time.time()
+    if current_time - last_ipo_refresh_time < 60:
+        remaining = int(60 - (current_time - last_ipo_refresh_time))
+        return jsonify(error=f"Refresh cooldown active. Please wait {remaining} seconds."), 429
+        
+    # Start background thread to refresh cache asynchronously
+    def _bg_refresh():
+        global last_ipo_refresh_time
+        with ipo_refresh_lock:
+            try:
+                refresh_ipo_metrics()
+            except Exception as e:
+                print(f"Error in background IPO refresh: {e}")
+                
+    t = threading.Thread(target=_bg_refresh)
+    t.start()
+    
+    last_ipo_refresh_time = current_time
+    return jsonify(success=True, message="Background refresh started.")
+
+# Initial EOD refresh check (relocated to end of file so all dependencies are defined)
+try:
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM ipo_metrics_cache")
+    cnt = c.fetchone()[0]
+    conn.close()
+    if cnt == 0:
+        print("IPO metrics cache is empty. Performing initial refresh...")
+        refresh_ipo_metrics()
+except Exception as e:
+    print(f"Error seeding initial IPO metrics cache: {e}")
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)
