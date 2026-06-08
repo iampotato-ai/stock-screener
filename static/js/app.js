@@ -338,6 +338,8 @@ document.addEventListener('DOMContentLoaded', () => {
         AlertEngine.initUI();
     }
 
+
+
     // Primary Workspace Navigation Tabs
     const workspaceTabs = document.querySelectorAll('.workspace-tab');
     const workspaceViews = document.querySelectorAll('.workspace-view');
@@ -382,6 +384,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
         } else if (viewName === 'ai-forecast') {
             if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
+        } else if (viewName === 'ipo') {
+            if (typeof renderIPOWorkspace === 'function') renderIPOWorkspace();
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
             if (currentTab === 'journal') {
@@ -1151,12 +1155,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Expose accessibility helper so it can be called after render cycles
     window.makeKeyboardClickable = makeKeyboardClickable;
 
-    // Run accessibility pass on initial cards and elements
-    setTimeout(() => {
-        makeKeyboardClickable('.stat-card');
-        makeKeyboardClickable('.bm-sector-row');
-    }, 500);
+    // makeKeyboardClickable for stat-cards and sector rows is now called
+    // at the end of calculateStats() and renderBreadthPanel() respectively,
+    // ensuring the DOM elements exist before the accessibility pass runs.
 });
+
+
+
+
 
 // Compute changes between scans
 function computeScanDelta(oldStock, newStock) {
@@ -1324,11 +1330,11 @@ async function runScan() {
             });
         }
         
-        if (universeData && universeData.length > 0) {
-            populateSectors(universeData);
-        } else {
-            populateSectors(stocksData);
-        }
+        // Always use scored stocksData for sector population;
+        // universeData contains unscored tickers which lack sector keys, causing sector filter breakage.
+        populateSectors(stocksData);
+
+
         if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
         filterAndRender();
         // Update new animated stat cards
@@ -1800,14 +1806,18 @@ function applyRegimePreset(swingBand) {
   // Apply filters
   filterAndRender();
 
-  // Switch to screener tab
+  // Switch to screener tab only if not already active (avoids re-triggering runScan mid-filter)
   const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
   if (screenerTab) {
-    screenerTab.click();
+    if (document.getElementById('view-screener')?.classList.contains('active') === false) {
+      screenerTab.click();
+    }
   } else {
     switchWorkspace('screener');
   }
 }
+
+
 
 window.applyRegimePreset = applyRegimePreset;
 
@@ -2262,6 +2272,10 @@ function calculateStats(stocks, calculateSectors = true) {
             }).join('');
         }
     }
+    // Accessibility: run after cards have been rendered
+    if (typeof makeKeyboardClickable === 'function') {
+        makeKeyboardClickable('.stat-card');
+    }
 }
 
 // Show error message in table body
@@ -2464,31 +2478,6 @@ function filterAndRender() {
             }
         }
         
-        // Intraday Pro Preset Filters
-        let matchesIntraday = true;
-        if (activeIntradayFilter) {
-            const gap = parseFloat(stock.gap) || 0;
-            const changeFromOpen = parseFloat(stock.change_from_open) || 0;
-            const vwap = parseFloat(stock.VWAP) || 0;
-            const close = parseFloat(stock.close) || 0;
-            const rvol = parseFloat(stock.relative_volume) || 0;
-            const ims = (stock.ims_band || '').toLowerCase();
-            const swing = (stock.swingband || '').toLowerCase();
-            const intradayScore = parseFloat(stock.intraday_score) || 0;
-            
-            if (activeIntradayFilter === 'gap_go') {
-                matchesIntraday = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
-            } else if (activeIntradayFilter === 'vwap_leaders') {
-                matchesIntraday = close > vwap && close < vwap * 1.015 && intradayScore > 0;
-            } else if (activeIntradayFilter === 'high_rvol') {
-                matchesIntraday = rvol >= 1.5;
-            } else if (activeIntradayFilter === 'strong_ims') {
-                matchesIntraday = ims === 'strong';
-            } else if (activeIntradayFilter === 'confluence') {
-                matchesIntraday = ims === 'strong' && (swing === 'strong' || swing === 'elite');
-            }
-        }
-        
         // Volume Alert Filter (Multiple Selection)
         const volumeFilter = document.getElementById('filter-volume-alert')?.value || 'all';
         let matchesVolume = true;
@@ -2513,7 +2502,7 @@ function filterAndRender() {
             matchesMtf = mtfVal === parseInt(currentMtfFilter);
         }
         
-        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesIntraday && matchesMtf;
+        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesMtf;
     });
     
     // Clear the active intraday filter after applying so it doesn't stick permanently if the user changes other filters manually
@@ -2526,10 +2515,10 @@ function filterAndRender() {
     const activeWorkspace = document.querySelector('.workspace-tab.active')?.dataset.view;
     if (activeWorkspace === 'rrg') {
         if (typeof renderRRG === 'function') renderRRG();
+    } else if (activeWorkspace === 'intraday' || currentTab === 'intraday') {
+        if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
     } else if (currentTab === 'rr-setups') {
         if (typeof runRRScreen === 'function') runRRScreen();
-    } else if (currentTab === 'intraday') {
-        if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
     } else if (currentTab === 'journal') {
         if (typeof renderJournal === 'function') renderJournal();
     } else {
@@ -3067,7 +3056,23 @@ function renderPagination(totalPages) {
 }
 
 function openTradingView(ticker) {
-    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${ticker}`, '_blank');
+    let exchange = 'NSE';
+    let symbol = ticker;
+    
+    if (ticker.includes(':')) {
+        window.open(`https://www.tradingview.com/chart/?symbol=${ticker}`, '_blank');
+        return;
+    }
+    
+    if (ticker.endsWith('.BO')) {
+        exchange = 'BSE';
+        symbol = ticker.slice(0, -3);
+    } else if (ticker.endsWith('.NS')) {
+        exchange = 'NSE';
+        symbol = ticker.slice(0, -3);
+    }
+    
+    window.open(`https://www.tradingview.com/chart/?symbol=${exchange}:${symbol}`, '_blank');
 }
 
 // Helper to escape HTML tags
@@ -6364,7 +6369,7 @@ document.getElementById('rrg-canvas')?.addEventListener('click', e => {
         if (typeof selectSector === 'function') {
             selectSector(clickedSector);
             switchWorkspace('screener');
-            showToast(`Screener filtered to ${clickedSector} — check the table below`, 'info');
+            if (typeof showToast === 'function') showToast(`Screener filtered to ${clickedSector} — check the table below`, 'info');
         }
     }
 });
@@ -7504,16 +7509,53 @@ window.sortIntradayWidget = function(widgetId, field) {
 };
 
 // --- Intraday Workspace ---
-function renderIntradayWorkspace() {
-    const presetDescriptions = {
-        'gap-go': 'Gap & Go — Stocks gapping >1% above VWAP with positive momentum.',
-        'vwap': 'VWAP Reclaim — Trading close to and above VWAP with active intraday score.',
-        'rvol': 'High RVOL — Relative Volume ≥ 1.5x (unusual volume activity).',
-        'confluence': 'Confluence — Strong IMS + Elite/Strong Swing score.',
-        'focus': 'Watchlist Focus — Watchlist stocks meeting at least 1 intraday signal.'
-    };
+// Preset descriptions - static map, hoisted to module scope to avoid re-allocation on every render
+const INTRADAY_PRESET_DESCRIPTIONS = {
+    'gap-go':      'Gap & Go - Stocks gapping >1% above VWAP with positive momentum.',
+    'vwap':        'VWAP Reclaim - Trading close to and above VWAP with active intraday score.',
+    'rvol':        'High RVOL - Relative Volume >= 1.5x (unusual volume activity).',
+    'confluence':  'Confluence - Strong IMS + Elite/Strong Swing score.',
+    'focus':       'Watchlist Focus - Watchlist stocks meeting at least 1 intraday signal.'
+};
 
-    if (!filteredStocks || filteredStocks.length === 0) {
+function renderIntradayWorkspace() {
+
+
+
+
+
+
+
+
+    // Filter stocks locally by the active preset filter (without affecting the global filteredStocks)
+    let stocksToProcess = filteredStocks || [];
+    if (activeIntradayFilter && activeIntradayFilter !== 'all') {
+        stocksToProcess = stocksToProcess.filter(stock => {
+            const gap = parseFloat(stock.gap) || 0;
+            const changeFromOpen = parseFloat(stock.change_from_open) || 0;
+            const vwap = parseFloat(stock.VWAP) || 0;
+            const close = parseFloat(stock.close) || 0;
+            const rvol = parseFloat(stock.relative_volume) || 0;
+            const ims = (stock.ims_band || '').toLowerCase();
+            const swing = (stock.swingband || '').toLowerCase();
+            const intradayScore = parseFloat(stock.intraday_score) || 0;
+            
+            if (activeIntradayFilter === 'gap_go') {
+                return gap >= 1.0 && changeFromOpen > 0 && close > vwap;
+            } else if (activeIntradayFilter === 'vwap_leaders') {
+                return close > vwap && close < vwap * 1.015 && intradayScore > 0;
+            } else if (activeIntradayFilter === 'high_rvol') {
+                return rvol >= 1.5;
+            } else if (activeIntradayFilter === 'strong_ims') {
+                return ims === 'strong';
+            } else if (activeIntradayFilter === 'confluence') {
+                return ims === 'strong' && (swing === 'strong' || swing === 'elite');
+            }
+            return true;
+        });
+    }
+
+    if (stocksToProcess.length === 0) {
         // Fallback or empty state
         const updateWidget = (id) => {
             const contentEl = document.getElementById(`widget-${id}`);
@@ -7521,7 +7563,7 @@ function renderIntradayWorkspace() {
             if (contentEl) {
                 contentEl.innerHTML = `
                     <div class="intraday-empty-state" style="padding:1.5rem 1rem; text-align:center; color:var(--color-text-muted); font-size:0.8rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center; align-items:center;">
-                        <p style="margin:0; font-weight: 500; font-style: italic;">${presetDescriptions[id]}</p>
+                        <p style="margin:0; font-weight: 500; font-style: italic;">${INTRADAY_PRESET_DESCRIPTIONS[id]}</p>
                         <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now. Check back during active trading hours.</p>
                     </div>
                 `;
@@ -7542,13 +7584,13 @@ function renderIntradayWorkspace() {
     };
     
     // Sort all stocks by relative volume descending for the RVOL widget base dataset
-    const sortedByRvol = [...filteredStocks].sort((a, b) => (parseFloat(b.relative_volume) || 0) - (parseFloat(a.relative_volume) || 0));
+    const sortedByRvol = [...stocksToProcess].sort((a, b) => (parseFloat(b.relative_volume) || 0) - (parseFloat(a.relative_volume) || 0));
     widgetsData['rvol'] = sortedByRvol.filter(s => parseFloat(s.relative_volume) >= 1.5).slice(0, 30).map(s => {
         const rvol = parseFloat(s.relative_volume) || 0;
         return { ...s, _metricValue: `${rvol.toFixed(1)}x`, _metricRaw: rvol };
     });
     
-    filteredStocks.forEach(s => {
+    stocksToProcess.forEach(s => {
         const gap = parseFloat(s.gap) || 0;
         const changeFromOpen = parseFloat(s.change_from_open) || 0;
         const vwap = parseFloat(s.VWAP) || 0;
@@ -7575,32 +7617,30 @@ function renderIntradayWorkspace() {
             widgetsData['confluence'].push({ ...s, _metricValue: `${intradayScore.toFixed(0)}`, _metricRaw: intradayScore });
         }
         
-        // Watchlist Focus
-        if (isInWatchlist) {
-            let metCount = 0;
-            let activeParams = [];
-            
-            const isGapGo = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
-            if (isGapGo) { metCount++; activeParams.push('G'); }
-            
-            const isVwapReclaim = close > vwap && close < vwap * 1.015 && intradayScore > 0;
-            if (isVwapReclaim) { metCount++; activeParams.push('V'); }
-            
-            const isHighRvol = rvol >= 1.5;
-            if (isHighRvol) { metCount++; activeParams.push('R'); }
-            
-            const isOverlap = ims === 'strong' && (swing === 'strong' || swing === 'elite');
-            if (isOverlap) { metCount++; activeParams.push('C'); }
-            
-            if (metCount >= 1) {
-                widgetsData['focus'].push({ 
-                    ...s, 
-                    _metricValue: `${metCount}/4`, 
-                    _metricRaw: metCount,
-                    _activeParams: activeParams,
-                    _intradayScore: intradayScore
-                });
-            }
+        // Watchlist Focus (now Multi-Criteria Intraday Confluence Focus)
+        let metCount = 0;
+        let activeParams = [];
+        
+        const isGapGo = gap >= 1.0 && changeFromOpen > 0 && close > vwap;
+        if (isGapGo) { metCount++; activeParams.push('G'); }
+        
+        const isVwapReclaim = close > vwap && close < vwap * 1.015 && intradayScore > 0;
+        if (isVwapReclaim) { metCount++; activeParams.push('V'); }
+        
+        const isHighRvol = rvol >= 1.5;
+        if (isHighRvol) { metCount++; activeParams.push('R'); }
+        
+        const isOverlap = ims === 'strong' && (swing === 'strong' || swing === 'elite');
+        if (isOverlap) { metCount++; activeParams.push('C'); }
+        
+        if (metCount >= 2) {
+            widgetsData['focus'].push({ 
+                ...s, 
+                _metricValue: `${metCount}/4`, 
+                _metricRaw: metCount,
+                _activeParams: activeParams,
+                _intradayScore: intradayScore
+            });
         }
     });
 
@@ -7695,7 +7735,7 @@ function renderIntradayWorkspace() {
         if (contentEl) {
             contentEl.innerHTML = items.length > 0 ? html : `
                 <div class="intraday-empty-state" style="padding:1.5rem 1rem; text-align:center; color:var(--color-text-muted); font-size:0.8rem; display:flex; flex-direction:column; gap:0.5rem; justify-content:center; align-items:center;">
-                    <p style="margin:0; font-weight: 500; font-style: italic;">${presetDescriptions[widgetId]}</p>
+                    <p style="margin:0; font-weight: 500; font-style: italic;">${INTRADAY_PRESET_DESCRIPTIONS[widgetId]}</p>
                     <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now.</p>
                 </div>
             `;
@@ -9383,24 +9423,17 @@ function renderAIForecastWorkspace(ticker) {
             }
 
             // Render Verdict Strip (Item 11.1)
-            const verdictContainer = document.getElementById('ai-verdict-container');
-            if (verdictContainer) {
-                const closeValues = data.forecast.map(f => f.close);
-                const firstClose = data.last_close;
-                const finalClose = closeValues[closeValues.length - 1];
-                const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
-                
-                const direction = returnPct > 1.5 ? 'Bullish' : returnPct < -1.5 ? 'Bearish' : 'Neutral';
-                const verdictClass = returnPct > 1.5 ? 'ai-verdict--bullish' : returnPct < -1.5 ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
-                
-                verdictContainer.innerHTML = `
-                    <div class="ai-verdict-strip ${verdictClass}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
-                        <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">AI Forecast View: ${direction}</span>
-                        <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
-                        <span class="verdict-conf">Confidence Score: ${data.ai_confidence_score || 0}%</span>
-                    </div>
-                `;
-            }
+            const closeValues = data.forecast.map(f => f.close);
+            const firstClose = data.last_close;
+            const finalClose = closeValues[closeValues.length - 1];
+            const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
+            renderVerdictStrip(
+                'ai-verdict-container',
+                'AI Forecast View',
+                returnPct,
+                'Confidence Score',
+                `${data.ai_confidence_score || 0}%`
+            );
 
             destroyKronosFullChart();
             const container = document.getElementById('kronos-full-chart');
@@ -9883,24 +9916,17 @@ async function loadEnsembleForecast(ticker, horizon = 10, useDynamicWeights = fa
       }
 
       // Render Verdict Strip (Item 11.1)
-      const verdictContainer = document.getElementById('ai-verdict-container');
-      if (verdictContainer) {
-        const closeValues = data.ensemble_path || [];
-        const firstClose = data.last_close;
-        const finalClose = closeValues[closeValues.length - 1];
-        const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
-        
-        const direction = returnPct > 1.5 ? 'Bullish' : returnPct < -1.5 ? 'Bearish' : 'Neutral';
-        const verdictClass = returnPct > 1.5 ? 'ai-verdict--bullish' : returnPct < -1.5 ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
-        
-        verdictContainer.innerHTML = `
-            <div class="ai-verdict-strip ${verdictClass}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
-                <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">⚡ Ensemble View: ${direction}</span>
-                <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
-                <span class="verdict-conf">Consensus Conviction: ${data.conviction}</span>
-            </div>
-        `;
-      }
+      const closeValues = data.ensemble_path || [];
+      const firstClose = data.last_close;
+      const finalClose = closeValues[closeValues.length - 1];
+      const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
+      renderVerdictStrip(
+          'ai-verdict-container',
+          '⚡ Ensemble View',
+          returnPct,
+          'Consensus Conviction',
+          data.conviction
+      );
 
       renderEnsembleChart(data);
       renderConvictionBadge(data.conviction, data.divergence_score);
@@ -10393,7 +10419,9 @@ function updateRRGResultsUI(leaders, improving, type) {
 window.openScreenerWithTicker = function(ticker) {
     const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
     if (screenerTab) {
-        screenerTab.click();
+        if (document.getElementById('view-screener')?.classList.contains('active') === false) {
+            screenerTab.click();
+        }
     } else {
         switchWorkspace('screener');
     }
@@ -10408,7 +10436,9 @@ window.openScreenerWithTicker = function(ticker) {
 window.openScreenerWithSector = function(sector) {
     const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
     if (screenerTab) {
-        screenerTab.click();
+        if (document.getElementById('view-screener')?.classList.contains('active') === false) {
+            screenerTab.click();
+        }
     } else {
         switchWorkspace('screener');
     }
@@ -10417,5 +10447,333 @@ window.openScreenerWithSector = function(sector) {
     }
 };
 
+
 window.updateRRGResultsUI = updateRRGResultsUI;
 
+// ---------- IPO Momentum Tab Controllers ----------
+
+let ipoActiveFilters = {
+    exchange: 'all',
+    days: 'all',
+    phase: 'all',
+    sort_by: 'listing_date',
+    order: 'desc'
+};
+let ipoListingsData = [];
+let ipoListenersBound = false;
+
+window.renderIPOWorkspace = function() {
+    bindIPOListeners();
+    fetchIPOListings();
+};
+
+function bindIPOListeners() {
+    if (ipoListenersBound) return;
+    
+    // Exchange filters
+    const exchangeChips = document.querySelectorAll('#ipo-exchange-filters .filter-chip');
+    exchangeChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            exchangeChips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            ipoActiveFilters.exchange = chip.dataset.val;
+            resetPhaseActiveCard();
+            fetchIPOListings();
+        });
+    });
+    
+    // Listing Age filters
+    const ageChips = document.querySelectorAll('#ipo-age-filters .filter-chip');
+    ageChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            ageChips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            ipoActiveFilters.days = chip.dataset.val;
+            fetchIPOListings();
+        });
+    });
+    
+    // Stat cards clicks to filter by phase
+    const statCards = document.querySelectorAll('.ipo-stat-card');
+    statCards.forEach(card => {
+        card.addEventListener('click', () => {
+            const isAlreadyActive = card.classList.contains('active');
+            statCards.forEach(c => c.classList.remove('active'));
+            
+            if (isAlreadyActive) {
+                ipoActiveFilters.phase = 'all';
+            } else {
+                card.classList.add('active');
+                ipoActiveFilters.phase = card.dataset.phase;
+            }
+            fetchIPOListings();
+        });
+    });
+    
+    // Sync Prices button
+    const syncBtn = document.getElementById('ipo-sync-btn');
+    if (syncBtn) {
+        syncBtn.addEventListener('click', triggerIPOSync);
+    }
+    
+    // Sortable headers
+    const sortableHeaders = document.querySelectorAll('#ipo-table th.sortable-header');
+    sortableHeaders.forEach(th => {
+        th.addEventListener('click', () => {
+            const sortBy = th.dataset.sort;
+            let order = 'desc';
+            
+            if (ipoActiveFilters.sort_by === sortBy) {
+                order = ipoActiveFilters.order === 'desc' ? 'asc' : 'desc';
+            }
+            
+            ipoActiveFilters.sort_by = sortBy;
+            ipoActiveFilters.order = order;
+            
+            sortableHeaders.forEach(h => {
+                h.classList.remove('asc', 'desc');
+                const icon = h.querySelector('.sort-icon');
+                if (icon) icon.innerText = '⇅';
+            });
+            
+            th.classList.add(order === 'asc' ? 'asc' : 'desc');
+            const thIcon = th.querySelector('.sort-icon');
+            if (thIcon) thIcon.innerText = order === 'asc' ? '▲' : '▼';
+            
+            fetchIPOListings();
+        });
+    });
+    
+    ipoListenersBound = true;
+}
+
+function resetPhaseActiveCard() {
+    const statCards = document.querySelectorAll('.ipo-stat-card');
+    statCards.forEach(c => c.classList.remove('active'));
+    ipoActiveFilters.phase = 'all';
+}
+
+function fetchIPOListings() {
+    const tbody = document.getElementById('ipo-table-body');
+    if (tbody && ipoListingsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="13" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
+                    <div class="loading-pulse-container" style="display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;">
+                        <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out;"></div>
+                        <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.2s;"></div>
+                        <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.4s;"></div>
+                    </div>
+                    <p>Loading IPO momentum list...</p>
+                </td>
+            </tr>
+        `;
+    }
+    
+    const queryParams = new URLSearchParams({
+        exchange: ipoActiveFilters.exchange,
+        days: ipoActiveFilters.days,
+        phase: ipoActiveFilters.phase,
+        sort_by: ipoActiveFilters.sort_by,
+        order: ipoActiveFilters.order
+    });
+    
+    fetch(`/api/ipo/listings?${queryParams.toString()}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            
+            ipoListingsData = data.listings || [];
+            updateIPOStatsCards(data.summary || {}, data.total || 0);
+            renderIPOTable();
+        })
+        .catch(err => {
+            console.error('Error fetching IPO listings:', err);
+            if (typeof showToast === 'function') showToast('Failed to load IPO listings', 'error');
+        });
+}
+
+function updateIPOStatsCards(summary, totalCount) {
+    const totalEl = document.getElementById('ipo-stat-total');
+    const hotEl = document.getElementById('ipo-stat-hot');
+    const stableEl = document.getElementById('ipo-stat-stable');
+    const fadingEl = document.getElementById('ipo-stat-fading');
+    const brokenEl = document.getElementById('ipo-stat-broken');
+    
+    if (totalEl) totalEl.innerText = totalCount;
+    if (hotEl) hotEl.innerText = summary.HOT || 0;
+    if (stableEl) stableEl.innerText = summary.STABLE || 0;
+    if (fadingEl) fadingEl.innerText = summary.FADING || 0;
+    if (brokenEl) brokenEl.innerText = summary.BROKEN || 0;
+    
+    const navBadge = document.getElementById('ipo-hot-count');
+    if (navBadge) {
+        const hotCount = summary.HOT || 0;
+        if (hotCount > 0) {
+            navBadge.innerText = hotCount;
+            navBadge.style.display = 'inline-block';
+        } else {
+            navBadge.style.display = 'none';
+        }
+    }
+}
+
+function renderIPOTable() {
+    const tbody = document.getElementById('ipo-table-body');
+    if (!tbody) return;
+    
+    if (ipoListingsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-muted);">
+                    No IPOs match the selected filters.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = ipoListingsData.map(item => {
+        const gainIssueStyle = item.current_vs_issue_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        const gainListingStyle = item.current_vs_listing_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        
+        const listGainText = item.listing_gain_pct >= 0 ? `+${item.listing_gain_pct}%` : `${item.listing_gain_pct}%`;
+        const listGainColor = item.listing_gain_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        
+        let badgeClass = 'phase-badge--broken';
+        if (item.momentum_phase === 'HOT') badgeClass = 'phase-badge--hot';
+        else if (item.momentum_phase === 'STABLE') badgeClass = 'phase-badge--stable';
+        else if (item.momentum_phase === 'FADING') badgeClass = 'phase-badge--fading';
+        
+        let swingColor = 'color: #9ca3af;';
+        if (item.swing_score >= 8) swingColor = 'color: #ef4444; font-weight: bold;';
+        else if (item.swing_score >= 6) swingColor = 'color: #10b981;';
+        else if (item.swing_score >= 4) swingColor = 'color: #fbbf24;';
+        
+        const netGainText = item.current_vs_issue_pct >= 0 ? `+${item.current_vs_issue_pct}%` : `${item.current_vs_issue_pct}%`;
+        const postListText = item.current_vs_listing_pct >= 0 ? `+${item.current_vs_listing_pct}%` : `${item.current_vs_listing_pct}%`;
+        
+        const cleanTicker = item.ticker.replace('.NS', '').replace('.BO', '');
+        
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <a href="#" onclick="openTradingView('${item.ticker}'); return false;" style="color: #60a5fa; text-decoration: none; border-bottom: 1px dashed rgba(96,165,250,0.4);">${cleanTicker}</a>
+                </td>
+                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <span style="font-weight: 500; color: #fff;">${item.company_name}</span><br>
+                    <span style="font-size: 0.72rem; color: var(--color-text-muted);">${item.sector} | <span style="color: #60a5fa;">${item.exchange}</span></span>
+                </td>
+                <td>${item.listing_date}</td>
+                <td>${item.days_since_listing}</td>
+                <td>₹${item.issue_price}</td>
+                <td>₹${item.current_price ? item.current_price.toFixed(2) : '0.00'}</td>
+                <td style="${listGainColor} font-weight: 500;">${listGainText}</td>
+                <td style="${gainIssueStyle} font-weight: 600;">${netGainText}</td>
+                <td style="${gainListingStyle} font-weight: 500;">${postListText}</td>
+                <td>
+                    <span class="phase-badge ${badgeClass}">${item.momentum_phase}</span>
+                </td>
+                <td style="font-size: 0.8rem; font-weight: 500;">${item.pattern_name}</td>
+                <td style="${swingColor} font-weight: 600; text-align: center;">${item.swing_score}/10</td>
+                <td style="text-align: center;">
+                    <button class="btn btn-xs btn-outline" onclick="quickAddIPOTowatchlist('${item.ticker}', event); event.stopPropagation();" style="padding: 2px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 2px; height: auto;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>
+                        Add
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+window.quickAddIPOTowatchlist = function(ticker, event) {
+    const cleanTicker = ticker.replace('.NS', '').replace('.BO', '');
+    if (typeof addToWatchlist === 'function') {
+        addToWatchlist(cleanTicker, event);
+    } else {
+        console.error('addToWatchlist function is not defined');
+    }
+};
+
+function triggerIPOSync() {
+    const syncBtn = document.getElementById('ipo-sync-btn');
+    if (!syncBtn) return;
+    
+    const btnText = syncBtn.querySelector('span');
+    const btnSvg = syncBtn.querySelector('svg');
+    
+    if (syncBtn.disabled) return;
+    
+    syncBtn.disabled = true;
+    if (btnText) btnText.innerText = 'Syncing...';
+    if (btnSvg) btnSvg.classList.add('spin-loader');
+    
+    fetch('/api/ipo/refresh', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Sync Error: ${data.error}`, 'error');
+                resetSyncBtn();
+                return;
+            }
+            if (typeof showToast === 'function') showToast('Background sync started. Refreshing prices...', 'success');
+            
+            let pollCount = 0;
+            const interval = setInterval(() => {
+                pollCount++;
+                fetch(`/api/ipo/listings`)
+                    .then(res => res.json())
+                    .then(listingsRes => {
+                        if (listingsRes.listings && listingsRes.listings.length > 0) {
+                            ipoListingsData = listingsRes.listings;
+                            updateIPOStatsCards(listingsRes.summary || {}, listingsRes.total || 0);
+                            renderIPOTable();
+                            
+                            const cacheInfo = document.getElementById('ipo-cache-info');
+                            if (cacheInfo) {
+                                cacheInfo.innerText = 'Sync completed just now';
+                            }
+                        }
+                    });
+                
+                if (pollCount >= 5) {
+                    clearInterval(interval);
+                    resetSyncBtn();
+                }
+            }, 3000);
+        })
+        .catch(err => {
+            console.error('Error triggering IPO refresh:', err);
+            if (typeof showToast === 'function') showToast('Failed to start sync', 'error');
+            resetSyncBtn();
+        });
+        
+    function resetSyncBtn() {
+        syncBtn.disabled = false;
+        if (btnText) btnText.innerText = 'Sync Prices';
+        if (btnSvg) btnSvg.classList.remove('spin-loader');
+    }
+}
+
+// Verdict strip threshold: % move required to classify as Bullish or Bearish
+const VERDICT_THRESHOLD_PCT = 1.5;
+
+// Shared helper to render AI and Ensemble verdict strips
+function renderVerdictStrip(containerId, label, returnPct, confidenceLabel, confidenceValue) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const direction = returnPct > VERDICT_THRESHOLD_PCT ? 'Bullish' : returnPct < -VERDICT_THRESHOLD_PCT ? 'Bearish' : 'Neutral';
+    const cls = returnPct > VERDICT_THRESHOLD_PCT ? 'ai-verdict--bullish' : returnPct < -VERDICT_THRESHOLD_PCT ? 'ai-verdict--bearish' : 'ai-verdict--neutral';
+    
+    el.innerHTML = `
+        <div class="ai-verdict-strip ${cls}" style="display: flex; gap: 1.5rem; padding: 0.6rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; align-items: center;">
+            <span class="verdict-label" style="font-family: var(--font-display); font-size: 0.9rem; text-transform: uppercase;">${label}: ${direction}</span>
+            <span class="verdict-move">Expected Move: ${returnPct > 0 ? '+' : ''}${returnPct.toFixed(1)}%</span>
+            <span class="verdict-conf">${confidenceLabel}: ${confidenceValue}</span>
+        </div>
+    `;
+}

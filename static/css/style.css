@@ -7,7 +7,7 @@
     --text-xs:   0.75rem;
     --text-sm:   0.80rem;
     --text-base: 0.90rem;
-    --text-md:   1.00rem;
+    --text-md:   var(--text-base); /* alias — use --text-base as canonical 1rem body token */
     --text-lg:   1.125rem;
 
     /* Spacing scale */
@@ -6088,6 +6088,17 @@ body[data-theme="light"] .drawer-risk-banner {
   background: rgba(255, 255, 255, 0.04) !important;
 }
 
+/* RRG responsive: stack layout vertically on narrow viewports */
+@media (max-width: 1024px) {
+  .rrg-layout-wrapper {
+    flex-direction: column !important;
+  }
+  .rrg-results-column {
+    width: 100% !important;
+    max-height: none;
+  }
+}
+
 /* Reduced Motion Support */
 @media (prefers-reduced-motion: reduce) {
     *, ::before, ::after {
@@ -6125,5 +6136,164 @@ body[data-theme="light"] .drawer-risk-banner {
   border: 1px solid rgba(255, 112, 67, 0.3);
 }
 
+/* ---------- IPO / SME Momentum Tab Custom Styles ---------- */
 
+/* Phase Badges */
+.phase-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
 
+.phase-badge--hot {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+    animation: hot-pulse 2s infinite alternate;
+}
+
+.phase-badge--stable {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.phase-badge--fading {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.phase-badge--broken {
+    background: rgba(156, 163, 175, 0.15);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+@keyframes hot-pulse {
+    0% {
+        box-shadow: 0 0 6px rgba(239, 68, 68, 0.1);
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+    100% {
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+        border-color: rgba(239, 68, 68, 0.6);
+    }
+}
+
+/* Stat Card Hovers and Active Filter States */
+.ipo-stat-card {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.ipo-stat-card:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    box-shadow: var(--shadow-md);
+}
+
+.ipo-stat-card[data-phase="HOT"]:hover {
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    background: rgba(239, 68, 68, 0.05) !important;
+}
+
+.ipo-stat-card[data-phase="STABLE"]:hover {
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    background: rgba(16, 185, 129, 0.05) !important;
+}
+
+.ipo-stat-card[data-phase="FADING"]:hover {
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    background: rgba(245, 158, 11, 0.05) !important;
+}
+
+.ipo-stat-card[data-phase="BROKEN"]:hover {
+    border-color: rgba(156, 163, 175, 0.3) !important;
+    background: rgba(156, 163, 175, 0.05) !important;
+}
+
+.ipo-stat-card.active {
+    background: rgba(59, 130, 246, 0.12) !important;
+    border-color: rgba(59, 130, 246, 0.4) !important;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.2);
+}
+
+.ipo-stat-card[data-phase="HOT"].active {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.ipo-stat-card[data-phase="STABLE"].active {
+    background: rgba(16, 185, 129, 0.12) !important;
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+}
+
+.ipo-stat-card[data-phase="FADING"].active {
+    background: rgba(245, 158, 11, 0.12) !important;
+    border-color: rgba(245, 158, 11, 0.4) !important;
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.2);
+}
+
+.ipo-stat-card[data-phase="BROKEN"].active {
+    background: rgba(156, 163, 175, 0.15) !important;
+    border-color: rgba(156, 163, 175, 0.4) !important;
+    box-shadow: 0 0 12px rgba(156, 163, 175, 0.2);
+}
+
+/* Filter Chips inside IPO view */
+.ipo-filters-bar .filter-chip {
+    transition: all 0.2s ease;
+}
+
+.ipo-filters-bar .filter-chip:hover {
+    color: var(--color-text-primary) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.ipo-filters-bar .filter-chip.active {
+    color: var(--color-text-primary) !important;
+    background: rgba(59, 130, 246, 0.2) !important;
+    border: 1px solid rgba(59, 130, 246, 0.4) !important;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+}
+
+/* Sort headers indicators */
+.sortable-header {
+    transition: all 0.2s ease;
+}
+.sortable-header:hover {
+    color: var(--color-text-primary) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+}
+.sort-icon {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-left: 2px;
+}
+.sortable-header.asc .sort-icon {
+    color: var(--accent-blue);
+    content: '▲';
+}
+.sortable-header.desc .sort-icon {
+    color: var(--accent-blue);
+    content: '▼';
+}
+
+/* Sync pricing state spinner */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.spin-loader {
+    animation: spin 1s infinite linear;
+}
