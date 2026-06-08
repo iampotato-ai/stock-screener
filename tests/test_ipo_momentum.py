@@ -34,8 +34,8 @@ def use_test_db(monkeypatch, tmp_path):
     seed_test_data = [
         # Mainboard
         ("MOCK1.NS", "Mock Mainboard One", "2026-06-01", 100.0, 120.0, 115.0, "NSE", "IT", 500.0, 10, 20.0),
-        # SME
-        ("MOCK2.NS", "Mock SME Two", "2026-05-15", 50.0, 60.0, 58.0, "SME-NSE", "Textiles", 25.0, 1000, 10.0)
+        # BSE Mainboard
+        ("MOCK2.NS", "Mock BSE Two", "2026-05-15", 50.0, 60.0, 58.0, "BSE", "Textiles", 25.0, 1000, 10.0)
     ]
     
     for row in seed_test_data:
@@ -56,37 +56,21 @@ def client():
     with app.test_client() as client:
         yield client
 
-def test_classify_momentum_phase_mainboard():
-    # Mainboard rules:
+def test_classify_momentum_phase():
+    # Rules:
     # Days since <= 10 and return vs issue > 15% -> HOT
     # Days since <= 60 and return vs listing > 5% -> STABLE
     # Return vs listing < -10% -> BROKEN
     # Otherwise -> FADING
     
     # HOT
-    assert classify_momentum_phase(days_since=5, current_vs_issue=20, current_vs_listing=10, is_sme=False) == "HOT"
+    assert classify_momentum_phase(days_since=5, current_vs_issue=20, current_vs_listing=10) == "HOT"
     # STABLE (more than 10 days, but <= 60 days, and current vs listing > 5)
-    assert classify_momentum_phase(days_since=20, current_vs_issue=20, current_vs_listing=8, is_sme=False) == "STABLE"
+    assert classify_momentum_phase(days_since=20, current_vs_issue=20, current_vs_listing=8) == "STABLE"
     # BROKEN (current vs listing < -10)
-    assert classify_momentum_phase(days_since=15, current_vs_issue=-15, current_vs_listing=-12, is_sme=False) == "BROKEN"
+    assert classify_momentum_phase(days_since=15, current_vs_issue=-15, current_vs_listing=-12) == "BROKEN"
     # FADING (default)
-    assert classify_momentum_phase(days_since=20, current_vs_issue=10, current_vs_listing=2, is_sme=False) == "FADING"
-
-def test_classify_momentum_phase_sme():
-    # SME rules (wider thresholds):
-    # Days since <= 10 and return vs issue > 30% -> HOT
-    # Days since <= 60 and return vs listing > 5% -> STABLE
-    # Return vs listing < -20% -> BROKEN
-    # Otherwise -> FADING
-    
-    # HOT
-    assert classify_momentum_phase(days_since=5, current_vs_issue=35, current_vs_listing=10, is_sme=True) == "HOT"
-    # Not HOT because current vs issue <= 30 (for SME)
-    assert classify_momentum_phase(days_since=5, current_vs_issue=20, current_vs_listing=10, is_sme=True) == "STABLE"
-    # BROKEN (current vs listing < -20)
-    assert classify_momentum_phase(days_since=15, current_vs_issue=-25, current_vs_listing=-22, is_sme=True) == "BROKEN"
-    # Not BROKEN for SME since it is >= -20
-    assert classify_momentum_phase(days_since=15, current_vs_issue=-15, current_vs_listing=-15, is_sme=True) == "FADING"
+    assert classify_momentum_phase(days_since=20, current_vs_issue=10, current_vs_listing=2) == "FADING"
 
 def test_refresh_ipo_metrics_and_listings_api(client, monkeypatch):
     # Mock fetch_historical_prices to return custom mock history
@@ -156,10 +140,10 @@ def test_api_filters(client, monkeypatch):
     assert res_nse.get_json()["total"] == 1
     assert res_nse.get_json()["listings"][0]["ticker"] == "MOCK1.NS"
     
-    res_sme = client.get("/api/ipo/listings?exchange=SME")
-    assert res_sme.status_code == 200
-    assert res_sme.get_json()["total"] == 1
-    assert res_sme.get_json()["listings"][0]["ticker"] == "MOCK2.NS"
+    res_bse = client.get("/api/ipo/listings?exchange=BSE")
+    assert res_bse.status_code == 200
+    assert res_bse.get_json()["total"] == 1
+    assert res_bse.get_json()["listings"][0]["ticker"] == "MOCK2.NS"
     
     # 2. Test Phase Filter
     res_broken = client.get("/api/ipo/listings?phase=BROKEN")

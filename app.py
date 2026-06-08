@@ -317,16 +317,7 @@ def seed_ipo_listings():
         ("UNIPARTS.NS", "Uniparts India Ltd", "2025-10-10", 577.0, 575.0, 540.0, "NSE", "Capital Goods", 835.0, 25, -20.0),
         
         # Mainboard - BSE
-        ("BSE.NS", "BSE Limited", "2025-06-01", 400.0, 420.0, 450.0, "BSE", "Financial Services", 5000.0, 30, 20.0),
-        
-        # SME Listings
-        ("PARAS.NS", "Paras Defence and Space Technologies", "2025-11-01", 175.0, 475.0, 498.0, "SME-NSE", "Capital Goods", 170.0, 85, 250.0),
-        ("SBC.NS", "SBC Exports Ltd", "2025-12-15", 30.0, 35.0, 32.0, "SME-BSE", "Textiles", 45.0, 4000, 5.0),
-        ("RAMCOSYS.NS", "Ramco Systems Ltd", "2026-01-20", 250.0, 290.0, 310.0, "SME-NSE", "IT", 120.0, 50, 40.0),
-        ("DEEDEV.NS", "Dee Development Engineers Ltd", "2026-02-15", 203.0, 325.0, 340.0, "SME-NSE", "Capital Goods", 325.0, 73, 110.0),
-        ("UFBL.NS", "United Cotfab Ltd", "2026-03-10", 70.0, 75.0, 83.0, "SME-NSE", "Textiles", 36.0, 2000, 10.0),
-        ("GOCOLORS.NS", "Go Fashion India Ltd", "2026-04-05", 690.0, 1250.0, 1200.0, "SME-NSE", "Apparels", 1013.0, 21, 400.0),
-        ("BAJAJCON.NS", "Bajaj Consumer Care Ltd", "2026-05-02", 290.0, 300.0, 285.0, "SME-NSE", "FMCG", 350.0, 50, 5.0)
+        ("BSE.NS", "BSE Limited", "2025-06-01", 400.0, 420.0, 450.0, "BSE", "Financial Services", 5000.0, 30, 20.0)
     ]
     
     for row in seed_data:
@@ -342,9 +333,9 @@ def seed_ipo_listings():
 init_db()
 seed_ipo_listings()
 
-def classify_momentum_phase(days_since, current_vs_issue, current_vs_listing, is_sme=False):
-    hot_threshold    = 30 if is_sme else 15
-    broken_threshold = -20 if is_sme else -10
+def classify_momentum_phase(days_since, current_vs_issue, current_vs_listing):
+    hot_threshold    = 15
+    broken_threshold = -10
 
     if days_since <= 10 and current_vs_issue > hot_threshold:
         return "HOT"
@@ -361,6 +352,8 @@ def refresh_ipo_metrics():
     """
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
+    c.execute("DELETE FROM ipo_metrics_cache WHERE ticker NOT IN (SELECT ticker FROM ipo_listings)")
+    conn.commit()
     c.execute("SELECT ticker, company_name, listing_date, issue_price, listing_close, exchange, sector FROM ipo_listings")
     listings = c.fetchall()
     conn.close()
@@ -441,8 +434,7 @@ def refresh_ipo_metrics():
             elif isinstance(pattern_res, str):
                 pattern_name = pattern_res
             
-            is_sme = "SME" in exchange
-            phase = classify_momentum_phase(days_since, current_vs_issue_pct, current_vs_listing_pct, is_sme)
+            phase = classify_momentum_phase(days_since, current_vs_issue_pct, current_vs_listing_pct)
             
             # Write to cache
             conn2 = sqlite3.connect('scan_history.db')
@@ -5508,9 +5500,7 @@ def get_ipo_listings():
         params = []
         
         if exchange_param != 'all':
-            if exchange_param == 'SME':
-                where_clauses.append("exchange LIKE '%SME%'")
-            elif exchange_param == 'NSE':
+            if exchange_param == 'NSE':
                 where_clauses.append("exchange = 'NSE'")
             elif exchange_param == 'BSE':
                 where_clauses.append("exchange = 'BSE'")
