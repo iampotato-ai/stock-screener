@@ -1682,10 +1682,10 @@ function renderBreadthPanel() {
 }
 
 const REGIME_MESSAGES = {
-  'Bull Run':    { text: 'Market in full bull run — favour breakouts and momentum continuation setups.', type: 'bullish', preset: 'elite', presetLabel: 'Use Aggressive Preset →' },
+  'Bull Run':    { text: 'Market in full bull run — favour breakouts and momentum continuation setups.', type: 'bullish', preset: 'watch', presetLabel: 'Use Aggressive Preset →' },
   'Bullish':     { text: 'Broad market is bullish — good environment to enter swing setups with conviction.', type: 'bullish', preset: 'strong', presetLabel: 'Use Breakout Preset →' },
   'Neutral':     { text: 'Mixed breadth — prefer high-quality setups only. Tighten stops by 20%.', type: 'neutral', preset: null, presetLabel: null },
-  'Bearish':     { text: 'Deteriorating breadth — avoid new long entries. Focus on managing open positions.', type: 'bearish', preset: 'watch', presetLabel: 'Use Defensive Preset →' },
+  'Bearish':     { text: 'Deteriorating breadth — avoid new long entries. Focus on managing open positions.', type: 'bearish', preset: 'elite', presetLabel: 'Use Defensive Preset →' },
   'Bear Market': { text: 'Bear market conditions — no new swing longs. Defensive stance only.', type: 'danger', preset: null, presetLabel: null },
 };
 
@@ -1728,27 +1728,85 @@ function renderRegimeWarning() {
   `;
 }
 
-function applyRegimePreset(swingBand) {
-  const swingFilterInput = document.getElementById('filter-swing');
-  if (swingFilterInput) {
-    swingFilterInput.value = swingBand;
+// Global helper to set value and update visual state of custom select dropdowns
+function setSelect(id, labelId, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val || 'all';
     
-    // Also update dropdown visual label if it exists
-    const label = document.getElementById('selected-swing-label');
-    if (label) {
-      label.textContent = swingBand.charAt(0).toUpperCase() + swingBand.slice(1);
+    const dropdownPrefix = id.replace('filter-', '');
+    const dropdownItems = document.querySelectorAll(`#${dropdownPrefix}-dropdown .select-dropdown-item`);
+    if (dropdownItems.length > 0) {
+        dropdownItems.forEach(item => {
+            const isActive = item.dataset.value === (val || 'all');
+            item.classList.toggle('active', isActive);
+            if (isActive) {
+                const label = document.getElementById(labelId);
+                if (label) label.innerHTML = item.innerHTML;
+            }
+        });
+    } else {
+        // Fallback for simple elements
+        const label = document.getElementById(labelId);
+        if (label) label.textContent = val || 'all';
     }
-    
-    // Reset other filters to ensure preset runs cleanly
-    const imsFilterInput = document.getElementById('filter-ims');
-    if (imsFilterInput) imsFilterInput.value = 'all';
-    const imsLabel = document.getElementById('selected-ims-label');
-    if (imsLabel) imsLabel.textContent = 'All Scores';
+}
 
-    filterAndRender();
-  }
+function applyRegimePreset(swingBand) {
+  // Clear search input
+  const searchInput = document.getElementById('search-input');
+  if (searchInput) searchInput.value = '';
+
+  // Clear setup filters
+  currentSetupFilter = 'all';
+  document.querySelectorAll('#setup-filter-chips .filter-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.value === 'all');
+  });
+
+  // Clear MTF filters
+  currentMtfFilter = 'all';
+  document.querySelectorAll('#mtf-filter-chips .filter-chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.value === 'all');
+  });
+
+  // Clear range inputs
+  const rangeInputs = [
+    'filter-rvol-min', 'filter-rvol-max',
+    'filter-change-min', 'filter-change-max',
+    'filter-pe-min', 'filter-pe-max'
+  ];
+  rangeInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  // Reset dropdowns
+  setSelect('filter-ims', 'selected-ims-label', 'all');
+  setSelect('filter-candle', 'selected-candle-label', 'all');
+  
+  // Reset volume alert
+  const volFilterInput = document.getElementById('filter-volume-alert');
+  if (volFilterInput) volFilterInput.value = 'all';
+  const volLabel = document.getElementById('selected-volume-filter-label');
+  if (volLabel) volLabel.textContent = 'All Volume';
+  document.querySelectorAll('#volume-filter-dropdown .select-dropdown-item').forEach(item => {
+    item.classList.remove('active');
+    const chk = item.querySelector('input[type="checkbox"]');
+    if (chk) chk.checked = false;
+  });
+
+  // Set selected swing band
+  setSelect('filter-swing', 'selected-swing-label', swingBand);
+
+  // Apply filters
+  filterAndRender();
+
+  // Switch to screener tab
   const screenerTab = document.querySelector('.workspace-tab[data-view="screener"]');
-  if (screenerTab) screenerTab.click();
+  if (screenerTab) {
+    screenerTab.click();
+  } else {
+    switchWorkspace('screener');
+  }
 }
 
 window.applyRegimePreset = applyRegimePreset;
@@ -7318,22 +7376,7 @@ function applyPreset(presetId) {
     setVal('filter-pe-min', f.peMin);
     setVal('filter-pe-max', f.peMax);
     
-    // Selects
-    const setSelect = (id, labelId, val) => {
-        const el = document.getElementById(id);
-        if (el) el.value = val || 'all';
-        
-        // Update custom dropdown UI
-        const dropdownPrefix = id.replace('filter-', ''); // e.g. ims
-        document.querySelectorAll(`#${dropdownPrefix}-dropdown .select-dropdown-item`).forEach(item => {
-            item.classList.toggle('active', item.dataset.value === (val || 'all'));
-            if (item.dataset.value === (val || 'all')) {
-                const label = document.getElementById(labelId);
-                if (label) label.textContent = item.textContent;
-            }
-        });
-    };
-    
+    // Selects (calls global setSelect helper)
     setSelect('filter-ims', 'selected-ims-label', f.ims);
     setSelect('filter-swing', 'selected-swing-label', f.swing);
     
@@ -7663,23 +7706,27 @@ function renderIntradayWorkspace() {
 
 window.applyIntradayFilter = function(filterName) {
     // Clear numeric ranges
-    document.querySelectorAll('.range-group input').forEach(input => input.value = '');
+    document.querySelectorAll('.range-filters-panel input').forEach(input => input.value = '');
     
     // Reset global filter variables
     currentSetupFilter = 'all';
     currentMtfFilter = 'all';
     
-    // Reset dropdown values
-    const filterIms = document.getElementById('filter-ims');
-    if (filterIms) filterIms.value = 'all';
-    const filterSwing = document.getElementById('filter-swing');
-    if (filterSwing) filterSwing.value = 'all';
+    // Reset dropdown values/labels via global setSelect
+    setSelect('filter-ims', 'selected-ims-label', 'all');
+    setSelect('filter-swing', 'selected-swing-label', 'all');
+    setSelect('filter-candle', 'selected-candle-label', 'all');
     
-    // Reset dropdown labels
-    if (typeof setSelect === 'function') {
-        setSelect('filter-ims', 'selected-ims-label', 'All Scores');
-        setSelect('filter-swing', 'selected-swing-label', 'All Scores');
-    }
+    // Reset volume alert
+    const volFilterInput = document.getElementById('filter-volume-alert');
+    if (volFilterInput) volFilterInput.value = 'all';
+    const volLabel = document.getElementById('selected-volume-filter-label');
+    if (volLabel) volLabel.textContent = 'All Volume';
+    document.querySelectorAll('#volume-filter-dropdown .select-dropdown-item').forEach(item => {
+        item.classList.remove('active');
+        const chk = item.querySelector('input[type="checkbox"]');
+        if (chk) chk.checked = false;
+    });
     
     // Reset setup & MTF chips visually
     document.querySelectorAll('#setup-filter-chips .filter-chip').forEach(c => c.classList.remove('active'));
