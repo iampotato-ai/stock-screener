@@ -1,4 +1,4 @@
-﻿// App state variables
+// App state variables
 let previousScanMap = {};
 let stocksData = [];
 let universeData = [];
@@ -3056,7 +3056,23 @@ function renderPagination(totalPages) {
 }
 
 function openTradingView(ticker) {
-    window.open(`https://www.tradingview.com/chart/?symbol=NSE:${ticker}`, '_blank');
+    let exchange = 'NSE';
+    let symbol = ticker;
+    
+    if (ticker.includes(':')) {
+        window.open(`https://www.tradingview.com/chart/?symbol=${ticker}`, '_blank');
+        return;
+    }
+    
+    if (ticker.endsWith('.BO')) {
+        exchange = 'BSE';
+        symbol = ticker.slice(0, -3);
+    } else if (ticker.endsWith('.NS')) {
+        exchange = 'NSE';
+        symbol = ticker.slice(0, -3);
+    }
+    
+    window.open(`https://www.tradingview.com/chart/?symbol=${exchange}:${symbol}`, '_blank');
 }
 
 // Helper to escape HTML tags
@@ -10434,7 +10450,7 @@ window.openScreenerWithSector = function(sector) {
 
 window.updateRRGResultsUI = updateRRGResultsUI;
 
-// ---------- IPO / SME Momentum Tab Controllers ----------
+// ---------- IPO Momentum Tab Controllers ----------
 
 let ipoActiveFilters = {
     exchange: 'all',
@@ -10548,7 +10564,7 @@ function fetchIPOListings() {
                         <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.2s;"></div>
                         <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.4s;"></div>
                     </div>
-                    <p>Loading IPO / SME momentum list...</p>
+                    <p>Loading IPO momentum list...</p>
                 </td>
             </tr>
         `;
