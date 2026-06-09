@@ -286,6 +286,24 @@ def init_db():
     ''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_ipo_metrics_phase ON ipo_metrics_cache(momentum_phase)')
     
+    # Run migrations for volume, change_pct, and day range columns
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN volume REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN change_pct REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN day_low REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN day_high REAL")
+    except sqlite3.OperationalError:
+        pass
+        
     conn.commit()
     conn.close()
 
@@ -542,20 +560,18 @@ def seed_ipo_listings():
 
 init_db()
 seed_ipo_listings()
-
 def classify_momentum_phase(days_since, current_vs_issue, current_vs_listing):
     hot_threshold    = 15
     broken_threshold = -10
 
     if days_since <= 10 and current_vs_issue > hot_threshold:
         return "HOT"
-    elif days_since <= 60 and current_vs_listing > 5:
+    elif current_vs_listing > 5:
         return "STABLE"
     elif current_vs_listing < broken_threshold:
         return "BROKEN"
     else:
         return "FADING"
-
 def refresh_ipo_metrics():
     """
     Refreshes metrics for all IPO listings in parallel and updates the ipo_metrics_cache table.
@@ -589,6 +605,8 @@ def refresh_ipo_metrics():
                 
             current_price = closes[-1]
             current_vol = volumes[-1]
+            current_low = lows[-1] if lows else current_price
+            current_high = highs[-1] if highs else current_price
             avg_vol_20d = sum(volumes[-20:]) / len(volumes[-20:]) if volumes else 1.0
             
             # Listing close
@@ -612,10 +630,37 @@ def refresh_ipo_metrics():
             above_listing_high = 1 if current_price >= max(closes) * 0.98 else 0
             drawdown_from_ath = ((current_price - ath) / ath * 100) if ath else 0.0
             
-            # Mock stock dict for swing score
+            # Calculate actual indicators for swing score
             sma10 = sum(closes[-10:]) / len(closes[-10:]) if len(closes) >= 10 else current_price
             sma21 = sum(closes[-21:]) / len(closes[-21:]) if len(closes) >= 21 else current_price
             sma50 = sum(closes[-50:]) / len(closes[-50:]) if len(closes) >= 50 else current_price
+            
+            change = ((closes[-1] - closes[-2]) / closes[-2] * 100) if len(closes) >= 2 else 0.0
+            perf_w = ((closes[-1] - closes[-5]) / closes[-5] * 100) if len(closes) >= 5 else ((closes[-1] - closes[0]) / closes[0] * 100)
+            perf_1m = ((closes[-1] - closes[-21]) / closes[-21] * 100) if len(closes) >= 21 else ((closes[-1] - closes[0]) / closes[0] * 100)
+            perf_3m = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else ((closes[-1] - closes[0]) / closes[0] * 100)
+            
+            # Calculate 14-period RSI
+            def calculate_rsi_local(prices, period=14):
+                if len(prices) <= period:
+                    return 60.0  # Default neutral-bullish for new listings
+                deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+                gains = [d if d > 0 else 0.0 for d in deltas]
+                losses = [-d if d < 0 else 0.0 for d in deltas]
+                
+                avg_gain = sum(gains[:period]) / period
+                avg_loss = sum(losses[:period]) / period
+                
+                for i in range(period, len(deltas)):
+                    avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+                    avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+                    
+                if avg_loss == 0:
+                    return 100.0
+                rs = avg_gain / avg_loss
+                return 100.0 - (100.0 / (1.0 + rs))
+            
+            rsi = calculate_rsi_local(closes)
             
             stock_dict = {
                 "ticker": ticker,
@@ -627,12 +672,14 @@ def refresh_ipo_metrics():
                 "price_52_week_high": max(highs) if highs else current_price,
                 "price_52_week_low": min(lows) if lows else current_price,
                 "average_volume": avg_vol_20d,
+                "relative_volume": rvol_ratio,
                 "Recommend.All": 0.5,
                 "sector": sector,
-                "Perf.W": 0.0,
-                "Perf.1M": 0.0,
-                "Perf.3M": 0.0,
-                "change": 0.0
+                "Perf.W": perf_w,
+                "Perf.1M": perf_1m,
+                "Perf.3M": perf_3m,
+                "change": change,
+                "RSI": rsi
             }
             
             swing_res = compute_swing_score(stock_dict)
@@ -654,13 +701,13 @@ def refresh_ipo_metrics():
                     ticker, company_name, listing_date, exchange, sector, issue_price,
                     listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
                     rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
-                    momentum_phase, current_price, cached_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    momentum_phase, current_price, volume, change_pct, day_low, day_high, cached_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ''', (
                 ticker, company_name, listing_date, exchange, sector, issue_price,
                 round(listing_gain_pct, 2), round(current_vs_issue_pct, 2), round(current_vs_listing_pct, 2), days_since,
                 round(rvol_ratio, 2), above_listing_high, round(drawdown_from_ath, 2), swing_score, pattern_name,
-                phase, current_price
+                phase, current_price, current_vol, round(change, 2), round(current_low, 2), round(current_high, 2)
             ))
             conn2.commit()
             conn2.close()
@@ -5703,11 +5750,28 @@ def get_ipo_listings():
         exchange_param = request.args.get('exchange', 'all').strip()
         days_param = request.args.get('days', 'all').strip()
         phase_param = request.args.get('phase', 'all').strip()
+        min_vol_param = request.args.get('min_volume', 'all').strip()
         limit = request.args.get('limit', '').strip()
         offset = request.args.get('offset', '').strip()
         
         where_clauses = []
         params = []
+        
+        if min_vol_param != 'all' and min_vol_param != '':
+            try:
+                val_str = min_vol_param.lower()
+                multiplier = 1
+                if val_str.endswith('k'):
+                    multiplier = 1000
+                    val_str = val_str[:-1]
+                elif val_str.endswith('m'):
+                    multiplier = 1000000
+                    val_str = val_str[:-1]
+                min_vol = float(val_str) * multiplier
+                where_clauses.append("volume >= ?")
+                params.append(min_vol)
+            except ValueError:
+                pass
         
         if exchange_param != 'all':
             if exchange_param == 'NSE':
@@ -5770,6 +5834,22 @@ def get_ipo_listings():
             if max_days is not None:
                 summary_clauses.append("days_since_listing <= ?")
                 summary_params.append(max_days)
+                
+        if min_vol_param != 'all' and min_vol_param != '':
+            try:
+                val_str = min_vol_param.lower()
+                multiplier = 1
+                if val_str.endswith('k'):
+                    multiplier = 1000
+                    val_str = val_str[:-1]
+                elif val_str.endswith('m'):
+                    multiplier = 1000000
+                    val_str = val_str[:-1]
+                min_vol = float(val_str) * multiplier
+                summary_clauses.append("volume >= ?")
+                summary_params.append(min_vol)
+            except ValueError:
+                pass
         
         summary_where = ""
         if summary_clauses:
@@ -5795,7 +5875,7 @@ def get_ipo_listings():
             'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
             'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
             'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-            'momentum_phase', 'current_price'
+            'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high'
         ]
         if sort_by not in allowed_sort_cols:
             sort_by = 'listing_date'
@@ -5804,7 +5884,7 @@ def get_ipo_listings():
             SELECT ticker, company_name, listing_date, exchange, sector, issue_price,
                    listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
                    rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
-                   momentum_phase, current_price, cached_at
+                   momentum_phase, current_price, volume, change_pct, day_low, day_high, cached_at
             FROM ipo_metrics_cache
             {where_str}
             ORDER BY {sort_by} {order}
@@ -5835,7 +5915,7 @@ def get_ipo_listings():
             'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
             'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
             'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-            'momentum_phase', 'current_price', 'cached_at'
+            'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high', 'cached_at'
         ]
         
         listings = []

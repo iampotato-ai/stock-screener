@@ -1210,8 +1210,20 @@
                             <button class="filter-chip" data-val="1m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">1 Month</button>
                             <button class="filter-chip" data-val="3m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">3 Months</button>
                             <button class="filter-chip" data-val="6m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">6 Months</button>
-                            <button class="filter-chip" data-val="1y" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">1 Year</button>
-                        </div>
+                            <button class="filter-chip" data-val="1y" style="padding: 4px 10px; border-                        </div>
+                    </div>
+                    
+                    <!-- Volume Filter -->
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Min Volume:</span>
+                        <select id="ipo-volume-filter" style="padding: 4px 10px; border-radius: 8px; font-size: 0.78rem; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.2); color: var(--color-text-secondary); cursor: pointer; outline: none; font-weight: 500; transition: all 0.15s;">
+                            <option value="all">All</option>
+                            <option value="10k">&gt; 10K</option>
+                            <option value="50k">&gt; 50K</option>
+                            <option value="100k">&gt; 100K</option>
+                            <option value="500k">&gt; 500K</option>
+                            <option value="1m">&gt; 1M</option>
+                        </select>
                     </div>
                 </div>
                 
@@ -1221,30 +1233,32 @@
                     <span id="ipo-cache-info">Metrics cache updated</span>
                 </div>
             </div>
-
+ 
             <!-- Table Grid -->
             <div class="table-container" id="ipo-table-container">
                 <table class="screener-table" id="ipo-table">
                     <thead>
                         <tr>
-                            <th class="sortable-header" data-sort="ticker" style="cursor: pointer;">Ticker <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="ticker" style="cursor: pointer; min-width: 175px; width: 175px;">Ticker <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="company_name" style="cursor: pointer;">Company Name <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="listing_date" style="cursor: pointer;">Listing Date <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="days_since_listing" style="cursor: pointer;">Days <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="issue_price" style="cursor: pointer;">Issue Px <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="current_price" style="cursor: pointer;">Current Px <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="change_pct" style="cursor: pointer;">Chg % <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="day_high" style="cursor: pointer;">Day's Range <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="volume" style="cursor: pointer;">Volume <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="listing_gain_pct" style="cursor: pointer;">List Gain % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="current_vs_issue_pct" style="cursor: pointer;">Net Gain % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="current_vs_listing_pct" style="cursor: pointer;">Post-List % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="momentum_phase" style="cursor: pointer;">Phase <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="pattern_name" style="cursor: pointer;">Pattern <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="swing_score" style="cursor: pointer;">Swing <span class="sort-icon">⇅</span></th>
-                            <th style="width: 80px; text-align: center;">Watchlist</th>
                         </tr>
                     </thead>
                     <tbody id="ipo-table-body">
                         <tr>
-                            <td colspan="13" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
+                            <td colspan="15" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
                                 <div class="loading-pulse-container" style="display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;">
                                     <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out;"></div>
                                     <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.2s;"></div>

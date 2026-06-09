@@ -10456,6 +10456,7 @@ let ipoActiveFilters = {
     exchange: 'all',
     days: 'all',
     phase: 'all',
+    min_volume: 'all',
     sort_by: 'listing_date',
     order: 'desc'
 };
@@ -10510,6 +10511,15 @@ function bindIPOListeners() {
         });
     });
     
+    // Volume Filter dropdown
+    const volFilter = document.getElementById('ipo-volume-filter');
+    if (volFilter) {
+        volFilter.addEventListener('change', (e) => {
+            ipoActiveFilters.min_volume = e.target.value;
+            fetchIPOListings();
+        });
+    }
+    
     // Sync Prices button
     const syncBtn = document.getElementById('ipo-sync-btn');
     if (syncBtn) {
@@ -10557,8 +10567,7 @@ function fetchIPOListings() {
     const tbody = document.getElementById('ipo-table-body');
     if (tbody && ipoListingsData.length === 0) {
         tbody.innerHTML = `
-            <tr>
-                <td colspan="13" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
+                <td colspan="12" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
                     <div class="loading-pulse-container" style="display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;">
                         <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out;"></div>
                         <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.2s;"></div>
@@ -10574,6 +10583,7 @@ function fetchIPOListings() {
         exchange: ipoActiveFilters.exchange,
         days: ipoActiveFilters.days,
         phase: ipoActiveFilters.phase,
+        min_volume: ipoActiveFilters.min_volume || 'all',
         sort_by: ipoActiveFilters.sort_by,
         order: ipoActiveFilters.order
     });
@@ -10628,7 +10638,7 @@ function renderIPOTable() {
     if (ipoListingsData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-muted);">
+                <td colspan="15" style="text-align: center; padding: 3rem; color: var(--color-text-muted);">
                     No IPOs match the selected filters.
                 </td>
             </tr>
@@ -10656,12 +10666,31 @@ function renderIPOTable() {
         const netGainText = item.current_vs_issue_pct >= 0 ? `+${item.current_vs_issue_pct}%` : `${item.current_vs_issue_pct}%`;
         const postListText = item.current_vs_listing_pct >= 0 ? `+${item.current_vs_listing_pct}%` : `${item.current_vs_listing_pct}%`;
         
+        const changeVal = item.change_pct !== undefined && item.change_pct !== null ? item.change_pct : 0.0;
+        const changeText = changeVal >= 0 ? `+${changeVal.toFixed(2)}%` : `${changeVal.toFixed(2)}%`;
+        const changeColor = changeVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        const formattedVol = typeof formatVolume === 'function' ? formatVolume(item.volume) : (item.volume || '-');
+        
+        const dayLow = item.day_low !== undefined && item.day_low !== null ? item.day_low : 0.0;
+        const dayHigh = item.day_high !== undefined && item.day_high !== null ? item.day_high : 0.0;
+        const dayRangeText = `₹${dayLow.toFixed(2)} - ₹${dayHigh.toFixed(2)}`;
+        
         const cleanTicker = item.ticker.replace('.NS', '').replace('.BO', '');
         
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
-                    <a href="#" onclick="openTradingView('${item.ticker}'); return false;" style="color: #60a5fa; text-decoration: none; border-bottom: 1px dashed rgba(96,165,250,0.4);">${cleanTicker}</a>
+                    <div class="symbol-cell" style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap;">
+                        <span class="ticker-box" style="cursor: pointer; flex-shrink: 0;" onclick="openTradingView('${item.ticker}'); event.stopPropagation();">${cleanTicker}</span>
+                        <div style="display: flex; gap: 0.25rem; flex-shrink: 0;">
+                            <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); openTradingView('${item.ticker}')" title="Open Chart">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                            </button>
+                            <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); quickAddIPOTowatchlist('${item.ticker}', event)" title="Add to Watchlist">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            </button>
+                        </div>
+                    </div>
                 </td>
                 <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                     <span style="font-weight: 500; color: #fff;">${item.company_name}</span><br>
@@ -10671,6 +10700,9 @@ function renderIPOTable() {
                 <td>${item.days_since_listing}</td>
                 <td>₹${item.issue_price}</td>
                 <td>₹${item.current_price ? item.current_price.toFixed(2) : '0.00'}</td>
+                <td style="${changeColor} font-weight: 500;">${changeText}</td>
+                <td style="color: var(--color-text-secondary); font-size: 0.78rem; font-weight: 500;">${dayRangeText}</td>
+                <td style="color: var(--color-text-secondary); font-weight: 500;">${formattedVol}</td>
                 <td style="${listGainColor} font-weight: 500;">${listGainText}</td>
                 <td style="${gainIssueStyle} font-weight: 600;">${netGainText}</td>
                 <td style="${gainListingStyle} font-weight: 500;">${postListText}</td>
@@ -10679,12 +10711,6 @@ function renderIPOTable() {
                 </td>
                 <td style="font-size: 0.8rem; font-weight: 500;">${item.pattern_name}</td>
                 <td style="${swingColor} font-weight: 600; text-align: center;">${item.swing_score}/10</td>
-                <td style="text-align: center;">
-                    <button class="btn btn-xs btn-outline" onclick="quickAddIPOTowatchlist('${item.ticker}', event); event.stopPropagation();" style="padding: 2px 8px; font-size: 0.72rem; display: inline-flex; align-items: center; gap: 2px; height: auto;">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>
-                        Add
-                    </button>
-                </td>
             </tr>
         `;
     }).join('');

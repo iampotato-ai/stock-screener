@@ -43,7 +43,7 @@
     --radius-sm: 6px;
     --shadow-premium: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     --blur-fx: blur(12px) saturate(180%);
-    --col-ticker-width: 150px;
+    --col-ticker-width: 175px;
     --col-desc-width: 250px;
     --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
@@ -641,6 +641,8 @@ input:checked + .slider:before {
     max-width: var(--col-ticker-width);
     width: var(--col-ticker-width);
     background: #161c2d;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
 }
 
 .screener-table th:nth-child(2),
