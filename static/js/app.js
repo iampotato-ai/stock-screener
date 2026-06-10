@@ -10456,7 +10456,7 @@ let ipoActiveFilters = {
     exchange: 'all',
     days: 'all',
     phase: 'all',
-    min_volume: 'all',
+    volume_alert: 'all',
     sort_by: 'listing_date',
     order: 'desc'
 };
@@ -10511,14 +10511,65 @@ function bindIPOListeners() {
         });
     });
     
-    // Volume Filter dropdown
-    const volFilter = document.getElementById('ipo-volume-filter');
-    if (volFilter) {
-        volFilter.addEventListener('change', (e) => {
-            ipoActiveFilters.min_volume = e.target.value;
-            fetchIPOListings();
+    // Volume Filter custom dropdown (Multiple Selection)
+    const btnIpoVolumeFilter = document.getElementById('btn-ipo-volume-filter');
+    const ipoVolumeFilterDropdown = document.getElementById('ipo-volume-filter-dropdown');
+    const selectedIpoVolumeFilterLabel = document.getElementById('selected-ipo-volume-filter-label');
+
+    if (btnIpoVolumeFilter && ipoVolumeFilterDropdown) {
+        btnIpoVolumeFilter.addEventListener('click', (e) => {
+            e.stopPropagation();
+            ipoVolumeFilterDropdown.classList.toggle('hidden');
+            const isExpanded = !ipoVolumeFilterDropdown.classList.contains('hidden');
+            btnIpoVolumeFilter.setAttribute('aria-expanded', isExpanded);
+        });
+
+        // Hide dropdown on click outside
+        document.addEventListener('click', (e) => {
+            if (!ipoVolumeFilterDropdown.classList.contains('hidden') && !ipoVolumeFilterDropdown.contains(e.target) && e.target !== btnIpoVolumeFilter) {
+                ipoVolumeFilterDropdown.classList.add('hidden');
+                btnIpoVolumeFilter.setAttribute('aria-expanded', 'false');
+            }
         });
     }
+
+    document.querySelectorAll('#ipo-volume-filter-dropdown .select-dropdown-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+            item.classList.toggle('active', checkbox ? checkbox.checked : false);
+
+            const selected = [];
+            const labels = [];
+            document.querySelectorAll('#ipo-volume-filter-dropdown .select-dropdown-item').forEach(opt => {
+                const chk = opt.querySelector('input[type="checkbox"]');
+                if (chk && chk.checked) {
+                    selected.push(opt.dataset.value);
+                    if (opt.dataset.value === 'ppv') labels.push('🔵 PPV');
+                    else if (opt.dataset.value === 'vol-surge') labels.push('🟢 Surge');
+                    else if (opt.dataset.value === 'dry-vol') labels.push('🟠 Dry');
+                }
+            });
+
+            const input = document.getElementById('filter-ipo-volume-alert');
+            if (input) {
+                input.value = selected.length > 0 ? selected.join(',') : 'all';
+            }
+            ipoActiveFilters.volume_alert = input ? input.value : 'all';
+
+            if (selectedIpoVolumeFilterLabel) {
+                if (selected.length === 0) {
+                    selectedIpoVolumeFilterLabel.textContent = 'All Volume';
+                } else {
+                    selectedIpoVolumeFilterLabel.textContent = labels.join(' + ');
+                }
+            }
+            fetchIPOListings();
+        });
+    });
     
     // Sync Prices button
     const syncBtn = document.getElementById('ipo-sync-btn');
@@ -10583,7 +10634,7 @@ function fetchIPOListings() {
         exchange: ipoActiveFilters.exchange,
         days: ipoActiveFilters.days,
         phase: ipoActiveFilters.phase,
-        min_volume: ipoActiveFilters.min_volume || 'all',
+        volume_alert: ipoActiveFilters.volume_alert || 'all',
         sort_by: ipoActiveFilters.sort_by,
         order: ipoActiveFilters.order
     });
@@ -10671,9 +10722,34 @@ function renderIPOTable() {
         const changeColor = changeVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
         const formattedVol = typeof formatVolume === 'function' ? formatVolume(item.volume) : (item.volume || '-');
         
-        const dayLow = item.day_low !== undefined && item.day_low !== null ? item.day_low : 0.0;
-        const dayHigh = item.day_high !== undefined && item.day_high !== null ? item.day_high : 0.0;
-        const dayRangeText = `₹${dayLow.toFixed(2)} - ₹${dayHigh.toFixed(2)}`;
+        let volContent = formattedVol;
+        if (item.is_blue_bar) {
+            volContent = `<span class="vol-capsule vol-capsule--ppv" title="Pocket Pivot (Blue Bar)">${volContent}</span>`;
+        } else if (item.is_green_bar) {
+            volContent = `<span class="vol-capsule vol-capsule--vol-surge" title="Volume Surge (Green Bar)">${volContent}</span>`;
+        } else if (item.is_orange_bar) {
+            volContent = `<span class="vol-capsule vol-capsule--dry-vol" title="Dry Volume (Orange Bar)">${volContent}</span>`;
+        }
+        
+        const dayLow = item.day_low !== undefined && item.day_low !== null ? parseFloat(item.day_low) : 0.0;
+        const dayHigh = item.day_high !== undefined && item.day_high !== null ? parseFloat(item.day_high) : 0.0;
+        const currentPx = item.current_price !== undefined && item.current_price !== null ? parseFloat(item.current_price) : 0.0;
+        let dayRangeContent = '-';
+        
+        if (!isNaN(dayHigh) && !isNaN(dayLow) && !isNaN(currentPx) && dayHigh > dayLow) {
+            const range = dayHigh - dayLow;
+            const pos = currentPx - dayLow;
+            const pct = Math.max(0, Math.min(100, (pos / range) * 100));
+            
+            dayRangeContent = `
+                <div class="day-range-container" title="Low: ₹${dayLow.toFixed(2)} | High: ₹${dayHigh.toFixed(2)} | Close: ₹${currentPx.toFixed(2)}">
+                    <div class="day-range-bar">
+                        <div class="day-range-fill" style="width: ${pct}%;"></div>
+                        <div class="day-range-marker" style="left: ${pct}%;"></div>
+                    </div>
+                </div>
+            `;
+        }
         
         const cleanTicker = item.ticker.replace('.NS', '').replace('.BO', '');
         
@@ -10701,8 +10777,8 @@ function renderIPOTable() {
                 <td>₹${item.issue_price}</td>
                 <td>₹${item.current_price ? item.current_price.toFixed(2) : '0.00'}</td>
                 <td style="${changeColor} font-weight: 500;">${changeText}</td>
-                <td style="color: var(--color-text-secondary); font-size: 0.78rem; font-weight: 500;">${dayRangeText}</td>
-                <td style="color: var(--color-text-secondary); font-weight: 500;">${formattedVol}</td>
+                <td>${dayRangeContent}</td>
+                <td style="color: var(--color-text-secondary); font-weight: 500;">${volContent}</td>
                 <td style="${listGainColor} font-weight: 500;">${listGainText}</td>
                 <td style="${gainIssueStyle} font-weight: 600;">${netGainText}</td>
                 <td style="${gainListingStyle} font-weight: 500;">${postListText}</td>

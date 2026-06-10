@@ -214,3 +214,31 @@ def test_volume_filter_and_additional_columns(client, monkeypatch):
     data_filter = res_filter.get_json()
     assert data_filter["total"] == 1
     assert data_filter["listings"][0]["ticker"] == "MOCK1.NS"
+
+def test_sorting_by_day_range_pct(client, monkeypatch):
+    def mock_fetch_historical_prices(ticker, range_str="1y"):
+        if ticker == "MOCK1.NS":
+            # low=100, high=200, close=120 (20%)
+            return [{"open": 120, "high": 200, "low": 100, "close": 120, "volume": 1000.0, "date": "2026-06-01"}]
+        else:
+            # low=50, high=100, close=90 (80%)
+            return [{"open": 90, "high": 100, "low": 50, "close": 90, "volume": 1000.0, "date": "2026-06-01"}]
+            
+    monkeypatch.setattr("app.fetch_historical_prices", mock_fetch_historical_prices)
+    refresh_ipo_metrics()
+    
+    # 1. Sort DESC
+    res_desc = client.get("/api/ipo/listings?sort_by=day_range_pct&order=desc")
+    assert res_desc.status_code == 200
+    listings_desc = res_desc.get_json()["listings"]
+    assert len(listings_desc) == 2
+    assert listings_desc[0]["ticker"] == "MOCK2.NS"
+    assert listings_desc[1]["ticker"] == "MOCK1.NS"
+    
+    # 2. Sort ASC
+    res_asc = client.get("/api/ipo/listings?sort_by=day_range_pct&order=asc")
+    assert res_asc.status_code == 200
+    listings_asc = res_asc.get_json()["listings"]
+    assert len(listings_asc) == 2
+    assert listings_asc[0]["ticker"] == "MOCK1.NS"
+    assert listings_asc[1]["ticker"] == "MOCK2.NS"
