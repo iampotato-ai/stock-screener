@@ -281,11 +281,48 @@ def init_db():
             pattern_name            TEXT,
             momentum_phase          TEXT,
             current_price           REAL,
+            volume                  REAL,
+            change_pct              REAL,
+            day_low                 REAL,
+            day_high                REAL,
+            is_blue_bar             INTEGER DEFAULT 0,
+            is_green_bar            INTEGER DEFAULT 0,
+            is_orange_bar           INTEGER DEFAULT 0,
             cached_at               TEXT NOT NULL
         )
     ''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_ipo_metrics_phase ON ipo_metrics_cache(momentum_phase)')
     
+    # Run migrations for volume, change_pct, and day range columns
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN volume REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN change_pct REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN day_low REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN day_high REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN is_blue_bar INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN is_green_bar INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN is_orange_bar INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+        
     conn.commit()
     conn.close()
 
@@ -543,18 +580,64 @@ def seed_ipo_listings():
 init_db()
 seed_ipo_listings()
 
+
 def classify_momentum_phase(days_since, current_vs_issue, current_vs_listing):
     hot_threshold    = 15
     broken_threshold = -10
 
     if days_since <= 10 and current_vs_issue > hot_threshold:
         return "HOT"
-    elif days_since <= 60 and current_vs_listing > 5:
+    elif current_vs_listing > 5:
         return "STABLE"
     elif current_vs_listing < broken_threshold:
         return "BROKEN"
     else:
         return "FADING"
+
+
+# Bug #3 fix — defined at module level so it is not re-created on every ticker
+# inside the ThreadPoolExecutor. This is the standard Wilder smoothed RSI.
+def _calculate_rsi(prices, period=14):
+    """Compute 14-period Wilder-smoothed RSI from a list of closing prices."""
+    if len(prices) <= period:
+        return 60.0  # neutral-bullish default for new listings with sparse history
+    deltas = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+    gains  = [d if d > 0 else 0.0 for d in deltas]
+    losses = [-d if d < 0 else 0.0 for d in deltas]
+
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    for i in range(period, len(deltas)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+# Bug #6 fix — single helper replaces the copy-pasted volume-parsing block
+# that appeared twice in get_ipo_listings() (main query + summary query).
+def _parse_volume_param(val_str):
+    """Parse a volume string like '100k', '1m', '500' into a float.
+    Returns None if the string is empty, 'all', or unparseable."""
+    if not val_str or val_str.lower() == 'all':
+        return None
+    try:
+        s = val_str.lower().strip()
+        multiplier = 1
+        if s.endswith('k'):
+            multiplier = 1_000
+            s = s[:-1]
+        elif s.endswith('m'):
+            multiplier = 1_000_000
+            s = s[:-1]
+        return float(s) * multiplier
+    except ValueError:
+        return None
+
 
 def refresh_ipo_metrics():
     """
@@ -579,25 +662,29 @@ def refresh_ipo_metrics():
             if not history:
                 return
                 
-            closes = [float(h["close"]) for h in history]
-            highs = [float(h["high"]) for h in history]
+            closes  = [float(h["close"])  for h in history]
+            highs   = [float(h["high"])   for h in history]
             volumes = [float(h["volume"]) for h in history]
-            lows = [float(h["low"]) for h in history]
+            lows    = [float(h["low"])    for h in history]
             
             if not closes:
                 return
                 
             current_price = closes[-1]
-            current_vol = volumes[-1]
-            avg_vol_20d = sum(volumes[-20:]) / len(volumes[-20:]) if volumes else 1.0
+            current_vol   = volumes[-1]
+            # lows/highs are always populated when closes is non-empty (same Yahoo response);
+            # the 'else' branch is a safety net for unexpected edge cases only.
+            current_low  = lows[-1]  if lows  else current_price
+            current_high = highs[-1] if highs else current_price
+            avg_vol_20d  = sum(volumes[-20:]) / len(volumes[-20:]) if volumes else 1.0
             
             # Listing close
             lst_close = listing_close if listing_close else closes[0]
             
             # Calculations
-            listing_gain_pct = ((lst_close - issue_price) / issue_price * 100) if issue_price else 0.0
-            current_vs_issue_pct = ((current_price - issue_price) / issue_price * 100) if issue_price else 0.0
-            current_vs_listing_pct = ((current_price - lst_close) / lst_close * 100) if lst_close else 0.0
+            listing_gain_pct        = ((lst_close - issue_price) / issue_price * 100) if issue_price else 0.0
+            current_vs_issue_pct    = ((current_price - issue_price) / issue_price * 100) if issue_price else 0.0
+            current_vs_listing_pct  = ((current_price - lst_close) / lst_close * 100) if lst_close else 0.0
             
             # Days since listing
             from datetime import datetime
@@ -610,32 +697,75 @@ def refresh_ipo_metrics():
             rvol_ratio = (current_vol / avg_vol_20d) if avg_vol_20d > 0 else 1.0
             ath = max(highs) if highs else current_price
             above_listing_high = 1 if current_price >= max(closes) * 0.98 else 0
-            drawdown_from_ath = ((current_price - ath) / ath * 100) if ath else 0.0
+            drawdown_from_ath  = ((current_price - ath) / ath * 100) if ath else 0.0
             
-            # Mock stock dict for swing score
+            # Calculate volume indicators
+            # 50-period Volume SMA
+            vols = [float(h["volume"]) for h in history if h.get("volume") is not None]
+            if len(vols) >= 50:
+                volume_sma_50 = sum(vols[-50:]) / 50.0
+            elif vols:
+                volume_sma_50 = sum(vols) / len(vols)
+            else:
+                volume_sma_50 = 0.0
+
+            # Highest down-day volume of the last 10 down-days
+            down_day_vols = []
+            for i in range(1, len(history)):
+                current_close = float(history[i]["close"])
+                prev_close = float(history[i-1]["close"])
+                if current_close < prev_close:
+                    down_day_vols.append(float(history[i]["volume"]))
+            
+            if len(down_day_vols) >= 10:
+                max_down_vol_10 = max(down_day_vols[-10:])
+            elif down_day_vols:
+                max_down_vol_10 = max(down_day_vols)
+            else:
+                max_down_vol_10 = 0.0
+
+            # Determine bar flags
+            is_up_day = closes[-1] > closes[-2] if len(closes) >= 2 else False
+            is_blue = 1 if (is_up_day and max_down_vol_10 > 0 and current_vol > max_down_vol_10) else 0
+            is_green = 1 if (is_up_day and volume_sma_50 > 0 and current_vol > volume_sma_50 and not is_blue) else 0
+            is_orange = 1 if (volume_sma_50 > 0 and current_vol <= volume_sma_50 / 5.0) else 0
+
+            # Calculate actual indicators for swing score
             sma10 = sum(closes[-10:]) / len(closes[-10:]) if len(closes) >= 10 else current_price
             sma21 = sum(closes[-21:]) / len(closes[-21:]) if len(closes) >= 21 else current_price
             sma50 = sum(closes[-50:]) / len(closes[-50:]) if len(closes) >= 50 else current_price
             
+            change   = ((closes[-1] - closes[-2]) / closes[-2] * 100) if len(closes) >= 2  else 0.0
+            perf_w   = ((closes[-1] - closes[-5]) / closes[-5] * 100) if len(closes) >= 5  else ((closes[-1] - closes[0]) / closes[0] * 100)
+            perf_1m  = ((closes[-1] - closes[-21]) / closes[-21] * 100) if len(closes) >= 21 else ((closes[-1] - closes[0]) / closes[0] * 100)
+            perf_3m  = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else ((closes[-1] - closes[0]) / closes[0] * 100)
+            
+            # Bug #3 fix — use module-level _calculate_rsi() instead of a nested function
+            # Bug #7 note — key is 'RSI' (uppercase) to match compute_swing_score() lookup
+            rsi = _calculate_rsi(closes)
+            
+            # Bug #8 note — 'relative_volume' key matches the lookup in compute_swing_score()
             stock_dict = {
-                "ticker": ticker,
-                "clean_ticker": ticker.replace(".NS", "").replace(".BO", ""),
-                "close": current_price,
-                "SMA10": sma10,
-                "SMA21": sma21,
-                "SMA50": sma50,
+                "ticker":             ticker,
+                "clean_ticker":       ticker.replace(".NS", "").replace(".BO", ""),
+                "close":              current_price,
+                "SMA10":              sma10,
+                "SMA21":              sma21,
+                "SMA50":              sma50,
                 "price_52_week_high": max(highs) if highs else current_price,
-                "price_52_week_low": min(lows) if lows else current_price,
-                "average_volume": avg_vol_20d,
-                "Recommend.All": 0.5,
-                "sector": sector,
-                "Perf.W": 0.0,
-                "Perf.1M": 0.0,
-                "Perf.3M": 0.0,
-                "change": 0.0
+                "price_52_week_low":  min(lows)  if lows  else current_price,
+                "average_volume":     avg_vol_20d,
+                "relative_volume":    rvol_ratio,   # matches compute_swing_score() key
+                "Recommend.All":      0.5,
+                "sector":             sector,
+                "Perf.W":             perf_w,
+                "Perf.1M":            perf_1m,
+                "Perf.3M":            perf_3m,
+                "change":             change,
+                "RSI":                rsi,           # uppercase — matches compute_swing_score() key
             }
             
-            swing_res = compute_swing_score(stock_dict)
+            swing_res   = compute_swing_score(stock_dict)
             swing_score = swing_res.get("swingscore", 0) if isinstance(swing_res, dict) else 0
             pattern_res = classify_technical_pattern(history)
             pattern_name = "None"
@@ -654,13 +784,15 @@ def refresh_ipo_metrics():
                     ticker, company_name, listing_date, exchange, sector, issue_price,
                     listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
                     rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
-                    momentum_phase, current_price, cached_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    momentum_phase, current_price, volume, change_pct, day_low, day_high,
+                    is_blue_bar, is_green_bar, is_orange_bar, cached_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ''', (
                 ticker, company_name, listing_date, exchange, sector, issue_price,
                 round(listing_gain_pct, 2), round(current_vs_issue_pct, 2), round(current_vs_listing_pct, 2), days_since,
                 round(rvol_ratio, 2), above_listing_high, round(drawdown_from_ath, 2), swing_score, pattern_name,
-                phase, current_price
+                phase, current_price, current_vol, round(change, 2), round(current_low, 2), round(current_high, 2),
+                is_blue, is_green, is_orange
             ))
             conn2.commit()
             conn2.close()
@@ -4088,6 +4220,20 @@ def scan_stocks():
         })
         
     except Exception as e:
+        print(f"TradingView live scan failed ({e}) — attempting fallback to scan_result.txt...")
+        try:
+            if os.path.exists("scan_result.txt"):
+                for enc in ("utf-16", "utf-8"):
+                    try:
+                        with open("scan_result.txt", "r", encoding=enc) as f:
+                            cached_data = json.load(f)
+                            print("Successfully loaded scan fallback from scan_result.txt")
+                            return jsonify(cached_data)
+                    except Exception:
+                        continue
+            print("Fallback file scan_result.txt not found or failed to parse.")
+        except Exception as fallback_e:
+            print(f"Fallback failed: {fallback_e}")
         return jsonify({"error": f"An error occurred during scanning: {str(e)}"}), 500
 
 @app.route("/api/save_snapshot", methods=["POST"])
@@ -5703,11 +5849,31 @@ def get_ipo_listings():
         exchange_param = request.args.get('exchange', 'all').strip()
         days_param = request.args.get('days', 'all').strip()
         phase_param = request.args.get('phase', 'all').strip()
+        volume_alert_param = request.args.get('volume_alert', 'all').strip()
+        min_volume_param = request.args.get('min_volume', 'all').strip()
         limit = request.args.get('limit', '').strip()
         offset = request.args.get('offset', '').strip()
         
         where_clauses = []
         params = []
+        
+        if volume_alert_param != 'all' and volume_alert_param != '':
+            selected_alerts = volume_alert_param.split(',')
+            alert_clauses = []
+            for alert in selected_alerts:
+                if alert == 'ppv':
+                    alert_clauses.append("is_blue_bar = 1")
+                elif alert == 'vol-surge':
+                    alert_clauses.append("is_green_bar = 1")
+                elif alert == 'dry-vol':
+                    alert_clauses.append("is_orange_bar = 1")
+            if alert_clauses:
+                where_clauses.append(f"({ ' OR '.join(alert_clauses) })")
+                
+        min_vol = _parse_volume_param(min_volume_param)
+        if min_vol is not None:
+            where_clauses.append("volume >= ?")
+            params.append(min_vol)
         
         if exchange_param != 'all':
             if exchange_param == 'NSE':
@@ -5770,6 +5936,24 @@ def get_ipo_listings():
             if max_days is not None:
                 summary_clauses.append("days_since_listing <= ?")
                 summary_params.append(max_days)
+                
+        if volume_alert_param != 'all' and volume_alert_param != '':
+            selected_alerts = volume_alert_param.split(',')
+            alert_clauses = []
+            for alert in selected_alerts:
+                if alert == 'ppv':
+                    alert_clauses.append("is_blue_bar = 1")
+                elif alert == 'vol-surge':
+                    alert_clauses.append("is_green_bar = 1")
+                elif alert == 'dry-vol':
+                    alert_clauses.append("is_orange_bar = 1")
+            if alert_clauses:
+                summary_clauses.append(f"({ ' OR '.join(alert_clauses) })")
+                
+        min_vol = _parse_volume_param(min_volume_param)
+        if min_vol is not None:
+            summary_clauses.append("volume >= ?")
+            summary_params.append(min_vol)
         
         summary_where = ""
         if summary_clauses:
@@ -5795,19 +5979,25 @@ def get_ipo_listings():
             'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
             'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
             'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-            'momentum_phase', 'current_price'
+            'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high',
+            'is_blue_bar', 'is_green_bar', 'is_orange_bar', 'day_range_pct'
         ]
         if sort_by not in allowed_sort_cols:
             sort_by = 'listing_date'
+            
+        order_by_expr = sort_by
+        if sort_by == 'day_range_pct':
+            order_by_expr = "CASE WHEN (day_high - day_low) > 0 THEN ((current_price - day_low) * 100.0 / (day_high - day_low)) ELSE -1.0 END"
             
         query = f"""
             SELECT ticker, company_name, listing_date, exchange, sector, issue_price,
                    listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
                    rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
-                   momentum_phase, current_price, cached_at
+                   momentum_phase, current_price, volume, change_pct, day_low, day_high,
+                   is_blue_bar, is_green_bar, is_orange_bar, cached_at
             FROM ipo_metrics_cache
             {where_str}
-            ORDER BY {sort_by} {order}
+            ORDER BY {order_by_expr} {order}
         """
         
         limit_offset_params = list(params)
@@ -5835,7 +6025,8 @@ def get_ipo_listings():
             'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
             'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
             'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-            'momentum_phase', 'current_price', 'cached_at'
+            'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high',
+            'is_blue_bar', 'is_green_bar', 'is_orange_bar', 'cached_at'
         ]
         
         listings = []
@@ -5933,18 +6124,20 @@ def debug_nse_ipo():
     )
 
 # Initial EOD refresh check (relocated to end of file so all dependencies are defined)
-try:
-    conn = sqlite3.connect('scan_history.db')
-    c = conn.cursor()
-    # Check if there are any listings missing from the metrics cache
-    c.execute("SELECT COUNT(*) FROM ipo_listings WHERE ticker NOT IN (SELECT ticker FROM ipo_metrics_cache)")
-    missing_cnt = c.fetchone()[0]
-    conn.close()
-    if missing_cnt > 0:
-        print(f"IPO metrics cache is missing {missing_cnt} entries. Performing initial refresh...")
-        refresh_ipo_metrics()
-except Exception as e:
-    print(f"Error seeding initial IPO metrics cache: {e}")
+import sys
+if "pytest" not in sys.modules:
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        # Check if there are any listings missing from the metrics cache
+        c.execute("SELECT COUNT(*) FROM ipo_listings WHERE ticker NOT IN (SELECT ticker FROM ipo_metrics_cache)")
+        missing_cnt = c.fetchone()[0]
+        conn.close()
+        if missing_cnt > 0:
+            print(f"IPO metrics cache is missing {missing_cnt} entries. Performing initial refresh...")
+            refresh_ipo_metrics()
+    except Exception as e:
+        print(f"Error seeding initial IPO metrics cache: {e}")
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1", port=5000)

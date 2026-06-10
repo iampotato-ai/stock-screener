@@ -1190,7 +1190,7 @@
             </div>
 
             <!-- Filters Panel -->
-            <div class="ipo-filters-bar glass-panel" style="padding: 1rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.05);">
+            <div class="ipo-filters-bar glass-panel" style="position: relative; z-index: 100; padding: 1rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.05);">
                 <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
                     <!-- Exchange Filter -->
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -1213,6 +1213,32 @@
                             <button class="filter-chip" data-val="1y" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">1 Year</button>
                         </div>
                     </div>
+                    
+                    <!-- Volume Filter -->
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Volume Alert:</span>
+                        <div class="custom-select-wrapper" id="ipo-volume-select-wrapper" style="position: relative; z-index: 105;">
+                            <button class="btn btn-secondary select-trigger" id="btn-ipo-volume-filter" style="min-width: 150px; height: 32px; padding: 0 0.8rem; font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-secondary); cursor: pointer;" title="Filter by Volume Alert Status">
+                                <span id="selected-ipo-volume-filter-label">All Volume</span>
+                                <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </button>
+                            <div class="select-dropdown glass-panel hidden" id="ipo-volume-filter-dropdown" style="min-width: 175px; top: calc(100% + 4px); z-index: 100; padding: 6px 0; position: absolute; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3);">
+                                <div class="select-dropdown-item" data-value="ppv" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-secondary);">
+                                    <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                                    <span>🔵 Pocket Pivot</span>
+                                </div>
+                                <div class="select-dropdown-item" data-value="vol-surge" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-secondary);">
+                                    <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                                    <span>🟢 Volume Surge</span>
+                                </div>
+                                <div class="select-dropdown-item" data-value="dry-vol" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-secondary);">
+                                    <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                                    <span>🟠 Dry Volume</span>
+                                </div>
+                            </div>
+                            <input type="hidden" id="filter-ipo-volume-alert" value="all">
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Display metrics info -->
@@ -1221,30 +1247,32 @@
                     <span id="ipo-cache-info">Metrics cache updated</span>
                 </div>
             </div>
-
+ 
             <!-- Table Grid -->
             <div class="table-container" id="ipo-table-container">
                 <table class="screener-table" id="ipo-table">
                     <thead>
                         <tr>
-                            <th class="sortable-header" data-sort="ticker" style="cursor: pointer;">Ticker <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="ticker" style="cursor: pointer; min-width: 175px; width: 175px;">Ticker <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="company_name" style="cursor: pointer;">Company Name <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="listing_date" style="cursor: pointer;">Listing Date <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="days_since_listing" style="cursor: pointer;">Days <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="issue_price" style="cursor: pointer;">Issue Px <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="current_price" style="cursor: pointer;">Current Px <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="change_pct" style="cursor: pointer;">Chg % <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="day_range_pct" style="cursor: pointer;">Day's Range <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="volume" style="cursor: pointer;">Volume <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="listing_gain_pct" style="cursor: pointer;">List Gain % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="current_vs_issue_pct" style="cursor: pointer;">Net Gain % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="current_vs_listing_pct" style="cursor: pointer;">Post-List % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="momentum_phase" style="cursor: pointer;">Phase <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="pattern_name" style="cursor: pointer;">Pattern <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="swing_score" style="cursor: pointer;">Swing <span class="sort-icon">⇅</span></th>
-                            <th style="width: 80px; text-align: center;">Watchlist</th>
                         </tr>
                     </thead>
                     <tbody id="ipo-table-body">
                         <tr>
-                            <td colspan="13" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
+                            <td colspan="15" class="table-loading-state" style="padding: 3rem; text-align: center; color: var(--color-text-secondary);">
                                 <div class="loading-pulse-container" style="display: flex; justify-content: center; gap: 8px; margin-bottom: 12px;">
                                     <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out;"></div>
                                     <div class="pulse-bubble" style="width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: pulse 1.2s infinite ease-in-out 0.2s;"></div>
@@ -1667,6 +1695,7 @@
             </div>
         </div>
     </div>
+</div> <!-- Close .app-container -->
 
     <!-- Trade Setup Drawer Overlay -->
     <div class="trade-drawer-overlay" id="trade-drawer-overlay"></div>
@@ -1917,7 +1946,6 @@
                 </button>
             </div>
         </div>
-    </div>
 
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>

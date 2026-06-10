@@ -172,3 +172,73 @@ def test_api_detail_and_refresh_smoke(client, monkeypatch):
     res_refresh = client.post("/api/ipo/refresh")
     assert res_refresh.status_code == 200
     assert res_refresh.get_json()["success"] is True
+
+def test_volume_filter_and_additional_columns(client, monkeypatch):
+    # Mock data refresh with different volumes and changes
+    def mock_fetch_historical_prices(ticker, range_str="1y"):
+        if ticker == "MOCK1.NS":
+            return [
+                {"open": 100, "high": 100, "low": 100, "close": 100, "volume": 10000.0, "date": "2026-06-01"},
+                {"open": 110, "high": 110, "low": 110, "close": 110, "volume": 200000.0, "date": "2026-06-02"}
+            ]
+        else:
+            return [
+                {"open": 50, "high": 50, "low": 50, "close": 50, "volume": 1000.0, "date": "2026-06-01"},
+                {"open": 49, "high": 49, "low": 49, "close": 49, "volume": 5000.0, "date": "2026-06-02"}
+            ]
+            
+    monkeypatch.setattr("app.fetch_historical_prices", mock_fetch_historical_prices)
+    refresh_ipo_metrics()
+    
+    # 1. Check columns are serialized
+    res = client.get("/api/ipo/listings")
+    assert res.status_code == 200
+    data = res.get_json()
+    listings = data["listings"]
+    mock1 = next(item for item in listings if item["ticker"] == "MOCK1.NS")
+    mock2 = next(item for item in listings if item["ticker"] == "MOCK2.NS")
+    
+    assert mock1["volume"] == 200000.0
+    assert mock1["change_pct"] == 10.0
+    assert mock1["day_low"] == 110.0
+    assert mock1["day_high"] == 110.0
+    
+    assert mock2["volume"] == 5000.0
+    assert mock2["change_pct"] == -2.0
+    assert mock2["day_low"] == 49.0
+    assert mock2["day_high"] == 49.0
+    
+    # 2. Test Volume Filter > 10K (only MOCK1 should match)
+    res_filter = client.get("/api/ipo/listings?min_volume=10k")
+    assert res_filter.status_code == 200
+    data_filter = res_filter.get_json()
+    assert data_filter["total"] == 1
+    assert data_filter["listings"][0]["ticker"] == "MOCK1.NS"
+
+def test_sorting_by_day_range_pct(client, monkeypatch):
+    def mock_fetch_historical_prices(ticker, range_str="1y"):
+        if ticker == "MOCK1.NS":
+            # low=100, high=200, close=120 (20%)
+            return [{"open": 120, "high": 200, "low": 100, "close": 120, "volume": 1000.0, "date": "2026-06-01"}]
+        else:
+            # low=50, high=100, close=90 (80%)
+            return [{"open": 90, "high": 100, "low": 50, "close": 90, "volume": 1000.0, "date": "2026-06-01"}]
+            
+    monkeypatch.setattr("app.fetch_historical_prices", mock_fetch_historical_prices)
+    refresh_ipo_metrics()
+    
+    # 1. Sort DESC
+    res_desc = client.get("/api/ipo/listings?sort_by=day_range_pct&order=desc")
+    assert res_desc.status_code == 200
+    listings_desc = res_desc.get_json()["listings"]
+    assert len(listings_desc) == 2
+    assert listings_desc[0]["ticker"] == "MOCK2.NS"
+    assert listings_desc[1]["ticker"] == "MOCK1.NS"
+    
+    # 2. Sort ASC
+    res_asc = client.get("/api/ipo/listings?sort_by=day_range_pct&order=asc")
+    assert res_asc.status_code == 200
+    listings_asc = res_asc.get_json()["listings"]
+    assert len(listings_asc) == 2
+    assert listings_asc[0]["ticker"] == "MOCK1.NS"
+    assert listings_asc[1]["ticker"] == "MOCK2.NS"
