@@ -10,9 +10,14 @@ A premium, high-performance Swing & Intraday Momentum stock screener for the Nat
 2. **Sector Rotation Timeline (RRG)**: An interactive, animated 12-week sector rotation timeline on a custom canvas showing momentum paths (Leading, Weakening, Lagging, Improving).
 3. **Interactive Watchlist Center**: Drag-and-drop stock organizing, renameable sections, ex-dates/announcements feed, bulk deal tracking, and **AI-powered batch sorting**.
 4. **TradingView Lightweight Charts**: Interactive candlestick charting inside the trade drawer and full-screen overlay modals, featuring overlay SMAs, volume bars, and pattern detection.
-5. **Kronos Candlestick AI Predictor**: Direct integration of the `Kronos-small` foundation model for generating multi-day price path predictions, trend bias, and Monte Carlo confidence intervals.
-6. **Advanced Risk-Calculator Drawer**: Automatically calculates target exits, shares, stop-loss lines, and position sizing guidelines tailored to current market conditions.
-7. **Trade Log Journal**: Direct log-to-journal database saving with live performance stats tracking (PnL, Win Rate, Average R) backed by a robust SQLite persistence layer.
+5. **EnsembleCast Multi-Model Predictor**: Combines **Kronos-small** foundation model predictions with **Meta Prophet** and **ARIMA** forecasts, powered by a dynamic rolling MAPE weighting engine.
+6. **🚀 IPO Momentum Hub**: Dedicated real-time screening of recent mainboard listings on the NSE/BSE, with dynamic phase tracking (**HOT**, **STABLE**, **FADING**, **BROKEN**).
+7. **⛺ Stage 2 Camp Setup Detector**: Automatic pattern detection for institutional setups following key breakouts.
+8. **📈 Institutional Volume Alerts**: Visual, color-coded volume overlays identifying institutional accumulation (Blue Bar), above-average volume (Green Bar), and supply dryups (Orange Bar).
+9. **🔔 Smart Alert Engine**: Continuous client-side background alerting for Regime score shifts, Swing flips, Kronos return spikes, and new block/bulk deals, complete with push notifications and an in-app log panel.
+10. **⚡ Keyboard Navigable Cockpit**: Seamless keyboard-driven triage (`↑ / ↓ / Enter / W`) and keyboard-accessible interactive UI components (chips, cards, pills).
+11. **Advanced Risk-Calculator Drawer**: Automatically calculates target exits, shares, stop-loss lines, and position sizing guidelines tailored to current market conditions.
+12. **Trade Log Journal**: Direct log-to-journal database saving with live performance stats tracking (PnL, Win Rate, Average R) backed by a robust SQLite persistence layer.
 
 ---
 
@@ -37,52 +42,86 @@ Positioned at the top of the dashboard, this panel gives traders a quick pulse o
 
 ### 2. Multi-Tab Screener Table
 Filter, sort, and search the NSE universe through dedicated analytical dimensions:
-* **Overview Tab**: Spot core price trends, multi-timeframe confirmations (Weekly + Daily trends), setup labels (e.g. *Breakout Ready*, *Pullback to MA*, *Inside Bar Coil*, *Vol Coil*, *Bullish Div*), ATR metrics, and moving average flirting status.
+* **Overview Tab**: Spot core price trends, setup labels (e.g. *Breakout Ready*, *Pullback to MA*, *Inside Bar Coil*, *Vol Coil*, *Bullish Div*, and *Stage 2 Camp*), ATR metrics, and moving average status.
 * **Valuation Tab**: View fundamental value metrics like P/E, P/B, Debt/Equity, EV/EBITDA, and Quick Ratio.
 * **Quality Tab**: Evaluate capital efficiency via ROE, ROA, Gross/Operating/Net Margins, and basic financial health.
-* **Growth Tab**: Track short-term and long-term momentum through Quarterly and Yearly Revenue and Earnings Growth rates. Includes an active warning banner clarifying when simulated metrics are active.
+* **Growth Tab**: Track momentum through Quarterly and Yearly Revenue and Earnings Growth rates.
 * **RRG (Relative Rotation Graph Proxy) & Animated Timeline**: A dual-view workspace featuring:
   * **Stocks View**: A static scatter plot mapping individual stocks' short-term vs. medium-term relative performance.
-  * **Sectors View (Timeline)**: An animated 12-week rotation timeline on a high-DPI custom canvas displaying faded historical trails, playback controls (Play, Pause, Reset, Scrubber, Weeks Select), and click-to-filter sector hit testing that connects directly back to the screener.
+  * **Sectors View (Timeline)**: An animated 12-week rotation timeline on a high-DPI custom canvas displaying faded historical trails, playback controls (Play, Pause, Reset, Scrubber, Weeks Select), and click-to-filter sector hit testing.
 * **Intraday Pro Tab**: Track real-time day trading configurations including *Gap and Go*, *VWAP Reclaim*, *High RVOL Movers*, and *Confluence setups*.
+* **🚀 IPO Momentum Tab**: A dedicated screening tab for recent mainboard IPOs. Track critical listing metrics, relative volume ratio, ATH drawdowns, and classify listing lifecycles into distinct phases (**HOT**, **STABLE**, **FADING**, **BROKEN**). Supports age filtering, sector filters, exchange toggle (NSE/BSE), and volume alert overlays.
 * **Journal Tab**: Logs and reviews executed trades, complete with metrics showing total trades, win rates, average risk-to-reward (R) achieved, and total PnL.
 
 ### 3. TradingView Lightweight Charts Integration
 Replaces simple static sparklines with interactive, high-fidelity daily candlestick charts:
 * **Rich Layout**: Plots complete daily OHLCV bars (last 120 bars by default with 2-year history available via scrollback).
 * **Moving Average Lines**: Overlays SMA 10 (Yellow), SMA 21 (Cyan), and SMA 50 (Purple) directly on top of the price bars.
-* **Volume Overlay**: Displays color-coded volume histograms constrained to the bottom of the chart.
+* **Volume Overlay**: Displays volume histograms constrained to the bottom of the chart, color-coded by institutional volume flags.
 * **Pattern Markers**: Client-side detection displays visual markers for key price patterns:
   * **Inside Bars**: Yellow/amber circles positioned above coiling ranges.
   * **Breakouts**: Green upward arrows indicating price breakout on volume expansion.
 * **Full-Screen Overlay Modals**: Clicking the chart inside the drawer opens a modal overlay charting workspace (`90vw` width) with backdrop blurs and ESC-key close handlers.
 * **Responsive Styling**: Automatic chart resizing via `ResizeObserver` and dynamic color scheme adjustment synchronized with the global Light/Dark theme.
 
-### 4. Kronos Candlestick AI Predictor & Tab Workspace
-Integrates the `Kronos-small` foundation model for deep learning time-series forecasting:
-* **Expectations Path**: Projects expected future closes as a dashed purple path (averaged over 10 parallel Monte Carlo runs to filter prediction noise).
-* **Forecast Candlesticks**: Displays future prediction windows (3D, 5D, 10D) as translucent purple/pink forecast candles.
-* **Confidence Envelopes**: Shades the P10 to P90 statistical confidence boundaries to visualize forecast volatility.
-* **Adaptive Volatility Temperature**: Computes the 14-day ATR% of the stock dynamically to scale the model's generation temperature `T`. Uses tighter temperature bounds for consolidations and wider bounds for volatile momentum plays.
-* **Dedicated AI Forecast Tab**: A full workspace containing length selectors, large-scale lightweight forecasting charts, prediction grids, and a "Forecast vs Actual" visualizer to analyze tracking performance.
-* **On-the-Fly Dynamic Backtester**: Computes tracking accuracy metrics (MAE, MAPE, Directional Accuracy %, and Band Hit Rate %) dynamically by slicing historical price ranges on-the-fly for any newly searched ticker.
+### 4. EnsembleCast Multi-Model Forecasting Engine
+Instead of relying on a single prediction model, MomentumScan implements a sophisticated multi-model ensemble forecasting engine:
+* **Three-Model Blend**: Combines **Kronos-small** (deep learning time-series model) with **Meta Prophet** (additive regression for trend/seasonality) and **ARIMA** (statistical auto-regressive baseline).
+* **Dynamic MAPE Weighting**: Computes rolling Mean Absolute Percentage Error (MAPE) historically on-the-fly for any requested stock. Model weights are dynamically assigned based on performance (inverse of MAPE) and smoothed via Exponential Moving Average (EMA).
+* **Agreement & Conviction**: Calculates a directional **Agreement Matrix** (comparing prediction path directions between models) and an overall **Conviction Level** (HIGH / LOW) accompanied by a **Divergence Score** measuring variance between predictions.
+* **Confidence Envelopes**: Displays P10 to P90 statistical confidence intervals alongside expectations paths.
+* **Forecast Candlesticks**: Renders future expectation windows (3D, 5D, 10D) as translucent purple forecast candles.
+* **On-the-Fly Dynamic Backtester**: Slices historical price ranges on-the-fly to test model accuracy and displays MAE, MAPE, Directional Accuracy %, and Band Hit Rate % indicators.
 
 ### 5. AI-Powered Watchlist Batch Sorting
 Sort and prioritize watchlists by predictive strength:
-* **Kronos Sort (⚡)**: Clicking the lightning button triggers parallel batch forecasting on the backend (capping threads at 8 to prevent Yahoo Finance throttling).
+* **Kronos Sort (⚡)**: Triggers parallel batch forecasting on the backend (capping threads at 8 to prevent Yahoo Finance throttling).
 * **Dynamic Table Expansion**: Expands the watchlist sidebar with `# Rank`, `AI Return`, `Bias`, and `Conf.` columns.
 * **Layered Cache Indicator Badges**: Shows `L` for live forecast calculations and `C` for database/memory cache hits. Serving subsequent cache requests in `<0.07` seconds.
 * **Stale Cache Eviction**: Automatically resets in-memory cache elements to prevent memory leaks from deleted tickers.
 * **Adaptive Spinners**: Renders CSS-based `.small-spinner` loader animations inside the row cells during active batch queries.
 * **Last Sorted Label**: Updates a visible timestamp label showing the freshness of current rankings.
 
-### 6. Relational SQLite Backend Persistence
-Migrated from limited local storage to a relational SQLite database (`scan_history.db`):
-* **Relational Schema**: Manages tables for `watchlist_sections`, `watchlist_items`, `trade_journal`, and `kronos_forecasts` with indexing and `ON DELETE CASCADE` integrity rules.
-* **Automatic Browser Migration**: Automatically detects and migrates legacy watchlists and journal entries from browser `localStorage` on first startup, safely clearing local keys upon confirmation.
-* **REST API Architecture**: Exposes RESTful endpoints for sections, individual watchlist items, journal entries, and cache hits.
+### 6. Smart Alert Engine & Persistent Log Panel
+A background monitoring layer that evaluates setup conditions on every scan loop and triggers push notifications:
+* **Four Alert Categories**:
+  1. **Regime Score Delta**: Fired if the market regime score jumps $\ge 15$ points in a single scan.
+  2. **Swing Score Flip**: Tracks watchlist stocks that cross from a weak/neutral setup ($< 6$) to a strong/elite setup ($\ge 8$).
+  3. **Kronos Forecast Spike**: Warns when the batch model predicts a $> 5\%$ upward move over 5 days.
+  4. **Bulk/Block Deal Detection**: Notifies when institutional trades are registered for any stock on watch.
+* **Browser Push Notifications**: Supports native browser notifications (with opt-in permission checks).
+* **Persistent Alert Log Panel**: In-session sidebar panel logging all triggered alerts with color-coded severity accents (Bullish, Swing, Kronos, Deal, Info). Supports a global clear option and custom configuration toggles.
 
-### 7. Catalysts & News Sidebar Scanner
+### 7. Institutional Volume Alerts & Dryup Indicators
+Tracks volume behavior to pinpoint accumulation and supply exhaustion:
+* **Blue Bar (Institutional Accumulation)**: Highlighted when the current day is an up day, and volume exceeds `max_down_vol_10` (the highest volume registered on down-days in the last 10 down-days). Represents heavy buyer absorption.
+* **Green Bar (Above Average Volume)**: Highlighted when the current day is an up day, and volume exceeds the 50-day Volume SMA.
+* **Orange Bar (Volume Dryup / Supply Exhaustion)**: Highlighted when volume drops to $\le 20\%$ of the 50-day Volume SMA. Indicates that selling pressure has dried up, often preceding explosive breakout moves.
+
+### 8. Stage 2 Camp Setup Detection
+Programmatic identification of Stage 2 Consolidation structures (colloquially called "The Camp"):
+* Detects when a stock enters a tight consolidation range after a strong Stage 1 upward run (at least a $15\%$ rally).
+* Evaluates volatility contraction (tightening range compared to historical ATR).
+* Tracks institutional buying days (count of high-volume accumulation up-days).
+* Flags setups where recent volume shows extreme dryups (Orange Bar conditions), indicating supply exhaustion before potential breakouts.
+
+### 9. Workspace UI & Tier 1 UX Refinements
+The user interface has been optimized for clean layouts, speed, and day-to-day usability:
+* **Dual-Band Screener Header**: Splits controls into a Primary Band (Search, Sector, Presets, Scan CTA) and a Secondary Band (Columns, Density, Auto-Refresh, Export, Snapshot) to maximize vertical space.
+* **Compact Trade Ticket**: Fixed at the top of the Trade Drawer, displaying entry, stop-loss, risk amount, risk/share, position sizing, and R:R multiples (to Target 1) for rapid calculation.
+* **Collapsible Drawer Modules**: Secondary analytics (Ensemble Forecasts, Pattern Intelligence, History & Notes) are wrapped in collapsible `<details>` components, keeping risk assessment clean and upfront.
+* **Sticky Action Footer**: Persistent button bar at the bottom of the trade drawer containing primary CTA actions ("Save to Journal", "Open in TradingView") that remain accessible without scrolling.
+* **Dynamic Risk Warning Banners**: Automatically floats warnings (e.g., lack of multi-timeframe alignment, earnings announcement within 5 days) at the top of the drawer.
+* **Keyboard Navigation**: Press `ArrowUp` / `ArrowDown` to navigate table rows, `Enter` to open the trade drawer, and `W` to immediately add the selected stock to the watchlist.
+* **Keyboard Accessibility (ARIA)**: Native key event handling (`Enter`/`Space`) and ARIA role buttons bound globally to filters, cards, and sector pills.
+
+### 10. Relational SQLite Backend Persistence
+Migrated from limited local storage to a relational SQLite database (`scan_history.db`):
+* **Relational Schema**: Manages tables for `watchlist_sections`, `watchlist_items`, `trade_journal`, `kronos_forecasts`, `rrg_history`, `pattern_cache`, `pattern_signals`, and `ipo_listings` with indexing and `ON DELETE CASCADE` integrity rules.
+* **Automatic Browser Migration**: Automatically detects and migrates legacy watchlists and journal entries from browser `localStorage` on first startup, safely clearing local keys upon confirmation.
+* **REST API Architecture**: Exposes RESTful endpoints for watchlist management, journal entries, and cache hits.
+
+### 11. Catalysts & News Sidebar Scanner
 The right-hand side panel serves as a real-time catalyst scanner for watchlist stocks:
 * **Corporate Announcements**: Aggregates official filings from NSE. A background keyword classifier tags announcements as *Financials*, *Dividends*, *Catalysts*, or *General Board Meetings*. Clicking an announcement opens a mock **SEBI LODR Filing Document** viewer.
 * **Catalysts & News**: Pulls Google News RSS feeds for the selected ticker.
@@ -115,6 +154,23 @@ Scores standard swing setups:
 * ATR% > 3% (+2)
 * Positive Weekly Performance (+2)
 
+#### 4. Institutional Volume alerts
+* **Blue Bar (Accumulation)**: $\text{Current Volume} > \text{max\_down\_vol\_10}$ AND $\text{Current Close} > \text{Previous Close}$
+* **Green Bar (Above Average)**: $\text{Current Volume} > \text{volume\_sma\_50}$ AND $\text{Current Close} > \text{Previous Close}$ AND NOT Blue Bar
+* **Orange Bar (Volume Dryup)**: $\text{Current Volume} \le 0.20 \times \text{volume\_sma\_50}$
+
+#### 5. EnsembleCast Dynamic Weighting
+Weights for the Prophet, ARIMA, and Kronos models are calculated by:
+$$w_m = \frac{\frac{1}{\text{MAPE}_m}}{\sum_j \frac{1}{\text{MAPE}_j}}$$
+Where $\text{MAPE}_m$ is the Mean Absolute Percentage Error of model $m$ over a rolling 20-day validation window. The raw weights are then smoothed via an Exponential Moving Average (EMA):
+$$\text{Smoothed Weight}_t = \alpha \cdot w_t + (1 - \alpha) \cdot \text{Smoothed Weight}_{t-1}$$
+
+#### 6. IPO Momentum Phases
+* **HOT**: $\text{Days since Listing} \le 10$ AND $\text{Current Price vs. Issue Price} > 15\%$
+* **STABLE**: $\text{Current Price vs. Listing Close} > 5\%$
+* **BROKEN**: $\text{Current Price vs. Listing Close} < -10\%$
+* **FADING**: Default intermediate cooling phase.
+
 ---
 
 ## 🚀 Setup & Run Instructions
@@ -125,7 +181,7 @@ Make sure you have **Python 3.8+** installed.
 ### 1. Install Dependencies
 Navigate to the root directory and install the necessary libraries:
 ```bash
-pip install flask requests pandas openpyxl torch transformers huggingface_hub einops sentencepiece
+pip install flask requests pandas openpyxl torch transformers huggingface_hub einops sentencepiece prophet statsmodels
 ```
 
 > [!NOTE]
