@@ -242,3 +242,48 @@ def test_sorting_by_day_range_pct(client, monkeypatch):
     assert len(listings_asc) == 2
     assert listings_asc[0]["ticker"] == "MOCK1.NS"
     assert listings_asc[1]["ticker"] == "MOCK2.NS"
+
+
+def test_api_age_filters(client, monkeypatch):
+    # Mock historical prices to return something basic
+    def mock_fetch_historical_prices(ticker, range_str="2y"):
+        return [{"open": 100, "high": 100, "low": 100, "close": 100, "volume": 1000.0, "date": "2025-01-01"}]
+    monkeypatch.setattr("app.fetch_historical_prices", mock_fetch_historical_prices)
+
+    # Insert an IPO listed 14 months ago (~425 days ago)
+    # Today is 2026-06-11, so 14 months ago is around 2025-04-11
+    conn = sqlite3.connect("scan_history.db")
+    c = conn.cursor()
+    
+    # Clean first
+    c.execute("DELETE FROM ipo_listings WHERE ticker = 'MOCK_OLD.NS'")
+    c.execute("DELETE FROM ipo_metrics_cache WHERE ticker = 'MOCK_OLD.NS'")
+    
+    c.execute('''
+        INSERT INTO ipo_listings (
+            ticker, company_name, listing_date, issue_price, listing_open, listing_close, exchange, sector, issue_size_cr, lot_size, gmp_at_listing
+        ) VALUES ('MOCK_OLD.NS', 'Mock Old Mainboard', '2025-04-11', 100.0, 100.0, 100.0, 'NSE', 'IT', 100.0, 10, 0.0)
+    ''')
+    conn.commit()
+    conn.close()
+
+    refresh_ipo_metrics()
+
+    # Query age filter of 6 months (should exclude MOCK_OLD.NS)
+    res_6m = client.get("/api/ipo/listings?days=6m")
+    assert res_6m.status_code == 200
+    listings_6m = res_6m.get_json()["listings"]
+    assert not any(item["ticker"] == "MOCK_OLD.NS" for item in listings_6m)
+
+    # Query age filter of 1 year (should exclude MOCK_OLD.NS)
+    res_1y = client.get("/api/ipo/listings?days=1y")
+    assert res_1y.status_code == 200
+    listings_1y = res_1y.get_json()["listings"]
+    assert not any(item["ticker"] == "MOCK_OLD.NS" for item in listings_1y)
+
+    # Query age filter of 18 months (should include MOCK_OLD.NS)
+    res_18m = client.get("/api/ipo/listings?days=18m")
+    assert res_18m.status_code == 200
+    listings_18m = res_18m.get_json()["listings"]
+    assert any(item["ticker"] == "MOCK_OLD.NS" for item in listings_18m)
+

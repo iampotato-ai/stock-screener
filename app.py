@@ -398,15 +398,15 @@ _IPO_MOCK_FALLBACK = [
 def seed_ipo_listings():
     """
     Populate ipo_listings from the live NSE public-past-issues API.
-    Only inserts mainboard (non-SME) listings from the last 12 months.
+    Only inserts mainboard (non-SME) listings from the last 18 months.
     Falls back to _IPO_MOCK_FALLBACK if the live fetch fails.
     """
     from datetime import datetime, timedelta
-    cutoff = datetime.now() - timedelta(days=365)
+    cutoff = datetime.now() - timedelta(days=548)
 
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
-    # Remove stale entries older than 12 months
+    # Remove stale entries older than 18 months
     c.execute(
         "DELETE FROM ipo_listings WHERE listing_date < ?",
         (cutoff.strftime("%Y-%m-%d"),)
@@ -489,7 +489,7 @@ def seed_ipo_listings():
                 if listing_date is None:
                     continue
 
-                # Only last 12 months
+                # Only last 18 months
                 if listing_date < cutoff:
                     continue
 
@@ -555,7 +555,7 @@ def seed_ipo_listings():
                 continue
 
         conn.commit()
-        print(f"[IPO Seed] Inserted {live_inserted} mainboard IPOs (last 12 months) from NSE live feed.")
+        print(f"[IPO Seed] Inserted {live_inserted} mainboard IPOs (last 18 months) from NSE live feed.")
 
     # --- Fallback: use mock data if live fetch returned nothing ---
     if not raw:
@@ -658,7 +658,7 @@ def refresh_ipo_metrics():
         ticker, company_name, listing_date, issue_price, listing_close, exchange, sector = row
         try:
             # Fetch history
-            history = fetch_historical_prices(ticker, range_str="1y")
+            history = fetch_historical_prices(ticker, range_str="2y")
             if not history:
                 return
                 
@@ -5887,6 +5887,7 @@ def get_ipo_listings():
             elif days_param == '3m': max_days = 90
             elif days_param == '6m': max_days = 180
             elif days_param == '1y': max_days = 365
+            elif days_param == '18m': max_days = 548
             else:
                 try:
                     max_days = int(days_param)
@@ -5928,6 +5929,7 @@ def get_ipo_listings():
             elif days_param == '3m': max_days = 90
             elif days_param == '6m': max_days = 180
             elif days_param == '1y': max_days = 365
+            elif days_param == '18m': max_days = 548
             else:
                 try:
                     max_days = int(days_param)
