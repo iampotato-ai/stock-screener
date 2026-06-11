@@ -239,6 +239,11 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"></path><path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"></path></svg>
                     <span>AI Forecast</span>
                 </button>
+                <button class="workspace-tab" data-view="ep" id="tab-ep">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                    <span>🚀 EP Screener</span>
+                    <span id="ep-high-count" class="badge" style="display: none; background: #3b82f6; color: white; border-radius: 50%; padding: 2px 6px; font-size: 0.7rem; margin-left: 4px; font-weight: bold; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);">0</span>
+                </button>
                 <div class="workspace-sliding-cap"></div>
             </div>
         </nav>
@@ -1290,6 +1295,158 @@
                         </tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workspace View: Episodic Pivot (EP) Screener -->
+    <div class="workspace-view" id="view-ep">
+        <div class="ep-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
+                <div>
+                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
+                        <span>🚀 Episodic Pivot Screener</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--color-text-secondary); margin-top: 0.25rem;">
+                        Identify neglected stocks receiving catalysts with rapid EOD repricing (Growth, Turnaround, Story, and Volume EPs).
+                    </div>
+                </div>
+                <div>
+                    <button class="action-btn" id="ep-refresh-btn" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                        <span>Scan EPs</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- EP Inner Navigation -->
+            <div class="ep-sub-tabs" style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
+                <button class="ep-sub-tab active" data-sub="today" style="background: none; border: none; color: #fff; font-size: 0.9rem; font-weight: 600; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid var(--accent-blue); transition: all 0.2s;">Today's EPs</button>
+                <button class="ep-sub-tab" data-sub="watchlist" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Active Watchlist</button>
+                <button class="ep-sub-tab" data-sub="sugar-babies" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Sugar Babies</button>
+            </div>
+
+            <!-- Panel: Today's EPs -->
+            <div class="ep-panel" id="ep-panel-today">
+                <div class="ep-filters-bar glass-panel" style="padding: 1rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 1rem;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">EP Type:</span>
+                            <select id="filter-ep-type" class="select-sm" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; outline: none; cursor: pointer;">
+                                <option value="all">All Types</option>
+                                <option value="Growth EP">Growth EP</option>
+                                <option value="Turnaround EP">Turnaround EP</option>
+                                <option value="Story EP">Story EP</option>
+                                <option value="Volume EP">Volume EP</option>
+                                <option value="Delayed EP">Delayed EP</option>
+                                <option value="Short EP">Short EP</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Confidence:</span>
+                            <select id="filter-ep-confidence" class="select-sm" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; outline: none; cursor: pointer;">
+                                <option value="all">All Levels</option>
+                                <option value="HIGH">HIGH</option>
+                                <option value="MEDIUM">MEDIUM</option>
+                                <option value="LOW">LOW</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Min Score:</span>
+                            <input type="number" id="filter-ep-min-score" step="0.05" min="0.0" max="1.0" value="0.55" style="width: 60px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px; font-size: 0.78rem; text-align: center;">
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Mkt Cap (Cr):</span>
+                            <input type="number" id="filter-ep-min-mktcap" placeholder="Min" style="width: 80px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px; font-size: 0.78rem; text-align: center;">
+                            <span style="color: var(--color-text-muted);">to</span>
+                            <input type="number" id="filter-ep-max-mktcap" placeholder="Max" style="width: 80px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px; font-size: 0.78rem; text-align: center;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container" id="ep-table-container">
+                    <table class="screener-table" id="ep-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>EP Type</th>
+                                <th class="text-center">EP Score</th>
+                                <th class="text-center">Neglect</th>
+                                <th class="text-center">Catalyst</th>
+                                <th class="text-center">Repricing</th>
+                                <th class="text-right">Gap %</th>
+                                <th class="text-right">RVOL</th>
+                                <th class="text-right">Close Loc</th>
+                                <th class="text-right">Mkt Cap (Cr)</th>
+                                <th class="text-right">Avg Turnover (Cr)</th>
+                                <th>Confidence</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ep-table-body">
+                            <tr>
+                                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                    No EPs loaded yet. Run a scan to populate candidates.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Panel: Watchlist -->
+            <div class="ep-panel" id="ep-panel-watchlist" style="display: none;">
+                <div class="table-container">
+                    <table class="screener-table" id="ep-watchlist-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>EP Type</th>
+                                <th>Catalyst Date</th>
+                                <th class="text-center">EP Score</th>
+                                <th class="text-right">Entry Price</th>
+                                <th class="text-right">Stop Price</th>
+                                <th class="text-center">Days on Watch</th>
+                                <th>Status</th>
+                                <th>Trigger Type</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ep-watchlist-body">
+                            <tr>
+                                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                    No active watchlist candidates found.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Panel: Sugar Babies -->
+            <div class="ep-panel" id="ep-panel-sugar-babies" style="display: none;">
+                <div class="table-container">
+                    <table class="screener-table" id="ep-sugar-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Exchange</th>
+                                <th>Added Date</th>
+                                <th class="text-right">Avg Burst %</th>
+                                <th class="text-right">Avg Burst Days</th>
+                                <th class="text-center">Episode Count</th>
+                                <th>Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ep-sugar-body">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                    No Sugar Baby listings found.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

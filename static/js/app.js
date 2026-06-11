@@ -386,6 +386,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
         } else if (viewName === 'ipo') {
             if (typeof renderIPOWorkspace === 'function') renderIPOWorkspace();
+        } else if (viewName === 'ep') {
+            if (typeof renderEPWorkspace === 'function') renderEPWorkspace();
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
             if (currentTab === 'journal') {
@@ -10879,3 +10881,403 @@ function renderVerdictStrip(containerId, label, returnPct, confidenceLabel, conf
         </div>
     `;
 }
+
+
+// ---------- Episodic Pivot (EP) Tab Controllers ----------
+
+let epActiveFilters = {
+    ep_type: 'all',
+    confidence: 'all',
+    min_score: 0.55,
+    min_mktcap: '',
+    max_mktcap: ''
+};
+let epListingsData = [];
+let epWatchlistData = [];
+let epSugarData = [];
+let epListenersBound = false;
+
+window.renderEPWorkspace = function() {
+    bindEPListeners();
+    const activeSubTab = document.querySelector('.ep-sub-tab.active');
+    const sub = activeSubTab ? activeSubTab.dataset.sub : 'today';
+    loadEPSubTab(sub);
+};
+
+function bindEPListeners() {
+    if (epListenersBound) return;
+    
+    // Main tab clicks
+    document.querySelectorAll('.ep-sub-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.ep-sub-tab').forEach(t => {
+                t.classList.remove('active');
+                t.style.borderBottomColor = 'transparent';
+                t.style.color = 'var(--color-text-secondary)';
+                t.style.fontWeight = '500';
+            });
+            tab.classList.add('active');
+            tab.style.borderBottomColor = 'var(--accent-blue)';
+            tab.style.color = '#fff';
+            tab.style.fontWeight = '600';
+            
+            // Toggle panels
+            const sub = tab.dataset.sub;
+            document.getElementById('ep-panel-today').style.display = sub === 'today' ? 'block' : 'none';
+            document.getElementById('ep-panel-watchlist').style.display = sub === 'watchlist' ? 'block' : 'none';
+            document.getElementById('ep-panel-sugar-babies').style.display = sub === 'sugar-babies' ? 'block' : 'none';
+            
+            loadEPSubTab(sub);
+        });
+    });
+    
+    // Filter changes
+    const filterType = document.getElementById('filter-ep-type');
+    if (filterType) {
+        filterType.addEventListener('change', () => {
+            epActiveFilters.ep_type = filterType.value;
+            fetchEPListings();
+        });
+    }
+    
+    const filterConf = document.getElementById('filter-ep-confidence');
+    if (filterConf) {
+        filterConf.addEventListener('change', () => {
+            epActiveFilters.confidence = filterConf.value;
+            fetchEPListings();
+        });
+    }
+    
+    const filterMinScore = document.getElementById('filter-ep-min-score');
+    if (filterMinScore) {
+        filterMinScore.addEventListener('change', () => {
+            epActiveFilters.min_score = parseFloat(filterMinScore.value) || 0.55;
+            fetchEPListings();
+        });
+    }
+
+    const filterMinMkt = document.getElementById('filter-ep-min-mktcap');
+    if (filterMinMkt) {
+        filterMinMkt.addEventListener('change', () => {
+            epActiveFilters.min_mktcap = filterMinMkt.value;
+            fetchEPListings();
+        });
+    }
+
+    const filterMaxMkt = document.getElementById('filter-ep-max-mktcap');
+    if (filterMaxMkt) {
+        filterMaxMkt.addEventListener('change', () => {
+            epActiveFilters.max_mktcap = filterMaxMkt.value;
+            fetchEPListings();
+        });
+    }
+    
+    // Refresh button
+    const refreshBtn = document.getElementById('ep-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', triggerEPRefresh);
+    }
+    
+    epListenersBound = true;
+}
+
+function loadEPSubTab(sub) {
+    if (sub === 'today') {
+        fetchEPListings();
+    } else if (sub === 'watchlist') {
+        fetchEPWatchlist();
+    } else if (sub === 'sugar-babies') {
+        fetchEPSugarBabies();
+    }
+}
+
+function fetchEPListings() {
+    const tbody = document.getElementById('ep-table-body');
+    if (tbody && epListingsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    Loading EP listings...
+                </td>
+            </tr>
+        `;
+    }
+    
+    const params = new URLSearchParams({
+        ep_type: epActiveFilters.ep_type,
+        confidence: epActiveFilters.confidence,
+        min_score: epActiveFilters.min_score,
+        min_mktcap: epActiveFilters.min_mktcap,
+        max_mktcap: epActiveFilters.max_mktcap
+    });
+    
+    fetch(`/api/ep/today?${params.toString()}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            epListingsData = data.listings || [];
+            
+            // Update badge in main nav tab if there are HIGH confidence EPs
+            const highCount = data.summary ? (data.summary.HIGH || 0) : 0;
+            const badge = document.getElementById('ep-high-count');
+            if (badge) {
+                badge.innerText = highCount;
+                badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+            }
+            
+            renderEPListingsTable();
+        })
+        .catch(err => {
+            console.error('Error fetching EP listings:', err);
+            if (typeof showToast === 'function') showToast('Failed to load EP listings', 'error');
+        });
+}
+
+function renderEPListingsTable() {
+    const tbody = document.getElementById('ep-table-body');
+    if (!tbody) return;
+    
+    if (epListingsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    No candidates match the selected filters.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = epListingsData.map(item => {
+        let rowStyle = '';
+        if (item.confidence === 'HIGH' && (item.ep_type === 'Growth EP' || item.ep_type === 'Turnaround EP')) {
+            rowStyle = 'background: rgba(16, 185, 129, 0.05);';
+        } else if (item.confidence === 'HIGH' && item.ep_type === 'Volume EP') {
+            rowStyle = 'background: rgba(59, 130, 246, 0.05);';
+        } else if (item.ep_type === 'Short EP') {
+            rowStyle = 'background: rgba(239, 68, 68, 0.05);';
+        }
+        
+        let scoreStyle = 'font-weight: 700;';
+        if (item.ep_score >= 0.72) scoreStyle += ' color: var(--accent-green, #10b981);';
+        else if (item.ep_score >= 0.55) scoreStyle += ' color: var(--accent-blue, #3b82f6);';
+        else scoreStyle += ' color: var(--color-text-secondary);';
+        
+        const changeText = item.gap_pct >= 0 ? `+${item.gap_pct.toFixed(2)}%` : `${item.gap_pct.toFixed(2)}%`;
+        const changeStyle = item.gap_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); ${rowStyle}">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                </td>
+                <td style="font-weight: 500;">${item.ep_type}</td>
+                <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}</td>
+                <td class="text-center" style="color: var(--color-text-secondary);">${item.neglect_score.toFixed(2)}</td>
+                <td class="text-center" style="color: var(--color-text-secondary);">${item.catalyst_score.toFixed(2)}</td>
+                <td class="text-center" style="color: var(--color-text-secondary);">${item.repricing_score.toFixed(2)}</td>
+                <td class="text-right" style="${changeStyle} font-weight: 500;">${changeText}</td>
+                <td class="text-right" style="font-weight: 600; color: #fff;">${item.rel_volume.toFixed(2)}x</td>
+                <td class="text-right">${item.close_loc.toFixed(2)}</td>
+                <td class="text-right">₹${item.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
+                <td class="text-right">₹${item.avg_turnover_cr.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
+                <td style="font-weight: 600; color: ${item.confidence === 'HIGH' ? '#10b981' : item.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af'}">${item.confidence}</td>
+                <td class="text-center">
+                    <button class="btn btn-xs btn-outline" onclick="openTradingView('${item.symbol}.NS')" style="padding: 2px 6px; font-size: 0.7rem;">Chart</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function fetchEPWatchlist() {
+    const tbody = document.getElementById('ep-watchlist-body');
+    if (tbody && epWatchlistData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    Loading watchlist...
+                </td>
+            </tr>
+        `;
+    }
+    
+    fetch('/api/ep/watchlist')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            epWatchlistData = data.watchlist || [];
+            renderEPWatchlistTable();
+        })
+        .catch(err => {
+            console.error('Error fetching EP watchlist:', err);
+            if (typeof showToast === 'function') showToast('Failed to load EP watchlist', 'error');
+        });
+}
+
+function renderEPWatchlistTable() {
+    const tbody = document.getElementById('ep-watchlist-body');
+    if (!tbody) return;
+    
+    if (epWatchlistData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    No active watchlist candidates found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = epWatchlistData.map(item => {
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                </td>
+                <td style="font-weight: 500;">${item.ep_type}</td>
+                <td>${item.catalyst_date}</td>
+                <td class="text-center" style="font-weight: 700; color: var(--accent-blue);">${item.ep_score.toFixed(2)}</td>
+                <td class="text-right">₹${item.entry_price ? item.entry_price.toFixed(2) : '-'}</td>
+                <td class="text-right" style="color: var(--accent-red);">₹${item.stop_price ? item.stop_price.toFixed(2) : '-'}</td>
+                <td class="text-center">${item.days_on_watch} / 20</td>
+                <td><span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">${item.status}</span></td>
+                <td>${item.trigger_type || 'None'}</td>
+                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function fetchEPSugarBabies() {
+    const tbody = document.getElementById('ep-sugar-body');
+    if (tbody && epSugarData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    Loading Sugar Babies...
+                </td>
+            </tr>
+        `;
+    }
+    
+    fetch('/api/ep/sugar-babies')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            epSugarData = data.sugar_babies || [];
+            renderEPSugarTable();
+        })
+        .catch(err => {
+            console.error('Error fetching Sugar Babies:', err);
+            if (typeof showToast === 'function') showToast('Failed to load Sugar Babies', 'error');
+        });
+}
+
+function renderEPSugarTable() {
+    const tbody = document.getElementById('ep-sugar-body');
+    if (!tbody) return;
+    
+    if (epSugarData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    No Sugar Baby listings found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = epSugarData.map(item => {
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                </td>
+                <td>${item.exchange}</td>
+                <td>${item.added_date || '-'}</td>
+                <td class="text-right" style="color: var(--accent-green); font-weight: 600;">+${item.avg_burst_pct ? item.avg_burst_pct.toFixed(1) : '0.0'}%</td>
+                <td class="text-right">${item.avg_burst_days ? item.avg_burst_days.toFixed(1) : '0.0'} days</td>
+                <td class="text-center" style="font-weight: 600;">${item.episode_count || 0}</td>
+                <td>${item.notes || ''}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function triggerEPRefresh() {
+    const refreshBtn = document.getElementById('ep-refresh-btn');
+    if (!refreshBtn) return;
+    
+    const btnText = refreshBtn.querySelector('span');
+    const btnSvg = refreshBtn.querySelector('svg');
+    
+    if (refreshBtn.disabled) return;
+    
+    refreshBtn.disabled = true;
+    if (btnText) btnText.innerText = 'Scanning...';
+    if (btnSvg) btnSvg.classList.add('spin-loader');
+    
+    fetch('/api/ep/refresh', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Sync Error: ${data.error}`, 'error');
+                resetEPBtn();
+                return;
+            }
+            if (typeof showToast === 'function') showToast('Background EP scan started.', 'success');
+            
+            let pollCount = 0;
+            const interval = setInterval(() => {
+                pollCount++;
+                fetch(`/api/ep/today`)
+                    .then(res => res.json())
+                    .then(todayRes => {
+                        if (todayRes.listings && todayRes.listings.length > 0) {
+                            clearInterval(interval);
+                            epListingsData = todayRes.listings;
+                            
+                            const highCount = todayRes.summary ? (todayRes.summary.HIGH || 0) : 0;
+                            const badge = document.getElementById('ep-high-count');
+                            if (badge) {
+                                badge.innerText = highCount;
+                                badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                            }
+                            
+                            renderEPListingsTable();
+                            resetEPBtn();
+                            if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
+                        }
+                    });
+                
+                if (pollCount >= 10) {
+                    clearInterval(interval);
+                    resetEPBtn();
+                }
+            }, 5000);
+        })
+        .catch(err => {
+            console.error('Error triggering EP refresh:', err);
+            if (typeof showToast === 'function') showToast('Failed to start EP scan', 'error');
+            resetEPBtn();
+        });
+        
+    function resetEPBtn() {
+        refreshBtn.disabled = false;
+        if (btnText) btnText.innerText = 'Scan EPs';
+        if (btnSvg) btnSvg.classList.remove('spin-loader');
+    }
+}
+
