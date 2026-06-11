@@ -198,7 +198,7 @@ def test_refresh_ep_screener(mock_fetch_prices, mock_post):
     assert feat[1] > 0.0  # ep_score should be populated and > 0
     assert feat[2] == "Volume EP"
     assert feat[3] in ("HIGH", "MEDIUM", "LOW")
-    assert feat[4] == 1000.0  # 10000000000 / 10000000 = 1000 Cr
+    assert feat[4] == 83500.0  # 10000000000.0 * 83.5 / 10000000 = 83500 Cr
     
     # Check ep_watchlist since ep_score will be high (computed score is high due to 6x vol & 12% change)
     c.execute("SELECT symbol, ep_type, status FROM ep_watchlist WHERE symbol='MOCKSTOCK'")
@@ -301,3 +301,8 @@ def test_api_endpoints(client):
         data = res.get_json()
         assert data["success"] is True
         assert "Background EP refresh started" in data["message"]
+        
+        # Test GET /api/ep/refresh/status
+        res_status = client.get("/api/ep/refresh/status")
+        assert res_status.status_code == 200
+        assert "running" in res_status.get_json()

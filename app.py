@@ -719,23 +719,33 @@ def seed_ipo_listings():
 def compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank):
     """
     All inputs normalized/scaled between 0 and 1.
-    Higher score indicates greater neglect.
+    Higher score indicates greater neglect. Handles None inputs dynamically.
     """
-    # Normalize 3m returns: -40% -> 1.0, +40% -> 0.0
-    n_perf_3m = max(0.0, min(1.0, (0.0 - perf_3m) / 40.0 + 0.5))
-    # Normalize 6m returns: -60% -> 1.0, +60% -> 0.0
-    n_perf_6m = max(0.0, min(1.0, (0.0 - perf_6m) / 60.0 + 0.5))
+    n_perf_3m = max(0.0, min(1.0, (0.0 - perf_3m) / 40.0 + 0.5)) if perf_3m is not None else None
+    n_perf_6m = max(0.0, min(1.0, (0.0 - perf_6m) / 60.0 + 0.5)) if perf_6m is not None else None
+    n_range = max(0.0, min(1.0, 1.0 - (range_60d_pct / 40.0))) if range_60d_pct is not None else None
+    n_vol_rank = max(0.0, min(1.0, 1.0 - avg_vol_rank)) if avg_vol_rank is not None else None
 
-    # Tighter 60-day range = more neglected (0% range -> 1.0, 40% range -> 0.0)
-    n_range = max(0.0, min(1.0, 1.0 - (range_60d_pct / 40.0)))
+    weights = []
+    vals = []
+    if n_perf_3m is not None:
+        weights.append(0.35)
+        vals.append(n_perf_3m)
+    if n_perf_6m is not None:
+        weights.append(0.25)
+        vals.append(n_perf_6m)
+    if n_range is not None:
+        weights.append(0.20)
+        vals.append(n_range)
+    if n_vol_rank is not None:
+        weights.append(0.20)
+        vals.append(n_vol_rank)
 
-    # Lower average volume rank = less interest (1.0 - rank)
-    n_vol_rank = max(0.0, min(1.0, 1.0 - avg_vol_rank))
+    if not weights:
+        return 0.5
 
-    neglect = (0.35 * n_perf_3m +
-               0.25 * n_perf_6m +
-               0.20 * n_range +
-               0.20 * n_vol_rank)
+    total_w = sum(weights)
+    neglect = sum(v * w for v, w in zip(vals, weights)) / total_w
     return round(neglect, 3)
 
 
@@ -1070,6 +1080,60 @@ def refresh_ipo_metrics():
     print("IPO metrics cache refreshed successfully.")
 
 
+def fetch_nse_delivery_data(date_str):
+    """
+    date_str in YYYY-MM-DD format.
+    Downloads the delivery archives data from nseindia.
+    """
+    import urllib.request
+    import csv
+    import io
+    
+    try:
+        parts = date_str.split('-')
+        if len(parts) != 3:
+            return {}
+        ddmmyyyy = f"{parts[2]}{parts[1]}{parts[0]}"
+        url = f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{ddmmyyyy}.csv"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            content = response.read().decode('utf-8')
+            
+        reader = csv.reader(io.StringIO(content))
+        header = next(reader)
+        header = [h.strip() for h in header]
+        
+        try:
+            symbol_idx = header.index("SYMBOL")
+            deliv_qty_idx = header.index("DELIV_QTY")
+            deliv_per_idx = header.index("DELIV_PER")
+        except ValueError:
+            print("[EP Ingest] Delivery columns not found in Bhav Copy header")
+            return {}
+            
+        delivery_map = {}
+        for row in reader:
+            if not row or len(row) <= max(symbol_idx, deliv_qty_idx, deliv_per_idx):
+                continue
+            sym = row[symbol_idx].strip().upper()
+            deliv_qty = row[deliv_qty_idx].strip()
+            deliv_per = row[deliv_per_idx].strip()
+            
+            try:
+                dq = int(deliv_qty)
+                dp = float(deliv_per)
+                delivery_map[sym] = (dq, dp)
+            except ValueError:
+                continue
+        print(f"[EP Ingest] Successfully loaded delivery data for {len(delivery_map)} symbols.")
+        return delivery_map
+    except Exception as e:
+        print(f"[EP Ingest] Failed to fetch delivery data for {date_str}: {e}")
+        return {}
+
+
 def refresh_ep_screener():
     """
     Computes EOD Episodic Pivot (EP) features and updates database tables.
@@ -1106,11 +1170,14 @@ def refresh_ep_screener():
         
     tv_stocks = []
     for item in raw_data:
-        ticker = item.get("s", "")
+        raw_ticker = item.get("s", "")
+        exch = "BSE" if raw_ticker.startswith("BSE:") else "NSE"
+        clean_ticker = raw_ticker.replace("NSE:", "").replace("BSE:", "")
         cols = item.get("d", [])
         if len(cols) == 8:
             tv_stocks.append({
-                "ticker": ticker.replace("NSE:", "").replace("BSE:", ""),
+                "ticker": clean_ticker,
+                "exchange": exch,
                 "name": cols[0],
                 "description": cols[1],
                 "close": cols[2] or 0.0,
@@ -1149,11 +1216,26 @@ def refresh_ep_screener():
     # Limit to top 40 candidates to avoid rate-limiting
     candidates = sorted(candidates, key=lambda x: x[1], reverse=True)[:40]
     
+    # Download latest Bhav Copy to get delivery data
+    delivery_map = {}
+    if candidates:
+        first_s, _ = candidates[0]
+        suffix = ".BO" if first_s['exchange'] == "BSE" else ".NS"
+        first_ticker = f"{first_s['ticker']}{suffix}"
+        try:
+            first_hist = fetch_historical_prices(first_ticker, range_str="1d")
+            if first_hist:
+                feat_date = first_hist[-1]["date"]
+                delivery_map = fetch_nse_delivery_data(feat_date)
+        except Exception as e:
+            print(f"[EP Refresh] Failed to fetch first candidate history to determine date: {e}")
+            
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
     
     for s, rel_vol in candidates:
-        ticker = f"{s['ticker']}.NS"
+        suffix = ".BO" if s['exchange'] == "BSE" else ".NS"
+        ticker = f"{s['ticker']}{suffix}"
         try:
             history = fetch_historical_prices(ticker, range_str="6mo")
             if not history or len(history) < 5:
@@ -1167,6 +1249,28 @@ def refresh_ep_screener():
             if len(closes) < 5:
                 continue
                 
+            # Pre-calculate ATR-14, 20-day average volume, 50-day average volume
+            atr_14_list = [None] * len(history)
+            avg_vol_20_list = [None] * len(history)
+            avg_vol_50_list = [None] * len(history)
+            
+            tr_list = []
+            for i in range(len(history)):
+                if i == 0:
+                    tr_list.append(highs[i] - lows[i])
+                else:
+                    tr_list.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+                    
+            for i in range(len(history)):
+                if i >= 13:
+                    atr_14_list[i] = sum(tr_list[i-13:i+1]) / 14.0
+                if i >= 19:
+                    avg_vol_20_list[i] = sum(volumes[i-19:i+1]) / 20.0
+                if i >= 49:
+                    avg_vol_50_list[i] = sum(volumes[i-49:i+1]) / 50.0
+            
+            feature_date = history[-1]["date"]
+            
             # Save daily bars
             for i in range(1, len(history)):
                 bar = history[i]
@@ -1185,19 +1289,38 @@ def refresh_ep_screener():
                 close_loc = ((col - l) / (h - l)) if (h - l) > 0 else 1.0
                 intra_range = ((h - l) / prev_c * 100) if prev_c else 0.0
                 
+                atr = atr_14_list[i]
+                vol_20 = avg_vol_20_list[i]
+                vol_50 = avg_vol_50_list[i]
+                
+                rel_vol_20 = v / vol_20 if (vol_20 and vol_20 > 0) else None
+                rel_vol_50 = v / vol_50 if (vol_50 and vol_50 > 0) else None
+                
+                dq = None
+                dp = None
+                if t_date == feature_date:
+                    dq, dp = delivery_map.get(s['ticker'].upper(), (None, None))
+                
                 c.execute('''
                     INSERT OR REPLACE INTO daily_bars (
                         symbol, exchange, trade_date, open, high, low, close, volume,
-                        prev_close, gap_pct, close_loc, price_change_pct, intraday_range_pct
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        prev_close, gap_pct, close_loc, price_change_pct, intraday_range_pct,
+                        atr_14, rel_volume_20, rel_volume_50, delivery_qty, delivery_pct
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    s['ticker'], "NSE", t_date, o, h, l, col, v,
-                    prev_c, round(gap, 3), round(close_loc, 3), round(chg, 3), round(intra_range, 3)
+                    s['ticker'], s['exchange'], t_date, o, h, l, col, v,
+                    prev_c, round(gap, 3), round(close_loc, 3), round(chg, 3), round(intra_range, 3),
+                    round(atr, 4) if atr else None,
+                    round(rel_vol_20, 3) if rel_vol_20 else None,
+                    round(rel_vol_50, 3) if rel_vol_50 else None,
+                    dq, dp
                 ))
             
             # Calculate Neglect metrics
-            perf_3m = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else ((closes[-1] - closes[0]) / closes[0] * 100)
-            perf_6m = ((closes[-1] - closes[-126]) / closes[-126] * 100) if len(closes) >= 126 else ((closes[-1] - closes[0]) / closes[0] * 100)
+            # 3m return (requires 63 trading days)
+            perf_3m = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else None
+            # 6m return (requires 126 trading days)
+            perf_6m = ((closes[-1] - closes[-126]) / closes[-126] * 100) if len(closes) >= 126 else None
             
             last_60 = closes[-60:]
             range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
@@ -1212,20 +1335,24 @@ def refresh_ep_screener():
             else:
                 avg_vol_rank = 0.5
                 
-            neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
+            if len(closes) < 63:
+                # IPO guard: fresh listings (< 3 months history) are not neglected
+                neglect_score = 0.20
+            else:
+                neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
             
             # Calculate Catalyst metrics
-            # For Volume EP (Phase 1): event_type is ABNORMAL_VOLUME, no fundamental data yet
             event_type = "ABNORMAL_VOLUME"
-            mktcap_cr = float(s["market_cap_basic"]) / 10000000  # convert to Crores (10 million = 1 crore)
+            USD_TO_INR = 83.5
+            mktcap_cr = float(s["market_cap_basic"]) * USD_TO_INR / 10000000  # convert from USD to INR Crores
             catalyst_score = compute_catalyst_score(event_type, 0, 0, 0, mktcap_cr)
             
             # Calculate Repricing metrics
             yesterday_close = closes[-2] if len(closes) >= 2 else closes[0]
+            today_close = closes[-1]
             today_open = float(history[-1].get("open") or today_close)
             today_high = highs[-1]
             today_low = lows[-1]
-            today_close = closes[-1]
             today_vol = volumes[-1]
             
             gap_pct = ((today_open - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
@@ -1233,21 +1360,22 @@ def refresh_ep_screener():
             price_change_pct = ((today_close - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
             intraday_range_pct = ((today_high - today_low) / yesterday_close * 100) if yesterday_close else 0.0
             
-            # Recalculate rel_volume_20 dynamically
-            avg_vol_20 = sum(volumes[-20:]) / len(volumes[-20:]) if len(volumes) >= 20 else sum(volumes) / len(volumes)
+            # Recalculate rel_volume_20 dynamically using avg_vol_20_list
+            avg_vol_20 = avg_vol_20_list[-1] if avg_vol_20_list[-1] else (sum(volumes) / len(volumes))
             dyn_rel_vol = today_vol / avg_vol_20 if avg_vol_20 > 0 else 1.0
             
             repricing_score = compute_repricing_score(gap_pct, dyn_rel_vol, close_loc, price_change_pct, intraday_range_pct)
             
             # Liquidity check
             eod_turnover_cr = (today_close * today_vol) / 10000000
-            liquidity_ok = eod_turnover_cr >= 1.0 or (avg_vol_20 * today_close / 10000000) >= 0.5
+            liquidity_ok = (
+                eod_turnover_cr >= 5.0        # minimum ₹5 Cr daily turnover
+                and mktcap_cr >= 200.0         # minimum ₹200 Cr market cap
+            )
             
             ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, liquidity_ok)
             ep_type = assign_ep_type(catalyst_score, event_type, dyn_rel_vol, gap_pct, 0, 0)
             confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
-            
-            feature_date = history[-1]["date"]
             
             c.execute('''
                 INSERT OR REPLACE INTO ep_features (
@@ -1257,24 +1385,40 @@ def refresh_ep_screener():
                     ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0.0, 0.0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0)
             ''', (
-                s['ticker'], "NSE", feature_date, round(perf_3m, 3), round(perf_6m, 3), round(range_60d_pct, 3), round(avg_vol_rank, 3),
+                s['ticker'], s['exchange'], feature_date, 
+                round(perf_3m, 3) if perf_3m is not None else None, 
+                round(perf_6m, 3) if perf_6m is not None else None, 
+                round(range_60d_pct, 3), round(avg_vol_rank, 3),
                 neglect_score, event_type, catalyst_score, round(gap_pct, 3), round(dyn_rel_vol, 3), round(close_loc, 3), repricing_score,
                 ep_score, ep_type, confidence, round(mktcap_cr, 2), round(avg_vol_20 * today_close / 10000000, 2)
             ))
             
             # Watchlist addition if EP score >= 0.55
             if ep_score >= 0.55:
-                c.execute('''
-                    INSERT OR IGNORE INTO ep_watchlist (
-                        symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price
-                    ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
-                ''', (
-                    s['ticker'], "NSE", feature_date, ep_type, ep_score, today_close, today_low
-                ))
+                c.execute("SELECT id FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (s['ticker'],))
+                existing = c.fetchone()
+                if existing:
+                    c.execute('''
+                        UPDATE ep_watchlist
+                        SET ep_score = ?, entry_price = ?, stop_price = ?, catalyst_date = ?, ep_type = ?
+                        WHERE id = ?
+                    ''', (ep_score, today_close, today_low, feature_date, ep_type, existing[0]))
+                else:
+                    c.execute('''
+                        INSERT INTO ep_watchlist (
+                            symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price
+                        ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
+                    ''', (
+                        s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low
+                    ))
                 
         except Exception as e:
             print(f"Error computing EP features for {ticker}: {e}")
             
+    # Increment days_on_watch and expire older items in the active watchlist
+    c.execute("UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1 WHERE status = 'ACTIVE'")
+    c.execute("UPDATE ep_watchlist SET status = 'EXPIRED' WHERE days_on_watch > 20 AND status = 'ACTIVE'")
+    
     conn.commit()
     conn.close()
     print("[EP Refresh] EP screening and cache refresh completed.")
@@ -6626,6 +6770,11 @@ def api_refresh_ep():
     
     last_ep_refresh_time = current_time
     return jsonify(success=True, message="Background EP refresh started.")
+
+
+@app.route('/api/ep/refresh/status', methods=['GET'])
+def get_ep_refresh_status():
+    return jsonify(running=ep_refresh_lock.locked())
 
 
 @app.route('/api/ep/today', methods=['GET'])

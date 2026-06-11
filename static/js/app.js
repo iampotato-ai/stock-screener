@@ -11242,27 +11242,34 @@ function triggerEPRefresh() {
             let pollCount = 0;
             const interval = setInterval(() => {
                 pollCount++;
-                fetch(`/api/ep/today`)
+                fetch('/api/ep/refresh/status')
                     .then(res => res.json())
-                    .then(todayRes => {
-                        if (todayRes.listings && todayRes.listings.length > 0) {
+                    .then(statusRes => {
+                        if (!statusRes.running) {
                             clearInterval(interval);
-                            epListingsData = todayRes.listings;
-                            
-                            const highCount = todayRes.summary ? (todayRes.summary.HIGH || 0) : 0;
-                            const badge = document.getElementById('ep-high-count');
-                            if (badge) {
-                                badge.innerText = highCount;
-                                badge.style.display = highCount > 0 ? 'inline-block' : 'none';
-                            }
-                            
-                            renderEPListingsTable();
-                            resetEPBtn();
-                            if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
+                            fetch('/api/ep/today')
+                                .then(res => res.json())
+                                .then(todayRes => {
+                                    epListingsData = todayRes.listings || [];
+                                    
+                                    const highCount = todayRes.summary ? (todayRes.summary.HIGH || 0) : 0;
+                                    const badge = document.getElementById('ep-high-count');
+                                    if (badge) {
+                                        badge.innerText = highCount;
+                                        badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                                    }
+                                    
+                                    renderEPListingsTable();
+                                    resetEPBtn();
+                                    if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
+                                });
                         }
+                    })
+                    .catch(err => {
+                        console.error('Error polling status:', err);
                     });
                 
-                if (pollCount >= 10) {
+                if (pollCount >= 24) { // 2 minutes max
                     clearInterval(interval);
                     resetEPBtn();
                 }
