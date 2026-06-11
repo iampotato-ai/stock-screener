@@ -53,6 +53,8 @@ def test_scoring_helpers():
     # perf_3m=0 (n_perf_3m=0.5), perf_6m=0 (n_perf_6m=0.5), range=20 (n_range=0.5), vol_rank=0.5 (n_vol_rank=0.5)
     # neglect = 0.35*0.5 + 0.25*0.5 + 0.20*0.5 + 0.20*0.5 = 0.50
     assert compute_neglect_score(0.0, 0.0, 20.0, 0.5) == 0.50
+    # Test partial inputs (e.g. IPOs where some metrics are None)
+    assert compute_neglect_score(0.0, None, None, None) == 0.50
     
     # 2. Test Catalyst Score
     # event_type = "BLOWOUT_EARNINGS" -> base 0.90
