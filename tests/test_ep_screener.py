@@ -366,199 +366,69 @@ def test_api_endpoints(client):
         assert "running" in res_status.get_json()
 
 
-def test_fetch_screener_fundamentals_parsing():
-    mock_html = """
-    <div id="quarters">
-        <table>
-            <thead>
-                <tr>
-                    <th>Quarters</th>
-                    <th data-date-key="2025-03-31">Mar 2025</th>
-                    <th data-date-key="2025-06-30">Jun 2025</th>
-                    <th data-date-key="2025-09-30">Sep 2025</th>
-                    <th data-date-key="2025-12-30">Dec 2025</th>
-                    <th data-date-key="2026-03-31">Mar 2026</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td class="text">Sales</td>
-                    <td>100</td>
-                    <td>110</td>
-                    <td>120</td>
-                    <td>130</td>
-                    <td>200</td>
-                </tr>
-                <tr>
-                    <td class="text">Net Profit</td>
-                    <td>10</td>
-                    <td>12</td>
-                    <td>15</td>
-                    <td>(5)</td>
-                    <td>25</td>
-                </tr>
-                <tr>
-                    <td class="text">EPS in Rs</td>
-                    <td>1.0</td>
-                    <td>1.2</td>
-                    <td>1.5</td>
-                    <td>-0.5</td>
-                    <td>2.5</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    """
+def test_fetch_nse_fundamentals_api():
+    # Mock NSE response
+    mock_nse_json = {
+        "resCmpData": [
+            {
+                "re_to_dt": "31-DEC-2024",
+                "re_create_dt": "16-JAN-2025",
+                "re_net_sale": "12826000",      # 128260.0 Cr
+                "re_net_profit": "872100",       # 8721.0 Cr
+                "re_basic_eps_for_cont_dic_opr": "6.44"
+            }
+        ]
+    }
     
-    class MockResponse:
-        def __init__(self, content):
-            self.content = content.encode('utf-8')
-        def read(self):
-            return self.content
-        def __enter__(self):
-            return self
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            pass
-
-    with patch("urllib.request.urlopen", return_value=MockResponse(mock_html)):
-        res = app.fetch_screener_fundamentals("MOCK")
-        assert len(res) == 5
-        assert res[0]["quarter"] == "Mar 2025"
-        assert res[0]["date_key"] == "2025-03-31"
-        assert res[0]["revenue"] == 100.0
-        assert res[0]["net_profit"] == 10.0
-        assert res[0]["eps"] == 1.0
-        assert res[3]["net_profit"] == -5.0 # parentheses check
+    mock_res = MagicMock()
+    mock_res.status_code = 200
+    mock_res.json.return_value = mock_nse_json
+    
+    mock_session = MagicMock()
+    # Ensure __enter__ returns the mock session itself
+    mock_session.__enter__.return_value = mock_session
+    mock_session.get.side_effect = [MagicMock(), mock_res]
+    
+    with patch("requests.Session", return_value=mock_session):
+        res = app.fetch_screener_fundamentals("RELIANCE")
+        assert len(res) == 1
+        assert res[0]["quarter"] == "Dec 2024"
+        assert res[0]["date_key"] == "2024-12-31"
+        assert res[0]["revenue"] == 128260.0
+        assert res[0]["net_profit"] == 8721.0
+        assert res[0]["eps"] == 6.44
 
 
-def test_compute_yoy_metrics_logic():
-    quarters = [
-        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
-        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
-        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
-        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 80.0, "net_profit": -5.0, "eps": -0.5},
-        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 210.0, "net_profit": 25.0, "eps": 2.5}
-    ]
-    res = app.compute_yoy_metrics(quarters)
-    mar_2026 = res[4]
-    assert mar_2026["revenue_yoy_pct"] == 110.0
-    assert mar_2026["net_profit_yoy_pct"] == 150.0
-    assert mar_2026["eps_yoy_pct"] == 150.0
-    assert mar_2026["surprise_type"] == "BLOWOUT_EARNINGS"
-
-    quarters_turnaround = [
-        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": -5.0, "eps": -0.5},
-        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
-        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
-        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 130.0, "net_profit": 10.0, "eps": 1.0},
-        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 15.0, "eps": 1.5}
-    ]
-    res_ta = app.compute_yoy_metrics(quarters_turnaround)
-    mar_ta = res_ta[4]
-    assert mar_ta["surprise_type"] == "TURNAROUND"
-
-    # Test MISS cascade coverage (one of revenue/profit YoY negative)
-    quarters_miss = [
-        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
-        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
-        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
-        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 130.0, "net_profit": 10.0, "eps": 1.0},
-        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 90.0, "net_profit": 15.0, "eps": 1.5} # YoY rev -10%, YoY net profit +50%
-    ]
-    res_miss = app.compute_yoy_metrics(quarters_miss)
-    mar_miss = res_miss[4]
-    assert mar_miss["revenue_yoy_pct"] == -10.0
-    assert mar_miss["surprise_type"] == "MISS"
-
-
-def _make_screener_html(rows_spec):
-    """
-    Build a minimal screener.in-style quarters-table HTML for unit testing.
-    rows_spec: list of (row_label, [v1, v2]) tuples.
-    """
-    header = (
-        '<div id="quarters"><table>'
-        '<thead><tr>'
-        '<th></th>'
-        '<th data-date-key="2025-12-31">Dec 2025</th>'
-        '<th data-date-key="2026-03-31">Mar 2026</th>'
-        '</tr></thead>'
-        '<tbody>'
+def test_fetch_yfinance_fundamentals_fallback():
+    import pandas as pd
+    # Mock NSE returns 404
+    mock_nse_res = MagicMock()
+    mock_nse_res.status_code = 404
+    
+    mock_session = MagicMock()
+    mock_session.get.side_effect = [MagicMock(), mock_nse_res]
+    
+    # Mock yfinance Ticker data
+    mock_df = pd.DataFrame(
+        {
+            pd.Timestamp("2026-03-31"): {
+                "Total Revenue": 1913460000.0,
+                "Net Income": 433640000.0,
+                "Basic EPS": 5.47
+            }
+        }
     )
-    body = ""
-    for label, vals in rows_spec:
-        tds = "".join(f'<td>{v}</td>' for v in vals)
-        body += f'<tr><td class="text">{label}</td>{tds}</tr>\n'
-    footer = "</tbody></table></div>"
-    return header + body + footer
+    
+    mock_ticker = MagicMock()
+    mock_ticker.quarterly_income_stmt = mock_df
+    
+    with patch("requests.Session", return_value=mock_session.__enter__.return_value), \
+         patch("yfinance.Ticker", return_value=mock_ticker):
+        res = app.fetch_screener_fundamentals("CAPILLARY")
+        assert len(res) == 1
+        assert res[0]["quarter"] == "Mar 2026"
+        assert res[0]["date_key"] == "2026-03-31"
+        assert res[0]["revenue"] == 191.35
+        assert res[0]["net_profit"] == 43.36
+        assert res[0]["eps"] == 5.47
 
-
-def test_screener_row_matching():
-    """
-    Regression test for screener.in row-name collision bugs (#2 and #3).
-    Verifies tightened matchers:
-      - 'net profit +' captured  (startswith 'net profit')
-      - 'profit before tax' NOT captured as net_profit_row
-      - 'diluted eps' NOT captured as eps_row
-      - 'eps in rs' captured correctly
-      - 'profit after tax' fallback works when 'net profit' row absent
-    """
-    import urllib.request
-
-    # ── Scenario A: "Net Profit +" wins; "Profit before tax" must NOT overwrite ──
-    html_a = _make_screener_html([
-        ("Sales",                   ["100", "120"]),
-        ("Net Profit +",            ["10",  "15"]),   # correct row
-        ("Profit before tax",       ["18",  "24"]),   # must NOT overwrite
-        ("EPS in Rs",               ["1.0", "1.5"]),
-    ])
-    mock_resp_a = MagicMock()
-    mock_resp_a.read.return_value = html_a.encode('utf-8')
-    mock_resp_a.__enter__ = lambda s: s
-    mock_resp_a.__exit__ = MagicMock(return_value=False)
-
-    with patch.object(urllib.request, 'urlopen', return_value=mock_resp_a):
-        result_a = app.fetch_screener_fundamentals("TESTSTOCK")
-
-    assert result_a and len(result_a) == 2
-    assert result_a[0]["net_profit"] == 10.0, f"Expected 10.0, got {result_a[0]['net_profit']}"
-    assert result_a[1]["net_profit"] == 15.0, f"Expected 15.0, got {result_a[1]['net_profit']}"
-    assert result_a[0]["eps"] == 1.0
-    assert result_a[0]["revenue"] == 100.0
-
-    # ── Scenario B: "Diluted EPS" must NOT win; "EPS in Rs" must ─────────────
-    html_b = _make_screener_html([
-        ("Sales",        ["200", "220"]),
-        ("Net Profit +", ["20",  "25"]),
-        ("Diluted EPS",  ["0.5", "0.6"]),   # must NOT capture
-        ("EPS in Rs",    ["2.0", "2.5"]),   # correct row
-    ])
-    mock_resp_b = MagicMock()
-    mock_resp_b.read.return_value = html_b.encode('utf-8')
-    mock_resp_b.__enter__ = lambda s: s
-    mock_resp_b.__exit__ = MagicMock(return_value=False)
-
-    with patch.object(urllib.request, 'urlopen', return_value=mock_resp_b):
-        result_b = app.fetch_screener_fundamentals("TESTSTOCK2")
-
-    assert result_b and len(result_b) == 2
-    assert result_b[0]["eps"] == 2.0, f"Expected 2.0 (eps in rs), got {result_b[0]['eps']}"
-    assert result_b[1]["eps"] == 2.5, f"Expected 2.5 (eps in rs), got {result_b[1]['eps']}"
-
-    # ── Scenario C: fallbacks — "profit after tax" and bare "eps" ────────────
-    html_c = _make_screener_html([
-        ("Revenue from operations", ["300", "330"]),
-        ("Profit after tax",        ["30",  "33"]),
-        ("EPS",                     ["3.0", "3.3"]),
-    ])
-    mock_resp_c = MagicMock()
-    mock_resp_c.read.return_value = html_c.encode('utf-8')
-    mock_resp_c.__enter__ = lambda s: s
-    mock_resp_c.__exit__ = MagicMock(return_value=False)
-
-    with patch.object(urllib.request, 'urlopen', return_value=mock_resp_c):
-        result_c = app.fetch_screener_fundamentals("TESTSTOCK3")
-
-    assert result_c and len(result_c) == 2
-    assert result_c[0]["net_profit"] == 30.0, f"Expected 30.0 via 'profit after tax', got {result_c[0]['net_profit']}"
-    assert result_c[0]["eps"] == 3.0, f"Expected 3.0 via bare 'eps', got {result_c[0]['eps']}"

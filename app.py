@@ -1086,121 +1086,197 @@ def refresh_ipo_metrics():
 
 def fetch_screener_fundamentals(symbol):
     """
-    Scrapes quarterly results from screener.in for a given symbol.
-    # FRAGILE: screener.in HTML structure
-    # TODO: Phase 3 — add EBITDA row scraping
+    Fetches quarterly results for a given symbol.
+    First tries the NSE results-comparision API (returns clean JSON).
+    If that returns 404 or fails, falls back to Yahoo Finance (yfinance).
+    Returns list of dicts.
     """
-    import urllib.request
-    import re
-    url = f"https://www.screener.in/company/{symbol}/"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    import requests
+    import yfinance as yf
+    import pandas as pd
+    import datetime
+
+    # 1. Try NSE results-comparision API first
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
+    }
+    url = f"https://www.nseindia.com/api/results-comparision?symbol={symbol}"
+
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            content = response.read().decode('utf-8')
+        with nse_fetch_lock:
+            with requests.Session() as s:
+                # Set cookies first
+                s.get("https://www.nseindia.com/companies-listing/corporate-filings-announcements", headers=headers, timeout=10)
+                res = s.get(url, headers=headers, timeout=10)
         
-        # 1. Find the quarters table
-        quarters_match = re.search(r'id=["\']quarters["\']', content)
-        if not quarters_match:
-            return []
-        start_idx = quarters_match.start()
-        table_start = content.find('<table', start_idx)
-        table_end = content.find('</table>', table_start)
-        if table_start == -1 or table_end == -1:
-            return []
-        table_html = content[table_start:table_end+8]
-        
-        # 2. Parse headers to get quarters and data-date-keys
-        thead_match = re.search(r'<thead.*?>(.*?)</thead>', table_html, re.DOTALL)
-        if not thead_match:
-            return []
-        thead_html = thead_match.group(1)
-        th_matches = re.finditer(r'<th\b[^>]*data-date-key=["\'](.*?)["\'][^>]*>(.*?)</th>', thead_html, re.DOTALL)
-        quarters = []
-        for m in th_matches:
-            date_key = m.group(1).strip()
-            q_name = re.sub(r'<.*?>', '', m.group(2)).strip()
-            quarters.append({"quarter": q_name, "date_key": date_key})
-        # FRAGILE: screener.in HTML structure version check
-        if len(quarters) == 0:
-            print(f"[Warning] Parsed 0 quarters from screener.in for {symbol}. The HTML structure might have changed.")
-            
-        # 3. Parse rows in tbody
-        tbody_match = re.search(r'<tbody.*?>(.*?)</tbody>', table_html, re.DOTALL)
-        if not tbody_match:
-            return []
-        tbody_html = tbody_match.group(1)
-        rows = re.findall(r'<tr.*?>.*?</tr>', tbody_html, re.DOTALL)
-        
-        revenue_row = None
-        net_profit_row = None
-        eps_row = None
-        
-        for r in rows:
-            td_name_match = re.search(r'<td class="text".*?>(.*?)</td>', r, re.DOTALL)
-            if not td_name_match:
+        if res.status_code == 200:
+            data = res.json()
+            cmp_data = data.get("resCmpData", [])
+            if cmp_data:
+                months_map = {
+                    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+                    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12
+                }
+                parsed_quarters = []
+                for row in cmp_data:
+                    to_dt_str = row.get("re_to_dt")
+                    if not to_dt_str:
+                        continue
+                    parts = to_dt_str.split('-')
+                    if len(parts) != 3:
+                        continue
+                    day = int(parts[0])
+                    month_str = parts[1].upper()
+                    year = int(parts[2])
+                    month = months_map.get(month_str)
+                    if not month:
+                        continue
+                    date_key = f"{year:04d}-{month:02d}-{day:02d}"
+
+                    month_names = {
+                        3: "Mar", 6: "Jun", 9: "Sep", 12: "Dec"
+                    }
+                    q_name = month_names.get(month, month_str)
+                    quarter_label = f"{q_name} {year}"
+
+                    result_date = None
+                    create_dt_str = row.get("re_create_dt")
+                    if create_dt_str:
+                        c_parts = create_dt_str.split('-')
+                        if len(c_parts) == 3:
+                            c_day = int(c_parts[0])
+                            c_month = months_map.get(c_parts[1].upper(), 1)
+                            c_year = int(c_parts[2])
+                            result_date = f"{c_year:04d}-{c_month:02d}-{c_day:02d}"
+
+                    # Net Sales / Revenue in Lakhs -> convert to Crores
+                    rev_lakhs = row.get("re_net_sale")
+                    revenue = None
+                    if rev_lakhs is not None:
+                        revenue = round(float(str(rev_lakhs).replace(',', '')) / 100.0, 2)
+
+                    # Net profit in Lakhs -> convert to Crores
+                    profit_lakhs = row.get("re_net_profit") or row.get("re_con_pro_loss")
+                    net_profit = None
+                    if profit_lakhs is not None:
+                        net_profit = round(float(str(profit_lakhs).replace(',', '')) / 100.0, 2)
+
+                    # Basic EPS
+                    eps_val = row.get("re_basic_eps_for_cont_dic_opr") or row.get("re_dilut_eps_for_cont_dic_opr") or row.get("re_basic_eps")
+                    eps = None
+                    if eps_val is not None:
+                        eps = round(float(str(eps_val).replace(',', '')), 2)
+
+                    parsed_quarters.append({
+                        "quarter": quarter_label,
+                        "date_key": date_key,
+                        "result_date": result_date,
+                        "revenue": revenue,
+                        "net_profit": net_profit,
+                        "eps": eps
+                    })
+                
+                if parsed_quarters:
+                    parsed_quarters.sort(key=lambda x: x["date_key"])
+                    return parsed_quarters
+    except Exception as e:
+        print(f"[NSE Ingest] Failed to fetch corporate results from NSE for {symbol}: {e}")
+
+    # 2. Fall back to Yahoo Finance (yfinance)
+    try:
+        # Try NSE symbol format first, then fall back to BSE
+        ticker = yf.Ticker(f"{symbol}.NS")
+        df = ticker.quarterly_income_stmt
+        if df is None or df.empty:
+            ticker = yf.Ticker(f"{symbol}.BO")
+            df = ticker.quarterly_income_stmt
+            if df is None or df.empty:
+                return []
+
+        parsed_quarters = []
+        for col in df.columns:
+            if not isinstance(col, (pd.Timestamp, datetime.datetime)):
                 continue
-            name_text = re.sub(r'<.*?>', '', td_name_match.group(1)).strip().lower()
-            
-            # Extract values
-            td_all = re.findall(r'<td.*?>.*?</td>', r, re.DOTALL)
-            val_tds = td_all[1:]
-            vals = []
-            for v in val_tds:
-                v_clean = re.sub(r'<.*?>', '', v).replace('&nbsp;', '').strip()
-                v_val = None
-                if v_clean and v_clean not in ('-', ''):
-                    try:
-                        is_neg = False
-                        if v_clean.startswith('(') and v_clean.endswith(')'):
-                            is_neg = True
-                            v_clean = v_clean[1:-1]
-                        v_val = float(v_clean.replace(',', ''))
-                        if is_neg:
-                            v_val = -v_val
-                    except ValueError:
-                        pass
-                vals.append(v_val)
-                
-            if any(x in name_text for x in ('sales', 'revenue', 'interest earned')):
-                revenue_row = vals
-            elif name_text.startswith('net profit') or name_text == 'profit after tax':
-                # FRAGILE: anchored to start — avoids "Profit before tax", "Other income" etc.
-                net_profit_row = vals
-            elif name_text.startswith('eps in rs') or name_text == 'eps':
-                # FRAGILE: anchored — avoids "Diluted EPS" or annualised EPS variants
-                eps_row = vals
-                
-        # Assemble list of quarters
-        fundamentals_list = []
-        for idx, q in enumerate(quarters):
-            rev = revenue_row[idx] if revenue_row and idx < len(revenue_row) else None
-            prof = net_profit_row[idx] if net_profit_row and idx < len(net_profit_row) else None
-            eps_val = eps_row[idx] if eps_row and idx < len(eps_row) else None
-            
-            fundamentals_list.append({
-                "quarter": q["quarter"],
-                "date_key": q["date_key"],
-                "revenue": rev,
-                "net_profit": prof,
+
+            date_key = col.strftime("%Y-%m-%d")
+
+            month_names = {
+                1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+                7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"
+            }
+            q_name = month_names.get(col.month, "Q")
+            quarter_label = f"{q_name} {col.year}"
+
+            # Revenue in Rs -> convert to Crores
+            revenue_val = None
+            for idx in ["Total Revenue", "Operating Revenue"]:
+                if idx in df.index:
+                    val = df.loc[idx, col]
+                    if pd.notna(val) and val != 0:
+                        revenue_val = round(float(val) / 10000000.0, 2)
+                        break
+
+            # Net Profit in Rs -> convert to Crores
+            net_profit_val = None
+            for idx in ["Net Income", "Net Income Common Stockholders", "Net Income Including Noncontrolling Interests"]:
+                if idx in df.index:
+                    val = df.loc[idx, col]
+                    if pd.notna(val):
+                        net_profit_val = round(float(val) / 10000000.0, 2)
+                        break
+
+            # EPS
+            eps_val = None
+            for idx in ["Basic EPS", "Diluted EPS"]:
+                if idx in df.index:
+                    val = df.loc[idx, col]
+                    if pd.notna(val):
+                        eps_val = round(float(val), 2)
+                        break
+
+            parsed_quarters.append({
+                "quarter": quarter_label,
+                "date_key": date_key,
+                "result_date": date_key, # Use end date as proxy
+                "revenue": revenue_val,
+                "net_profit": net_profit_val,
                 "eps": eps_val
             })
-        return fundamentals_list
+
+        if parsed_quarters:
+            parsed_quarters.sort(key=lambda x: x["date_key"])
+            return parsed_quarters
     except Exception as e:
-        print(f"[EP Ingest] Failed to fetch/parse screener.in for {symbol}: {e}")
-        return []
+        print(f"[Yahoo Ingest] Failed to fetch quarterly financials from yfinance for {symbol}: {e}")
+
+    return []
 
 
 def compute_yoy_metrics(quarters_data):
     """
     Computes YoY metrics, consecutive quarters of growth, and surprise types.
-    Note: quarters_data is ordered oldest-first (from left-to-right on screener.in columns),
-    so i - 4 correctly points to the corresponding quarter from one year (4 quarters) ago.
+    Matches the prior year's corresponding quarter by date proximity (approx. 365 days)
+    to be robust against missing quarters or shorter data lengths.
     """
+    from datetime import datetime
+
+    # Pre-calculate YoY metrics for all quarters using date matching
     for i in range(len(quarters_data)):
         q = quarters_data[i]
-        if i >= 4:
-            prev_q = quarters_data[i - 4]
+        q_date = datetime.strptime(q["date_key"], "%Y-%m-%d")
+        
+        # Find the quarter from one year ago (340 to 380 days before q)
+        prev_q = None
+        for candidate in quarters_data:
+            c_date = datetime.strptime(candidate["date_key"], "%Y-%m-%d")
+            diff_days = (q_date - c_date).days
+            if 340 <= diff_days <= 380:
+                prev_q = candidate
+                break
+        
+        if prev_q:
             if q["revenue"] is not None and prev_q["revenue"] and prev_q["revenue"] > 0:
                 q["revenue_yoy_pct"] = round((q["revenue"] - prev_q["revenue"]) / prev_q["revenue"] * 100, 2)
             else:
@@ -1215,11 +1291,15 @@ def compute_yoy_metrics(quarters_data):
                 q["eps_yoy_pct"] = round((q["eps"] - prev_q["eps"]) / prev_q["eps"] * 100, 2)
             else:
                 q["eps_yoy_pct"] = None
+                
+            q["_prev_q"] = prev_q  # temporary key for surprise classification
         else:
             q["revenue_yoy_pct"] = None
             q["net_profit_yoy_pct"] = None
             q["eps_yoy_pct"] = None
+            q["_prev_q"] = None
             
+    # Calculate consecutive quarters of growth
     for i in range(len(quarters_data)):
         consec = 0
         idx = i
@@ -1233,15 +1313,14 @@ def compute_yoy_metrics(quarters_data):
             break
         quarters_data[i]["consecutive_quarters_growth"] = consec
         
+        # Surprise classification
         q_rev_yoy = quarters_data[i]["revenue_yoy_pct"]
         q_prof_yoy = quarters_data[i]["net_profit_yoy_pct"]
         q_profit = quarters_data[i]["net_profit"]
-        prev_profit = quarters_data[i-4]["net_profit"] if i >= 4 else None
         
-        # TODO: Phase 3 refinement — blowout turnaround detection.
-        # Currently, if prev_profit < 0, q_prof_yoy is None, meaning a blowout from a negative profit base
-        # is classified as TURNAROUND. We can calculate YoY percentage growth using absolute base values:
-        # e.g., (q_profit - prev_profit) / abs(prev_profit) * 100 to allow BLOWOUT_EARNINGS classification.
+        prev_q = quarters_data[i].get("_prev_q")
+        prev_profit = prev_q["net_profit"] if prev_q else None
+        
         surprise = "UNKNOWN"
         if q_rev_yoy is not None:
             if q_prof_yoy is not None and q_rev_yoy >= 100 and q_prof_yoy >= 100:
@@ -1255,6 +1334,10 @@ def compute_yoy_metrics(quarters_data):
             elif q_prof_yoy is not None:
                 surprise = "BEAT"
         quarters_data[i]["surprise_type"] = surprise
+        
+        # Clean up temporary key
+        if "_prev_q" in quarters_data[i]:
+            del quarters_data[i]["_prev_q"]
         
     return quarters_data
 
@@ -1288,54 +1371,79 @@ def fetch_nse_delivery_data(date_str):
     """
     date_str in YYYY-MM-DD format.
     Downloads the delivery archives data from nseindia.
+    Falls back to previous days (up to 7 days) if the target date is not available.
     """
     import urllib.request
+    import urllib.error
     import csv
     import io
+    from datetime import datetime, timedelta
     
     try:
-        parts = date_str.split('-')
-        if len(parts) != 3:
-            return {}
-        ddmmyyyy = f"{parts[2]}{parts[1]}{parts[0]}"
+        current_dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        print(f"[EP Ingest] Invalid date format for delivery data: {date_str}")
+        return {}
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    # Try current date, then walk backward up to 7 days
+    for offset in range(8):
+        target_dt = current_dt - timedelta(days=offset)
+        target_date_str = target_dt.strftime("%Y-%m-%d")
+        ddmmyyyy = target_dt.strftime("%d%m%Y")
         url = f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{ddmmyyyy}.csv"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            content = response.read().decode('utf-8')
-            
-        reader = csv.reader(io.StringIO(content))
-        header = next(reader)
-        header = [h.strip() for h in header]
         
         try:
-            symbol_idx = header.index("SYMBOL")
-            deliv_qty_idx = header.index("DELIV_QTY")
-            deliv_per_idx = header.index("DELIV_PER")
-        except ValueError:
-            print("[EP Ingest] Delivery columns not found in Bhav Copy header")
-            return {}
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                content = response.read().decode('utf-8')
             
-        delivery_map = {}
-        for row in reader:
-            if not row or len(row) <= max(symbol_idx, deliv_qty_idx, deliv_per_idx):
-                continue
-            sym = row[symbol_idx].strip().upper()
-            deliv_qty = row[deliv_qty_idx].strip()
-            deliv_per = row[deliv_per_idx].strip()
+            reader = csv.reader(io.StringIO(content))
+            header = next(reader)
+            header = [h.strip() for h in header]
             
             try:
-                dq = int(deliv_qty)
-                dp = float(deliv_per)
-                delivery_map[sym] = (dq, dp)
+                symbol_idx = header.index("SYMBOL")
+                deliv_qty_idx = header.index("DELIV_QTY")
+                deliv_per_idx = header.index("DELIV_PER")
             except ValueError:
-                continue
-        print(f"[EP Ingest] Successfully loaded delivery data for {len(delivery_map)} symbols.")
-        return delivery_map
-    except Exception as e:
-        print(f"[EP Ingest] Failed to fetch delivery data for {date_str}: {e}")
-        return {}
+                print(f"[EP Ingest] Delivery columns not found in Bhav Copy header for {target_date_str}")
+                return {}
+                
+            delivery_map = {}
+            for row in reader:
+                if not row or len(row) <= max(symbol_idx, deliv_qty_idx, deliv_per_idx):
+                    continue
+                sym = row[symbol_idx].strip().upper()
+                deliv_qty = row[deliv_qty_idx].strip()
+                deliv_per = row[deliv_per_idx].strip()
+                
+                try:
+                    dq = int(deliv_qty)
+                    dp = float(deliv_per)
+                    delivery_map[sym] = (dq, dp)
+                except ValueError:
+                    continue
+            
+            if offset > 0:
+                print(f"[EP Ingest] Successfully loaded delivery data for {target_date_str} (fallback offset: {offset} days).")
+            else:
+                print(f"[EP Ingest] Successfully loaded delivery data for {target_date_str}.")
+            return delivery_map
+            
+        except urllib.error.HTTPError as he:
+            if he.code == 404:
+                print(f"[EP Ingest] Delivery data not found for {target_date_str} (HTTP 404). Trying previous day...")
+            else:
+                print(f"[EP Ingest] HTTP error fetching delivery data for {target_date_str}: {he}. Trying previous day...")
+            continue
+        except Exception as e:
+            print(f"[EP Ingest] Error fetching delivery data for {target_date_str}: {e}. Trying previous day...")
+            continue
+            
+    print(f"[EP Ingest] Failed to fetch delivery data for {date_str} or any of the previous 7 days.")
+    return {}
 
 
 def refresh_ep_screener():
