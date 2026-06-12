@@ -24,6 +24,7 @@ from journal_math import compute_pnl_and_r
 from rrg_math import compute_jdk_rs, compute_quadrant
 from forecast_math import compute_forecast_metrics
 import pattern_detection
+from fx_utils import fetch_usd_inr_rate
 
 
 
@@ -1674,8 +1675,10 @@ def refresh_ep_screener():
                 neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
             
             # Calculate Catalyst metrics
-            USD_TO_INR = 83.5
-            mktcap_cr = float(s["market_cap_basic"]) * USD_TO_INR / 10000000  # convert from USD to INR Crores
+            # NOTE: scanner.tradingview.com/india/scan returns market_cap_basic in INR already.
+            # Do NOT multiply by a USD→INR rate — that was a ~84x inflation bug.
+            # fetch_usd_inr_rate() is available (from fx_utils) for any future global-scanner queries.
+            mktcap_cr = float(s["market_cap_basic"]) / 10_000_000  # INR → INR Crores
             catalyst_score = compute_catalyst_score(
                 event_type=resolved_event_type,
                 revenue_growth=revenue_growth,
