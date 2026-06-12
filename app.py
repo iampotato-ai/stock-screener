@@ -1164,9 +1164,11 @@ def fetch_screener_fundamentals(symbol):
                 
             if any(x in name_text for x in ('sales', 'revenue', 'interest earned')):
                 revenue_row = vals
-            elif any(x in name_text for x in ('net profit', 'profit after tax')):
+            elif name_text.startswith('net profit') or name_text == 'profit after tax':
+                # FRAGILE: anchored to start — avoids "Profit before tax", "Other income" etc.
                 net_profit_row = vals
-            elif 'eps' in name_text:
+            elif name_text.startswith('eps in rs') or name_text == 'eps':
+                # FRAGILE: anchored — avoids "Diluted EPS" or annualised EPS variants
                 eps_row = vals
                 
         # Assemble list of quarters

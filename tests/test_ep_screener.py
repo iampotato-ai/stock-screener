@@ -470,3 +470,95 @@ def test_compute_yoy_metrics_logic():
     assert mar_miss["revenue_yoy_pct"] == -10.0
     assert mar_miss["surprise_type"] == "MISS"
 
+
+def _make_screener_html(rows_spec):
+    """
+    Build a minimal screener.in-style quarters-table HTML for unit testing.
+    rows_spec: list of (row_label, [v1, v2]) tuples.
+    """
+    header = (
+        '<div id="quarters"><table>'
+        '<thead><tr>'
+        '<th></th>'
+        '<th data-date-key="2025-12-31">Dec 2025</th>'
+        '<th data-date-key="2026-03-31">Mar 2026</th>'
+        '</tr></thead>'
+        '<tbody>'
+    )
+    body = ""
+    for label, vals in rows_spec:
+        tds = "".join(f'<td>{v}</td>' for v in vals)
+        body += f'<tr><td class="text">{label}</td>{tds}</tr>\n'
+    footer = "</tbody></table></div>"
+    return header + body + footer
+
+
+def test_screener_row_matching():
+    """
+    Regression test for screener.in row-name collision bugs (#2 and #3).
+    Verifies tightened matchers:
+      - 'net profit +' captured  (startswith 'net profit')
+      - 'profit before tax' NOT captured as net_profit_row
+      - 'diluted eps' NOT captured as eps_row
+      - 'eps in rs' captured correctly
+      - 'profit after tax' fallback works when 'net profit' row absent
+    """
+    import urllib.request
+
+    # ── Scenario A: "Net Profit +" wins; "Profit before tax" must NOT overwrite ──
+    html_a = _make_screener_html([
+        ("Sales",                   ["100", "120"]),
+        ("Net Profit +",            ["10",  "15"]),   # correct row
+        ("Profit before tax",       ["18",  "24"]),   # must NOT overwrite
+        ("EPS in Rs",               ["1.0", "1.5"]),
+    ])
+    mock_resp_a = MagicMock()
+    mock_resp_a.read.return_value = html_a.encode('utf-8')
+    mock_resp_a.__enter__ = lambda s: s
+    mock_resp_a.__exit__ = MagicMock(return_value=False)
+
+    with patch.object(urllib.request, 'urlopen', return_value=mock_resp_a):
+        result_a = app.fetch_screener_fundamentals("TESTSTOCK")
+
+    assert result_a and len(result_a) == 2
+    assert result_a[0]["net_profit"] == 10.0, f"Expected 10.0, got {result_a[0]['net_profit']}"
+    assert result_a[1]["net_profit"] == 15.0, f"Expected 15.0, got {result_a[1]['net_profit']}"
+    assert result_a[0]["eps"] == 1.0
+    assert result_a[0]["revenue"] == 100.0
+
+    # ── Scenario B: "Diluted EPS" must NOT win; "EPS in Rs" must ─────────────
+    html_b = _make_screener_html([
+        ("Sales",        ["200", "220"]),
+        ("Net Profit +", ["20",  "25"]),
+        ("Diluted EPS",  ["0.5", "0.6"]),   # must NOT capture
+        ("EPS in Rs",    ["2.0", "2.5"]),   # correct row
+    ])
+    mock_resp_b = MagicMock()
+    mock_resp_b.read.return_value = html_b.encode('utf-8')
+    mock_resp_b.__enter__ = lambda s: s
+    mock_resp_b.__exit__ = MagicMock(return_value=False)
+
+    with patch.object(urllib.request, 'urlopen', return_value=mock_resp_b):
+        result_b = app.fetch_screener_fundamentals("TESTSTOCK2")
+
+    assert result_b and len(result_b) == 2
+    assert result_b[0]["eps"] == 2.0, f"Expected 2.0 (eps in rs), got {result_b[0]['eps']}"
+    assert result_b[1]["eps"] == 2.5, f"Expected 2.5 (eps in rs), got {result_b[1]['eps']}"
+
+    # ── Scenario C: fallbacks — "profit after tax" and bare "eps" ────────────
+    html_c = _make_screener_html([
+        ("Revenue from operations", ["300", "330"]),
+        ("Profit after tax",        ["30",  "33"]),
+        ("EPS",                     ["3.0", "3.3"]),
+    ])
+    mock_resp_c = MagicMock()
+    mock_resp_c.read.return_value = html_c.encode('utf-8')
+    mock_resp_c.__enter__ = lambda s: s
+    mock_resp_c.__exit__ = MagicMock(return_value=False)
+
+    with patch.object(urllib.request, 'urlopen', return_value=mock_resp_c):
+        result_c = app.fetch_screener_fundamentals("TESTSTOCK3")
+
+    assert result_c and len(result_c) == 2
+    assert result_c[0]["net_profit"] == 30.0, f"Expected 30.0 via 'profit after tax', got {result_c[0]['net_profit']}"
+    assert result_c[0]["eps"] == 3.0, f"Expected 3.0 via bare 'eps', got {result_c[0]['eps']}"
