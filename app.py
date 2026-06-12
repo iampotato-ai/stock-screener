@@ -1105,7 +1105,7 @@ def fetch_screener_fundamentals(symbol):
     url = f"https://www.nseindia.com/api/results-comparision?symbol={symbol}"
 
     try:
-        with nse_fetch_lock:
+        with nse_results_lock:
             with requests.Session() as s:
                 # Set cookies first
                 s.get("https://www.nseindia.com/companies-listing/corporate-filings-announcements", headers=headers, timeout=10)
@@ -1175,7 +1175,8 @@ def fetch_screener_fundamentals(symbol):
                         "result_date": result_date,
                         "revenue": revenue,
                         "net_profit": net_profit,
-                        "eps": eps
+                        "eps": eps,
+                        "source": "NSE"
                     })
                 
                 if parsed_quarters:
@@ -1209,7 +1210,9 @@ def fetch_screener_fundamentals(symbol):
             q_name = month_names.get(col.month, "Q")
             quarter_label = f"{q_name} {col.year}"
 
-            # Revenue in Rs -> convert to Crores
+            # Revenue in Rs -> convert to Crores. Note: yfinance returns raw absolute values in Rupees
+            # (unlike screener.in or NSE which can be scaled in Lakhs/Crores depending on filing).
+            # Hence, dividing by 1 Crore (10,000,000) is correct to standardize to Crores.
             revenue_val = None
             for idx in ["Total Revenue", "Operating Revenue"]:
                 if idx in df.index:
@@ -1218,7 +1221,8 @@ def fetch_screener_fundamentals(symbol):
                         revenue_val = round(float(val) / 10000000.0, 2)
                         break
 
-            # Net Profit in Rs -> convert to Crores
+            # Net Profit in Rs -> convert to Crores. Note: yfinance returns raw absolute values in Rupees,
+            # so we divide by 1 Crore (10,000,000) to standardize to Crores.
             net_profit_val = None
             for idx in ["Net Income", "Net Income Common Stockholders", "Net Income Including Noncontrolling Interests"]:
                 if idx in df.index:
@@ -1242,7 +1246,8 @@ def fetch_screener_fundamentals(symbol):
                 "result_date": date_key, # Use end date as proxy
                 "revenue": revenue_val,
                 "net_profit": net_profit_val,
-                "eps": eps_val
+                "eps": eps_val,
+                "source": "Yahoo Finance"
             })
 
         if parsed_quarters:
@@ -1268,13 +1273,16 @@ def compute_yoy_metrics(quarters_data):
         q_date = datetime.strptime(q["date_key"], "%Y-%m-%d")
         
         # Find the quarter from one year ago (340 to 380 days before q)
-        prev_q = None
+        candidates_in_range = []
         for candidate in quarters_data:
             c_date = datetime.strptime(candidate["date_key"], "%Y-%m-%d")
             diff_days = (q_date - c_date).days
             if 340 <= diff_days <= 380:
-                prev_q = candidate
-                break
+                candidates_in_range.append((candidate, diff_days))
+        
+        prev_q = None
+        if candidates_in_range:
+            prev_q = min(candidates_in_range, key=lambda item: abs(item[1] - 365))[0]
         
         if prev_q:
             if q["revenue"] is not None and prev_q["revenue"] and prev_q["revenue"] > 0:
@@ -1643,9 +1651,9 @@ def refresh_ep_screener():
                             consecutive_quarters_growth, source
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
-                        s['ticker'], s['exchange'], q['date_key'], q['quarter'], q['revenue'], q['revenue_yoy_pct'],
+                        s['ticker'], s['exchange'], q.get('result_date') or q['date_key'], q['quarter'], q['revenue'], q['revenue_yoy_pct'],
                         q['net_profit'], q['net_profit_yoy_pct'], q['eps'], q['eps_yoy_pct'], q['surprise_type'],
-                        q['consecutive_quarters_growth'], 'screener.in'
+                        q['consecutive_quarters_growth'], q.get('source', 'screener.in')
                     ))
 
             # Ingest Announcements (NSE only)
@@ -2022,6 +2030,7 @@ def refresh_ep_screener():
 
 # Global lock to prevent concurrent NSE API fetches across threads
 nse_fetch_lock = threading.Lock()
+nse_results_lock = threading.Lock()
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 

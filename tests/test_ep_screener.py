@@ -406,6 +406,7 @@ def test_fetch_yfinance_fundamentals_fallback():
     mock_nse_res.status_code = 404
     
     mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
     mock_session.get.side_effect = [MagicMock(), mock_nse_res]
     
     # Mock yfinance Ticker data
@@ -422,7 +423,7 @@ def test_fetch_yfinance_fundamentals_fallback():
     mock_ticker = MagicMock()
     mock_ticker.quarterly_income_stmt = mock_df
     
-    with patch("requests.Session", return_value=mock_session.__enter__.return_value), \
+    with patch("requests.Session", return_value=mock_session), \
          patch("yfinance.Ticker", return_value=mock_ticker):
         res = app.fetch_screener_fundamentals("CAPILLARY")
         assert len(res) == 1
