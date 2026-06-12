@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import threading
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import sqlite3
 import numpy as np
 import pandas as pd
@@ -814,7 +814,7 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
 def compute_ep_score(neglect_score, catalyst_score, repricing_score,
                      liquidity_ok=True):
     raw = (0.25 * neglect_score +
-           0.35 * catalyst_score +
+           0.35 * abs(catalyst_score) +
            0.30 * repricing_score)
 
     # Small liquidity penalty if stock is too illiquid
@@ -1234,6 +1234,10 @@ def compute_yoy_metrics(quarters_data):
         q_profit = quarters_data[i]["net_profit"]
         prev_profit = quarters_data[i-4]["net_profit"] if i >= 4 else None
         
+        # TODO: Phase 3 refinement — blowout turnaround detection.
+        # Currently, if prev_profit < 0, q_prof_yoy is None, meaning a blowout from a negative profit base
+        # is classified as TURNAROUND. We can calculate YoY percentage growth using absolute base values:
+        # e.g., (q_profit - prev_profit) / abs(prev_profit) * 100 to allow BLOWOUT_EARNINGS classification.
         surprise = "UNKNOWN"
         if q_rev_yoy is not None:
             if q_prof_yoy is not None and q_rev_yoy >= 100 and q_prof_yoy >= 100:
@@ -1249,6 +1253,31 @@ def compute_yoy_metrics(quarters_data):
         quarters_data[i]["surprise_type"] = surprise
         
     return quarters_data
+
+def send_telegram_alert(message):
+    """
+    Sends a notification message to the configured Telegram chat/channel.
+    Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from environment variables.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if token and chat_id:
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML"
+            }
+            headers = {"Content-Type": "application/json"}
+            req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                response.read()
+            print(f"[Telegram Alert] Sent successfully: {message}")
+        except Exception as e:
+            print(f"[Telegram Alert] Failed to send: {e}")
+    else:
+        print(f"[Telegram Alert Log (Mock)] {message}")
 
 
 def fetch_nse_delivery_data(date_str):
@@ -1371,15 +1400,15 @@ def refresh_ep_screener():
     for sect in sector_vols:
         sector_vols[sect].sort()
         
-    # 2. Filter for candidates: relative volume >= 3.0 and positive day change
+    # 2. Filter for candidates: relative volume >= 3.0
+    # Capture both positive EPs and potential Short EPs
     candidates = []
     for s in tv_stocks:
         vol = float(s["volume"])
         avg_vol = float(s["average_volume"])
         rel_vol = vol / avg_vol if avg_vol > 0 else 1.0
-        change = float(s["change"])
         
-        if rel_vol >= 3.0 and change > 0.0:
+        if rel_vol >= 3.0:
             candidates.append((s, rel_vol))
             
     print(f"[EP Refresh] Found {len(candidates)} candidates out of {len(tv_stocks)} scanned.")
@@ -1737,10 +1766,102 @@ def refresh_ep_screener():
                         s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low
                     ))
                 
+                # Send alert for new HIGH confidence candidates
+                if confidence == "HIGH" and ep_score >= 0.55:
+                    alert_msg = (
+                        f"🚀 <b>New HIGH Confidence EP Detected!</b>\n"
+                        f"<b>Symbol:</b> {s['ticker']}\n"
+                        f"<b>Type:</b> {ep_type}\n"
+                        f"<b>Score:</b> {ep_score:.2f}\n"
+                        f"<b>Exchange:</b> {s['exchange']}\n"
+                        f"<b>Close:</b> ₹{today_close:.2f}\n"
+                        f"<b>Rel Volume:</b> {dyn_rel_vol:.1f}x"
+                    )
+                    send_telegram_alert(alert_msg)
+                
         except Exception as e:
             print(f"Error computing EP features for {ticker}: {e}")
             import traceback; traceback.print_exc()
             
+    # Nightly Delayed EP Trigger Checking
+    try:
+        c.execute("""
+            SELECT id, symbol, exchange, catalyst_date, ep_type, ep_score, entry_price
+            FROM ep_watchlist WHERE status = 'ACTIVE'
+        """)
+        active_watchlist = c.fetchall()
+        for row in active_watchlist:
+            w_id, symbol, exchange, catalyst_date, ep_type, ep_score, catalyst_close = row
+            ticker_full = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+            try:
+                history_data = fetch_historical_prices(ticker_full, range_str="6mo")
+                if history_data and len(history_data) >= 21:
+                    today_bar = history_data[-1]
+                    if catalyst_date == today_bar["date"]:
+                        continue
+                    prev_bar = history_data[-2]
+                    
+                    today_close = today_bar["close"]
+                    today_open = today_bar["open"]
+                    today_high = today_bar["high"]
+                    today_low = today_bar["low"]
+                    today_vol = today_bar["volume"]
+                    prev_close = prev_bar["close"]
+                    
+                    volumes_data = [h["volume"] for h in history_data]
+                    avg_vol_20_val = sum(volumes_data[-21:-1]) / 20.0
+                    rel_volume_20_val = today_vol / avg_vol_20_val if avg_vol_20_val > 0 else 1.0
+                    
+                    trigger_type = None
+                    if ep_type == "Short EP":
+                        if today_close < prev_close and rel_volume_20_val >= 1.2:
+                            trigger_type = "FAILED_BOUNCE"
+                    else:
+                        # 1. Red-to-Green (RTG)
+                        rtg_triggered = (today_open < prev_close and today_close > prev_close and rel_volume_20_val >= 1.5)
+                        
+                        # 2. Tight Range Breakout
+                        tight_breakout_triggered = False
+                        if len(history_data) >= 6:
+                            prev_5_closes = [h["close"] for h in history_data[-6:-1]]
+                            five_day_range = (max(prev_5_closes) - min(prev_5_closes)) / (sum(prev_5_closes)/5.0) * 100
+                            prev_5_highs = [h["high"] for h in history_data[-6:-1]]
+                            five_day_high = max(prev_5_highs)
+                            tight_breakout_triggered = (five_day_range < 8.0 and today_close > five_day_high and rel_volume_20_val >= 2.0)
+                            
+                        # 3. Level Reclaim
+                        reclaim_triggered = (prev_close < catalyst_close and today_close >= catalyst_close * 0.995 and rel_volume_20_val >= 1.5)
+                        
+                        if rtg_triggered:
+                            trigger_type = "RED_TO_GREEN"
+                        elif tight_breakout_triggered:
+                            trigger_type = "RANGE_BREAKOUT"
+                        elif reclaim_triggered:
+                            trigger_type = "RECLAIM"
+                            
+                    if trigger_type:
+                        c.execute("""
+                            UPDATE ep_watchlist
+                            SET status = 'TRIGGERED', trigger_type = ?, entry_price = ?, entry_date = ?, updated_at = datetime('now')
+                            WHERE id = ?
+                        """, (trigger_type, today_close, today_bar["date"], w_id))
+                        
+                        # Send alert for watchlist trigger
+                        alert_msg = (
+                            f"🔔 <b>EP Watchlist Triggered!</b>\n"
+                            f"<b>Symbol:</b> {symbol}\n"
+                            f"<b>Type:</b> {ep_type}\n"
+                            f"<b>Trigger:</b> {trigger_type}\n"
+                            f"<b>Price:</b> ₹{today_close:.2f}\n"
+                            f"<b>Rel Volume:</b> {rel_volume_20_val:.1f}x\n"
+                            f"<b>Original EP Score:</b> {ep_score:.2f}"
+                        )
+                        send_telegram_alert(alert_msg)
+            except Exception as w_err:
+                print(f"[EP Watchlist check] Error checking triggers for {symbol}: {w_err}")
+    except Exception as list_err:
+        print(f"[EP Watchlist check] Failed to fetch active watchlist: {list_err}")
+
     # Increment days_on_watch and expire older items in the active watchlist
     c.execute("UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1 WHERE status = 'ACTIVE'")
     c.execute("UPDATE ep_watchlist SET status = 'EXPIRED' WHERE days_on_watch > 20 AND status = 'ACTIVE'")
@@ -7302,9 +7423,238 @@ def get_ep_detail(symbol):
         fund_rows = c.fetchall()
         detail["fundamentals"] = [dict(zip(['quarter', 'result_date', 'revenue', 'revenue_yoy_pct', 'net_profit', 'net_profit_yoy_pct', 'eps'], f)) for f in fund_rows]
         
+        # Get latest watchlist details
+        c.execute("""
+            SELECT status, stop_price, notes
+            FROM ep_watchlist
+            WHERE symbol = ?
+            ORDER BY id DESC LIMIT 1
+        """, (symbol.upper(),))
+        wl_row = c.fetchone()
+        if wl_row:
+            detail["watchlist_status"] = wl_row[0]
+            detail["watchlist_stop"] = wl_row[1]
+            detail["watchlist_notes"] = wl_row[2]
+        else:
+            detail["watchlist_status"] = None
+            detail["watchlist_stop"] = None
+            detail["watchlist_notes"] = None
+
+        # Check if is sugar baby
+        c.execute("""
+            SELECT is_active
+            FROM sugar_babies
+            WHERE symbol = ? AND is_active = 1
+            LIMIT 1
+        """, (symbol.upper(),))
+        sb_row = c.fetchone()
+        detail["is_sugar_baby"] = 1 if sb_row else 0
+        
         conn.close()
         conn = None
         return jsonify(detail)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist', methods=['POST'])
+def add_to_ep_watchlist():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+    exchange = data.get("exchange", "NSE").upper().strip()
+    stop_price = data.get("stop_price")
+    notes = data.get("notes", "")
+
+    if stop_price is not None and stop_price != "":
+        try:
+            stop_price = float(stop_price)
+        except ValueError:
+            return jsonify(error="Invalid stop price"), 400
+    else:
+        stop_price = None
+
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("SELECT id FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (symbol,))
+        existing = c.fetchone()
+        
+        if existing:
+            c.execute("""
+                UPDATE ep_watchlist
+                SET stop_price = ?, notes = ?, updated_at = datetime('now')
+                WHERE id = ?
+            """, (stop_price, notes, existing[0]))
+            conn.commit()
+            return jsonify(success=True, message="Updated existing active watchlist entry")
+        else:
+            c.execute("""
+                SELECT ep_type, ep_score, feature_date
+                FROM ep_features
+                WHERE symbol = ?
+                ORDER BY feature_date DESC LIMIT 1
+            """, (symbol,))
+            feat = c.fetchone()
+            
+            if feat:
+                ep_type = feat[0]
+                ep_score = feat[1]
+                catalyst_date = feat[2]
+            else:
+                ep_type = "Manual"
+                ep_score = 0.55
+                catalyst_date = datetime.now().strftime("%Y-%m-%d")
+
+            entry_price = None
+            ticker = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+            try:
+                history = fetch_historical_prices(ticker, range_str="1d")
+                if history:
+                    entry_price = history[-1]["close"]
+                    if not feat:
+                        catalyst_date = history[-1]["date"]
+            except Exception:
+                pass
+
+            c.execute("""
+                INSERT INTO ep_watchlist (
+                    symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, notes
+                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
+            """, (symbol, exchange, catalyst_date, ep_type, ep_score, entry_price, stop_price, notes))
+            conn.commit()
+            return jsonify(success=True, message="Added to watchlist")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist/delete', methods=['POST'])
+def delete_from_ep_watchlist():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+        
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        c.execute("""
+            UPDATE ep_watchlist
+            SET status = 'EXPIRED', updated_at = datetime('now')
+            WHERE symbol = ? AND status = 'ACTIVE'
+        """, (symbol,))
+        conn.commit()
+        return jsonify(success=True, message="Removed symbol from active watchlist")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist/trigger', methods=['POST'])
+def trigger_ep_watchlist():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+        
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("SELECT exchange, entry_price FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (symbol,))
+        row = c.fetchone()
+        if not row:
+            return jsonify(error="No active watchlist entry found for this symbol"), 404
+            
+        exchange, current_entry_price = row
+        ticker = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+        
+        today_price = current_entry_price
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        try:
+            history = fetch_historical_prices(ticker, range_str="1d")
+            if history:
+                today_price = history[-1]["close"]
+                today_date = history[-1]["date"]
+        except Exception:
+            pass
+            
+        c.execute("""
+            UPDATE ep_watchlist
+            SET status = 'TRIGGERED', trigger_type = 'MANUAL', entry_price = ?, entry_date = ?, updated_at = datetime('now')
+            WHERE symbol = ? AND status = 'ACTIVE'
+        """, (today_price, today_date, symbol))
+        conn.commit()
+        
+        price_str = f"₹{today_price:.2f}" if today_price is not None else "₹0.00"
+        alert_msg = (
+            f"🔔 <b>EP Watchlist Manually Triggered!</b>\n"
+            f"<b>Symbol:</b> {symbol}\n"
+            f"<b>Trigger:</b> MANUAL\n"
+            f"<b>Price:</b> {price_str}"
+        )
+        send_telegram_alert(alert_msg)
+        
+        return jsonify(success=True, message="Watchlist entry marked as TRIGGERED")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/sugar-babies', methods=['POST'])
+def add_to_sugar_babies():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+    exchange = data.get("exchange", "NSE").upper().strip()
+    notes = data.get("notes", "")
+    is_active = data.get("is_active", 1)
+
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("SELECT id FROM sugar_babies WHERE symbol = ?", (symbol,))
+        existing = c.fetchone()
+        
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        c.execute("SELECT COUNT(*) FROM ep_features WHERE symbol = ? AND ep_score >= 0.55", (symbol,))
+        episode_count = c.fetchone()[0]
+        
+        if existing:
+            c.execute("""
+                UPDATE sugar_babies
+                SET notes = ?, is_active = ?, exchange = ?, episode_count = ?
+                WHERE id = ?
+            """, (notes, is_active, exchange, episode_count, existing[0]))
+        else:
+            c.execute("""
+                INSERT INTO sugar_babies (
+                    symbol, exchange, added_date, avg_burst_pct, avg_burst_days, episode_count, notes, is_active
+                ) VALUES (?, ?, ?, 0.0, 0.0, ?, ?, ?)
+            """, (symbol, exchange, today_str, episode_count, notes, is_active))
+            
+        conn.commit()
+        status_text = "added to" if is_active else "removed from"
+        return jsonify(success=True, message=f"Symbol {status_text} Sugar Babies")
     except Exception as e:
         return jsonify(error=str(e)), 500
     finally:

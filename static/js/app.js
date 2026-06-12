@@ -11129,6 +11129,162 @@ function openEPDetailModal(symbol) {
                     `;
                 }).join('');
             }
+            
+            // Populate Watchlist & Sugar Babies Controls
+            window.currentEPDetailSymbol = data.symbol || symbol;
+            
+            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
+            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
+            
+            const addWatchlistBtn = document.getElementById('btn-ep-detail-add-watchlist');
+            const triggerWatchlistBtn = document.getElementById('btn-ep-detail-trigger-watchlist');
+            const removeWatchlistBtn = document.getElementById('btn-ep-detail-remove-watchlist');
+            const addSugarBtn = document.getElementById('btn-ep-detail-add-sugar');
+            
+            if (data.watchlist_status === 'ACTIVE') {
+                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Update Watchlist';
+                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'inline-block';
+                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'inline-block';
+            } else {
+                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Add to Watchlist';
+                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'none';
+                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'none';
+            }
+            
+            if (data.is_sugar_baby === 1) {
+                if (addSugarBtn) addSugarBtn.textContent = 'Remove Sugar Baby';
+            } else {
+                if (addSugarBtn) addSugarBtn.textContent = 'Add to Sugar Babies';
+            }
+            
+            if (!window.epDetailListenersBound) {
+                window.epDetailListenersBound = true;
+                
+                if (addWatchlistBtn) {
+                    addWatchlistBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        const stopVal = document.getElementById('ep-detail-stop-input').value;
+                        const notesVal = document.getElementById('ep-detail-notes-input').value;
+                        
+                        fetch('/api/ep/watchlist', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                symbol: sym,
+                                stop_price: stopVal,
+                                notes: notesVal
+                            })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
+                                if (typeof fetchEPListings === 'function') fetchEPListings();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error adding/updating watchlist:', err);
+                            if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
+                        });
+                    });
+                }
+                
+                if (removeWatchlistBtn) {
+                    removeWatchlistBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        
+                        fetch('/api/ep/watchlist/delete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ symbol: sym })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
+                                if (typeof fetchEPListings === 'function') fetchEPListings();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error deleting watchlist:', err);
+                            if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
+                        });
+                    });
+                }
+                
+                if (triggerWatchlistBtn) {
+                    triggerWatchlistBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        
+                        fetch('/api/ep/watchlist/trigger', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ symbol: sym })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
+                                if (typeof fetchEPListings === 'function') fetchEPListings();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error triggering watchlist:', err);
+                            if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
+                        });
+                    });
+                }
+                
+                if (addSugarBtn) {
+                    addSugarBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        
+                        const isCurrentlySugar = addSugarBtn.textContent.includes('Remove');
+                        const is_active = isCurrentlySugar ? 0 : 1;
+                        const notesVal = document.getElementById('ep-detail-notes-input').value;
+                        
+                        fetch('/api/ep/sugar-babies', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                symbol: sym,
+                                is_active: is_active,
+                                notes: notesVal
+                            })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPSugarBabies === 'function') fetchEPSugarBabies();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error updating Sugar Babies:', err);
+                            if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
+                        });
+                    });
+                }
+            }
         })
         .catch(err => {
             console.error('Error fetching EP details:', err);

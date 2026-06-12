@@ -1722,6 +1722,29 @@
                         <!-- Dynamic content -->
                     </div>
                 </div>
+                
+                <!-- Section: Watchlist & Sugar Babies Controls -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 0.8rem; margin-top: 0.5rem;">
+                    <h4 style="margin: 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+                        <span>⚙️</span> Watchlist & Sugar Babies Controls
+                    </h4>
+                    <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label for="ep-detail-stop-input" style="font-size: 0.75rem; color: var(--color-text-secondary);">Stop Loss (₹)</label>
+                            <input type="number" id="ep-detail-stop-input" step="0.01" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 0.4rem; color: #fff; width: 140px; font-family: inherit;" placeholder="Stop price (₹)">
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1; min-width: 200px;">
+                            <label for="ep-detail-notes-input" style="font-size: 0.75rem; color: var(--color-text-secondary);">Setup Notes</label>
+                            <input type="text" id="ep-detail-notes-input" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 0.4rem; color: #fff; width: 100%; font-family: inherit;" placeholder="Add notes for this setup...">
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.2rem;">
+                        <button class="btn btn-primary" id="btn-ep-detail-add-watchlist">Add to Watchlist</button>
+                        <button class="btn" id="btn-ep-detail-trigger-watchlist" style="background: #d97706; border: 1px solid #b45309; color: #fff; display: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Mark Triggered</button>
+                        <button class="btn btn-secondary" id="btn-ep-detail-add-sugar">Add to Sugar Babies</button>
+                        <button class="btn" id="btn-ep-detail-remove-watchlist" style="background: #dc2626; border: 1px solid #b91c1c; color: #fff; display: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Remove Watchlist</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
