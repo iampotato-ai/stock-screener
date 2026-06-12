@@ -72,16 +72,19 @@ def test_scoring_helpers():
     assert compute_catalyst_score("STRONG_BEAT", 50, 100, 0, 10000) == 0.80 # 0.70 + 0.05 (rev) + 0.05 (profit) = 0.80
     
     # 3. Test Repricing Score
-    # gap_pct=10.0 (n_gap=0.5), rel_volume=5.5 (n_vol=4.5/9=0.5), close_loc=0.5 (n_close=0.5), price_change_pct=7.5 (n_strength=0.5)
-    # repricing = 0.30*0.5 + 0.35*0.5 + 0.20*0.5 + 0.15*0.5 = 0.50
-    assert compute_repricing_score(10.0, 5.5, 0.5, 7.5, 5.0) == 0.50
+    # gap_pct=10.0 (n_gap=0.5), rel_volume=5.5 (n_vol=4.5/9=0.5), close_loc=0.5 (n_close=0.5)
+    # price_change_pct=7.5 & intraday_range_pct=5.0 (n_strength=0.45)
+    # repricing = 0.30*0.5 + 0.35*0.5 + 0.20*0.5 + 0.15*0.45 = 0.4925 -> rounded to 0.492 (banker's rounding)
+    assert compute_repricing_score(10.0, 5.5, 0.5, 7.5, 5.0) == 0.492
 
     # 4. Test EP Score
-    # neglect_score = 0.50, catalyst_score = 0.80, repricing_score = 0.70, liquidity_ok = True
-    # raw = 0.25*0.50 + 0.35*0.80 + 0.30*0.70 = 0.125 + 0.280 + 0.210 = 0.615
-    assert compute_ep_score(0.50, 0.80, 0.70, True) == 0.615
-    # liquidity_ok = False (-0.10 penalty) -> 0.515
-    assert compute_ep_score(0.50, 0.80, 0.70, False) == 0.515
+    # neglect_score = 0.50, catalyst_score = 0.80, repricing_score = 0.70, liquidity_ok = True, has_fundamentals = True
+    # raw = 0.25*0.50 + 0.35*0.80 + 0.30*0.70 + 0.10*1.0 = 0.125 + 0.280 + 0.210 + 0.10 = 0.715
+    assert compute_ep_score(0.50, 0.80, 0.70, True, True) == 0.715
+    assert compute_ep_score(0.50, 0.80, 0.70, True, False) == 0.615
+    # liquidity_ok = False (-0.10 penalty)
+    assert compute_ep_score(0.50, 0.80, 0.70, False, True) == 0.615
+    assert compute_ep_score(0.50, 0.80, 0.70, False, False) == 0.515
 
 def test_assign_ep_type_and_confidence():
     # Test assign_ep_type

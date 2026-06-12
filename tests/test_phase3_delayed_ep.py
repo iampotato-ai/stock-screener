@@ -402,3 +402,224 @@ def test_high_confidence_alert(mock_post, mock_fetch_announcements, mock_fetch_f
             found_high_alert = True
             break
     assert found_high_alert, "Should send Telegram alert for HIGH confidence EP candidate"
+
+
+@patch("app.send_telegram_alert")
+@patch("app.fetch_historical_prices")
+@patch("app.fetch_screener_fundamentals")
+@patch("app.fetch_nse_announcements")
+@patch("requests.post")
+def test_transaction_isolation(mock_post, mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_send_alert):
+    # STK_OK and STK_FAIL candidates
+    mock_tv_response = MagicMock()
+    mock_tv_response.json.return_value = {
+        "data": [
+            {
+                "s": "NSE:STK_OK",
+                "d": ["STK_OK", "STK_OK desc", 100.0, 0, 100000.0, 100000000.0, 20000.0, "Tech"]
+            },
+            {
+                "s": "NSE:STK_FAIL",
+                "d": ["STK_FAIL", "STK_FAIL desc", 100.0, 0, 100000.0, 100000000.0, 30000.0, "Tech"]
+            }
+        ]
+    }
+    mock_post.return_value = mock_tv_response
+
+    # Mock historical prices: STK_OK succeeds, STK_FAIL throws exception
+    def side_effect(ticker, range_str="6mo"):
+        if "STK_OK" in ticker:
+            import datetime
+            base_dt = datetime.date(2026, 6, 20)
+            mock_history = []
+            for i in range(150):
+                d = base_dt - datetime.timedelta(days=150-i)
+                mock_history.append({
+                    "date": d.strftime("%Y-%m-%d"),
+                    "open": 98.0,
+                    "high": 102.0,
+                    "low": 97.0,
+                    "close": 100.0,
+                    "volume": 100000.0
+                })
+            return mock_history
+        elif "STK_FAIL" in ticker:
+            raise ValueError("Simulated network failure for STK_FAIL")
+        return []
+
+    mock_fetch_prices.side_effect = side_effect
+    mock_fetch_fundamentals.return_value = []
+    mock_fetch_announcements.return_value = []
+
+    # Run EOD refresh - should not crash because STK_FAIL's exception is caught
+    refresh_ep_screener()
+
+    # Query DB to check if STK_OK features were successfully committed
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM ep_features WHERE symbol = 'STK_OK'")
+    ok_row = c.fetchone()
+    c.execute("SELECT symbol FROM ep_features WHERE symbol = 'STK_FAIL'")
+    fail_row = c.fetchone()
+    conn.close()
+
+    assert ok_row is not None
+    assert ok_row[0] == "STK_OK"
+    assert fail_row is None
+
+
+@patch("app.send_telegram_alert")
+@patch("app.fetch_historical_prices")
+@patch("app.fetch_screener_fundamentals")
+@patch("app.fetch_nse_announcements")
+@patch("requests.post")
+def test_catalyst_close_no_drift(mock_post, mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_send_alert):
+    # 1. Detect stock first time at close=100.0
+    mock_tv_response = MagicMock()
+    mock_tv_response.json.return_value = {
+        "data": [
+            {
+                "s": "NSE:DRIFTSTK",
+                "d": ["DRIFTSTK", "Drift stock", 100.0, 0, 100000.0, 100000000.0, 20000.0, "Tech"]
+            }
+        ]
+    }
+    mock_post.return_value = mock_tv_response
+
+    import datetime
+    base_dt = datetime.date(2026, 6, 20)
+    
+    # We will return a history ending at close=100.0 first
+    history_1 = []
+    for i in range(149):
+        d = base_dt - datetime.timedelta(days=150-i)
+        history_1.append({"date": d.strftime("%Y-%m-%d"), "open": 98.0, "high": 102.0, "low": 97.0, "close": 100.0, "volume": 10000.0})
+    history_1.append({"date": "2026-06-20", "open": 105.0, "high": 110.0, "low": 104.0, "close": 110.0, "volume": 100000.0}) # EP! Score >= 0.55
+
+    # Fundamentals to make score high
+    mock_fetch_fundamentals.return_value = [
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 200.0, "net_profit": 30.0, "eps": 3.0}
+    ]
+    mock_fetch_announcements.return_value = []
+    mock_fetch_prices.return_value = history_1
+
+    # First run: inserts DRIFTSTK into watchlist as ACTIVE
+    refresh_ep_screener()
+
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT catalyst_close, entry_price, status FROM ep_watchlist WHERE symbol = 'DRIFTSTK'")
+    row = c.fetchone()
+    conn.close()
+
+    assert row is not None
+    assert row[0] == 110.0  # catalyst_close
+    assert row[1] == 110.0  # entry_price
+    assert row[2] == "ACTIVE"
+
+    # 2. Second run: stock scans again but price has moved to 120.0
+    history_2 = list(history_1)
+    history_2.append({"date": "2026-06-21", "open": 115.0, "high": 125.0, "low": 114.0, "close": 120.0, "volume": 100000.0}) # EP again
+    mock_fetch_prices.return_value = history_2
+
+    refresh_ep_screener()
+
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT catalyst_close, entry_price FROM ep_watchlist WHERE symbol = 'DRIFTSTK'")
+    row = c.fetchone()
+    conn.close()
+
+    assert row is not None
+    assert row[0] == 110.0  # catalyst_close must NOT drift!
+    # entry_price should also not change (remain original close of 110.0)
+    assert row[1] == 110.0
+
+
+@patch("app.send_telegram_alert")
+@patch("app.fetch_historical_prices")
+@patch("requests.post")
+def test_days_on_watch_idempotent(mock_post, mock_fetch_prices, mock_send_alert):
+    mock_tv_response = MagicMock()
+    mock_tv_response.json.return_value = {"data": []}
+    mock_post.return_value = mock_tv_response
+    mock_fetch_prices.return_value = []
+
+    # Insert an ACTIVE watchlist item with last_incremented_date as NULL
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO ep_watchlist (symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, days_on_watch, last_incremented_date)
+        VALUES ('IDEMPSTOCK', 'NSE', '2026-06-01', 'Growth EP', 'ACTIVE', 0.70, 100.0, 5, NULL)
+    """)
+    conn.commit()
+    conn.close()
+
+    # First run today: increments days_on_watch to 6, sets last_incremented_date to date('now')
+    refresh_ep_screener()
+
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT days_on_watch, last_incremented_date FROM ep_watchlist WHERE symbol = 'IDEMPSTOCK'")
+    row1 = c.fetchone()
+    conn.close()
+
+    assert row1[0] == 6
+    assert row1[1] is not None
+
+    # Second run today: should NOT increment again
+    refresh_ep_screener()
+
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT days_on_watch, last_incremented_date FROM ep_watchlist WHERE symbol = 'IDEMPSTOCK'")
+    row2 = c.fetchone()
+    conn.close()
+
+    assert row2[0] == 6  # still 6!
+
+
+@patch("app.send_telegram_alert")
+@patch("app.fetch_historical_prices")
+@patch("app.fetch_screener_fundamentals")
+@patch("app.fetch_nse_announcements")
+@patch("requests.post")
+def test_high_confidence_alert_no_duplicates(mock_post, mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_send_alert):
+    mock_tv_response = MagicMock()
+    mock_tv_response.json.return_value = {
+        "data": [
+            {
+                "s": "NSE:ALERTSHOT",
+                "d": ["ALERTSHOT", "Alert stock", 112.0, 12.0, 3000000.0, 10000000000.0, 100000.0, "Tech"]
+            }
+        ]
+    }
+    mock_post.return_value = mock_tv_response
+
+    import datetime
+    base_dt = datetime.date(2026, 6, 20)
+    mock_history = []
+    for i in range(149):
+        d = base_dt - datetime.timedelta(days=150-i)
+        mock_history.append({"date": d.strftime("%Y-%m-%d"), "open": 98.0, "high": 102.0, "low": 97.0, "close": 100.0, "volume": 100000.0})
+    mock_history.append({"date": "2026-06-21", "open": 110.0, "high": 112.0, "low": 110.0, "close": 112.0, "volume": 3000000.0})
+    mock_fetch_prices.return_value = mock_history
+
+    mock_fetch_fundamentals.return_value = [
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 200.0, "net_profit": 30.0, "eps": 3.0}
+    ]
+    mock_fetch_announcements.return_value = []
+
+    # First run (new detection) - should trigger one alert
+    refresh_ep_screener()
+    assert mock_send_alert.call_count == 1
+
+    # Reset alert mock
+    mock_send_alert.reset_mock()
+
+    # Second run (already exists) - should NOT send alert again
+    refresh_ep_screener()
+    assert mock_send_alert.call_count == 0
+

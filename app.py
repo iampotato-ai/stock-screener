@@ -26,6 +26,14 @@ from forecast_math import compute_forecast_metrics
 import pattern_detection
 from fx_utils import fetch_usd_inr_rate
 
+# Global locks to prevent concurrent NSE API fetches across threads
+nse_fetch_lock = threading.Lock()
+nse_results_lock = threading.Lock()
+
+# Guard to prevent surfacing simulated placeholder data as real data in production.
+# Change to True or set the environment variable ENABLE_SIMULATED_DATA=true to test Phase 3 simulated layouts.
+ENABLE_SIMULATED_DATA = os.environ.get("ENABLE_SIMULATED_DATA", "false").lower() == "true"
+
 
 
 def init_db():
@@ -443,10 +451,20 @@ def init_db():
             days_on_watch   INTEGER DEFAULT 0,
             notes           TEXT,
             ep_score        REAL,
+            catalyst_close  REAL,
+            last_incremented_date TEXT,
             created_at      TEXT DEFAULT (datetime('now')),
             updated_at      TEXT DEFAULT (datetime('now'))
         )
     ''')
+    try:
+        c.execute("ALTER TABLE ep_watchlist ADD COLUMN catalyst_close REAL")
+    except Exception:
+        pass
+    try:
+        c.execute("ALTER TABLE ep_watchlist ADD COLUMN last_incremented_date TEXT")
+    except Exception:
+        pass
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS sugar_babies (
@@ -760,6 +778,8 @@ EP_CATALYST_BASE = {
     "THEME_CATALYST":    0.50,   # Government policy, PLI, sector tailwind
     "CAPEX_EXPANSION":   0.45,
     "ABNORMAL_VOLUME":   0.60,   # Volume EP / 9M equivalent (no news yet)
+    "BEAT":              0.50,
+    "MISS":             -0.30,
     "GUIDANCE_CUT":     -0.80,   # Negative catalyst (Short EP)
     "FRAUD_CONCERN":    -0.90,
     "UNKNOWN":           0.20,
@@ -803,8 +823,8 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
     # Close location: closing near high is a bull signal
     n_close = max(0.0, min(1.0, close_loc))
 
-    # Overall day strength
-    n_strength = max(0.0, min(1.0, price_change_pct / 15.0))
+    # Overall day strength: blend of close-to-close change (70%) and intraday range (30%)
+    n_strength = max(0.0, min(1.0, (price_change_pct * 0.7 + intraday_range_pct * 0.3) / 15.0))
 
     repricing = (0.30 * n_gap +
                  0.35 * n_vol +
@@ -814,10 +834,11 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
 
 
 def compute_ep_score(neglect_score, catalyst_score, repricing_score,
-                     liquidity_ok=True):
+                     liquidity_ok=True, has_fundamentals=True):
     raw = (0.25 * neglect_score +
            0.35 * abs(catalyst_score) +
-           0.30 * repricing_score)
+           0.30 * repricing_score +
+           0.10 * (1.0 if has_fundamentals else 0.0))
 
     # Small liquidity penalty if stock is too illiquid
     liquidity_adj = 0.0 if liquidity_ok else -0.10
@@ -1653,7 +1674,7 @@ def refresh_ep_screener():
                     ''', (
                         s['ticker'], s['exchange'], q.get('result_date') or q['date_key'], q['quarter'], q['revenue'], q['revenue_yoy_pct'],
                         q['net_profit'], q['net_profit_yoy_pct'], q['eps'], q['eps_yoy_pct'], q['surprise_type'],
-                        q['consecutive_quarters_growth'], q.get('source', 'screener.in')
+                        q['consecutive_quarters_growth'], q.get('source', 'unknown')
                     ))
 
             # Ingest Announcements (NSE only)
@@ -1784,7 +1805,7 @@ def refresh_ep_screener():
                 rank_idx = bisect.bisect_left(vols, avg_vol)
                 avg_vol_rank = rank_idx / (len(vols) - 1)
             else:
-                avg_vol_rank = 0.5
+                avg_vol_rank = 1.0
                 
             if len(closes) < 63:
                 # IPO guard: fresh listings (< 3 months history) are not neglected
@@ -1831,14 +1852,16 @@ def refresh_ep_screener():
                 and mktcap_cr >= 200.0         # minimum ₹200 Cr market cap
             )
             
-            ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, liquidity_ok)
+            ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, liquidity_ok, has_fundamentals=bool(has_result))
+            day1_messy = bool(gap_pct > 5.0 and close_loc < 0.40)
             ep_type = assign_ep_type(
                 catalyst_score=catalyst_score,
                 event_type=resolved_event_type,
                 rel_volume=dyn_rel_vol,
                 gap_pct=gap_pct,
                 revenue_growth=revenue_growth,
-                profit_growth=profit_growth
+                profit_growth=profit_growth,
+                day1_messy=day1_messy
             )
             confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
             
@@ -1879,20 +1902,20 @@ def refresh_ep_screener():
                 if existing:
                     c.execute('''
                         UPDATE ep_watchlist
-                        SET ep_score = ?, entry_price = ?, stop_price = ?, catalyst_date = ?, ep_type = ?
+                        SET ep_score = ?, stop_price = ?, catalyst_date = ?, ep_type = ?
                         WHERE id = ?
-                    ''', (ep_score, today_close, today_low, feature_date, ep_type, existing[0]))
+                    ''', (ep_score, today_low, feature_date, ep_type, existing[0]))
                 else:
                     c.execute('''
                         INSERT INTO ep_watchlist (
-                            symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price
-                        ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?)
+                            symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, catalyst_close
+                        ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
                     ''', (
-                        s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low
+                        s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low, today_close
                     ))
                 
                 # Send alert for new HIGH confidence candidates
-                if confidence == "HIGH" and ep_score >= 0.55:
+                if confidence == "HIGH" and ep_score >= 0.55 and not existing:
                     alert_msg = (
                         f"🚀 <b>New HIGH Confidence EP Detected!</b>\n"
                         f"<b>Symbol:</b> {s['ticker']}\n"
@@ -1903,15 +1926,20 @@ def refresh_ep_screener():
                         f"<b>Rel Volume:</b> {dyn_rel_vol:.1f}x"
                     )
                     telegram_alerts_queue.append(alert_msg)
-                
+            
+            conn.commit()
         except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             print(f"Error computing EP features for {ticker}: {e}")
             import traceback; traceback.print_exc()
             
     # Nightly Delayed EP Trigger Checking
     try:
         c.execute("""
-            SELECT id, symbol, exchange, catalyst_date, ep_type, ep_score, entry_price
+            SELECT id, symbol, exchange, catalyst_date, ep_type, ep_score, COALESCE(catalyst_close, entry_price)
             FROM ep_watchlist WHERE status = 'ACTIVE'
         """)
         active_watchlist = c.fetchall()
@@ -1978,6 +2006,7 @@ def refresh_ep_screener():
                             SET status = 'TRIGGERED', trigger_type = ?, entry_price = ?, entry_date = ?, updated_at = datetime('now')
                             WHERE id = ?
                         """, (trigger_type, today_close, today_bar["date"], w_id))
+                        conn.commit()
                         
                         # Send alert for watchlist trigger
                         alert_msg = (
@@ -1991,13 +2020,29 @@ def refresh_ep_screener():
                         )
                         telegram_alerts_queue.append(alert_msg)
             except Exception as w_err:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 print(f"[EP Watchlist check] Error checking triggers for {symbol}: {w_err}")
     except Exception as list_err:
         print(f"[EP Watchlist check] Failed to fetch active watchlist: {list_err}")
 
     # Increment days_on_watch and expire older items in the active watchlist
-    c.execute("UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1 WHERE status = 'ACTIVE'")
-    c.execute("UPDATE ep_watchlist SET status = 'EXPIRED' WHERE days_on_watch > 20 AND status = 'ACTIVE'")
+    try:
+        c.execute("""
+            UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1
+            WHERE status = 'ACTIVE' AND (last_incremented_date IS NULL OR last_incremented_date < date('now'))
+        """)
+        c.execute("UPDATE ep_watchlist SET last_incremented_date = date('now') WHERE status = 'ACTIVE'")
+        c.execute("UPDATE ep_watchlist SET status = 'EXPIRED' WHERE days_on_watch > 20 AND status = 'ACTIVE'")
+        conn.commit()
+    except Exception as exp_err:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[EP Watchlist check] Error updating days on watch / expiring: {exp_err}")
     
     # Update episode_count nightly for all active Sugar Babies
     # TODO: update episode_count nightly
@@ -2010,10 +2055,14 @@ def refresh_ep_screener():
             )
             WHERE is_active = 1
         """)
+        conn.commit()
     except Exception as sb_err:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         print(f"[EP Sugar Babies Update] Failed to update episode counts: {sb_err}")
         
-    conn.commit()
     conn.close()
     
     # Process batched Telegram alerts outside of db transaction
@@ -2027,10 +2076,6 @@ def refresh_ep_screener():
                 print(f"[EP Refresh] Error sending queued alert: {alert_err}")
                 
     print("[EP Refresh] EP screening and cache refresh completed.")
-
-# Global lock to prevent concurrent NSE API fetches across threads
-nse_fetch_lock = threading.Lock()
-nse_results_lock = threading.Lock()
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -2466,79 +2511,99 @@ def compute_extra_fields(stock):
         if ebitda_est > 0:
             stock["cfo_ebitda"] = round((cfo_est / ebitda_est) * 100.0, 2)
 
-    # 2. Working Capital Intensity
-    ticker = stock.get("name", "")
-    h = hash(ticker) % 100
-    
-    sector = stock.get("sector", "") or ""
-    if "technology" in sector.lower() or "software" in sector.lower() or "telecom" in sector.lower():
-        stock["wc_intensity"] = round(5.0 + (h % 10), 2)  # 5% - 15%
-    elif "finance" in sector.lower() or "bank" in sector.lower() or "insurance" in sector.lower():
-        stock["wc_intensity"] = round(10.0 + (h % 8), 2)  # 10% - 18%
-    elif "infra" in sector.lower() or "construct" in sector.lower() or "metal" in sector.lower() or "steel" in sector.lower():
-        stock["wc_intensity"] = round(25.0 + (h % 20), 2) # 25% - 45%
-    else:
-        stock["wc_intensity"] = round(15.0 + (h % 12), 2) # 15% - 27%
-
-    # 3. Growth CAGR filters
-    perf_3m = float(stock.get("Perf.3M")) if stock.get("Perf.3M") is not None else 10.0
-    growth_boost = max(0.0, perf_3m * 0.1)
-    
-    stock["sales_cagr"] = round(8.0 + (h % 12) + growth_boost, 2)
-    stock["revenue_growth_3y"] = stock["sales_cagr"]
-    stock["revenue_growth_yoy"] = round(stock["sales_cagr"] * (0.9 + (h % 5) / 10.0), 2)
-    stock["revenue_growth_qoq"] = round((stock["revenue_growth_yoy"] / 4.0) + ((h % 7) - 3) * 0.3, 2)
-    stock["ebitda_cagr"] = round(stock["sales_cagr"] * (1.02 + (h % 10) / 100.0), 2)
-    stock["eps_cagr"] = round(stock["ebitda_cagr"] * (0.98 + (h % 8) / 100.0), 2)
-    
-    # Book value growth
-    roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
-    if roe is not None and roe > 0:
-        stock["bv_growth"] = round(roe * 0.85, 2)
-    else:
-        stock["bv_growth"] = round(10.0 + (h % 8), 2)
-
-    # Order-Book Growth
-    is_infra_or_con = any(x in sector.lower() for x in ["industrial", "capital goods", "engineer", "construct", "power", "infra"])
-    is_major = ticker in ["RELIANCE", "LT", "LTIM", "BEL", "BHEL", "HAL"]
-    if is_infra_or_con or is_major:
-        stock["order_growth"] = round(12.0 + (h % 18) + growth_boost * 0.5, 2)
-    else:
-        stock["order_growth"] = None
-
-    # Segment Growth
-    segment_map = {
-        "RELIANCE": "Retail +19%, Jio +14%",
-        "LT": "Infrastructure +18%",
-        "ITC": "Agri +15%, FMCG +12%",
-        "SBIN": "Corporate Lending +14%"
-    }
-    if ticker in segment_map:
-        stock["segment_growth"] = segment_map[ticker]
-    else:
-        sector_lower = sector.lower()
-        if "health technology" in sector_lower or "health services" in sector_lower or "pharmaceuticals" in sector_lower:
-            pharma_segments = ["CDMO", "Generics", "API", "Injectables", "Biosimilars"]
-            segment_name = pharma_segments[h % len(pharma_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 10) + 11}%"
-        elif "technology services" in sector_lower or "electronic technology" in sector_lower or ("technology" in sector_lower and "health" not in sector_lower):
-            tech_segments = ["Cloud", "Digital Services", "SaaS", "Enterprise Systems", "AI/Analytics"]
-            segment_name = tech_segments[h % len(tech_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 10) + 12}%"
-        elif "finance" in sector_lower or "bank" in sector_lower or "insurance" in sector_lower:
-            stock["segment_growth"] = f"Retail +{(h % 8) + 14}%"
-        elif "automobil" in sector_lower or "auto" in sector_lower:
-            stock["segment_growth"] = f"EV Segment +{(h % 15) + 20}%"
-        elif "consumer non-durables" in sector_lower or "retail trade" in sector_lower:
-            fmcg_segments = ["FMCG", "Agri-Business", "Foods", "Premium Brands"]
-            segment_name = fmcg_segments[h % len(fmcg_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 8) + 10}%"
-        elif "non-energy minerals" in sector_lower or "metal" in sector_lower or "steel" in sector_lower or "process industries" in sector_lower:
-            materials_segments = ["Value-Added", "Specialty Alloys", "Domestic Sales", "Exports"]
-            segment_name = materials_segments[h % len(materials_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 10) + 8}%"
+    # 2. Working Capital Intensity & other simulated fields (Phase 3 placeholders)
+    if ENABLE_SIMULATED_DATA:
+        ticker = stock.get("name", "")
+        h = hash(ticker) % 100
+        
+        sector = stock.get("sector", "") or ""
+        if "technology" in sector.lower() or "software" in sector.lower() or "telecom" in sector.lower():
+            stock["wc_intensity"] = round(5.0 + (h % 10), 2)  # 5% - 15%
+        elif "finance" in sector.lower() or "bank" in sector.lower() or "insurance" in sector.lower():
+            stock["wc_intensity"] = round(10.0 + (h % 8), 2)  # 10% - 18%
+        elif "infra" in sector.lower() or "construct" in sector.lower() or "metal" in sector.lower() or "steel" in sector.lower():
+            stock["wc_intensity"] = round(25.0 + (h % 20), 2) # 25% - 45%
         else:
-            stock["segment_growth"] = None
+            stock["wc_intensity"] = round(15.0 + (h % 12), 2) # 15% - 27%
+
+        # 3. Growth CAGR filters
+        perf_3m = float(stock.get("Perf.3M")) if stock.get("Perf.3M") is not None else 10.0
+        growth_boost = max(0.0, perf_3m * 0.1)
+        
+        stock["sales_cagr"] = round(8.0 + (h % 12) + growth_boost, 2)
+        stock["revenue_growth_3y"] = stock["sales_cagr"]
+        stock["revenue_growth_yoy"] = round(stock["sales_cagr"] * (0.9 + (h % 5) / 10.0), 2)
+        stock["revenue_growth_qoq"] = round((stock["revenue_growth_yoy"] / 4.0) + ((h % 7) - 3) * 0.3, 2)
+        stock["ebitda_cagr"] = round(stock["sales_cagr"] * (1.02 + (h % 10) / 100.0), 2)
+        stock["eps_cagr"] = round(stock["ebitda_cagr"] * (0.98 + (h % 8) / 100.0), 2)
+        
+        # Book value growth
+        roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
+        if roe is not None and roe > 0:
+            stock["bv_growth"] = round(roe * 0.85, 2)
+        else:
+            stock["bv_growth"] = round(10.0 + (h % 8), 2)
+
+        # Order-Book Growth
+        is_infra_or_con = any(x in sector.lower() for x in ["industrial", "capital goods", "engineer", "construct", "power", "infra"])
+        is_major = ticker in ["RELIANCE", "LT", "LTIM", "BEL", "BHEL", "HAL"]
+        if is_infra_or_con or is_major:
+            stock["order_growth"] = round(12.0 + (h % 18) + growth_boost * 0.5, 2)
+        else:
+            stock["order_growth"] = None
+
+        # Segment Growth
+        segment_map = {
+            "RELIANCE": "Retail +19%, Jio +14%",
+            "LT": "Infrastructure +18%",
+            "ITC": "Agri +15%, FMCG +12%",
+            "SBIN": "Corporate Lending +14%"
+        }
+        if ticker in segment_map:
+            stock["segment_growth"] = segment_map[ticker]
+        else:
+            sector_lower = sector.lower()
+            if "health technology" in sector_lower or "health services" in sector_lower or "pharmaceuticals" in sector_lower:
+                pharma_segments = ["CDMO", "Generics", "API", "Injectables", "Biosimilars"]
+                segment_name = pharma_segments[h % len(pharma_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 10) + 11}%"
+            elif "technology services" in sector_lower or "electronic technology" in sector_lower or ("technology" in sector_lower and "health" not in sector_lower):
+                tech_segments = ["Cloud", "Digital Services", "SaaS", "Enterprise Systems", "AI/Analytics"]
+                segment_name = tech_segments[h % len(tech_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 10) + 12}%"
+            elif "finance" in sector_lower or "bank" in sector_lower or "insurance" in sector_lower:
+                stock["segment_growth"] = f"Retail +{(h % 8) + 14}%"
+            elif "automobil" in sector_lower or "auto" in sector_lower:
+                stock["segment_growth"] = f"EV Segment +{(h % 15) + 20}%"
+            elif "consumer non-durables" in sector_lower or "retail trade" in sector_lower:
+                fmcg_segments = ["FMCG", "Agri-Business", "Foods", "Premium Brands"]
+                segment_name = fmcg_segments[h % len(fmcg_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 8) + 10}%"
+            elif "non-energy minerals" in sector_lower or "metal" in sector_lower or "steel" in sector_lower or "process industries" in sector_lower:
+                materials_segments = ["Value-Added", "Specialty Alloys", "Domestic Sales", "Exports"]
+                segment_name = materials_segments[h % len(materials_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 10) + 8}%"
+            else:
+                stock["segment_growth"] = None
+        stock["growth_data_source"] = "simulated"
+    else:
+        stock["wc_intensity"] = None
+        stock["sales_cagr"] = None
+        stock["revenue_growth_3y"] = None
+        stock["revenue_growth_yoy"] = None
+        stock["revenue_growth_qoq"] = None
+        stock["ebitda_cagr"] = None
+        stock["eps_cagr"] = None
+        
+        roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
+        if roe is not None and roe > 0:
+            stock["bv_growth"] = round(roe * 0.85, 2)
+        else:
+            stock["bv_growth"] = None
+            
+        stock["order_growth"] = None
+        stock["segment_growth"] = None
+        stock["growth_data_source"] = "real"
 
     # Inside Bar calculation
     h_val = float(stock["high"]) if stock.get("high") is not None else None
@@ -2558,7 +2623,7 @@ def compute_extra_fields(stock):
         stock["is_inside_bar"] = bool(is_inside_price and has_vol_compression)
     else:
         stock["is_inside_bar"] = False
-    stock["growth_data_source"] = "simulated"
+
 
 def compute_vol_dryup(stock):
     rvol = float(stock.get("relative_volume_10d_calc") or stock.get("relative_volume") or 0)
@@ -2586,16 +2651,17 @@ def persist_pattern_signals(ticker: str, candle_results: dict,
     Clears today's rows for the ticker first to avoid duplicates.
     """
     now   = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = bar_date if bar_date else datetime.utcnow().strftime("%Y-%m-%d")
 
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
 
     # Remove today's signals for this ticker to avoid duplication on re-scans
     c.execute(
-        "DELETE FROM pattern_signals WHERE ticker = ? AND detected_at LIKE ?",
-        (ticker, f"{today}%")
+        "DELETE FROM pattern_signals WHERE ticker = ? AND bar_date = ?",
+        (ticker, today)
     )
+
 
     # Insert candle signals
     for pat_name, direction in candle_results.items():
@@ -2836,12 +2902,12 @@ def classify_technical_pattern(history):
             # EMA10 and EMA20 calculations
             alpha10 = 2 / (10 + 1)
             ema10 = closes[0]
-            for val in closes:
+            for val in closes[1:]:
                 ema10 = val * alpha10 + ema10 * (1 - alpha10)
                 
             alpha20 = 2 / (20 + 1)
             ema20 = closes[0]
-            for val in closes:
+            for val in closes[1:]:
                 ema20 = val * alpha20 + ema20 * (1 - alpha20)
                 
             is_ema10_close = abs(current_close - ema10) / ema10 * 100 <= 1.5
@@ -2890,35 +2956,82 @@ def classify_technical_pattern(history):
                 }
 
     # 2. VCP (Volatility Contraction Pattern)
-    if len(closes) >= 80:
-        # Check last 80 trading days divided into 3 contraction periods
-        p1_highs = highs[-80:-50]
-        p1_lows = lows[-80:-50]
-        p2_highs = highs[-50:-25]
-        p2_lows = lows[-50:-25]
-        p3_highs = highs[-25:]
-        p3_lows = lows[-25:]
-        
-        if p1_highs and p2_highs and p3_highs:
-            d1 = (max(p1_highs) - min(p1_lows)) / max(p1_highs) * 100
-            d2 = (max(p2_highs) - min(p2_lows)) / max(p2_highs) * 100
-            d3 = (max(p3_highs) - min(p3_lows)) / max(p3_highs) * 100
+    vcp_pattern = None
+    if len(closes) >= 60:
+        # Try to find local peaks to identify contraction periods dynamically
+        for peak_window in [10, 8, 6, 4]:
+            peaks = []
+            for i in range(peak_window, len(highs) - 2):
+                if highs[i] == max(highs[i - peak_window : i + peak_window + 1]):
+                    if not peaks or (i - peaks[-1] > peak_window):
+                        peaks.append(i)
             
-            if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
-                is_breakout = current_close >= max(p3_highs) * 0.98 and vol_ratio >= 1.4
-                desc = f"Volatility contraction detected with 3 shrinking contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
-                if is_breakout:
-                    return {
-                        "pattern": "VCP Breakout (3T)",
-                        "grade": "A+" if d3 <= 5.0 else "A",
-                        "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
-                    }
-                else:
-                    return {
-                        "pattern": "VCP Consolidation (3T)",
-                        "grade": "A" if d3 <= 5.0 else "B+",
-                        "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
-                    }
+            # Keep only peaks in the last 100 trading days
+            peaks = [p for p in peaks if p >= len(highs) - 100]
+            
+            if len(peaks) >= 3:
+                # Need at least 4 peaks to define 3 contraction intervals between them
+                p_indices = peaks[-4:]
+                depths = []
+                for idx in range(len(p_indices) - 1):
+                    p_start = p_indices[idx]
+                    p_end = p_indices[idx+1]
+                    peak_val = highs[p_start]
+                    trough_val = min(lows[p_start:p_end])
+                    depth = (peak_val - trough_val) / peak_val * 100
+                    depths.append(depth)
+                
+                if len(depths) >= 3:
+                    d1, d2, d3 = depths[-3:]
+                    if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
+                        # Max high in the 3rd contraction is the resistance level
+                        pivot_high = max(highs[p_indices[-2]:])
+                        is_breakout = current_close >= pivot_high * 0.98 and vol_ratio >= 1.4
+                        desc = f"Volatility contraction detected dynamically with 3 contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
+                        if is_breakout:
+                            vcp_pattern = {
+                                "pattern": "VCP Breakout (3T)",
+                                "grade": "A+" if d3 <= 5.0 else "A",
+                                "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
+                            }
+                        else:
+                            vcp_pattern = {
+                                "pattern": "VCP Consolidation (3T)",
+                                "grade": "A" if d3 <= 5.0 else "B+",
+                                "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
+                            }
+                        break
+        
+        # Fallback to the original fixed-width 80-day window check if no dynamic pattern is found
+        if not vcp_pattern and len(closes) >= 80:
+            p1_highs = highs[-80:-50]
+            p1_lows = lows[-80:-50]
+            p2_highs = highs[-50:-25]
+            p2_lows = lows[-50:-25]
+            p3_highs = highs[-25:]
+            p3_lows = lows[-25:]
+            if p1_highs and p2_highs and p3_highs:
+                d1 = (max(p1_highs) - min(p1_lows)) / max(p1_highs) * 100
+                d2 = (max(p2_highs) - min(p2_lows)) / max(p2_highs) * 100
+                d3 = (max(p3_highs) - min(p3_lows)) / max(p3_highs) * 100
+                if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
+                    is_breakout = current_close >= max(p3_highs) * 0.98 and vol_ratio >= 1.4
+                    desc = f"Volatility contraction detected with 3 shrinking contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
+                    if is_breakout:
+                        vcp_pattern = {
+                            "pattern": "VCP Breakout (3T)",
+                            "grade": "A+" if d3 <= 5.0 else "A",
+                            "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
+                        }
+                    else:
+                        vcp_pattern = {
+                            "pattern": "VCP Consolidation (3T)",
+                            "grade": "A" if d3 <= 5.0 else "B+",
+                            "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
+                        }
+        
+        if vcp_pattern:
+            return vcp_pattern
 
     # 3. Cup & Handle
     if len(closes) >= 70:
@@ -3373,6 +3486,29 @@ def get_setup_analysis():
 
     p_bias = pattern_detection.candle_pattern_bias(cand_patterns, chart_results)
 
+    # Compute volume indicators for cache consistency
+    vols = [float(h["volume"]) for h in history if h.get("volume") is not None]
+    if len(vols) >= 50:
+        volume_sma_50 = sum(vols[-50:]) / 50.0
+    elif vols:
+        volume_sma_50 = sum(vols) / len(vols)
+    else:
+        volume_sma_50 = 0.0
+
+    down_day_vols = []
+    for i in range(1, len(history)):
+        current_close = float(history[i]["close"])
+        prev_close = float(history[i-1]["close"])
+        if current_close < prev_close:
+            down_day_vols.append(float(history[i]["volume"]))
+    
+    if len(down_day_vols) >= 10:
+        max_down_vol_10 = max(down_day_vols[-10:])
+    elif down_day_vols:
+        max_down_vol_10 = max(down_day_vols)
+    else:
+        max_down_vol_10 = 0.0
+
     # Persist signals to sqlite
     bar_date = history[-1].get("date") if history else None
     try:
@@ -3387,10 +3523,10 @@ def get_setup_analysis():
         c.execute("""
             INSERT OR REPLACE INTO pattern_cache
                 (ticker, generated_at, pattern_name, pattern_grade, pattern_desc,
-                 candlestick_json, pattern_bias)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 candlestick_json, pattern_bias, max_down_vol_10, volume_sma_50)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ticker, datetime.now().isoformat(), p_name,
-              p_grade, p_desc, json.dumps(cand_patterns), p_bias))
+              p_grade, p_desc, json.dumps(cand_patterns), p_bias, max_down_vol_10, volume_sma_50))
         conn.commit()
         conn.close()
     except Exception as db_ex:
@@ -7684,9 +7820,9 @@ def add_to_ep_watchlist():
 
             c.execute("""
                 INSERT INTO ep_watchlist (
-                    symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, notes
-                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
-            """, (symbol, exchange, catalyst_date, ep_type, ep_score, entry_price, stop_price, notes))
+                    symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, notes, catalyst_close
+                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+            """, (symbol, exchange, catalyst_date, ep_type, ep_score, entry_price, stop_price, notes, entry_price))
             conn.commit()
             return jsonify(success=True, message="Added to watchlist")
     except Exception as e:

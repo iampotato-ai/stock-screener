@@ -245,10 +245,13 @@ CATALYST_BASE = {
     "THEME_CATALYST":    0.50,   # Government policy, PLI, sector tailwind
     "CAPEX_EXPANSION":   0.45,
     "ABNORMAL_VOLUME":   0.60,   # Volume EP / 9M equivalent (no news yet)
+    "BEAT":              0.50,
+    "MISS":             -0.30,
     "GUIDANCE_CUT":     -0.80,   # Negative catalyst (Short EP)
     "FRAUD_CONCERN":    -0.90,
     "UNKNOWN":           0.20,
 }
+
 
 def compute_catalyst_score(event_type, revenue_growth, profit_growth,
                             consecutive_quarters, market_cap_cr):
@@ -303,8 +306,8 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
     # Close location: closing near high is a bull signal
     n_close = close_loc                  # already 0–1
 
-    # Overall day strength
-    n_strength = max(0, min(1, price_change_pct / 15))
+    # Overall day strength: blend of close-to-close change (70%) and intraday range (30%)
+    n_strength = max(0, min(1, (price_change_pct * 0.7 + intraday_range_pct * 0.3) / 15))
 
     repricing = (0.30 * n_gap +
                  0.35 * n_vol +
@@ -317,13 +320,14 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
 
 ```python
 def compute_ep_score(neglect_score, catalyst_score, repricing_score,
-                     liquidity_ok: bool):
+                     liquidity_ok: bool, has_fundamentals: bool = True):
     """
     Weighted composite. Catalyst_score can be negative for Short EPs.
     """
     raw = (0.25 * neglect_score +
-           0.35 * catalyst_score +
-           0.30 * repricing_score)
+           0.35 * abs(catalyst_score) +
+           0.30 * repricing_score +
+           0.10 * (1.0 if has_fundamentals else 0.0))
 
     # Small liquidity penalty if stock is too illiquid
     liquidity_adj = 0.0 if liquidity_ok else -0.10
@@ -333,20 +337,22 @@ def compute_ep_score(neglect_score, catalyst_score, repricing_score,
 
 
 def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
-                   revenue_growth, profit_growth, day1_messy: bool,
-                   is_negative_catalyst: bool):
-    if is_negative_catalyst:
+                   revenue_growth=0, profit_growth=0, day1_messy: bool = False,
+                   is_negative_catalyst: bool = False):
+    if is_negative_catalyst or catalyst_score < 0:
         return "Short EP"
-    if event_type == "ABNORMAL_VOLUME" and rel_volume >= 5:
+    if event_type in ("ABNORMAL_VOLUME", "UNKNOWN"):
         return "Volume EP"
-    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT") and revenue_growth >= 100:
+    if day1_messy:
+        return "Delayed EP"
+    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT") and revenue_growth >= 100:
         return "Growth EP"
     if event_type == "TURNAROUND":
         return "Turnaround EP"
-    if event_type in ("THEME_CATALYST", "ORDER_WIN", "MGMT_CHANGE"):
+    if event_type in ("THEME_CATALYST", "ORDER_WIN", "MGMT_CHANGE", "CAPEX_EXPANSION"):
         return "Story EP"
-    if day1_messy:
-        return "Delayed EP"
+    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT", "MISS"):
+        return "Growth EP"
     return "Growth EP"
 
 
