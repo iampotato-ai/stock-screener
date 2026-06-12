@@ -527,7 +527,7 @@ def test_catalyst_close_no_drift(mock_post, mock_fetch_announcements, mock_fetch
 
     conn = orig_connect(db_path)
     c = conn.cursor()
-    c.execute("SELECT catalyst_close, entry_price FROM ep_watchlist WHERE symbol = 'DRIFTSTK'")
+    c.execute("SELECT catalyst_close, entry_price, catalyst_date FROM ep_watchlist WHERE symbol = 'DRIFTSTK'")
     row = c.fetchone()
     conn.close()
 
@@ -535,6 +535,8 @@ def test_catalyst_close_no_drift(mock_post, mock_fetch_announcements, mock_fetch
     assert row[0] == 110.0  # catalyst_close must NOT drift!
     # entry_price should also not change (remain original close of 110.0)
     assert row[1] == 110.0
+    # catalyst_date must also not drift (remain 2026-06-20)
+    assert row[2] == "2026-06-20"
 
 
 @patch("app.send_telegram_alert")

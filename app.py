@@ -1902,9 +1902,9 @@ def refresh_ep_screener():
                 if existing:
                     c.execute('''
                         UPDATE ep_watchlist
-                        SET ep_score = ?, stop_price = ?, catalyst_date = ?, ep_type = ?
+                        SET ep_score = ?, stop_price = ?, ep_type = ?, updated_at = datetime('now')
                         WHERE id = ?
-                    ''', (ep_score, today_low, feature_date, ep_type, existing[0]))
+                    ''', (ep_score, today_low, ep_type, existing[0]))
                 else:
                     c.execute('''
                         INSERT INTO ep_watchlist (
@@ -1932,7 +1932,12 @@ def refresh_ep_screener():
             try:
                 conn.rollback()
             except Exception:
-                pass
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = sqlite3.connect('scan_history.db')
+                c = conn.cursor()
             print(f"Error computing EP features for {ticker}: {e}")
             import traceback; traceback.print_exc()
             
@@ -2959,6 +2964,8 @@ def classify_technical_pattern(history):
     vcp_pattern = None
     if len(closes) >= 60:
         # Try to find local peaks to identify contraction periods dynamically
+        best_vcp_pattern = None
+        best_d3 = float('inf')
         for peak_window in [10, 8, 6, 4]:
             peaks = []
             for i in range(peak_window, len(highs) - 2):
@@ -2989,18 +2996,21 @@ def classify_technical_pattern(history):
                         is_breakout = current_close >= pivot_high * 0.98 and vol_ratio >= 1.4
                         desc = f"Volatility contraction detected dynamically with 3 contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
                         if is_breakout:
-                            vcp_pattern = {
+                            candidate_pattern = {
                                 "pattern": "VCP Breakout (3T)",
                                 "grade": "A+" if d3 <= 5.0 else "A",
                                 "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
                             }
                         else:
-                            vcp_pattern = {
+                            candidate_pattern = {
                                 "pattern": "VCP Consolidation (3T)",
                                 "grade": "A" if d3 <= 5.0 else "B+",
                                 "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
                             }
-                        break
+                        if d3 < best_d3:
+                            best_d3 = d3
+                            best_vcp_pattern = candidate_pattern
+        vcp_pattern = best_vcp_pattern
         
         # Fallback to the original fixed-width 80-day window check if no dynamic pattern is found
         if not vcp_pattern and len(closes) >= 80:
