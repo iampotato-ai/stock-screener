@@ -7573,195 +7573,196 @@ def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="202
     import time
     from datetime import datetime
     
-    with ep_backtest_prep_lock:
-        try:
-            ep_backtest_prep_status["running"] = True
-            ep_backtest_prep_status["error"] = None
-            ep_backtest_prep_status["processed"] = 0
-            ep_backtest_prep_status["current_symbol"] = ""
+    try:
+        # Determine symbols list
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        if not symbols:
+            c.execute("SELECT DISTINCT symbol FROM daily_bars")
+            db_syms = [r[0] for r in c.fetchall()]
+            c.execute("SELECT DISTINCT symbol FROM ipo_listings")
+            ipo_syms = [r[0] for r in c.fetchall()]
+            c.execute("SELECT DISTINCT symbol FROM ep_watchlist")
+            wl_syms = [r[0] for r in c.fetchall()]
+            symbols = sorted(list(set(db_syms + ipo_syms + wl_syms)))
+        
+        conn.close()
+        
+        with ep_backtest_prep_lock:
+            ep_backtest_prep_status["total"] = len(symbols)
+        
+        for symbol in symbols:
+            with ep_backtest_prep_lock:
+                ep_backtest_prep_status["current_symbol"] = symbol
             
-            # Determine symbols list
+            # Fetch history (10y)
+            history = fetch_historical_prices(symbol, range_str="10y")
+            if not history:
+                # Try BSE suffix if it doesn't already have one
+                if not symbol.endswith(".BO") and not symbol.endswith(".NS"):
+                    history = fetch_historical_prices(f"{symbol}.BO", range_str="10y")
+            
+            if not history or len(history) < 50:
+                with ep_backtest_prep_lock:
+                    ep_backtest_prep_status["processed"] += 1
+                time.sleep(0.1)
+                continue
+            
+            # Re-connect to database for inserts
             conn = sqlite3.connect('scan_history.db')
             c = conn.cursor()
             
-            if not symbols:
-                c.execute("SELECT DISTINCT symbol FROM daily_bars")
-                db_syms = [r[0] for r in c.fetchall()]
-                c.execute("SELECT DISTINCT symbol FROM ipo_listings")
-                ipo_syms = [r[0] for r in c.fetchall()]
-                c.execute("SELECT DISTINCT symbol FROM ep_watchlist")
-                wl_syms = [r[0] for r in c.fetchall()]
-                symbols = sorted(list(set(db_syms + ipo_syms + wl_syms)))
+            # Pre-calculate indicators
+            closes = [float(h["close"]) for h in history if h.get("close") is not None]
+            highs = [float(h["high"]) for h in history if h.get("high") is not None]
+            lows = [float(h["low"]) for h in history if h.get("low") is not None]
+            volumes = [float(h["volume"]) for h in history if h.get("volume") is not None]
             
-            conn.close()
+            atr_14_list = [None] * len(history)
+            avg_vol_20_list = [None] * len(history)
+            avg_vol_50_list = [None] * len(history)
             
-            ep_backtest_prep_status["total"] = len(symbols)
+            tr_list = []
+            for i in range(len(history)):
+                if i == 0:
+                    tr_list.append(highs[i] - lows[i])
+                else:
+                    tr_list.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+                    
+            for i in range(len(history)):
+                if i >= 13:
+                    atr_14_list[i] = sum(tr_list[i-13:i+1]) / 14.0
+                if i >= 19:
+                    avg_vol_20_list[i] = sum(volumes[i-19:i+1]) / 20.0
+                if i >= 49:
+                    avg_vol_50_list[i] = sum(volumes[i-49:i+1]) / 50.0
             
-            for symbol in symbols:
-                ep_backtest_prep_status["current_symbol"] = symbol
-                
-                # Fetch history (10y)
-                history = fetch_historical_prices(symbol, range_str="10y")
-                if not history:
-                    # Try BSE suffix if it doesn't already have one
-                    if not symbol.endswith(".BO") and not symbol.endswith(".NS"):
-                        history = fetch_historical_prices(f"{symbol}.BO", range_str="10y")
-                
-                if not history or len(history) < 50:
-                    ep_backtest_prep_status["processed"] += 1
-                    time.sleep(0.1)
+            # Save daily bars & compute ep features
+            for i in range(50, len(history)):
+                bar = history[i]
+                prev_bar = history[i-1]
+                t_date = bar.get("date")
+                if not t_date or t_date < start_date or t_date > end_date:
                     continue
+                    
+                o = float(bar.get("open") or 0)
+                h = float(bar.get("high") or 0)
+                l = float(bar.get("low") or 0)
+                col = float(bar.get("close") or 0)
+                v = int(bar.get("volume") or 0)
+                prev_c = float(prev_bar.get("close") or 0)
                 
-                # Re-connect to database for inserts
-                conn = sqlite3.connect('scan_history.db')
-                c = conn.cursor()
+                gap = ((o - prev_c) / prev_c * 100) if prev_c else 0.0
+                chg = ((col - prev_c) / prev_c * 100) if prev_c else 0.0
+                close_loc = ((col - l) / (h - l)) if (h - l) > 0 else 1.0
+                intra_range = ((h - l) / prev_c * 100) if prev_c else 0.0
                 
-                # Pre-calculate indicators
-                closes = [float(h["close"]) for h in history if h.get("close") is not None]
-                highs = [float(h["high"]) for h in history if h.get("high") is not None]
-                lows = [float(h["low"]) for h in history if h.get("low") is not None]
-                volumes = [float(h["volume"]) for h in history if h.get("volume") is not None]
+                atr = atr_14_list[i]
+                vol_20 = avg_vol_20_list[i]
+                vol_50 = avg_vol_50_list[i]
                 
-                atr_14_list = [None] * len(history)
-                avg_vol_20_list = [None] * len(history)
-                avg_vol_50_list = [None] * len(history)
+                rel_vol_20 = v / vol_20 if (vol_20 and vol_20 > 0) else 1.0
+                rel_vol_50 = v / vol_50 if (vol_50 and vol_50 > 0) else 1.0
                 
-                tr_list = []
-                for i in range(len(history)):
-                    if i == 0:
-                        tr_list.append(highs[i] - lows[i])
+                # Insert daily bar
+                c.execute('''
+                    INSERT OR REPLACE INTO daily_bars (
+                        symbol, exchange, trade_date, open, high, low, close, volume,
+                        prev_close, gap_pct, close_loc, price_change_pct, intraday_range_pct,
+                        atr_14, rel_volume_20, rel_volume_50
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    symbol, "NSE", t_date, o, h, l, col, v,
+                    prev_c, round(gap, 3), round(close_loc, 3), round(chg, 3), round(intra_range, 3),
+                    round(atr, 4) if atr else None,
+                    round(rel_vol_20, 3) if rel_vol_20 else None,
+                    round(rel_vol_50, 3) if rel_vol_50 else None
+                ))
+                
+                # Check technical EP breakout criteria
+                if rel_vol_20 >= 3.0 and gap >= 2.0 and close_loc >= 0.5:
+                    # Neglect Score
+                    perf_3m = ((col - closes[i-63]) / closes[i-63] * 100) if i >= 63 else None
+                    perf_6m = ((col - closes[i-126]) / closes[i-126] * 100) if i >= 126 else None
+                    last_60 = closes[i-59:i+1]
+                    # TODO: avg_vol_rank = 0.5 is hardcoded here because there's no full sector volume sorted list
+                    # available in this historical single-stock context. This biases historical neglect scores upward.
+                    avg_vol_rank = 0.5
+                    
+                    neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
+                    
+                    # Catalyst Score
+                    c.execute("""
+                        SELECT quarter, revenue_yoy_pct, net_profit_yoy_pct, surprise_type, consecutive_quarters_growth 
+                        FROM fundamentals 
+                        WHERE symbol = ? 
+                          AND (date(result_date) BETWEEN date(?, '-3 days') AND date(?, '+3 days'))
+                        LIMIT 1
+                    """, (symbol, t_date, t_date))
+                    fund_row = c.fetchone()
+                    
+                    if fund_row:
+                        event_type = fund_row[3] or "STRONG_BEAT"
+                        revenue_growth = fund_row[1] or 0.0
+                        profit_growth = fund_row[2] or 0.0
+                        consec_growth = fund_row[4] or 0
+                        has_result = 1
                     else:
-                        tr_list.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+                        event_type = "ABNORMAL_VOLUME"
+                        revenue_growth = 0.0
+                        profit_growth = 0.0
+                        consec_growth = 0
+                        has_result = 0
                         
-                for i in range(len(history)):
-                    if i >= 13:
-                        atr_14_list[i] = sum(tr_list[i-13:i+1]) / 14.0
-                    if i >= 19:
-                        avg_vol_20_list[i] = sum(volumes[i-19:i+1]) / 20.0
-                    if i >= 49:
-                        avg_vol_50_list[i] = sum(volumes[i-49:i+1]) / 50.0
-                
-                # Save daily bars & compute ep features
-                for i in range(50, len(history)):
-                    bar = history[i]
-                    prev_bar = history[i-1]
-                    t_date = bar.get("date")
-                    if not t_date or t_date < start_date or t_date > end_date:
-                        continue
-                        
-                    o = float(bar.get("open") or 0)
-                    h = float(bar.get("high") or 0)
-                    l = float(bar.get("low") or 0)
-                    col = float(bar.get("close") or 0)
-                    v = int(bar.get("volume") or 0)
-                    prev_c = float(prev_bar.get("close") or 0)
+                    mktcap_cr = 500.0 # Default fallback cap
+                    catalyst_score = compute_catalyst_score(event_type, revenue_growth, profit_growth, consec_growth, mktcap_cr)
                     
-                    gap = ((o - prev_c) / prev_c * 100) if prev_c else 0.0
-                    chg = ((col - prev_c) / prev_c * 100) if prev_c else 0.0
-                    close_loc = ((col - l) / (h - l)) if (h - l) > 0 else 1.0
-                    intra_range = ((h - l) / prev_c * 100) if prev_c else 0.0
+                    # Repricing Score
+                    repricing_score = compute_repricing_score(gap, rel_vol_20, close_loc, chg, intra_range)
                     
-                    atr = atr_14_list[i]
-                    vol_20 = avg_vol_20_list[i]
-                    vol_50 = avg_vol_50_list[i]
+                    # EP Score
+                    ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, True, has_result == 1)
                     
-                    rel_vol_20 = v / vol_20 if (vol_20 and vol_20 > 0) else 1.0
-                    rel_vol_50 = v / vol_50 if (vol_50 and vol_50 > 0) else 1.0
+                    # EP Type & Confidence
+                    ep_type = assign_ep_type(catalyst_score, event_type, rel_vol_20, gap, revenue_growth, profit_growth)
+                    confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
                     
-                    # Insert daily bar
+                    # Insert EP features
                     c.execute('''
-                        INSERT OR REPLACE INTO daily_bars (
-                            symbol, exchange, trade_date, open, high, low, close, volume,
-                            prev_close, gap_pct, close_loc, price_change_pct, intraday_range_pct,
-                            atr_14, rel_volume_20, rel_volume_50
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT OR REPLACE INTO ep_features (
+                            symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
+                            neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
+                            event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
+                            ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
+                            price_change_pct
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?)
                     ''', (
-                        symbol, "NSE", t_date, o, h, l, col, v,
-                        prev_c, round(gap, 3), round(close_loc, 3), round(chg, 3), round(intra_range, 3),
-                        round(atr, 4) if atr else None,
-                        round(rel_vol_20, 3) if rel_vol_20 else None,
-                        round(rel_vol_50, 3) if rel_vol_50 else None
+                        symbol, "NSE", t_date,
+                        round(perf_3m, 3) if perf_3m is not None else None,
+                        round(perf_6m, 3) if perf_6m is not None else None,
+                        round(range_60d_pct, 3), round(avg_vol_rank, 3),
+                        neglect_score, has_result,
+                        round(revenue_growth, 3), round(profit_growth, 3),
+                        0, event_type, catalyst_score,
+                        round(gap, 3), round(rel_vol_20, 3), round(close_loc, 3), repricing_score,
+                        ep_score, ep_type, confidence, mktcap_cr,
+                        round(vol_20 * col / 10000000.0, 2) if vol_20 else 0.0,
+                        round(chg, 3)
                     ))
-                    
-                    # Check technical EP breakout criteria
-                    if rel_vol_20 >= 3.0 and gap >= 2.0 and close_loc >= 0.5:
-                        # Neglect Score
-                        perf_3m = ((col - closes[i-63]) / closes[i-63] * 100) if i >= 63 else None
-                        perf_6m = ((col - closes[i-126]) / closes[i-126] * 100) if i >= 126 else None
-                        last_60 = closes[i-59:i+1]
-                        range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
-                        avg_vol_rank = 0.5 # Default rank
-                        
-                        neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
-                        
-                        # Catalyst Score - cross reference with fundamentals table (results dates)
-                        c.execute("""
-                            SELECT quarter, revenue_yoy_pct, net_profit_yoy_pct, surprise_type, consecutive_quarters_growth 
-                            FROM fundamentals 
-                            WHERE symbol = ? 
-                              AND (date(result_date) BETWEEN date(?, '-3 days') AND date(?, '+3 days'))
-                            LIMIT 1
-                        """, (symbol, t_date, t_date))
-                        fund_row = c.fetchone()
-                        
-                        if fund_row:
-                            event_type = fund_row[3] or "STRONG_BEAT"
-                            revenue_growth = fund_row[1] or 0.0
-                            profit_growth = fund_row[2] or 0.0
-                            consec_growth = fund_row[4] or 0
-                            has_result = 1
-                        else:
-                            event_type = "ABNORMAL_VOLUME"
-                            revenue_growth = 0.0
-                            profit_growth = 0.0
-                            consec_growth = 0
-                            has_result = 0
-                            
-                        mktcap_cr = 500.0 # Default fallback cap
-                        catalyst_score = compute_catalyst_score(event_type, revenue_growth, profit_growth, consec_growth, mktcap_cr)
-                        
-                        # Repricing Score
-                        repricing_score = compute_repricing_score(gap, rel_vol_20, close_loc, chg, intra_range)
-                        
-                        # EP Score
-                        ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, True, has_result == 1)
-                        
-                        # EP Type & Confidence
-                        ep_type = assign_ep_type(catalyst_score, event_type, rel_vol_20, gap, revenue_growth, profit_growth)
-                        confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
-                        
-                        # Insert EP features
-                        c.execute('''
-                            INSERT OR REPLACE INTO ep_features (
-                                symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
-                                neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
-                                event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
-                                ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
-                                price_change_pct
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?)
-                        ''', (
-                            symbol, "NSE", t_date,
-                            round(perf_3m, 3) if perf_3m is not None else None,
-                            round(perf_6m, 3) if perf_6m is not None else None,
-                            round(range_60d_pct, 3), round(avg_vol_rank, 3),
-                            neglect_score, has_result,
-                            round(revenue_growth, 3), round(profit_growth, 3),
-                            0, event_type, catalyst_score,
-                            round(gap, 3), round(rel_vol_20, 3), round(close_loc, 3), repricing_score,
-                            ep_score, ep_type, confidence, mktcap_cr,
-                            round(vol_20 * col / 10000000.0, 2) if vol_20 else 0.0,
-                            round(chg, 3)
-                        ))
-                
-                conn.commit()
-                conn.close()
+            
+            conn.commit()
+            conn.close()
+            with ep_backtest_prep_lock:
                 ep_backtest_prep_status["processed"] += 1
-                time.sleep(0.5) # Throttle to prevent rate limit
-                
-        except Exception as e:
+            time.sleep(0.5) # Throttle to prevent rate limit
+            
+    except Exception as e:
+        with ep_backtest_prep_lock:
             ep_backtest_prep_status["error"] = str(e)
-            print(f"Error in backtest prep background thread: {e}")
-        finally:
+        print(f"Error in backtest prep background thread: {e}")
+    finally:
+        with ep_backtest_prep_lock:
             ep_backtest_prep_status["running"] = False
 
 @app.route('/api/ep/backtest/prepare', methods=['POST'])
@@ -7770,16 +7771,23 @@ def api_prep_backtest():
     from flask import request
     import threading
     
-    if ep_backtest_prep_status["running"]:
-        return jsonify(error="Preparation is already running."), 400
+    with ep_backtest_prep_lock:
+        if ep_backtest_prep_status["running"]:
+            return jsonify(error="Preparation is already running."), 400
+            
+        start_date = request.json.get("start_date", "2019-01-01").strip()
+        end_date = request.json.get("end_date", "2025-12-31").strip()
+        symbols_param = request.json.get("symbols", "").strip()
         
-    start_date = request.json.get("start_date", "2019-01-01").strip()
-    end_date = request.json.get("end_date", "2025-12-31").strip()
-    symbols_param = request.json.get("symbols", "").strip()
-    
-    symbols = None
-    if symbols_param and symbols_param.lower() != "all" and symbols_param.lower() != "":
-        symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+        symbols = None
+        if symbols_param and symbols_param.lower() != "all" and symbols_param.lower() != "":
+            symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+            
+        ep_backtest_prep_status["running"] = True
+        ep_backtest_prep_status["error"] = None
+        ep_backtest_prep_status["processed"] = 0
+        ep_backtest_prep_status["total"] = 0
+        ep_backtest_prep_status["current_symbol"] = ""
         
     t = threading.Thread(target=run_historical_backfill, args=(symbols, start_date, end_date))
     t.start()
@@ -7789,7 +7797,8 @@ def api_prep_backtest():
 @app.route('/api/ep/backtest/prep_status', methods=['GET'])
 def api_prep_backtest_status():
     global ep_backtest_prep_status
-    return jsonify(ep_backtest_prep_status)
+    with ep_backtest_prep_lock:
+        return jsonify(ep_backtest_prep_status)
 
 @app.route('/api/ep/backtest', methods=['POST'])
 def api_ep_backtest():
@@ -7880,8 +7889,8 @@ def api_ep_backtest():
             # 5-day lowest low before the entry bar
             stop_price = min(float(bars[k]["low"]) for k in range(max(0, ep_idx - 4), ep_idx + 1))
         else: # ATR_2X
-            atr = float(ep_bar["atr_14"] or (entry_price * 0.05))
-            stop_price = entry_price - (2.0 * atr)
+            atr = float(ep_bar["atr_14"] or (float(ep_bar["close"]) * 0.05))
+            stop_price = float(ep_bar["close"]) - (2.0 * atr)
             
         # Stop loss cannot be above entry price
         if stop_price >= entry_price:
@@ -7933,9 +7942,10 @@ def api_ep_backtest():
                     exit_reason = "MA Cross"
                     break
             elif exit_rule == "SWING_LOW_TRAIL":
-                # Trail stop under lowest low of last 3 days
-                trail_low = min(float(bars[k]["low"]) for k in range(max(0, j-3), j)) if j > 0 else trail_stop
-                trail_stop = max(trail_stop, trail_low)
+                # Trail stop under lowest low of last 3 days, only starting from first full day after entry
+                if j >= ep_idx + 2:
+                    trail_low = min(float(bars[k]["low"]) for k in range(max(0, j-3), j))
+                    trail_stop = max(trail_stop, trail_low)
                     
             # Check maximum hold time
             if holding_days >= 60:
@@ -8007,6 +8017,32 @@ def api_ep_backtest():
             trading_dates.append(curr.strftime("%Y-%m-%d"))
             curr += timedelta(days=1)
             
+    # Pre-load all close prices for symbols in trades to avoid thousands of SQLite connections inside the loop
+    db_prices = {}
+    if trades:
+        all_symbols = list(set(t["symbol"] for t in trades))
+        min_date = trading_dates[0] if trading_dates else trades[0]["entry_date"]
+        max_date = trading_dates[-1] if trading_dates else trades[-1]["exit_date"]
+        
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        chunk_size = 500
+        for idx in range(0, len(all_symbols), chunk_size):
+            chunk = all_symbols[idx:idx+chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            query = f"""
+                SELECT symbol, trade_date, close 
+                FROM daily_bars 
+                WHERE symbol IN ({placeholders}) 
+                  AND trade_date BETWEEN ? AND ?
+            """
+            params = chunk + [min_date, max_date]
+            c.execute(query, params)
+            for sym, dt, cl in c.fetchall():
+                db_prices[(sym, dt)] = float(cl)
+        conn.close()
+
     equity = capital
     active_positions = []
     equity_curve = []
@@ -8048,17 +8084,13 @@ def api_ep_backtest():
                     
         # Calculate portfolio value today
         current_value = cash
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
         for pos in active_positions:
             t = pos["trade"]
-            c.execute("SELECT close FROM daily_bars WHERE symbol = ? AND trade_date = ?", (t["symbol"], t_date))
-            row = c.fetchone()
-            if row:
-                current_value += pos["shares"] * float(row[0])
+            close_val = db_prices.get((t["symbol"], t_date))
+            if close_val is not None:
+                current_value += pos["shares"] * close_val
             else:
                 current_value += pos["shares"] * t["entry_price"]
-        conn.close()
         
         if current_value > max_portfolio_value:
             max_portfolio_value = current_value
@@ -8114,11 +8146,24 @@ def get_ep_themes():
             return jsonify(themes=[])
         latest_date = latest_date_row[0]
         
-        c.execute("""
+        # By default, themes only surface Story EP and Volume EP (as they represent sector-narrative plays).
+        # Clients can pass ?types=all to include Growth EP and Turnaround EP, or pass a comma-separated list of types.
+        from flask import request
+        types_param = request.args.get("types", "").strip()
+        if types_param.lower() == "all":
+            allowed_types = ['Story EP', 'Volume EP', 'Growth EP', 'Turnaround EP']
+        elif types_param:
+            allowed_types = [t.strip() for t in types_param.split(',')]
+        else:
+            allowed_types = ['Story EP', 'Volume EP']
+            
+        placeholders = ",".join(["?"] * len(allowed_types))
+        query = f"""
             SELECT symbol, ep_type, ep_score, confidence, market_cap_cr
             FROM ep_features
-            WHERE feature_date = ? AND ep_type IN ('Story EP', 'Volume EP')
-        """, (latest_date,))
+            WHERE feature_date = ? AND ep_type IN ({placeholders})
+        """
+        c.execute(query, [latest_date] + allowed_types)
         rows = [dict(r) for r in c.fetchall()]
         
         themes_map = {}

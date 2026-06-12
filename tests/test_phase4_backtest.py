@@ -94,6 +94,9 @@ def test_backtest_prep_api(mock_fetch_prices, client):
     data = json.loads(res.data)
     assert data.get("success") is True
 
+    # Allow thread initialization time
+    time.sleep(0.15)
+
     # Poll status API until it finishes
     attempts = 0
     running = True
@@ -213,6 +216,10 @@ def test_themes_and_rotation_apis(client):
         INSERT INTO ep_features (symbol, exchange, feature_date, ep_score, ep_type, confidence, gap_pct, rel_volume, close_loc, neglect_score, catalyst_score, repricing_score, market_cap_cr)
         VALUES ('VOLSTK', 'NSE', '2026-06-12', 0.75, 'Volume EP', 'MEDIUM', 5.0, 4.0, 0.7, 0.4, 0.6, 0.7, 600.0)
     """)
+    c.execute("""
+        INSERT INTO ep_features (symbol, exchange, feature_date, ep_score, ep_type, confidence, gap_pct, rel_volume, close_loc, neglect_score, catalyst_score, repricing_score, market_cap_cr)
+        VALUES ('GROWTHSTK', 'NSE', '2026-06-12', 0.90, 'Growth EP', 'HIGH', 8.0, 6.0, 0.8, 0.6, 0.9, 0.9, 700.0)
+    """)
     
     # Setup sectors in ipo_listings
     c.execute("""
@@ -222,6 +229,10 @@ def test_themes_and_rotation_apis(client):
     c.execute("""
         INSERT INTO ipo_listings (ticker, company_name, sector, listing_date)
         VALUES ('VOLSTK', 'Vol Corp', 'Green Energy', '2026-01-01')
+    """)
+    c.execute("""
+        INSERT INTO ipo_listings (ticker, company_name, sector, listing_date)
+        VALUES ('GROWTHSTK', 'Growth Corp', 'Green Energy', '2026-01-01')
     """)
     
     # Setup sector rotation in rrg_history
@@ -250,6 +261,15 @@ def test_themes_and_rotation_apis(client):
     assert themes_data["themes"][0]["avg_score"] == 0.80
     assert "STORYSTK" in themes_data["themes"][0]["symbols"]
     assert "VOLSTK" in themes_data["themes"][0]["symbols"]
+    assert "GROWTHSTK" not in themes_data["themes"][0]["symbols"]
+    
+    # Test /api/ep/themes with ?types=all
+    res_themes_all = client.get("/api/ep/themes?types=all")
+    assert res_themes_all.status_code == 200
+    themes_all_data = json.loads(res_themes_all.data)
+    assert len(themes_all_data["themes"]) == 1
+    assert themes_all_data["themes"][0]["count"] == 3
+    assert "GROWTHSTK" in themes_all_data["themes"][0]["symbols"]
     
     # 2. Test /api/ep/sector-rotation
     res_rot = client.get("/api/ep/sector-rotation")
