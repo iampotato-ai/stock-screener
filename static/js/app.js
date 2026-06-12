@@ -11199,7 +11199,7 @@ function openEPDetailModal(symbol) {
                         const sym = window.currentEPDetailSymbol;
                         if (!sym) return;
                         
-                        fetch('/api/ep/watchlist/delete', {
+                        fetch('/api/ep/watchlist/remove', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ symbol: sym })

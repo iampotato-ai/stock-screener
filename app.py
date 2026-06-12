@@ -2,6 +2,7 @@ import os
 import requests
 import time
 import json
+import urllib.request
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import threading
@@ -1340,6 +1341,9 @@ def refresh_ep_screener():
     """
     import requests
     import bisect
+    import time
+    
+    telegram_alerts_queue = []
     
     # 1. Fetch TV universe (market cap >= 50 Cr)
     payload = {
@@ -1777,7 +1781,7 @@ def refresh_ep_screener():
                         f"<b>Close:</b> ₹{today_close:.2f}\n"
                         f"<b>Rel Volume:</b> {dyn_rel_vol:.1f}x"
                     )
-                    send_telegram_alert(alert_msg)
+                    telegram_alerts_queue.append(alert_msg)
                 
         except Exception as e:
             print(f"Error computing EP features for {ticker}: {e}")
@@ -1824,13 +1828,21 @@ def refresh_ep_screener():
                         tight_breakout_triggered = False
                         if len(history_data) >= 6:
                             prev_5_closes = [h["close"] for h in history_data[-6:-1]]
-                            five_day_range = (max(prev_5_closes) - min(prev_5_closes)) / (sum(prev_5_closes)/5.0) * 100
+                            prev_5_sum = sum(prev_5_closes)
+                            five_day_range = 0.0
+                            if prev_5_sum > 0:
+                                five_day_range = (max(prev_5_closes) - min(prev_5_closes)) / (prev_5_sum / 5.0) * 100
                             prev_5_highs = [h["high"] for h in history_data[-6:-1]]
                             five_day_high = max(prev_5_highs)
                             tight_breakout_triggered = (five_day_range < 8.0 and today_close > five_day_high and rel_volume_20_val >= 2.0)
                             
                         # 3. Level Reclaim
-                        reclaim_triggered = (prev_close < catalyst_close and today_close >= catalyst_close * 0.995 and rel_volume_20_val >= 1.5)
+                        reclaim_triggered = (
+                            catalyst_close is not None and
+                            prev_close < catalyst_close and
+                            today_close >= catalyst_close * 0.995 and
+                            rel_volume_20_val >= 1.5
+                        )
                         
                         if rtg_triggered:
                             trigger_type = "RED_TO_GREEN"
@@ -1856,7 +1868,7 @@ def refresh_ep_screener():
                             f"<b>Rel Volume:</b> {rel_volume_20_val:.1f}x\n"
                             f"<b>Original EP Score:</b> {ep_score:.2f}"
                         )
-                        send_telegram_alert(alert_msg)
+                        telegram_alerts_queue.append(alert_msg)
             except Exception as w_err:
                 print(f"[EP Watchlist check] Error checking triggers for {symbol}: {w_err}")
     except Exception as list_err:
@@ -1866,8 +1878,33 @@ def refresh_ep_screener():
     c.execute("UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1 WHERE status = 'ACTIVE'")
     c.execute("UPDATE ep_watchlist SET status = 'EXPIRED' WHERE days_on_watch > 20 AND status = 'ACTIVE'")
     
+    # Update episode_count nightly for all active Sugar Babies
+    # TODO: update episode_count nightly
+    try:
+        c.execute("""
+            UPDATE sugar_babies
+            SET episode_count = (
+                SELECT COUNT(*) FROM ep_features
+                WHERE ep_features.symbol = sugar_babies.symbol AND ep_features.ep_score >= 0.55
+            )
+            WHERE is_active = 1
+        """)
+    except Exception as sb_err:
+        print(f"[EP Sugar Babies Update] Failed to update episode counts: {sb_err}")
+        
     conn.commit()
     conn.close()
+    
+    # Process batched Telegram alerts outside of db transaction
+    if telegram_alerts_queue:
+        print(f"[EP Refresh] Sending {len(telegram_alerts_queue)} batched Telegram alerts...")
+        for alert_msg in telegram_alerts_queue:
+            try:
+                send_telegram_alert(alert_msg)
+                time.sleep(0.2)
+            except Exception as alert_err:
+                print(f"[EP Refresh] Error sending queued alert: {alert_err}")
+                
     print("[EP Refresh] EP screening and cache refresh completed.")
 
 # Global lock to prevent concurrent NSE API fetches across threads
@@ -7537,8 +7574,8 @@ def add_to_ep_watchlist():
             conn.close()
 
 
-@app.route('/api/ep/watchlist/delete', methods=['POST'])
-def delete_from_ep_watchlist():
+@app.route('/api/ep/watchlist/remove', methods=['POST'])
+def remove_from_ep_watchlist():
     data = request.get_json() or {}
     symbol = data.get("symbol", "").upper().strip()
     if not symbol:
@@ -7636,6 +7673,7 @@ def add_to_sugar_babies():
         
         today_str = datetime.now().strftime("%Y-%m-%d")
         
+        # TODO: update episode_count nightly
         c.execute("SELECT COUNT(*) FROM ep_features WHERE symbol = ? AND ep_score >= 0.55", (symbol,))
         episode_count = c.fetchone()[0]
         

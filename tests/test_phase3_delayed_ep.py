@@ -11,15 +11,6 @@ db_fd, db_path = tempfile.mkstemp()
 
 orig_connect = sqlite3.connect
 
-@pytest.fixture(autouse=True)
-def patch_sqlite(monkeypatch):
-    def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
-            return orig_connect(db_path, *args, **kwargs)
-        return orig_connect(database, *args, **kwargs)
-    monkeypatch.setattr(sqlite3, "connect", mock_connect)
-    app.init_db()
-
 # Now insert root path and import app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import app
@@ -31,6 +22,15 @@ from app import (
     assign_ep_type,
     refresh_ep_screener
 )
+
+@pytest.fixture(autouse=True)
+def patch_sqlite(monkeypatch):
+    def mock_connect(database, *args, **kwargs):
+        if database == "scan_history.db":
+            return orig_connect(db_path, *args, **kwargs)
+        return orig_connect(database, *args, **kwargs)
+    monkeypatch.setattr(sqlite3, "connect", mock_connect)
+    app.init_db()
 
 @pytest.fixture(scope="module", autouse=True)
 def cleanup_temp_db():
@@ -59,7 +59,7 @@ def clean_db(patch_sqlite):
 
 def test_short_ep_scoring():
     # Guidance cut catalyst score should be negative
-    cat_score = compute_catalyst_score("GUIDANCE_CUT", None, None)
+    cat_score = compute_catalyst_score("GUIDANCE_CUT", None, None, 0, None)
     assert cat_score == -0.80
     
     # EP score should use absolute catalyst score, so it scores highly
@@ -128,7 +128,7 @@ def test_watchlist_apis(client):
     assert data.get("watchlist_notes") == "Testing watchlist update"
 
     # Remove (delete) watchlist
-    res = client.post("/api/ep/watchlist/delete", json={"symbol": "TESTSTK"})
+    res = client.post("/api/ep/watchlist/remove", json={"symbol": "TESTSTK"})
     assert res.status_code == 200
     res = client.get("/api/ep/TESTSTK/detail")
     data = json.loads(res.data)
@@ -170,9 +170,10 @@ def test_sugar_babies_api(client):
     data = json.loads(res.data)
     assert data.get("is_sugar_baby") == 0
 
+@patch("app.send_telegram_alert")
 @patch("app.fetch_historical_prices")
 @patch("requests.post")
-def test_nightly_delayed_ep_triggers(mock_post, mock_fetch_prices):
+def test_nightly_delayed_ep_triggers(mock_post, mock_fetch_prices, mock_send_alert):
     # Setup mock active watchlist
     conn = orig_connect(db_path)
     c = conn.cursor()
@@ -196,6 +197,21 @@ def test_nightly_delayed_ep_triggers(mock_post, mock_fetch_prices):
     c.execute("""
         INSERT INTO ep_watchlist (symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price)
         VALUES ('SHORTSTOCK', 'NSE', '2026-06-01', 'Short EP', 'ACTIVE', 0.70, 100.0)
+    """)
+    # 5. Level Reclaim with None catalyst close (manual add, should NOT trigger)
+    c.execute("""
+        INSERT INTO ep_watchlist (symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price)
+        VALUES ('RECSTOCKNONE', 'NSE', '2026-06-01', 'Growth EP', 'ACTIVE', 0.70, NULL)
+    """)
+    # 6. Active Sugar Baby whose episode_count should update nightly
+    c.execute("""
+        INSERT INTO sugar_babies (symbol, exchange, added_date, episode_count, is_active)
+        VALUES ('RTGSTOCK', 'NSE', '2026-06-01', 0, 1)
+    """)
+    # Insert a mock ep_feature for RTGSTOCK so it has 1 episode
+    c.execute("""
+        INSERT INTO ep_features (symbol, exchange, feature_date, ep_score, ep_type, confidence)
+        VALUES ('RTGSTOCK', 'NSE', '2026-06-12', 0.75, 'Growth EP', 'HIGH')
     """)
     
     conn.commit()
@@ -225,6 +241,8 @@ def test_nightly_delayed_ep_triggers(mock_post, mock_fetch_prices):
             return rtg_history
         elif "BOSTOCK" in ticker:
             return bo_history
+        elif "RECSTOCKNONE" in ticker:
+            return rec_history
         elif "RECSTOCK" in ticker:
             return rec_history
         elif "SHORTSTOCK" in ticker:
@@ -267,3 +285,120 @@ def test_nightly_delayed_ep_triggers(mock_post, mock_fetch_prices):
     assert res_dict["SHORTSTOCK"]["status"] == "TRIGGERED"
     assert res_dict["SHORTSTOCK"]["trigger"] == "FAILED_BOUNCE"
     assert res_dict["SHORTSTOCK"]["entry"] == 97.0
+    
+    # Verify catalyst_close = None did NOT trigger reclaim, remaining ACTIVE
+    assert res_dict["RECSTOCKNONE"]["status"] == "ACTIVE"
+    assert res_dict["RECSTOCKNONE"]["trigger"] is None
+    
+    # Verify Sugar Babies episode_count nightly update
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT episode_count FROM sugar_babies WHERE symbol = 'RTGSTOCK'")
+    sb_count = c.fetchone()[0]
+    conn.close()
+    assert sb_count == 1
+    
+    # Verify Telegram alerts were sent for the 4 triggered setups
+    assert mock_send_alert.call_count == 4
+
+
+@patch("app.send_telegram_alert")
+@patch("app.fetch_historical_prices")
+@patch("app.fetch_screener_fundamentals")
+@patch("app.fetch_nse_announcements")
+@patch("requests.post")
+def test_high_confidence_alert(mock_post, mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_send_alert):
+    # Setup mock TradingView response with a stock
+    mock_tv_response = MagicMock()
+    mock_tv_response.json.return_value = {
+        "data": [
+            {
+                "s": "NSE:HIGHSTK",
+                "d": [
+                    "HIGHSTK",
+                    "High confidence mock stock",
+                    112.0,      # close
+                    12.0,        # change
+                    3000000.0,  # volume
+                    10000000000.0, # market_cap_basic
+                    100000.0,   # average_volume
+                    "Technology Services" # sector
+                ]
+            },
+            {
+                "s": "NSE:STK2",
+                "d": ["STK2", "S2", 100.0, 0, 0, 100000000.0, 20000.0, "Technology Services"]
+            },
+            {
+                "s": "NSE:STK3",
+                "d": ["STK3", "S3", 100.0, 0, 0, 100000000.0, 30000.0, "Technology Services"]
+            },
+            {
+                "s": "NSE:STK4",
+                "d": ["STK4", "S4", 100.0, 0, 0, 100000000.0, 40000.0, "Technology Services"]
+            },
+            {
+                "s": "NSE:STK5",
+                "d": ["STK5", "S5", 100.0, 0, 0, 100000000.0, 50000.0, "Technology Services"]
+            }
+        ]
+    }
+    mock_post.return_value = mock_tv_response
+
+    # Generate valid historical dates
+    import datetime
+    base_dt = datetime.date(2026, 6, 20)
+    mock_history = []
+    for i in range(149):
+        d = base_dt - datetime.timedelta(days=150-i)
+        # Descending price to simulate neglect
+        c_val = 140.0 if i < 90 else 100.0
+        mock_history.append({
+            "date": d.strftime("%Y-%m-%d"),
+            "open": c_val - 2.0,
+            "high": c_val + 2.0,
+            "low": c_val - 3.0,
+            "close": c_val,
+            "volume": 100000.0
+        })
+    # Breakout bar: gap 10%, rel volume 30x (3000000), close loc 1.0 (close=high), price change 12%
+    mock_history.append({
+        "date": "2026-06-21",
+        "open": 110.0,
+        "high": 112.0,
+        "low": 110.0,
+        "close": 112.0,
+        "volume": 3000000.0
+    })
+    mock_fetch_prices.return_value = mock_history
+
+    # Mock fundamentals for blowout earnings (5 quarters to allow YoY calculation)
+    mock_fetch_fundamentals.return_value = [
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
+        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
+        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 18.0, "eps": 1.8},
+        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 260.0, "net_profit": 40.0, "eps": 4.0} # YoY rev +160%, YoY net profit +300%
+    ]
+    mock_fetch_announcements.return_value = []
+
+    # Run refresh
+    refresh_ep_screener()
+
+    # Query DB features for debugging
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT ep_score, confidence, neglect_score, catalyst_score, repricing_score, ep_type FROM ep_features WHERE symbol = 'HIGHSTK'")
+    row = c.fetchone()
+    print("DEBUG HIGHSTK feature row:", row)
+    conn.close()
+
+    # Assert that send_telegram_alert was called with a new HIGH confidence EP message
+    assert mock_send_alert.call_count >= 1
+    found_high_alert = False
+    for call in mock_send_alert.call_args_list:
+        msg = call[0][0]
+        if "New HIGH Confidence EP Detected" in msg and "HIGHSTK" in msg:
+            found_high_alert = True
+            break
+    assert found_high_alert, "Should send Telegram alert for HIGH confidence EP candidate"
