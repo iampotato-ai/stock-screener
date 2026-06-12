@@ -7581,7 +7581,7 @@ def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="202
         if not symbols:
             c.execute("SELECT DISTINCT symbol FROM daily_bars")
             db_syms = [r[0] for r in c.fetchall()]
-            c.execute("SELECT DISTINCT symbol FROM ipo_listings")
+            c.execute("SELECT DISTINCT ticker FROM ipo_listings")
             ipo_syms = [r[0] for r in c.fetchall()]
             c.execute("SELECT DISTINCT symbol FROM ep_watchlist")
             wl_syms = [r[0] for r in c.fetchall()]
@@ -7686,6 +7686,7 @@ def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="202
                     perf_3m = ((col - closes[i-63]) / closes[i-63] * 100) if i >= 63 else None
                     perf_6m = ((col - closes[i-126]) / closes[i-126] * 100) if i >= 126 else None
                     last_60 = closes[i-59:i+1]
+                    range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
                     # TODO: avg_vol_rank = 0.5 is hardcoded here because there's no full sector volume sorted list
                     # available in this historical single-stock context. This biases historical neglect scores upward.
                     avg_vol_rank = 0.5
