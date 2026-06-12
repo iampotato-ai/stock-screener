@@ -90,7 +90,7 @@ def test_assign_ep_type_and_confidence():
     assert assign_ep_type(0.60, "ABNORMAL_VOLUME", 6.0, 2.0) == "Volume EP"
     assert assign_ep_type(0.60, "THEME_CATALYST", 4.0, 3.0) == "Story EP"
     assert assign_ep_type(-0.80, "GUIDANCE_CUT", 3.0, -5.0) == "Short EP"
-    assert assign_ep_type(0.50, "UNKNOWN", 3.0, 2.0, day1_messy=True) == "Delayed EP"
+    assert assign_ep_type(0.50, "STRONG_BEAT", 3.0, 2.0, day1_messy=True) == "Delayed EP"
     
     # Test assign_confidence
     # ep_score >= 0.72, catalyst_score >= 0.70, repricing_score >= 0.60 -> HIGH
@@ -445,13 +445,26 @@ def test_compute_yoy_metrics_logic():
     assert mar_2026["surprise_type"] == "BLOWOUT_EARNINGS"
 
     quarters_turnaround = [
-        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": -5.0, "eps": -0.5},
         {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
         {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
-        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 130.0, "net_profit": -5.0, "eps": -0.5},
+        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 130.0, "net_profit": 10.0, "eps": 1.0},
         {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 15.0, "eps": 1.5}
     ]
     res_ta = app.compute_yoy_metrics(quarters_turnaround)
     mar_ta = res_ta[4]
     assert mar_ta["surprise_type"] == "TURNAROUND"
+
+    # Test MISS cascade coverage (one of revenue/profit YoY negative)
+    quarters_miss = [
+        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
+        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
+        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 130.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 90.0, "net_profit": 15.0, "eps": 1.5} # YoY rev -10%, YoY net profit +50%
+    ]
+    res_miss = app.compute_yoy_metrics(quarters_miss)
+    mar_miss = res_miss[4]
+    assert mar_miss["revenue_yoy_pct"] == -10.0
+    assert mar_miss["surprise_type"] == "MISS"
 

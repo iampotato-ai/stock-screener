@@ -829,10 +829,10 @@ def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
                    is_negative_catalyst=False):
     if is_negative_catalyst or catalyst_score < 0:
         return "Short EP"
-    if day1_messy:
-        return "Delayed EP"
     if event_type in ("ABNORMAL_VOLUME", "UNKNOWN"):
         return "Volume EP"
+    if day1_messy:
+        return "Delayed EP"
     if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT") and revenue_growth >= 100:
         return "Growth EP"
     if event_type == "TURNAROUND":
@@ -1085,6 +1085,8 @@ def refresh_ipo_metrics():
 def fetch_screener_fundamentals(symbol):
     """
     Scrapes quarterly results from screener.in for a given symbol.
+    # FRAGILE: screener.in HTML structure
+    # TODO: Phase 3 — add EBITDA row scraping
     """
     import urllib.request
     import re
@@ -1117,6 +1119,9 @@ def fetch_screener_fundamentals(symbol):
             date_key = m.group(1).strip()
             q_name = re.sub(r'<.*?>', '', m.group(2)).strip()
             quarters.append({"quarter": q_name, "date_key": date_key})
+        # FRAGILE: screener.in HTML structure version check
+        if len(quarters) == 0:
+            print(f"[Warning] Parsed 0 quarters from screener.in for {symbol}. The HTML structure might have changed.")
             
         # 3. Parse rows in tbody
         tbody_match = re.search(r'<tbody.*?>(.*?)</tbody>', table_html, re.DOTALL)
@@ -1185,6 +1190,8 @@ def fetch_screener_fundamentals(symbol):
 def compute_yoy_metrics(quarters_data):
     """
     Computes YoY metrics, consecutive quarters of growth, and surprise types.
+    Note: quarters_data is ordered oldest-first (from left-to-right on screener.in columns),
+    so i - 4 correctly points to the corresponding quarter from one year (4 quarters) ago.
     """
     for i in range(len(quarters_data)):
         q = quarters_data[i]
@@ -1225,19 +1232,19 @@ def compute_yoy_metrics(quarters_data):
         q_rev_yoy = quarters_data[i]["revenue_yoy_pct"]
         q_prof_yoy = quarters_data[i]["net_profit_yoy_pct"]
         q_profit = quarters_data[i]["net_profit"]
-        prev_profit = quarters_data[i-1]["net_profit"] if i >= 1 else None
+        prev_profit = quarters_data[i-4]["net_profit"] if i >= 4 else None
         
         surprise = "UNKNOWN"
-        if q_rev_yoy is not None and q_prof_yoy is not None:
-            if q_rev_yoy >= 100 and q_prof_yoy >= 100:
+        if q_rev_yoy is not None:
+            if q_prof_yoy is not None and q_rev_yoy >= 100 and q_prof_yoy >= 100:
                 surprise = "BLOWOUT_EARNINGS"
             elif prev_profit is not None and prev_profit < 0 and q_profit is not None and q_profit > 0:
                 surprise = "TURNAROUND"
-            elif q_rev_yoy >= 40:
+            elif q_prof_yoy is not None and q_rev_yoy >= 40:
                 surprise = "STRONG_BEAT"
-            elif q_rev_yoy < 0 or q_prof_yoy < 0:
+            elif q_prof_yoy is not None and (q_rev_yoy < 0 or q_prof_yoy < 0):
                 surprise = "MISS"
-            else:
+            elif q_prof_yoy is not None:
                 surprise = "BEAT"
         quarters_data[i]["surprise_type"] = surprise
         
@@ -1479,29 +1486,7 @@ def refresh_ep_screener():
                     round(rel_vol_50, 3) if rel_vol_50 else None,
                     dq, dp
                 ))
-            
-            # Calculate Neglect metrics
-            # 3m return (requires 63 trading days)
-            perf_3m = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else None
-            # 6m return (requires 126 trading days)
-            perf_6m = ((closes[-1] - closes[-126]) / closes[-126] * 100) if len(closes) >= 126 else None
-            
-            last_60 = closes[-60:]
-            range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
-            
-            # Volume rank
-            sect = s["sector"]
-            avg_vol = float(s["average_volume"])
-            vols = sector_vols.get(sect, [])
-            if len(vols) > 1:
-                rank_idx = bisect.bisect_left(vols, avg_vol)
-                avg_vol_rank = rank_idx / (len(vols) - 1)
-            else:
-                avg_vol_rank = 0.5
-                
-            if len(closes) < 63:
-                # IPO guard: fresh listings (< 3 months history) are not neglected
-                neglect_score = 0.20
+
             # Ingest Fundamentals & YoY metrics
             quarters_data = fetch_screener_fundamentals(s['ticker'])
             if quarters_data:
@@ -1754,6 +1739,7 @@ def refresh_ep_screener():
                 
         except Exception as e:
             print(f"Error computing EP features for {ticker}: {e}")
+            import traceback; traceback.print_exc()
             
     # Increment days_on_watch and expire older items in the active watchlist
     c.execute("UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1 WHERE status = 'ACTIVE'")
@@ -7124,9 +7110,12 @@ def get_ep_today():
     try:
         ep_type = request.args.get('ep_type', 'all').strip()
         confidence = request.args.get('confidence', 'all').strip()
-        min_score = float(request.args.get('min_score', 0.55))
-        min_mktcap = float(request.args.get('min_mktcap', 0.0))
-        max_mktcap = float(request.args.get('max_mktcap', 999999.0))
+        min_score_raw = request.args.get('min_score', '').strip()
+        min_score = float(min_score_raw) if min_score_raw else 0.55
+        min_mktcap_raw = request.args.get('min_mktcap', '').strip()
+        min_mktcap = float(min_mktcap_raw) if min_mktcap_raw else 0.0
+        max_mktcap_raw = request.args.get('max_mktcap', '').strip()
+        max_mktcap = float(max_mktcap_raw) if max_mktcap_raw else 999999.0
         exchange = request.args.get('exchange', 'all').strip()
         
         where_clauses = ["ep_score >= ?"]
