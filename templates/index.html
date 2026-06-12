@@ -164,7 +164,7 @@
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- CSS stylesheet -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.54">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.58">
 </head>
 <body>
     <!-- Premium background decoration elements -->
@@ -1368,24 +1368,25 @@
                     <table class="screener-table" id="ep-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th>
-                                <th>EP Type</th>
-                                <th class="text-center">EP Score</th>
-                                <th class="text-center">Neglect</th>
-                                <th class="text-center">Catalyst</th>
-                                <th class="text-center">Repricing</th>
-                                <th class="text-right">Gap %</th>
-                                <th class="text-right">RVOL</th>
-                                <th class="text-right">Close Loc</th>
-                                <th class="text-right">Mkt Cap (Cr)</th>
-                                <th class="text-right">Avg Turnover (Cr)</th>
-                                <th>Confidence</th>
+                                <th data-sort="symbol">Symbol</th>
+                                <th data-sort="ep_type">EP Type</th>
+                                <th class="text-center" data-sort="ep_score">EP Score</th>
+                                <th class="text-center" data-sort="neglect_score">Neglect</th>
+                                <th class="text-center" data-sort="catalyst_score">Catalyst</th>
+                                <th class="text-center" data-sort="repricing_score">Repricing</th>
+                                <th class="text-right" data-sort="gap_pct">Gap %</th>
+                                <th class="text-right" data-sort="price_change_pct">Day's Chg %</th>
+                                <th class="text-right" data-sort="rel_volume">RVOL</th>
+                                <th class="text-right" data-sort="close_loc">Close Loc</th>
+                                <th class="text-right" data-sort="market_cap_cr">Mkt Cap (Cr)</th>
+                                <th class="text-right" data-sort="avg_turnover_cr">Avg Turnover (Cr)</th>
+                                <th data-sort="confidence">Confidence</th>
                                 <th class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ep-table-body">
                             <tr>
-                                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                                     No EPs loaded yet. Run a scan to populate candidates.
                                 </td>
                             </tr>
@@ -1915,7 +1916,7 @@
                 <div style="display: flex; gap: 1rem;">
                     <div style="flex: 1;">
                         <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Status</label>
-                        <select id="edit-trade-status" class="search-input" style="width: 100%; padding: 0.6rem; background: var(--bg-input); color: var(--color-text-primary); border: 1px solid var(--panel-border); border-radius: 4px;">
+                        <select id="edit-trade-status" style="width: 100%;">
                             <option value="open">Open</option>
                             <option value="hit-t1">Hit T1</option>
                             <option value="hit-t2">Hit T2</option>
@@ -2194,6 +2195,6 @@
 
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.54"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.58"></script>
 </body>
 </html>

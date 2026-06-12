@@ -465,6 +465,29 @@ def init_db():
         c.execute("ALTER TABLE ep_watchlist ADD COLUMN last_incremented_date TEXT")
     except Exception:
         pass
+    try:
+        c.execute("ALTER TABLE ep_features ADD COLUMN price_change_pct REAL")
+    except Exception:
+        pass
+    try:
+        c.execute("""
+            UPDATE ep_features
+            SET price_change_pct = (
+                SELECT db.price_change_pct
+                FROM daily_bars db
+                WHERE db.symbol = ep_features.symbol
+                  AND db.trade_date = ep_features.feature_date
+            )
+            WHERE price_change_pct IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM daily_bars db
+                WHERE db.symbol = ep_features.symbol
+                  AND db.trade_date = ep_features.feature_date
+              )
+        """)
+    except Exception:
+        pass
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS sugar_babies (
@@ -1870,8 +1893,9 @@ def refresh_ep_screener():
                     symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
                     neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
                     event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
-                    ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0)
+                    ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
+                    price_change_pct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?)
             ''', (
                 s['ticker'], s['exchange'], feature_date, 
                 round(perf_3m, 3) if perf_3m is not None else None, 
@@ -1892,7 +1916,8 @@ def refresh_ep_screener():
                 ep_type,
                 confidence,
                 round(mktcap_cr, 2),
-                round(avg_vol_20 * today_close / 10000000, 2)
+                round(avg_vol_20 * today_close / 10000000, 2),
+                round(price_change_pct, 3)
             ))
             
             # Watchlist addition if EP score >= 0.55
@@ -7590,7 +7615,8 @@ def get_ep_today():
             SELECT symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
                    neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
                    event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
-                   ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days
+                   ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
+                   COALESCE(price_change_pct, gap_pct) as price_change_pct
             FROM ep_features
             {where_str}
             ORDER BY ep_score DESC
@@ -7612,7 +7638,8 @@ def get_ep_today():
             'symbol', 'exchange', 'feature_date', 'perf_3m', 'perf_6m', 'range_60d_pct', 'avg_vol_rank',
             'neglect_score', 'has_result', 'revenue_growth', 'profit_growth', 'has_corp_event',
             'event_type', 'catalyst_score', 'gap_pct', 'rel_volume', 'close_loc', 'repricing_score',
-            'ep_score', 'ep_type', 'confidence', 'market_cap_cr', 'avg_turnover_cr', 'float_days'
+            'ep_score', 'ep_type', 'confidence', 'market_cap_cr', 'avg_turnover_cr', 'float_days',
+            'price_change_pct'
         ]
         
         listings = [dict(zip(cols, r)) for r in rows]

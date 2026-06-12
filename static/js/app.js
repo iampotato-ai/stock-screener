@@ -3450,6 +3450,8 @@ function handleHeaderDragEnd(e) {
 let watchlistStocks = [];
 let watchlistSections = [];
 let watchlistDataMap = {};
+// Per-section sort state: { [sectionId]: { field: 'cmp'|'change'|'vol', dir: 'asc'|'desc' } }
+let watchlistSectionSort = {};
 let watchlistCurrentPage = 1;
 const watchlistItemsPerPage = 10;
 let activeNewsFilter = 'all'; // 'all' or ticker symbol
@@ -4146,6 +4148,12 @@ function removeStockFromSection(sectionId, ticker) {
     
     const sec = watchlistSections.find(s => s.id === sectionId);
     if (!sec) return;
+
+    // Save scroll position of the watchlist panel before any DOM changes
+    const wlPanel = document.getElementById('watchlist-sections');
+    const savedScrollTop = wlPanel ? wlPanel.closest('.watchlist-scroll-area, .watchlist-body, [id="watchlist-sections"]')?.scrollTop ?? 0 : 0;
+    const wlContainer = wlPanel ? wlPanel.parentElement : null;
+    const containerScrollTop = wlContainer ? wlContainer.scrollTop : 0;
     
     fetch('/api/watchlist/items', {
         method: 'DELETE',
@@ -4162,15 +4170,20 @@ function removeStockFromSection(sectionId, ticker) {
                 saveWatchlistSections();
                 
                 const row = document.querySelector(`.watchlist-row[data-symbol="${ticker}"][data-section-id="${sectionId}"]`);
+                const doRender = () => {
+                    renderWatchlist();
+                    // Restore scroll position so user stays at the same place
+                    requestAnimationFrame(() => {
+                        if (wlContainer) wlContainer.scrollTop = containerScrollTop;
+                    });
+                };
                 if (row) {
-                    row.style.transition = 'all 0.3s ease';
+                    row.style.transition = 'all 0.25s ease';
                     row.style.opacity = '0';
                     row.style.transform = 'translateX(20px)';
-                    setTimeout(() => {
-                        renderWatchlist();
-                    }, 250);
+                    setTimeout(doRender, 250);
                 } else {
-                    renderWatchlist();
+                    doRender();
                 }
                 
                 if (activeNewsFilter === ticker) {
@@ -4385,38 +4398,86 @@ function renderWatchlist() {
         } else {
             const table = document.createElement('table');
             table.className = 'watchlist-table';
-            
-            // Add missing table headers
+
+            // Current sort state for this section
+            const sortState = watchlistSectionSort[section.id] || { field: null, dir: 'desc' };
+
+            // Helper: render a sortable column header
+            const mkSortTh = (label, field, align = 'right', extraStyle = '') => {
+                const th = document.createElement('th');
+                th.style.cssText = `text-align:${align}; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.75rem; cursor:pointer; user-select:none; white-space:nowrap; ${extraStyle}`;
+                const isActive = sortState.field === field;
+                const arrow = isActive ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+                th.innerHTML = `${label}<span style="color:var(--accent-blue); font-size:0.65rem;">${arrow}</span>`;
+                th.title = `Sort by ${label}`;
+                th.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const cur = watchlistSectionSort[section.id] || { field: null, dir: 'desc' };
+                    watchlistSectionSort[section.id] = {
+                        field,
+                        dir: cur.field === field ? (cur.dir === 'asc' ? 'desc' : 'asc') : 'desc'
+                    };
+                    renderWatchlist();
+                });
+                return th;
+            };
+
+            // Add table headers
             const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
             if (showWatchlistKronosColumns) {
-                thead.innerHTML = `
-                    <tr>
-                        <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem; min-width: 60px;">Symbol</th>
-                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;"># Rank</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">AI Return</th>
-                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Bias</th>
-                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Conf.</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">CMP</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Change%</th>
-                        <th style="width: 24px;"></th>
-                    </tr>
-                `;
+                const thSym = document.createElement('th');
+                thSym.style.cssText = 'text-align:left; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.7rem; min-width:60px;';
+                thSym.textContent = 'Symbol';
+                headerRow.appendChild(thSym);
+                ['# Rank','AI Return','Bias','Conf.'].forEach(lbl => {
+                    const th = document.createElement('th');
+                    th.style.cssText = 'text-align:center; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.7rem;';
+                    th.textContent = lbl;
+                    headerRow.appendChild(th);
+                });
+                headerRow.appendChild(mkSortTh('CMP', 'cmp', 'right', 'font-size:0.7rem;'));
+                headerRow.appendChild(mkSortTh('CHANGE%', 'change', 'right', 'font-size:0.7rem;'));
+                const thDel = document.createElement('th'); thDel.style.width = '24px';
+                headerRow.appendChild(thDel);
             } else {
-                thead.innerHTML = `
-                    <tr>
-                        <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Symbol</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">CMP</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Change%</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Vol</th>
-                        <th style="width: 24px;"></th>
-                    </tr>
-                `;
+                const thSym = document.createElement('th');
+                thSym.style.cssText = 'text-align:left; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.75rem;';
+                thSym.textContent = 'Symbol';
+                headerRow.appendChild(thSym);
+                headerRow.appendChild(mkSortTh('CMP', 'cmp'));
+                headerRow.appendChild(mkSortTh('CHANGE%', 'change'));
+                headerRow.appendChild(mkSortTh('VOL', 'vol'));
+                const thDel = document.createElement('th'); thDel.style.width = '24px';
+                headerRow.appendChild(thDel);
             }
+            thead.appendChild(headerRow);
             table.appendChild(thead);
-            
+
+            // Sort the stocks list for this section
+            let stocksToRender = [...section.stocks];
+            if (sortState.field) {
+                stocksToRender.sort((a, b) => {
+                    const sa = watchlistDataMap[a] || stocksData.find(s => s.clean_ticker === a);
+                    const sb = watchlistDataMap[b] || stocksData.find(s => s.clean_ticker === b);
+                    let va = 0, vb = 0;
+                    if (sortState.field === 'cmp') {
+                        va = sa ? (parseFloat(sa.close) || 0) : 0;
+                        vb = sb ? (parseFloat(sb.close) || 0) : 0;
+                    } else if (sortState.field === 'change') {
+                        va = sa ? (parseFloat(sa.change) || 0) : -Infinity;
+                        vb = sb ? (parseFloat(sb.change) || 0) : -Infinity;
+                    } else if (sortState.field === 'vol') {
+                        va = sa ? (parseFloat(sa.volume) || 0) : 0;
+                        vb = sb ? (parseFloat(sb.volume) || 0) : 0;
+                    }
+                    return sortState.dir === 'asc' ? va - vb : vb - va;
+                });
+            }
+
             const tbody = document.createElement('tbody');
             
-            section.stocks.forEach(symbol => {
+            stocksToRender.forEach(symbol => {
                 let stock = watchlistDataMap[symbol];
                 if (!stock) {
                     stock = stocksData.find(s => s.clean_ticker === symbol);
@@ -10896,6 +10957,8 @@ let epListingsData = [];
 let epWatchlistData = [];
 let epSugarData = [];
 let epListenersBound = false;
+// EP table sort state
+let epTableSort = { field: 'ep_score', dir: 'desc' };
 
 window.renderEPWorkspace = function() {
     bindEPListeners();
@@ -10977,7 +11040,32 @@ function bindEPListeners() {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', triggerEPRefresh);
     }
-    
+
+    // Column header sorting for EP listings table
+    document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (epTableSort.field === field) {
+                epTableSort.dir = epTableSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                epTableSort.field = field;
+                // Numeric fields default desc, text fields default asc
+                const textFields = ['symbol', 'ep_type', 'confidence'];
+                epTableSort.dir = textFields.includes(field) ? 'asc' : 'desc';
+            }
+            // Update header arrow indicators
+            document.querySelectorAll('#ep-table thead th[data-sort]').forEach(h => {
+                const arrow = h.querySelector('.ep-sort-arrow');
+                if (arrow) arrow.textContent = '';
+                h.classList.remove('sort-asc', 'sort-desc');
+            });
+            th.classList.add(epTableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+            renderEPListingsTable();
+        });
+    });
+
     epListenersBound = true;
 }
 
@@ -10996,7 +11084,7 @@ function fetchEPListings() {
     if (tbody && epListingsData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     Loading EP listings...
                 </td>
             </tr>
@@ -11301,15 +11389,39 @@ function renderEPListingsTable() {
     if (epListingsData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="13" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     No candidates match the selected filters.
                 </td>
             </tr>
         `;
         return;
     }
+
+    // Sort the data
+    const textFields = ['symbol', 'ep_type', 'confidence'];
+    const sorted = [...epListingsData].sort((a, b) => {
+        let va = a[epTableSort.field];
+        let vb = b[epTableSort.field];
+        if (va == null) va = textFields.includes(epTableSort.field) ? '' : -Infinity;
+        if (vb == null) vb = textFields.includes(epTableSort.field) ? '' : -Infinity;
+        let cmp;
+        if (textFields.includes(epTableSort.field)) {
+            cmp = String(va).localeCompare(String(vb));
+        } else {
+            cmp = Number(va) - Number(vb);
+        }
+        return epTableSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    // Refresh sort arrow indicator on active header
+    document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === epTableSort.field) {
+            th.classList.add(epTableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
     
-    tbody.innerHTML = epListingsData.map(item => {
+    tbody.innerHTML = sorted.map(item => {
         let rowStyle = '';
         if (item.confidence === 'HIGH' && (item.ep_type === 'Growth EP' || item.ep_type === 'Turnaround EP')) {
             rowStyle = 'background: rgba(16, 185, 129, 0.05);';
@@ -11327,6 +11439,11 @@ function renderEPListingsTable() {
         const gapVal = item.gap_pct || 0.0;
         const changeText = gapVal >= 0 ? `+${gapVal.toFixed(2)}%` : `${gapVal.toFixed(2)}%`;
         const changeStyle = gapVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+
+        // Day's Change %
+        const dayChgVal = item.price_change_pct != null ? item.price_change_pct : gapVal;
+        const dayChgText = dayChgVal >= 0 ? `+${dayChgVal.toFixed(2)}%` : `${dayChgVal.toFixed(2)}%`;
+        const dayChgStyle = dayChgVal >= 0 ? 'color: var(--color-success, #10b981); font-weight: 600;' : 'color: var(--color-error, #ef4444); font-weight: 600;';
         
         const rvolVal = item.rel_volume || 0.0;
         const closeLocVal = item.close_loc || 0.0;
@@ -11344,6 +11461,7 @@ function renderEPListingsTable() {
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.catalyst_score.toFixed(2)}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.repricing_score.toFixed(2)}</td>
                 <td class="text-right" style="${changeStyle} font-weight: 500;">${changeText}</td>
+                <td class="text-right" style="${dayChgStyle}">${dayChgText}</td>
                 <td class="text-right" style="font-weight: 600; color: #fff;">${rvolVal.toFixed(2)}x</td>
                 <td class="text-right">${closeLocVal.toFixed(2)}</td>
                 <td class="text-right">₹${mktcapVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>

@@ -1112,6 +1112,65 @@ input:checked + .slider:before {
     overflow: hidden;
 }
 
+/* ─── Modal select inputs ────────────────────────────────────────────────────
+   Native <select> dropdowns don't inherit CSS variables in the OS-rendered
+   options list, so we must use solid fallback colors here.
+   Without this, near-white text on a white OS-default background is invisible.
+   ─────────────────────────────────────────────────────────────────────────── */
+.modal select,
+.modal-select {
+    background: #1a2035;
+    color: #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 0.6rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    /* Chevron indicator */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.2rem;
+}
+
+.modal select:focus,
+.modal-select:focus {
+    border-color: hsl(217, 95%, 62%);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.modal select:hover,
+.modal-select:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Force option elements to use solid colors so they are always readable */
+.modal select option,
+.modal-select option {
+    background: #1a2035;
+    color: #e2e8f0;
+}
+
+/* Light-mode overrides */
+body[data-theme="light"] .modal select,
+body[data-theme="light"] .modal-select {
+    background: #f8fafc;
+    color: #1e293b;
+    border-color: rgba(0, 0, 0, 0.15);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+body[data-theme="light"] .modal select option,
+body[data-theme="light"] .modal-select option {
+    background: #f8fafc;
+    color: #1e293b;
+}
+
 /* Animations */
 @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -1475,7 +1534,9 @@ input:checked + .slider:before {
 
 .watchlist-table {
     width: 100%;
-    border-collapse: collapse;
+    /* border-collapse:separate is required for position:sticky on <td>/<th> to work */
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.85rem;
 }
 
@@ -1489,6 +1550,14 @@ input:checked + .slider:before {
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     white-space: nowrap;
+}
+
+/* Sortable column header hover state */
+.watchlist-table th[style*="cursor:pointer"]:hover,
+.watchlist-table th[style*="cursor: pointer"]:hover {
+    color: var(--color-text-primary) !important;
+    background: rgba(255, 255, 255, 0.025);
+    border-radius: 4px;
 }
 
 .watchlist-table td {
@@ -1523,6 +1592,35 @@ input:checked + .slider:before {
     font-weight: 700;
     color: var(--color-text-primary);
     font-family: 'Outfit', sans-serif;
+    /* Sticky first column */
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: hsl(230, 24%, 8%);
+    /* Subtle right-edge divider so it looks clean when values scroll under it */
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.45);
+    /* Ensure the cell never shrinks below its content */
+    min-width: 80px;
+    max-width: 160px;
+}
+
+/* Sticky Symbol column — match row hover background */
+.watchlist-table tbody tr:hover td.watchlist-symbol {
+    background: hsl(230, 24%, 10%);
+}
+
+/* Sticky Symbol column — match active-row background */
+.watchlist-table tbody tr.active-row td.watchlist-symbol {
+    background: hsl(224, 40%, 10%);
+}
+
+/* Sticky Symbol column header (th) */
+.watchlist-table thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: hsl(230, 24%, 8%);
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.45);
 }
 
 .watchlist-cell-right {
@@ -2636,6 +2734,18 @@ body[data-theme="light"] .announcement-card:hover {
 
 body[data-theme="light"] .watchlist-table tbody tr.active-row {
     background: rgba(59, 130, 246, 0.06);
+}
+
+/* Light-mode sticky symbol column backgrounds */
+body[data-theme="light"] td.watchlist-symbol,
+body[data-theme="light"] .watchlist-table thead th:first-child {
+    background: hsl(220, 20%, 97%);
+}
+body[data-theme="light"] .watchlist-table tbody tr:hover td.watchlist-symbol {
+    background: hsl(220, 20%, 94%);
+}
+body[data-theme="light"] .watchlist-table tbody tr.active-row td.watchlist-symbol {
+    background: hsl(217, 50%, 93%);
 }
 
 body[data-theme="light"] .modal-content {
