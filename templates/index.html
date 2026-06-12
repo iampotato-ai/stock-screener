@@ -1319,11 +1319,12 @@
                 </div>
             </div>
 
-            <!-- EP Inner Navigation -->
             <div class="ep-sub-tabs" style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
                 <button class="ep-sub-tab active" data-sub="today" style="background: none; border: none; color: #fff; font-size: 0.9rem; font-weight: 600; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid var(--accent-blue); transition: all 0.2s;">Today's EPs</button>
                 <button class="ep-sub-tab" data-sub="watchlist" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Active Watchlist</button>
                 <button class="ep-sub-tab" data-sub="sugar-babies" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Sugar Babies</button>
+                <button class="ep-sub-tab" data-sub="themes" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Themes & Rotation</button>
+                <button class="ep-sub-tab" data-sub="backtest" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: 0.4rem 0.8rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Backtest Engine</button>
             </div>
 
             <!-- Panel: Today's EPs -->
@@ -1447,6 +1448,165 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Panel: Themes & Sector Rotation -->
+            <div class="ep-panel" id="ep-panel-themes" style="display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; width: 100%;">
+                    <!-- Left: Theme Clustering (Story/Volume EPs grouped by sector) -->
+                    <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem;">
+                        <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">🔥 Today's Theme Clustering</h4>
+                        <div id="ep-themes-container" style="display: flex; flex-direction: column; gap: 0.75rem; overflow-y: auto; max-height: 500px;">
+                            <div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">No themes loaded. Run a scan to find today's themes.</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right: Sector Rotation Rankings -->
+                    <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem;">
+                        <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">👑 Sector Relative Rotation Overlay</h4>
+                        <div class="table-container" style="overflow-y: auto; max-height: 500px;">
+                            <table class="screener-table" id="ep-sector-rotation-table" style="font-size: 0.8rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Sector</th>
+                                        <th>RRG Quadrant</th>
+                                        <th class="text-right">JDK RS</th>
+                                        <th class="text-right">Momentum</th>
+                                        <th class="text-center">Score</th>
+                                        <th class="text-center">Watchlist Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ep-sector-rotation-body">
+                                    <tr>
+                                        <td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading sector rotation...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Backtest Engine -->
+            <div class="ep-panel" id="ep-panel-backtest" style="display: none;">
+                <div style="display: flex; flex-direction: column; gap: 1.5rem; width: 100%;">
+                    <!-- Configuration Form -->
+                    <div class="glass-panel" style="padding: 1.5rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.2rem; align-items: flex-end;">
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">EP Strategy Type</label>
+                            <select id="backtest-ep-type" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                                <option value="all">All EP Types</option>
+                                <option value="Growth EP">Growth EP</option>
+                                <option value="Turnaround EP">Turnaround EP</option>
+                                <option value="Story EP">Story EP</option>
+                                <option value="Volume EP">Volume EP</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">Start Date</label>
+                            <input type="date" id="backtest-start-date" value="2019-01-01" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">End Date</label>
+                            <input type="date" id="backtest-end-date" value="2025-12-31" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">Min EP Score</label>
+                            <input type="number" id="backtest-min-score" step="0.05" min="0.0" max="1.0" value="0.55" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">Entry Trigger</label>
+                            <select id="backtest-entry-rule" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                                <option value="DAY1_OPEN">Day-2 Market Open (MOO)</option>
+                                <option value="DAY1_CLOSE">Day-2 Market Close</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">Initial Stop Loss</label>
+                            <select id="backtest-stop-rule" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                                <option value="DAY1_LOW">Below Day-1 Low</option>
+                                <option value="STRUCTURE_LOW">Below 5D Swing Low</option>
+                                <option value="ATR_2X">Entry - 2x ATR</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">Trade Management Exit</label>
+                            <select id="backtest-exit-rule" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                                <option value="SWING_LOW_TRAIL">Trail 3D Swing Low</option>
+                                <option value="20D_MA">Cross below 20-EMA/SMA</option>
+                                <option value="FIXED_PCT">Take profit +20% / Stop</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: 0.4rem; font-weight: 600;">Position Size (%)</label>
+                            <input type="number" id="backtest-pos-size" step="1.0" min="1.0" max="100.0" value="5.0" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button id="btn-run-ep-backtest" class="btn btn-primary" style="flex: 1; padding: 0.5rem 1rem; font-weight: 600; font-size: 0.85rem; height: 34px;">Run Backtest</button>
+                            <button id="btn-prep-backtest" class="btn btn-secondary" title="Import 2019-2025 Historical Bars & Compute EPs" style="padding: 0.5rem; height: 34px; width: 36px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">📥</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Backtest Prep Status bar (hidden by default) -->
+                    <div id="backtest-prep-status-bar" class="glass-panel" style="display: none; padding: 1rem; border-radius: 8px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); align-items: center; justify-content: space-between; gap: 1rem; font-size: 0.8rem; color: #fff;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
+                            <span class="loading-spinner" style="width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.1); border-top-color: #10b981; border-radius: 50%; animation: spin 0.8s linear infinite;"></span>
+                            <span>Historical Data backfill in progress: <strong id="backtest-prep-current">...</strong></span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1rem; font-weight: 500;">
+                            <span id="backtest-prep-progress">0/0 processed</span>
+                            <div style="width: 120px; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;">
+                                <div id="backtest-prep-progress-bar" style="width: 0%; height: 100%; background: #10b981; transition: width 0.3s;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Output Results Dashboard -->
+                    <div id="backtest-dashboard" style="display: none; grid-template-columns: 1fr 2fr; gap: 1.5rem; width: 100%;">
+                        <!-- Left: Stats & Metrics Grid -->
+                        <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem;">
+                            <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">📊 Strategy Performance</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+                                <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                    <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Total Trades</div>
+                                    <div id="backtest-stat-trades" style="font-size: 1.15rem; font-weight: 700; color: #fff;">0</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                    <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Win Rate</div>
+                                    <div id="backtest-stat-winrate" style="font-size: 1.15rem; font-weight: 700; color: #10b981;">0.0%</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                    <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Profit Factor</div>
+                                    <div id="backtest-stat-pf" style="font-size: 1.15rem; font-weight: 700; color: #3b82f6;">0.00</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                    <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Expectancy (R)</div>
+                                    <div id="backtest-stat-expectancy" style="font-size: 1.15rem; font-weight: 700; color: #fff;">0.00R</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                    <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Average Win</div>
+                                    <div id="backtest-stat-avg-win" style="font-size: 1rem; font-weight: 600; color: #10b981;">+0.0%</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
+                                    <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Average Loss</div>
+                                    <div id="backtest-stat-avg-loss" style="font-size: 1rem; font-weight: 600; color: #ef4444;">-0.0%</div>
+                                </div>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03); margin-top: auto;">
+                                <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Maximum Portfolio Drawdown</div>
+                                <div id="backtest-stat-drawdown" style="font-size: 1.25rem; font-weight: 700; color: #ef4444;">0.00%</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right: Equity Curve Chart -->
+                        <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem; min-height: 300px;">
+                            <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">📈 Portfolio Equity Growth (Compounded)</h4>
+                            <div style="flex-grow: 1; position: relative; width: 100%; height: 100%;">
+                                <canvas id="backtest-equity-chart" style="width: 100%; height: 100%; max-height: 250px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

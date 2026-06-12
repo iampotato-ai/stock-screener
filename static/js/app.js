@@ -4155,6 +4155,10 @@ function removeStockFromSection(sectionId, ticker) {
     const wlContainer = wlPanel ? wlPanel.parentElement : null;
     const containerScrollTop = wlContainer ? wlContainer.scrollTop : 0;
     
+    // Save horizontal scroll position of the specific section list
+    const secListDiv = document.querySelector(`.watchlist-section-card[data-section-id="${sectionId}"] .section-stocks-list`);
+    const savedScrollLeft = secListDiv ? secListDiv.scrollLeft : 0;
+    
     fetch('/api/watchlist/items', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -4172,10 +4176,14 @@ function removeStockFromSection(sectionId, ticker) {
                 const row = document.querySelector(`.watchlist-row[data-symbol="${ticker}"][data-section-id="${sectionId}"]`);
                 const doRender = () => {
                     renderWatchlist();
-                    // Restore scroll position so user stays at the same place
-                    requestAnimationFrame(() => {
-                        if (wlContainer) wlContainer.scrollTop = containerScrollTop;
-                    });
+                    // Restore vertical and horizontal scroll positions after DOM layout is recalculated
+                    setTimeout(() => {
+                        const container = document.getElementById('watchlist-list-container');
+                        if (container) container.scrollTop = containerScrollTop;
+                        
+                        const targetSecListDiv = document.querySelector(`.watchlist-section-card[data-section-id="${sectionId}"] .section-stocks-list`);
+                        if (targetSecListDiv) targetSecListDiv.scrollLeft = savedScrollLeft;
+                    }, 0);
                 };
                 if (row) {
                     row.style.transition = 'all 0.25s ease';
@@ -10989,6 +10997,8 @@ function bindEPListeners() {
             document.getElementById('ep-panel-today').style.display = sub === 'today' ? 'block' : 'none';
             document.getElementById('ep-panel-watchlist').style.display = sub === 'watchlist' ? 'block' : 'none';
             document.getElementById('ep-panel-sugar-babies').style.display = sub === 'sugar-babies' ? 'block' : 'none';
+            document.getElementById('ep-panel-themes').style.display = sub === 'themes' ? 'block' : 'none';
+            document.getElementById('ep-panel-backtest').style.display = sub === 'backtest' ? 'block' : 'none';
             
             loadEPSubTab(sub);
         });
@@ -11076,6 +11086,10 @@ function loadEPSubTab(sub) {
         fetchEPWatchlist();
     } else if (sub === 'sugar-babies') {
         fetchEPSugarBabies();
+    } else if (sub === 'themes') {
+        loadEPThemesAndRotation();
+    } else if (sub === 'backtest') {
+        initEPBacktestDashboard();
     }
 }
 
@@ -11670,5 +11684,381 @@ function triggerEPRefresh() {
         if (btnText) btnText.innerText = 'Scan EPs';
         if (btnSvg) btnSvg.classList.remove('spin-loader');
     }
+}
+
+// Phase 4 - Themes & Backtesting Dashboard Logic
+
+let epBacktestChart = null;
+
+function loadEPThemesAndRotation() {
+    const themesContainer = document.getElementById('ep-themes-container');
+    const rotationBody = document.getElementById('ep-sector-rotation-body');
+    
+    if (themesContainer) {
+        themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading themes...</div>';
+    }
+    if (rotationBody) {
+        rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading sector rotation...</td></tr>';
+    }
+    
+    fetch('/api/ep/themes')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Themes error: ${data.error}`, 'error');
+                return;
+            }
+            const themes = data.themes || [];
+            if (!themesContainer) return;
+            
+            if (themes.length === 0) {
+                themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">No themes detected for today. Run a scan.</div>';
+                return;
+            }
+            
+            themesContainer.innerHTML = themes.map(t => {
+                const scoreStyle = t.avg_score >= 0.72 ? 'color: var(--accent-green, #10b981); font-weight:700;' : t.avg_score >= 0.55 ? 'color: var(--accent-blue, #3b82f6); font-weight:700;' : 'color: var(--color-text-secondary);';
+                const symbolsHtml = t.symbols.map(sym => 
+                    `<span class="ticker-box" style="cursor: pointer; background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.06); color: #fff;" onclick="openTradingView('${sym}.NS')">${sym}</span>`
+                ).join(' ');
+                
+                return `
+                    <div class="glass-panel" style="padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 0.5rem; transition: transform 0.2s, border-color 0.2s;" onmouseenter="this.style.borderColor='rgba(59,130,246,0.3)'; this.style.transform='translateY(-2px)';" onmouseleave="this.style.borderColor='rgba(255,255,255,0.05)'; this.style.transform='translateY(0)';">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 700; color: #fff; font-size: 0.9rem;">${t.theme}</span>
+                            <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: var(--accent-blue, #60a5fa); border: 1px solid rgba(59, 130, 246, 0.2); font-size: 0.75rem; padding: 2px 6px; font-weight: 600;">${t.count} Stocks</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--color-text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                            <span>Avg EP Score:</span>
+                            <strong style="${scoreStyle}">${t.avg_score.toFixed(2)}</strong>
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem;">
+                            ${symbolsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error('Error fetching themes:', err);
+            if (themesContainer) {
+                themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Error loading themes.</div>';
+            }
+        });
+        
+    fetch('/api/ep/sector-rotation')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Rotation error: ${data.error}`, 'error');
+                return;
+            }
+            const rotation = data.rotation || [];
+            if (!rotationBody) return;
+            
+            if (rotation.length === 0) {
+                rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">No sector rotation data available.</td></tr>';
+                return;
+            }
+            
+            rotationBody.innerHTML = rotation.map(r => {
+                let quadColor = '';
+                let quadBg = '';
+                if (r.quadrant === 'Leading') {
+                    quadColor = 'var(--accent-green, #10b981)';
+                    quadBg = 'rgba(16, 185, 129, 0.1)';
+                } else if (r.quadrant === 'Improving') {
+                    quadColor = 'var(--accent-blue, #3b82f6)';
+                    quadBg = 'rgba(59, 130, 246, 0.1)';
+                } else if (r.quadrant === 'Weakening') {
+                    quadColor = 'var(--accent-orange, #f59e0b)';
+                    quadBg = 'rgba(245, 158, 11, 0.1)';
+                } else {
+                    quadColor = 'var(--accent-red, #ef4444)';
+                    quadBg = 'rgba(239, 68, 68, 0.1)';
+                }
+                
+                const wlBadge = r.active_ep_count > 0 
+                    ? `<span class="badge" style="background: rgba(16,185,129,0.1); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.2); font-size: 0.75rem; padding: 2px 6px; font-weight: 700;">${r.active_ep_count} Active</span>`
+                    : `<span style="color: var(--color-text-muted); font-size: 0.75rem;">0</span>`;
+                    
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                        <td style="padding: 10px 8px; font-weight: 600; color: #fff;">${r.sector}</td>
+                        <td style="padding: 10px 8px;">
+                            <span style="color: ${quadColor}; background: ${quadBg}; border: 1px solid ${quadColor}40; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                ${r.quadrant}
+                            </span>
+                        </td>
+                        <td style="padding: 10px 8px;" class="text-right">${r.jdk_rs.toFixed(2)}</td>
+                        <td style="padding: 10px 8px;" class="text-right">${r.jdk_rs_momentum.toFixed(2)}</td>
+                        <td style="padding: 10px 8px;" class="text-center font-weight-bold" style="color:#fff;">${r.score.toFixed(1)}</td>
+                        <td style="padding: 10px 8px;" class="text-center">${wlBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error('Error fetching sector rotation:', err);
+            if (rotationBody) {
+                rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Error loading sector rotation.</td></tr>';
+            }
+        });
+}
+
+let backtestPrepInterval = null;
+
+function initEPBacktestDashboard() {
+    // Check initial prep status
+    fetch('/api/ep/backtest/prep_status')
+        .then(res => res.json())
+        .then(status => {
+            if (status.running) {
+                showBacktestPrepProgress(status);
+            }
+        });
+        
+    // Bind buttons
+    const btnRun = document.getElementById('btn-run-ep-backtest');
+    if (btnRun) {
+        btnRun.onclick = runEPBacktest;
+    }
+    
+    const btnPrep = document.getElementById('btn-prep-backtest');
+    if (btnPrep) {
+        btnPrep.onclick = prepBacktestData;
+    }
+}
+
+function prepBacktestData() {
+    const btnPrep = document.getElementById('btn-prep-backtest');
+    if (btnPrep) btnPrep.disabled = true;
+    
+    const startDate = document.getElementById('backtest-start-date').value;
+    const endDate = document.getElementById('backtest-end-date').value;
+    
+    fetch('/api/ep/backtest/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate,
+            symbols: ''
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            if (typeof showToast === 'function') showToast(`Prep failed: ${data.error}`, 'error');
+            if (btnPrep) btnPrep.disabled = false;
+            return;
+        }
+        if (typeof showToast === 'function') showToast('Historical prep backfill started.', 'success');
+        
+        // Start polling status
+        if (backtestPrepInterval) clearInterval(backtestPrepInterval);
+        
+        const statusBar = document.getElementById('backtest-prep-status-bar');
+        if (statusBar) statusBar.style.display = 'flex';
+        
+        backtestPrepInterval = setInterval(() => {
+            fetch('/api/ep/backtest/prep_status')
+                .then(res => res.json())
+                .then(status => {
+                    showBacktestPrepProgress(status);
+                    if (!status.running) {
+                        clearInterval(backtestPrepInterval);
+                        if (statusBar) statusBar.style.display = 'none';
+                        if (btnPrep) btnPrep.disabled = false;
+                        
+                        if (status.error) {
+                            if (typeof showToast === 'function') showToast(`Prep finished with error: ${status.error}`, 'error');
+                        } else {
+                            if (typeof showToast === 'function') showToast('Historical prep backfill completed successfully!', 'success');
+                        }
+                    }
+                })
+                .catch(err => console.error('Error polling prep status:', err));
+        }, 2000);
+    })
+    .catch(err => {
+        console.error('Error starting backtest prep:', err);
+        if (btnPrep) btnPrep.disabled = false;
+    });
+}
+
+function showBacktestPrepProgress(status) {
+    const statusBar = document.getElementById('backtest-prep-status-bar');
+    if (statusBar) statusBar.style.display = 'flex';
+    
+    const currentSymbolEl = document.getElementById('backtest-prep-current');
+    if (currentSymbolEl) currentSymbolEl.textContent = status.current_symbol || 'Initializing...';
+    
+    const progressTextEl = document.getElementById('backtest-prep-progress');
+    if (progressTextEl) progressTextEl.textContent = `${status.processed}/${status.total} processed`;
+    
+    const progressBarEl = document.getElementById('backtest-prep-progress-bar');
+    if (progressBarEl && status.total > 0) {
+        const pct = (status.processed / status.total) * 100;
+        progressBarEl.style.width = `${pct}%`;
+    }
+}
+
+function runEPBacktest() {
+    const btnRun = document.getElementById('btn-run-ep-backtest');
+    if (btnRun) {
+        btnRun.disabled = true;
+        btnRun.textContent = 'Running...';
+    }
+    
+    const params = {
+        ep_type: document.getElementById('backtest-ep-type').value,
+        from_date: document.getElementById('backtest-start-date').value,
+        to_date: document.getElementById('backtest-end-date').value,
+        min_ep_score: parseFloat(document.getElementById('backtest-min-score').value) || 0.55,
+        entry_rule: document.getElementById('backtest-entry-rule').value,
+        stop_rule: document.getElementById('backtest-stop-rule').value,
+        exit_rule: document.getElementById('backtest-exit-rule').value,
+        position_size_pct: parseFloat(document.getElementById('backtest-pos-size').value) || 5.0,
+        capital: 1000000.0
+    };
+    
+    fetch('/api/ep/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btnRun) {
+            btnRun.disabled = false;
+            btnRun.textContent = 'Run Backtest';
+        }
+        
+        if (data.error) {
+            if (typeof showToast === 'function') showToast(`Backtest failed: ${data.error}`, 'error');
+            return;
+        }
+        
+        // Show dashboard panel
+        const dashboard = document.getElementById('backtest-dashboard');
+        if (dashboard) dashboard.style.display = 'grid';
+        
+        // Populate stats
+        const summary = data.summary || {};
+        document.getElementById('backtest-stat-trades').textContent = summary.total_trades || 0;
+        
+        const wrEl = document.getElementById('backtest-stat-winrate');
+        wrEl.textContent = `${(summary.win_rate || 0).toFixed(1)}%`;
+        wrEl.style.color = (summary.win_rate || 0) >= 50.0 ? '#10b981' : '#ef4444';
+        
+        document.getElementById('backtest-stat-pf').textContent = (summary.profit_factor || 0).toFixed(2);
+        document.getElementById('backtest-stat-expectancy').textContent = `${(summary.expectancy || 0).toFixed(2)}R`;
+        
+        const winEl = document.getElementById('backtest-stat-avg-win');
+        winEl.textContent = `+${(summary.avg_win || 0).toFixed(1)}%`;
+        
+        const lossEl = document.getElementById('backtest-stat-avg-loss');
+        lossEl.textContent = `${(summary.avg_loss || 0).toFixed(1)}%`;
+        
+        document.getElementById('backtest-stat-drawdown').textContent = `${(summary.max_drawdown || 0).toFixed(1)}%`;
+        
+        // Render Chart
+        renderEquityChart(data.equity_curve || []);
+        
+        if (typeof showToast === 'function') showToast(`Backtest completed! ${summary.total_trades} trades simulated.`, 'success');
+    })
+    .catch(err => {
+        console.error('Error running backtest:', err);
+        if (btnRun) {
+            btnRun.disabled = false;
+            btnRun.textContent = 'Run Backtest';
+        }
+        if (typeof showToast === 'function') showToast('Network error running backtest', 'error');
+    });
+}
+
+function renderEquityChart(equityCurve) {
+    const ctx = document.getElementById('backtest-equity-chart');
+    if (!ctx) return;
+    
+    if (epBacktestChart) {
+        epBacktestChart.destroy();
+        epBacktestChart = null;
+    }
+    
+    if (equityCurve.length === 0) return;
+    
+    const labels = equityCurve.map(d => d.date);
+    const dataPoints = equityCurve.map(d => d.equity);
+    
+    const chartCtx = ctx.getContext('2d');
+    
+    // Create modern smooth blue gradient
+    const gradient = chartCtx.createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.35)');
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+    
+    epBacktestChart = new Chart(chartCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Portfolio Value (₹)',
+                data: dataPoints,
+                borderColor: '#3b82f6',
+                borderWidth: 2.5,
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHitRadius: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    borderWidth: 1,
+                    titleColor: '#fff',
+                    bodyColor: '#9ca3af',
+                    titleFont: { family: 'Outfit', weight: 'bold' },
+                    bodyFont: { family: 'Outfit' },
+                    callbacks: {
+                        label: function(context) {
+                            return ` Equity: ₹${context.parsed.y.toLocaleString('en-IN', {maximumFractionDigits:2})}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false },
+                    ticks: {
+                        color: '#9ca3af',
+                        font: { family: 'Outfit', size: 10 },
+                        maxTicksLimit: 8
+                    }
+                },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
+                    ticks: {
+                        color: '#9ca3af',
+                        font: { family: 'Outfit', size: 10 },
+                        callback: function(value) {
+                            return '₹' + (value / 100000.0).toFixed(1) + 'L';
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
