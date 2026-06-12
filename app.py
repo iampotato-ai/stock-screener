@@ -829,16 +829,18 @@ def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
                    is_negative_catalyst=False):
     if is_negative_catalyst or catalyst_score < 0:
         return "Short EP"
-    if event_type == "ABNORMAL_VOLUME" and rel_volume >= 5:
+    if day1_messy:
+        return "Delayed EP"
+    if event_type in ("ABNORMAL_VOLUME", "UNKNOWN"):
         return "Volume EP"
-    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT") and revenue_growth >= 100:
+    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT") and revenue_growth >= 100:
         return "Growth EP"
     if event_type == "TURNAROUND":
         return "Turnaround EP"
-    if event_type in ("THEME_CATALYST", "ORDER_WIN", "MGMT_CHANGE"):
+    if event_type in ("THEME_CATALYST", "ORDER_WIN", "MGMT_CHANGE", "CAPEX_EXPANSION"):
         return "Story EP"
-    if day1_messy:
-        return "Delayed EP"
+    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT", "MISS"):
+        return "Growth EP"
     return "Growth EP"
 
 
@@ -1078,6 +1080,168 @@ def refresh_ipo_metrics():
         executor.map(_update_single, listings)
         
     print("IPO metrics cache refreshed successfully.")
+
+
+def fetch_screener_fundamentals(symbol):
+    """
+    Scrapes quarterly results from screener.in for a given symbol.
+    """
+    import urllib.request
+    import re
+    url = f"https://www.screener.in/company/{symbol}/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            content = response.read().decode('utf-8')
+        
+        # 1. Find the quarters table
+        quarters_match = re.search(r'id=["\']quarters["\']', content)
+        if not quarters_match:
+            return []
+        start_idx = quarters_match.start()
+        table_start = content.find('<table', start_idx)
+        table_end = content.find('</table>', table_start)
+        if table_start == -1 or table_end == -1:
+            return []
+        table_html = content[table_start:table_end+8]
+        
+        # 2. Parse headers to get quarters and data-date-keys
+        thead_match = re.search(r'<thead.*?>(.*?)</thead>', table_html, re.DOTALL)
+        if not thead_match:
+            return []
+        thead_html = thead_match.group(1)
+        th_matches = re.finditer(r'<th\b[^>]*data-date-key=["\'](.*?)["\'][^>]*>(.*?)</th>', thead_html, re.DOTALL)
+        quarters = []
+        for m in th_matches:
+            date_key = m.group(1).strip()
+            q_name = re.sub(r'<.*?>', '', m.group(2)).strip()
+            quarters.append({"quarter": q_name, "date_key": date_key})
+            
+        # 3. Parse rows in tbody
+        tbody_match = re.search(r'<tbody.*?>(.*?)</tbody>', table_html, re.DOTALL)
+        if not tbody_match:
+            return []
+        tbody_html = tbody_match.group(1)
+        rows = re.findall(r'<tr.*?>.*?</tr>', tbody_html, re.DOTALL)
+        
+        revenue_row = None
+        net_profit_row = None
+        eps_row = None
+        
+        for r in rows:
+            td_name_match = re.search(r'<td class="text".*?>(.*?)</td>', r, re.DOTALL)
+            if not td_name_match:
+                continue
+            name_text = re.sub(r'<.*?>', '', td_name_match.group(1)).strip().lower()
+            
+            # Extract values
+            td_all = re.findall(r'<td.*?>.*?</td>', r, re.DOTALL)
+            val_tds = td_all[1:]
+            vals = []
+            for v in val_tds:
+                v_clean = re.sub(r'<.*?>', '', v).replace('&nbsp;', '').strip()
+                v_val = None
+                if v_clean and v_clean not in ('-', ''):
+                    try:
+                        is_neg = False
+                        if v_clean.startswith('(') and v_clean.endswith(')'):
+                            is_neg = True
+                            v_clean = v_clean[1:-1]
+                        v_val = float(v_clean.replace(',', ''))
+                        if is_neg:
+                            v_val = -v_val
+                    except ValueError:
+                        pass
+                vals.append(v_val)
+                
+            if any(x in name_text for x in ('sales', 'revenue', 'interest earned')):
+                revenue_row = vals
+            elif any(x in name_text for x in ('net profit', 'profit after tax')):
+                net_profit_row = vals
+            elif 'eps' in name_text:
+                eps_row = vals
+                
+        # Assemble list of quarters
+        fundamentals_list = []
+        for idx, q in enumerate(quarters):
+            rev = revenue_row[idx] if revenue_row and idx < len(revenue_row) else None
+            prof = net_profit_row[idx] if net_profit_row and idx < len(net_profit_row) else None
+            eps_val = eps_row[idx] if eps_row and idx < len(eps_row) else None
+            
+            fundamentals_list.append({
+                "quarter": q["quarter"],
+                "date_key": q["date_key"],
+                "revenue": rev,
+                "net_profit": prof,
+                "eps": eps_val
+            })
+        return fundamentals_list
+    except Exception as e:
+        print(f"[EP Ingest] Failed to fetch/parse screener.in for {symbol}: {e}")
+        return []
+
+
+def compute_yoy_metrics(quarters_data):
+    """
+    Computes YoY metrics, consecutive quarters of growth, and surprise types.
+    """
+    for i in range(len(quarters_data)):
+        q = quarters_data[i]
+        if i >= 4:
+            prev_q = quarters_data[i - 4]
+            if q["revenue"] is not None and prev_q["revenue"] and prev_q["revenue"] > 0:
+                q["revenue_yoy_pct"] = round((q["revenue"] - prev_q["revenue"]) / prev_q["revenue"] * 100, 2)
+            else:
+                q["revenue_yoy_pct"] = None
+                
+            if q["net_profit"] is not None and prev_q["net_profit"] and prev_q["net_profit"] > 0:
+                q["net_profit_yoy_pct"] = round((q["net_profit"] - prev_q["net_profit"]) / prev_q["net_profit"] * 100, 2)
+            else:
+                q["net_profit_yoy_pct"] = None
+                
+            if q["eps"] is not None and prev_q["eps"] and prev_q["eps"] > 0:
+                q["eps_yoy_pct"] = round((q["eps"] - prev_q["eps"]) / prev_q["eps"] * 100, 2)
+            else:
+                q["eps_yoy_pct"] = None
+        else:
+            q["revenue_yoy_pct"] = None
+            q["net_profit_yoy_pct"] = None
+            q["eps_yoy_pct"] = None
+            
+    for i in range(len(quarters_data)):
+        consec = 0
+        idx = i
+        while idx >= 0:
+            q_idx = quarters_data[idx]
+            if q_idx["revenue_yoy_pct"] is not None and q_idx["net_profit_yoy_pct"] is not None:
+                if q_idx["revenue_yoy_pct"] > 0 and q_idx["net_profit_yoy_pct"] > 0:
+                    consec += 1
+                    idx -= 1
+                    continue
+            break
+        quarters_data[i]["consecutive_quarters_growth"] = consec
+        
+        q_rev_yoy = quarters_data[i]["revenue_yoy_pct"]
+        q_prof_yoy = quarters_data[i]["net_profit_yoy_pct"]
+        q_profit = quarters_data[i]["net_profit"]
+        prev_profit = quarters_data[i-1]["net_profit"] if i >= 1 else None
+        
+        surprise = "UNKNOWN"
+        if q_rev_yoy is not None and q_prof_yoy is not None:
+            if q_rev_yoy >= 100 and q_prof_yoy >= 100:
+                surprise = "BLOWOUT_EARNINGS"
+            elif prev_profit is not None and prev_profit < 0 and q_profit is not None and q_profit > 0:
+                surprise = "TURNAROUND"
+            elif q_rev_yoy >= 40:
+                surprise = "STRONG_BEAT"
+            elif q_rev_yoy < 0 or q_prof_yoy < 0:
+                surprise = "MISS"
+            else:
+                surprise = "BEAT"
+        quarters_data[i]["surprise_type"] = surprise
+        
+    return quarters_data
 
 
 def fetch_nse_delivery_data(date_str):
@@ -1338,14 +1502,169 @@ def refresh_ep_screener():
             if len(closes) < 63:
                 # IPO guard: fresh listings (< 3 months history) are not neglected
                 neglect_score = 0.20
+            # Ingest Fundamentals & YoY metrics
+            quarters_data = fetch_screener_fundamentals(s['ticker'])
+            if quarters_data:
+                quarters_data = compute_yoy_metrics(quarters_data)
+                for q in quarters_data:
+                    c.execute('''
+                        INSERT OR REPLACE INTO fundamentals (
+                            symbol, exchange, result_date, quarter, revenue, revenue_yoy_pct,
+                            net_profit, net_profit_yoy_pct, eps, eps_yoy_pct, surprise_type,
+                            consecutive_quarters_growth, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        s['ticker'], s['exchange'], q['date_key'], q['quarter'], q['revenue'], q['revenue_yoy_pct'],
+                        q['net_profit'], q['net_profit_yoy_pct'], q['eps'], q['eps_yoy_pct'], q['surprise_type'],
+                        q['consecutive_quarters_growth'], 'screener.in'
+                    ))
+
+            # Ingest Announcements (NSE only)
+            from datetime import datetime, timedelta
+            seven_days_ago = datetime.now() - timedelta(days=7)
+            
+            if s['exchange'] == "NSE":
+                announcements = fetch_nse_announcements(s['ticker'])
+                if isinstance(announcements, list):
+                    for item in announcements:
+                        sort_date_str = item.get("sort_date")
+                        if not sort_date_str:
+                            continue
+                        try:
+                            dt = datetime.strptime(sort_date_str, "%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            continue
+                        
+                        if dt >= seven_days_ago:
+                            desc = item.get("desc", "")
+                            text = item.get("attchmntText", "")
+                            cat, cat_name, imp, imp_name, sent, sent_name, reason = classify_announcement(desc, text)
+                            
+                            # Map cat to event_type
+                            if cat == "cat-order-win":
+                                event_type_mapped = "ORDER_WIN"
+                            elif cat == "cat-capex":
+                                event_type_mapped = "CAPEX_EXPANSION"
+                            elif cat == "cat-governance":
+                                event_type_mapped = "MGMT_CHANGE"
+                            elif cat == "cat-regulatory":
+                                event_type_mapped = "FRAUD_CONCERN"
+                            else:
+                                event_type_mapped = "UNKNOWN"
+                                
+                            sent_val = 0
+                            if "positive" in sent.lower():
+                                sent_val = 1
+                            elif "negative" in sent.lower():
+                                sent_val = -1
+                                
+                            cat_score = EP_CATALYST_BASE.get(event_type_mapped, 0.20)
+                            
+                            an_dt = item.get("an_dt", "")
+                            date_str = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                            
+                            # Deduplicate insertion
+                            c.execute('''
+                                SELECT id FROM corporate_events
+                                WHERE symbol = ? AND event_date = ? AND headline = ?
+                            ''', (s['ticker'], date_str, desc if desc else text[:200]))
+                            if not c.fetchone():
+                                c.execute('''
+                                    INSERT INTO corporate_events (
+                                        symbol, exchange, event_date, event_type, headline, sentiment,
+                                        catalyst_score, source, raw_url
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    s['ticker'], s['exchange'], date_str, event_type_mapped,
+                                    desc if desc else text[:200], sent_val, cat_score, 'NSE',
+                                    item.get("attchmntFile", "")
+                                ))
+
+            # Retrieve latest fundamentals
+            c.execute('''
+                SELECT revenue_yoy_pct, net_profit_yoy_pct, consecutive_quarters_growth, surprise_type, net_profit
+                FROM fundamentals
+                WHERE symbol = ? AND exchange = ?
+                ORDER BY result_date DESC, id DESC
+                LIMIT 1
+            ''', (s['ticker'], s['exchange']))
+            fund = c.fetchone()
+            
+            if fund:
+                has_result = 1
+                revenue_growth = fund[0] if fund[0] is not None else 0.0
+                profit_growth = fund[1] if fund[1] is not None else 0.0
+                consec_growth = fund[2] if fund[2] is not None else 0
+                surprise_type = fund[3] or "UNKNOWN"
+            else:
+                has_result = 0
+                revenue_growth = 0.0
+                profit_growth = 0.0
+                consec_growth = 0
+                surprise_type = "UNKNOWN"
+                
+            # Retrieve latest event from last 7 days relative to feature_date
+            feat_dt = datetime.strptime(feature_date, "%Y-%m-%d")
+            seven_days_before_feat = (feat_dt - timedelta(days=7)).strftime("%Y-%m-%d")
+            
+            c.execute('''
+                SELECT event_type, catalyst_score
+                FROM corporate_events
+                WHERE symbol = ? AND event_date >= ? AND event_date <= ?
+                ORDER BY event_date DESC, id DESC
+                LIMIT 1
+            ''', (s['ticker'], seven_days_before_feat, feature_date))
+            evt = c.fetchone()
+            
+            if evt:
+                has_corp_event = 1
+                corp_event_type = evt[0]
+            else:
+                has_corp_event = 0
+                corp_event_type = None
+                
+            # Resolve event type
+            resolved_event_type = "ABNORMAL_VOLUME"
+            if corp_event_type and corp_event_type != "UNKNOWN":
+                resolved_event_type = corp_event_type
+            elif surprise_type and surprise_type != "UNKNOWN":
+                resolved_event_type = surprise_type
+
+            # Calculate Neglect metrics
+            # 3m return (requires 63 trading days)
+            perf_3m = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else None
+            # 6m return (requires 126 trading days)
+            perf_6m = ((closes[-1] - closes[-126]) / closes[-126] * 100) if len(closes) >= 126 else None
+            
+            last_60 = closes[-60:]
+            range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
+            
+            # Volume rank
+            sect = s["sector"]
+            avg_vol = float(s["average_volume"])
+            vols = sector_vols.get(sect, [])
+            if len(vols) > 1:
+                rank_idx = bisect.bisect_left(vols, avg_vol)
+                avg_vol_rank = rank_idx / (len(vols) - 1)
+            else:
+                avg_vol_rank = 0.5
+                
+            if len(closes) < 63:
+                # IPO guard: fresh listings (< 3 months history) are not neglected
+                neglect_score = 0.20
             else:
                 neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
             
             # Calculate Catalyst metrics
-            event_type = "ABNORMAL_VOLUME"
             USD_TO_INR = 83.5
             mktcap_cr = float(s["market_cap_basic"]) * USD_TO_INR / 10000000  # convert from USD to INR Crores
-            catalyst_score = compute_catalyst_score(event_type, 0, 0, 0, mktcap_cr)
+            catalyst_score = compute_catalyst_score(
+                event_type=resolved_event_type,
+                revenue_growth=revenue_growth,
+                profit_growth=profit_growth,
+                consecutive_quarters=consec_growth,
+                market_cap_cr=mktcap_cr
+            )
             
             # Calculate Repricing metrics
             yesterday_close = closes[-2] if len(closes) >= 2 else closes[0]
@@ -1374,7 +1693,14 @@ def refresh_ep_screener():
             )
             
             ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, liquidity_ok)
-            ep_type = assign_ep_type(catalyst_score, event_type, dyn_rel_vol, gap_pct, 0, 0)
+            ep_type = assign_ep_type(
+                catalyst_score=catalyst_score,
+                event_type=resolved_event_type,
+                rel_volume=dyn_rel_vol,
+                gap_pct=gap_pct,
+                revenue_growth=revenue_growth,
+                profit_growth=profit_growth
+            )
             confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
             
             c.execute('''
@@ -1383,14 +1709,28 @@ def refresh_ep_screener():
                     neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
                     event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
                     ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0.0, 0.0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0)
             ''', (
                 s['ticker'], s['exchange'], feature_date, 
                 round(perf_3m, 3) if perf_3m is not None else None, 
                 round(perf_6m, 3) if perf_6m is not None else None, 
                 round(range_60d_pct, 3), round(avg_vol_rank, 3),
-                neglect_score, event_type, catalyst_score, round(gap_pct, 3), round(dyn_rel_vol, 3), round(close_loc, 3), repricing_score,
-                ep_score, ep_type, confidence, round(mktcap_cr, 2), round(avg_vol_20 * today_close / 10000000, 2)
+                neglect_score,
+                has_result,
+                round(revenue_growth, 3) if revenue_growth is not None else 0.0,
+                round(profit_growth, 3) if profit_growth is not None else 0.0,
+                has_corp_event,
+                resolved_event_type,
+                catalyst_score,
+                round(gap_pct, 3),
+                round(dyn_rel_vol, 3),
+                round(close_loc, 3),
+                repricing_score,
+                ep_score,
+                ep_type,
+                confidence,
+                round(mktcap_cr, 2),
+                round(avg_vol_20 * today_close / 10000000, 2)
             ))
             
             # Watchlist addition if EP score >= 0.55

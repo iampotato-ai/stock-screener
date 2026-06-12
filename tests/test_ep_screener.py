@@ -114,7 +114,9 @@ def test_db_initialization():
 
 @patch("requests.post")
 @patch("app.fetch_historical_prices")
-def test_refresh_ep_screener(mock_fetch_prices, mock_post):
+@patch("app.fetch_screener_fundamentals")
+@patch("app.fetch_nse_announcements")
+def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_post):
     # Setup mock TradingView response
     mock_tv_response = MagicMock()
     mock_tv_response.json.return_value = {
@@ -171,11 +173,35 @@ def test_refresh_ep_screener(mock_fetch_prices, mock_post):
     })
     
     mock_fetch_prices.return_value = mock_history
+
+    # Mock fundamentals fetch
+    mock_fetch_fundamentals.return_value = [
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
+        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
+        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 18.0, "eps": 1.8},
+        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 260.0, "net_profit": 40.0, "eps": 4.0} # YoY rev +160%, YoY net profit +300%
+    ]
+    
+    # Mock announcements fetch
+    mock_fetch_announcements.return_value = [
+        {
+            "symbol": "MOCKSTOCK",
+            "desc": "Capex expansion of manufacturing plant capacity",
+            "attchmntText": "capex expansion plant",
+            "an_dt": "2026-06-11 11:00:00",
+            "sort_date": "2026-06-11 11:00:00",
+            "seq_id": "999999",
+            "attchmntFile": "http://example.com/capex.pdf"
+        }
+    ]
     
     # Clear database tables before run
     conn = orig_connect(db_path)
     c = conn.cursor()
     c.execute("DELETE FROM daily_bars")
+    c.execute("DELETE FROM fundamentals")
+    c.execute("DELETE FROM corporate_events")
     c.execute("DELETE FROM ep_features")
     c.execute("DELETE FROM ep_watchlist")
     conn.commit()
@@ -191,23 +217,51 @@ def test_refresh_ep_screener(mock_fetch_prices, mock_post):
     # Check that daily_bars are populated
     c.execute("SELECT COUNT(*) FROM daily_bars WHERE symbol='MOCKSTOCK'")
     assert c.fetchone()[0] > 0
+
+    # Check fundamentals table has entries
+    c.execute("SELECT quarter, revenue, net_profit_yoy_pct, surprise_type FROM fundamentals WHERE symbol='MOCKSTOCK' ORDER BY result_date DESC")
+    funds = c.fetchall()
+    assert len(funds) == 5
+    assert funds[0][0] == "Jun 2026"
+    assert funds[0][1] == 260.0
+    assert funds[0][2] == 300.0 # YoY net profit growth: (40 - 10)/10 * 100 = 300%
+    assert funds[0][3] == "BLOWOUT_EARNINGS"
+
+    # Check corporate_events table has the capex event
+    c.execute("SELECT event_type, headline, catalyst_score FROM corporate_events WHERE symbol='MOCKSTOCK'")
+    events = c.fetchall()
+    assert len(events) == 1
+    assert events[0][0] == "CAPEX_EXPANSION"
+    assert "Capex expansion" in events[0][1]
+    assert events[0][2] == 0.45
     
     # Check ep_features
-    c.execute("SELECT symbol, ep_score, ep_type, confidence, market_cap_cr FROM ep_features WHERE symbol='MOCKSTOCK'")
+    c.execute("""
+        SELECT symbol, ep_score, ep_type, confidence, market_cap_cr,
+               has_result, revenue_growth, profit_growth, has_corp_event, event_type, catalyst_score
+        FROM ep_features WHERE symbol='MOCKSTOCK'
+    """)
     feat = c.fetchone()
     assert feat is not None
     assert feat[0] == "MOCKSTOCK"
     assert feat[1] > 0.0  # ep_score should be populated and > 0
-    assert feat[2] == "Volume EP"
+    assert feat[2] == "Story EP" # Capex is a Story EP
     assert feat[3] in ("HIGH", "MEDIUM", "LOW")
     assert feat[4] == 83500.0  # 10000000000.0 * 83.5 / 10000000 = 83500 Cr
+    assert feat[5] == 1 # has_result
+    assert feat[6] == 160.0 # revenue_growth: (260 - 100)/100 = 160%
+    assert feat[7] == 300.0 # profit_growth: (40 - 10)/10 = 300%
+    assert feat[8] == 1 # has_corp_event
+    assert feat[9] == "CAPEX_EXPANSION"
+    # catalyst_score: base 0.45 + 0.10 (rev >= 100) + 0.10 (profit >= 200) = 0.65
+    assert feat[10] == 0.65
     
-    # Check ep_watchlist since ep_score will be high (computed score is high due to 6x vol & 12% change)
+    # Check ep_watchlist since ep_score will be high
     c.execute("SELECT symbol, ep_type, status FROM ep_watchlist WHERE symbol='MOCKSTOCK'")
     wl = c.fetchone()
     assert wl is not None
     assert wl[0] == "MOCKSTOCK"
-    assert wl[1] == "Volume EP"
+    assert wl[1] == "Story EP"
     assert wl[2] == "ACTIVE"
     
     conn.close()
@@ -308,3 +362,96 @@ def test_api_endpoints(client):
         res_status = client.get("/api/ep/refresh/status")
         assert res_status.status_code == 200
         assert "running" in res_status.get_json()
+
+
+def test_fetch_screener_fundamentals_parsing():
+    mock_html = """
+    <div id="quarters">
+        <table>
+            <thead>
+                <tr>
+                    <th>Quarters</th>
+                    <th data-date-key="2025-03-31">Mar 2025</th>
+                    <th data-date-key="2025-06-30">Jun 2025</th>
+                    <th data-date-key="2025-09-30">Sep 2025</th>
+                    <th data-date-key="2025-12-30">Dec 2025</th>
+                    <th data-date-key="2026-03-31">Mar 2026</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text">Sales</td>
+                    <td>100</td>
+                    <td>110</td>
+                    <td>120</td>
+                    <td>130</td>
+                    <td>200</td>
+                </tr>
+                <tr>
+                    <td class="text">Net Profit</td>
+                    <td>10</td>
+                    <td>12</td>
+                    <td>15</td>
+                    <td>(5)</td>
+                    <td>25</td>
+                </tr>
+                <tr>
+                    <td class="text">EPS in Rs</td>
+                    <td>1.0</td>
+                    <td>1.2</td>
+                    <td>1.5</td>
+                    <td>-0.5</td>
+                    <td>2.5</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    """
+    
+    class MockResponse:
+        def __init__(self, content):
+            self.content = content.encode('utf-8')
+        def read(self):
+            return self.content
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    with patch("urllib.request.urlopen", return_value=MockResponse(mock_html)):
+        res = app.fetch_screener_fundamentals("MOCK")
+        assert len(res) == 5
+        assert res[0]["quarter"] == "Mar 2025"
+        assert res[0]["date_key"] == "2025-03-31"
+        assert res[0]["revenue"] == 100.0
+        assert res[0]["net_profit"] == 10.0
+        assert res[0]["eps"] == 1.0
+        assert res[3]["net_profit"] == -5.0 # parentheses check
+
+
+def test_compute_yoy_metrics_logic():
+    quarters = [
+        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
+        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
+        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 80.0, "net_profit": -5.0, "eps": -0.5},
+        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 210.0, "net_profit": 25.0, "eps": 2.5}
+    ]
+    res = app.compute_yoy_metrics(quarters)
+    mar_2026 = res[4]
+    assert mar_2026["revenue_yoy_pct"] == 110.0
+    assert mar_2026["net_profit_yoy_pct"] == 150.0
+    assert mar_2026["eps_yoy_pct"] == 150.0
+    assert mar_2026["surprise_type"] == "BLOWOUT_EARNINGS"
+
+    quarters_turnaround = [
+        {"quarter": "Mar 2025", "date_key": "2025-03-31", "revenue": 100.0, "net_profit": 10.0, "eps": 1.0},
+        {"quarter": "Jun 2025", "date_key": "2025-06-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
+        {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
+        {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 130.0, "net_profit": -5.0, "eps": -0.5},
+        {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 15.0, "eps": 1.5}
+    ]
+    res_ta = app.compute_yoy_metrics(quarters_turnaround)
+    mar_ta = res_ta[4]
+    assert mar_ta["surprise_type"] == "TURNAROUND"
+

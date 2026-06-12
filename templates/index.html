@@ -1668,6 +1668,64 @@
             </div>
     </div>
 
+    <!-- Episodic Pivot Details Modal -->
+    <div class="modal-overlay hidden" id="ep-detail-modal">
+        <div class="modal-container glass-panel" style="max-width: 800px; width: 90vw; height: auto; max-height: 85%;">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem 1.5rem;">
+                <div class="modal-title-area">
+                    <h3 style="margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
+                        <span>⚡</span> <span id="ep-detail-title-ticker">SYMBOL</span> — Episodic Pivot Details
+                    </h3>
+                    <p style="margin: 0.2rem 0 0 0; font-size: 0.8rem; color: var(--color-text-secondary); display: flex; gap: 0.8rem; align-items: center;">
+                        <span id="ep-detail-type" class="badge" style="font-weight: 700; background: rgba(59, 130, 246, 0.2); color: var(--accent-blue);"></span>
+                        <span>Score: <strong id="ep-detail-score" style="color: var(--color-text-primary);"></strong></span>
+                        <span>Confidence: <strong id="ep-detail-confidence"></strong></span>
+                        <span id="ep-detail-mktcap"></span>
+                    </p>
+                </div>
+                <button class="modal-close-btn" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 60vh;">
+                <!-- Section: Quarterly Financials -->
+                <div>
+                    <h4 style="margin: 0 0 0.8rem 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+                        <span>📊</span> Quarterly Financial Results (YoY Growth)
+                    </h4>
+                    <div style="overflow-x: auto; border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
+                        <table class="screener-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 0;">
+                            <thead>
+                                <tr style="background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.06);">
+                                    <th style="text-align: left; padding: 8px;">Quarter</th>
+                                    <th style="text-align: left; padding: 8px;">Result Date</th>
+                                    <th style="text-align: right; padding: 8px;">Revenue (Cr)</th>
+                                    <th style="text-align: right; padding: 8px;">Revenue YoY %</th>
+                                    <th style="text-align: right; padding: 8px;">Net Profit (Cr)</th>
+                                    <th style="text-align: right; padding: 8px;">Profit YoY %</th>
+                                    <th style="text-align: right; padding: 8px;">EPS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ep-detail-fundamentals-body">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Section: Corporate Announcements -->
+                <div>
+                    <h4 style="margin: 0 0 0.8rem 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+                        <span>🔔</span> Corporate Announcements & Events (Last 6 Months)
+                    </h4>
+                    <div style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem;" id="ep-detail-events-container">
+                        <!-- Dynamic content -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Regime History Modal -->
     <div class="modal-overlay hidden" id="regime-history-modal">
         <div class="modal-container glass-panel" style="max-width: 650px; height: auto; max-height: 85%;">

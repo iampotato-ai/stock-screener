@@ -11036,6 +11036,108 @@ function fetchEPListings() {
         });
 }
 
+function openEPDetailModal(symbol) {
+    const modal = document.getElementById('ep-detail-modal');
+    if (!modal) return;
+    
+    // Clear dynamic content first
+    document.getElementById('ep-detail-title-ticker').textContent = symbol;
+    document.getElementById('ep-detail-type').textContent = 'Loading...';
+    document.getElementById('ep-detail-score').textContent = '...';
+    document.getElementById('ep-detail-confidence').textContent = '...';
+    document.getElementById('ep-detail-mktcap').textContent = '';
+    
+    const fundTbody = document.getElementById('ep-detail-fundamentals-body');
+    fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading financials...</td></tr>`;
+    
+    const eventsContainer = document.getElementById('ep-detail-events-container');
+    eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading events...</div>`;
+    
+    modal.classList.remove('hidden');
+    
+    fetch(`/api/ep/${symbol}/detail`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Failed to load details: ${data.error}`, 'error');
+                modal.classList.add('hidden');
+                return;
+            }
+            
+            // Populate header details
+            document.getElementById('ep-detail-title-ticker').textContent = data.symbol;
+            document.getElementById('ep-detail-type').textContent = data.ep_type;
+            document.getElementById('ep-detail-score').textContent = data.ep_score ? data.ep_score.toFixed(2) : '-';
+            
+            const confEl = document.getElementById('ep-detail-confidence');
+            confEl.textContent = data.confidence || 'LOW';
+            confEl.style.color = data.confidence === 'HIGH' ? '#10b981' : data.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af';
+            
+            document.getElementById('ep-detail-mktcap').textContent = data.market_cap_cr ? `| Mkt Cap: ₹${data.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})} Cr` : '';
+            
+            // Populate Quarterly Fundamentals
+            if (!data.fundamentals || data.fundamentals.length === 0) {
+                fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No quarterly financial data available.</td></tr>`;
+            } else {
+                fundTbody.innerHTML = data.fundamentals.map(q => {
+                    const rev = q.revenue !== null ? q.revenue.toFixed(1) : '-';
+                    const revYoY = q.revenue_yoy_pct !== null ? `${q.revenue_yoy_pct > 0 ? '+' : ''}${q.revenue_yoy_pct.toFixed(1)}%` : '-';
+                    const revYoYStyle = q.revenue_yoy_pct !== null ? (q.revenue_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
+                    
+                    const prof = q.net_profit !== null ? q.net_profit.toFixed(1) : '-';
+                    const profYoY = q.net_profit_yoy_pct !== null ? `${q.net_profit_yoy_pct > 0 ? '+' : ''}${q.net_profit_yoy_pct.toFixed(1)}%` : '-';
+                    const profYoYStyle = q.net_profit_yoy_pct !== null ? (q.net_profit_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
+                    
+                    const eps = q.eps !== null ? q.eps.toFixed(2) : '-';
+                    
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                            <td style="padding: 8px; font-weight:600;">${q.quarter || '-'}</td>
+                            <td style="padding: 8px; color:var(--color-text-secondary);">${q.result_date || '-'}</td>
+                            <td style="padding: 8px; text-align:right;">${rev}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}</td>
+                            <td style="padding: 8px; text-align:right;">${prof}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}</td>
+                            <td style="padding: 8px; text-align:right;">${eps}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            // Populate Corporate Announcements
+            if (!data.corporate_events || data.corporate_events.length === 0) {
+                eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No corporate events recorded in the last 6 months.</div>`;
+            } else {
+                eventsContainer.innerHTML = data.corporate_events.map(ev => {
+                    const sentClass = ev.sentiment === 1 ? 'sent-positive' : ev.sentiment === -1 ? 'sent-negative' : 'sent-neutral';
+                    const sentText = ev.sentiment === 1 ? '🟢 Positive' : ev.sentiment === -1 ? '🔴 Negative' : '🟡 Neutral';
+                    const score = ev.catalyst_score ? ev.catalyst_score.toFixed(2) : '-';
+                    
+                    return `
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
+                                <span style="font-weight:700; color:var(--color-text-muted);">${ev.event_date}</span>
+                                <div style="display:flex; gap:0.5rem; align-items:center;">
+                                    <span class="badge" style="background: rgba(255,255,255,0.06); font-size:0.7rem; padding: 1px 4px;">${ev.event_type}</span>
+                                    <span class="sentiment-badge ${sentClass}" style="font-size:0.7rem; padding: 1px 4px;">${sentText}</span>
+                                    <span style="font-weight:600; color:var(--accent-blue);">Cat Score: ${score}</span>
+                                </div>
+                            </div>
+                            <div style="font-size:0.8rem; color:#fff; line-height:1.4;">${ev.headline || '-'}</div>
+                            ${ev.raw_url ? `<a href="${ev.raw_url}" target="_blank" style="font-size:0.7rem; color:var(--accent-blue); text-decoration:none; align-self:flex-start;">🔗 View Attachment</a>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching EP details:', err);
+            if (typeof showToast === 'function') showToast('Failed to load episodic pivot details', 'error');
+            modal.classList.add('hidden');
+        });
+}
+window.openEPDetailModal = openEPDetailModal;
+
 function renderEPListingsTable() {
     const tbody = document.getElementById('ep-table-body');
     if (!tbody) return;
@@ -11066,11 +11168,17 @@ function renderEPListingsTable() {
         else if (item.ep_score >= 0.55) scoreStyle += ' color: var(--accent-blue, #3b82f6);';
         else scoreStyle += ' color: var(--color-text-secondary);';
         
-        const changeText = item.gap_pct >= 0 ? `+${item.gap_pct.toFixed(2)}%` : `${item.gap_pct.toFixed(2)}%`;
-        const changeStyle = item.gap_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        const gapVal = item.gap_pct || 0.0;
+        const changeText = gapVal >= 0 ? `+${gapVal.toFixed(2)}%` : `${gapVal.toFixed(2)}%`;
+        const changeStyle = gapVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+        
+        const rvolVal = item.rel_volume || 0.0;
+        const closeLocVal = item.close_loc || 0.0;
+        const mktcapVal = item.market_cap_cr || 0.0;
+        const turnoverVal = item.avg_turnover_cr || 0.0;
         
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); ${rowStyle}">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; ${rowStyle}" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
@@ -11080,12 +11188,13 @@ function renderEPListingsTable() {
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.catalyst_score.toFixed(2)}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.repricing_score.toFixed(2)}</td>
                 <td class="text-right" style="${changeStyle} font-weight: 500;">${changeText}</td>
-                <td class="text-right" style="font-weight: 600; color: #fff;">${item.rel_volume.toFixed(2)}x</td>
-                <td class="text-right">${item.close_loc.toFixed(2)}</td>
-                <td class="text-right">₹${item.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
-                <td class="text-right">₹${item.avg_turnover_cr.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
+                <td class="text-right" style="font-weight: 600; color: #fff;">${rvolVal.toFixed(2)}x</td>
+                <td class="text-right">${closeLocVal.toFixed(2)}</td>
+                <td class="text-right">₹${mktcapVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
+                <td class="text-right">₹${turnoverVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
                 <td style="font-weight: 600; color: ${item.confidence === 'HIGH' ? '#10b981' : item.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af'}">${item.confidence}</td>
-                <td class="text-center">
+                <td class="text-center" style="white-space: nowrap;">
+                    <button class="btn btn-xs btn-outline" onclick="openEPDetailModal('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; margin-right: 4px;">Details</button>
                     <button class="btn btn-xs btn-outline" onclick="openTradingView('${item.symbol}.NS')" style="padding: 2px 6px; font-size: 0.7rem;">Chart</button>
                 </td>
             </tr>
@@ -11137,14 +11246,15 @@ function renderEPWatchlistTable() {
     }
     
     tbody.innerHTML = epWatchlistData.map(item => {
+        const scoreVal = item.ep_score || 0.0;
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
                 <td style="font-weight: 500;">${item.ep_type}</td>
                 <td>${item.catalyst_date}</td>
-                <td class="text-center" style="font-weight: 700; color: var(--accent-blue);">${item.ep_score.toFixed(2)}</td>
+                <td class="text-center" style="font-weight: 700; color: var(--accent-blue);">${scoreVal.toFixed(2)}</td>
                 <td class="text-right">₹${item.entry_price ? item.entry_price.toFixed(2) : '-'}</td>
                 <td class="text-right" style="color: var(--accent-red);">₹${item.stop_price ? item.stop_price.toFixed(2) : '-'}</td>
                 <td class="text-center">${item.days_on_watch} / 20</td>
