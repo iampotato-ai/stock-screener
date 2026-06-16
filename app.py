@@ -6029,7 +6029,12 @@ def map_nlp_category_to_standard(nlp_cat):
     if "management change" in nlp_cat_l:
         return "cat-governance", "Governance", "imp-governance", "Governance signal"
         
-    return "cat-other", "Other", "imp-sentiment", "Sentiment only"
+def fetch_announcement_content(raw_url):
+    """
+    Stub function for fetching and extracting text from corporate announcements.
+    Currently returns None since PDF parsing libraries are not installed.
+    """
+    return None
 
 def enhanced_classify_announcement(desc, text, raw_url=None):
     """
@@ -6044,6 +6049,13 @@ def enhanced_classify_announcement(desc, text, raw_url=None):
                 full_text += desc + " "
             if text:
                 full_text += text
+            
+            # Fetch full announcement text if available
+            if raw_url:
+                try:
+                    full_text = fetch_announcement_content(raw_url) or full_text
+                except Exception as e:
+                    print(f"[NLP classify] Fetch content error: {e}")
             
             # 1. Sentiment analysis with FinBERT
             sentiment_results = sentiment_analyzer(full_text[:512])  # FinBERT has 512-token limit
