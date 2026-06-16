@@ -115,11 +115,12 @@ def test_db_initialization():
         
     conn.close()
 
+@patch("app.init_nlp_models", return_value=False)
 @patch("requests.post")
 @patch("app.fetch_historical_prices")
 @patch("app.fetch_screener_fundamentals")
 @patch("app.fetch_nse_announcements")
-def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_post):
+def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_post, mock_init_nlp):
     # Setup mock TradingView response
     mock_tv_response = MagicMock()
     mock_tv_response.json.return_value = {
@@ -435,4 +436,65 @@ def test_fetch_yfinance_fundamentals_fallback():
         assert res[0]["revenue"] == 191.35
         assert res[0]["net_profit"] == 43.36
         assert res[0]["eps"] == 5.47
+
+
+def test_enhanced_classify_announcement_fallback():
+    # If NLP is not available, enhanced_classify_announcement should match classify_announcement exactly
+    with patch("app.init_nlp_models", return_value=False):
+        desc = "Capex expansion of manufacturing plant capacity"
+        text = "capex expansion plant"
+        res = app.enhanced_classify_announcement(desc, text)
+        
+        # Standard classify_announcement results
+        s_cat, s_cat_name, s_imp, s_imp_name, s_sent, s_sent_name, s_reason = app.classify_announcement(desc, text)
+        
+        assert res['cat'] == s_cat
+        assert res['cat_name'] == s_cat_name
+        assert res['imp'] == s_imp
+        assert res['imp_name'] == s_imp_name
+        assert res['sent'] == s_sent
+        assert res['sent_name'] == s_sent_name
+        assert res['reason'] == s_reason
+        assert res['summary'] is None
+        assert res['nlp_category'] == s_cat_name.lower()
+        assert res['nlp_sentiment_score'] == 1.0  # Positive sentiment translates to 1.0
+
+
+@patch("app.sentiment_analyzer")
+@patch("app.event_classifier")
+@patch("app.summarizer")
+def test_nlp_classification_mocked(mock_summarizer, mock_event_classifier, mock_sentiment_analyzer):
+    # Mock init_nlp_models to return True so it uses our mocked pipelines
+    with patch("app.init_nlp_models", return_value=True):
+        # Setup mocks
+        mock_sentiment_analyzer.return_value = [[
+            {'label': 'positive', 'score': 0.90},
+            {'label': 'negative', 'score': 0.05},
+            {'label': 'neutral', 'score': 0.05}
+        ]]
+        mock_event_classifier.return_value = {
+            'labels': ['order win', 'financial results'],
+            'scores': [0.85, 0.15]
+        }
+        mock_summarizer.return_value = [
+            {'summary_text': 'This is a mocked summary of the capex or order win announcement.'}
+        ]
+        
+        desc = "Major new contract won worth 500 Cr from clients"
+        text = "This contract win expands the order book significantly. " * 4
+        
+        res = app.enhanced_classify_announcement(desc, text)
+        
+        # Assertions
+        assert res['nlp_category'] == 'order win'
+        assert res['cat'] == 'cat-order-win'
+        assert res['cat_name'] == 'Order Win'
+        assert res['sent'] == 'sent-positive'
+        assert res['sent_name'] == '🟢 Positive'
+        assert res['nlp_sentiment_score'] == 0.85  # positive (0.90) - negative (0.05) = 0.85
+        assert res['summary'] == 'This is a mocked summary of the capex or order win announcement.'
+        # catalyst score: base 0.65 * sentiment_multiplier (1.2) * confidence (0.85) = 0.663
+        assert res['catalyst_score'] == 0.663
+        assert res['impact_magnitude'] == 0.663
+
 

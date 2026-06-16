@@ -11213,19 +11213,24 @@ function openEPDetailModal(symbol) {
                 eventsContainer.innerHTML = data.corporate_events.map(ev => {
                     const sentClass = ev.sentiment === 1 ? 'sent-positive' : ev.sentiment === -1 ? 'sent-negative' : 'sent-neutral';
                     const sentText = ev.sentiment === 1 ? '🟢 Positive' : ev.sentiment === -1 ? '🔴 Negative' : '🟡 Neutral';
+                    
                     const score = ev.catalyst_score ? ev.catalyst_score.toFixed(2) : '-';
+                    const hasNlp = ev.nlp_sentiment_score !== null && ev.nlp_sentiment_score !== undefined;
+                    const nlpSentimentStr = hasNlp ? (ev.nlp_sentiment_score >= 0 ? `+${ev.nlp_sentiment_score.toFixed(2)}` : ev.nlp_sentiment_score.toFixed(2)) : null;
+                    const categoryBadgeText = ev.nlp_category ? ev.nlp_category.toUpperCase() : ev.event_type;
                     
                     return `
                         <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem;">
                             <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
                                 <span style="font-weight:700; color:var(--color-text-muted);">${ev.event_date}</span>
                                 <div style="display:flex; gap:0.5rem; align-items:center;">
-                                    <span class="badge" style="background: rgba(255,255,255,0.06); font-size:0.7rem; padding: 1px 4px;">${ev.event_type}</span>
-                                    <span class="sentiment-badge ${sentClass}" style="font-size:0.7rem; padding: 1px 4px;">${sentText}</span>
+                                    <span class="badge" style="background: rgba(255,255,255,0.06); font-size:0.7rem; padding: 1px 4px;">${categoryBadgeText}</span>
+                                    <span class="sentiment-badge ${sentClass}" style="font-size:0.7rem; padding: 1px 4px;">${sentText} ${nlpSentimentStr ? `(${nlpSentimentStr})` : ''}</span>
                                     <span style="font-weight:600; color:var(--accent-blue);">Cat Score: ${score}</span>
                                 </div>
                             </div>
                             <div style="font-size:0.8rem; color:#fff; line-height:1.4;">${ev.headline || '-'}</div>
+                            ${ev.summary ? `<div style="font-size:0.75rem; color:var(--color-text-secondary); font-style:italic; margin-top:0.3rem; background: rgba(255,255,255,0.01); padding: 0.4rem; border-left: 2px solid var(--accent-blue); border-radius: 2px;"><b>Summary:</b> ${ev.summary}</div>` : ''}
                             ${ev.raw_url ? `<a href="${ev.raw_url}" target="_blank" style="font-size:0.7rem; color:var(--accent-blue); text-decoration:none; align-self:flex-start;">🔗 View Attachment</a>` : ''}
                         </div>
                     `;
