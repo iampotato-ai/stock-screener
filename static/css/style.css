@@ -7,7 +7,7 @@
     --text-xs:   0.75rem;
     --text-sm:   0.80rem;
     --text-base: 0.90rem;
-    --text-md:   var(--text-base); /* alias — use --text-base as canonical 1rem body token */
+    --text-md:   var(--text-base); /* alias */
     --text-lg:   1.125rem;
 
     /* Spacing scale */
@@ -18,34 +18,35 @@
     --space-6: 1.50rem;
     --space-8: 2.00rem;
 
-    --bg-main: hsl(230, 20%, 8%);
-    --bg-gradient: linear-gradient(135deg, hsl(230, 22%, 10%) 0%, hsl(225, 25%, 6%) 100%);
-    --panel-bg: rgba(22, 28, 45, 0.45);
-    --panel-border: rgba(255, 255, 255, 0.06);
+    --bg-main: hsl(230, 24%, 6%);
+    --bg-gradient: radial-gradient(ellipse at top, hsl(230, 24%, 9%) 0%, hsl(230, 24%, 5%) 100%);
+    --panel-bg: rgba(13, 17, 30, 0.45);
+    --panel-border: rgba(255, 255, 255, 0.05);
     --panel-border-hover: rgba(255, 255, 255, 0.12);
     --glow-primary: rgba(59, 130, 246, 0.15);
+    --glow-purple: rgba(139, 92, 246, 0.18);
     
     /* Semantic Colors */
     --color-text-primary: hsl(210, 40%, 98%);
     --color-text-secondary: hsl(215, 20%, 65%);
     --color-text-muted: hsl(215, 15%, 45%);
     
-    --accent-blue: hsl(217, 90%, 60%);
+    --accent-blue: hsl(217, 95%, 62%);
     --accent-blue-rgb: 59, 130, 246;
     --accent-green: hsl(142, 76%, 45%);
     --accent-red: hsl(350, 80%, 55%);
-    --accent-purple: hsl(263, 70%, 55%);
+    --accent-purple: hsl(263, 85%, 64%);
     --accent-orange: hsl(28, 90%, 55%);
     
     /* Layout & FX */
     --radius-lg: 16px;
     --radius-md: 10px;
     --radius-sm: 6px;
-    --shadow-premium: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    --blur-fx: blur(12px) saturate(180%);
+    --shadow-premium: 0 16px 48px -12px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    --blur-fx: blur(16px) saturate(180%);
     --col-ticker-width: 175px;
     --col-desc-width: 250px;
-    --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    --transition-smooth: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Base Settings */
@@ -64,6 +65,77 @@ body {
     padding: 2.5rem 2rem;
     overflow-x: hidden;
     line-height: 1.5;
+    position: relative;
+}
+
+/* Premium background decorative elements styling */
+.grid-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size: 50px 50px;
+    background-position: center top;
+    pointer-events: none;
+    z-index: -10;
+}
+
+.glow-blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(140px);
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: -20;
+    mix-blend-mode: screen;
+}
+
+.blob-1 {
+    top: -10%;
+    left: -10%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, var(--accent-purple) 0%, transparent 80%);
+    animation: floatBlob1 25s infinite alternate ease-in-out;
+}
+
+.blob-2 {
+    bottom: -10%;
+    right: -10%;
+    width: 700px;
+    height: 700px;
+    background: radial-gradient(circle, var(--accent-blue) 0%, transparent 80%);
+    animation: floatBlob2 30s infinite alternate ease-in-out;
+}
+
+.blob-3 {
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    height: 500px;
+    background: radial-gradient(circle, hsl(320, 80%, 50%) 0%, transparent 80%);
+    animation: floatBlob3 35s infinite alternate ease-in-out;
+    opacity: 0.04;
+}
+
+@keyframes floatBlob1 {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(120px, 80px) scale(1.15); }
+}
+
+@keyframes floatBlob2 {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(-80px, -140px) scale(0.9); }
+}
+
+@keyframes floatBlob3 {
+    0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); }
+    100% { transform: translate(-30%, -40%) rotate(360deg) scale(1.2); }
 }
 
 /* App Layout Container */
@@ -73,6 +145,25 @@ body {
     display: flex;
     flex-direction: column;
     gap: 2rem;
+    position: relative;
+    z-index: 1;
+}
+
+/* Premium Global Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    transition: var(--transition-smooth);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-blue);
 }
 
 /* Body + all table data uses Geist */
@@ -195,6 +286,23 @@ td.col-numeric, td.text-right {
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-premium);
     transition: var(--transition-smooth);
+    position: relative;
+}
+
+.glass-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+    z-index: 1;
+}
+
+.glass-panel:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.65), 0 0 30px -5px var(--glow-purple), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 /* Switch Toggle CSS */
@@ -243,23 +351,91 @@ input:checked + .slider:before {
 }
 
 /* Stats Section */
-.stats-grid {
+.stats-grid, .stat-cards-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
 }
 
 .stat-card {
-    padding: 1.5rem;
+    padding: 1.25rem 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.35rem;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-premium);
+    backdrop-filter: var(--blur-fx);
+    -webkit-backdrop-filter: var(--blur-fx);
+    transition: var(--transition-smooth);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: transparent;
+    transition: var(--transition-smooth);
 }
 
 .stat-card:hover {
-    transform: translateY(-5px);
-    border-color: var(--panel-border-hover);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 20px var(--glow-primary);
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 20px -2px var(--glow-primary);
+}
+
+/* Specific state card accents */
+.stat-card--elite::before {
+    background: linear-gradient(90deg, var(--accent-purple), hsl(290, 80%, 65%));
+}
+.stat-card--elite:hover {
+    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px var(--glow-purple);
+}
+
+.stat-card--strong::before {
+    background: linear-gradient(90deg, var(--accent-blue), hsl(190, 80%, 60%));
+}
+.stat-card--strong:hover {
+    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px var(--glow-primary);
+}
+
+.stat-card--leader::before {
+    background: linear-gradient(90deg, var(--accent-green), hsl(160, 80%, 55%));
+}
+.stat-card--leader:hover {
+    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px rgba(16, 185, 129, 0.18);
+}
+
+.stat-card--breakout::before {
+    background: linear-gradient(90deg, var(--accent-orange), hsl(15, 80%, 60%));
+}
+.stat-card--breakout:hover {
+    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px rgba(249, 115, 22, 0.18);
+}
+
+.stat-card-value {
+    font-size: 2.2rem;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: var(--color-text-primary);
+    line-height: 1.1;
+}
+
+.stat-card-label {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .stat-header {
@@ -418,36 +594,39 @@ input:checked + .slider:before {
     align-items: center;
     gap: 0.6rem;
     transition: var(--transition-smooth);
+    position: relative;
+    overflow: hidden;
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--accent-blue) 0%, hsl(210, 80%, 50%) 100%);
+    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
     color: white;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 15px -3px rgba(59, 130, 246, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-    filter: brightness(1.1);
+    box-shadow: 0 8px 24px -4px rgba(59, 130, 246, 0.5), 0 0 20px -2px var(--glow-purple), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    filter: brightness(1.12);
 }
 
 .btn-primary:active {
     transform: translateY(0);
+    box-shadow: 0 4px 10px -2px rgba(59, 130, 246, 0.4);
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--panel-border);
     color: var(--color-text-secondary);
 }
 
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.07);
     border-color: var(--panel-border-hover);
     color: var(--color-text-primary);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
 }
 
 .btn-secondary:active {
@@ -640,7 +819,7 @@ input:checked + .slider:before {
     min-width: var(--col-ticker-width);
     max-width: var(--col-ticker-width);
     width: var(--col-ticker-width);
-    background: #161c2d;
+    background: #0d111e;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
 }
@@ -653,7 +832,7 @@ input:checked + .slider:before {
     min-width: var(--col-desc-width);
     max-width: var(--col-desc-width);
     width: var(--col-desc-width);
-    background: #161c2d;
+    background: #0d111e;
     border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -682,23 +861,23 @@ input:checked + .slider:before {
 .screener-table th:nth-child(1),
 .screener-table th:nth-child(2) {
     z-index: 30;
-    background: rgba(22, 28, 45, 0.95); /* matches th */
+    background: #121626; /* matches th */
 }
 
 /* Hover States for Sticky Columns */
 .screener-table tbody tr:hover td:nth-child(1),
 .screener-table tbody tr:hover td:nth-child(2) {
-    background: #192033; /* slightly lighter than bg-surface */
+    background: #121727; /* slightly lighter than bg-surface */
 }
 
 /* IMS Strong Row States */
 .screener-table tbody tr.ims-strong-row td:nth-child(1),
 .screener-table tbody tr.ims-strong-row td:nth-child(2) {
-    background: #121c21; /* subtle greenish tint */
+    background: #0e1b21; /* subtle greenish tint */
 }
 .screener-table tbody tr.ims-strong-row:hover td:nth-child(1),
 .screener-table tbody tr.ims-strong-row:hover td:nth-child(2) {
-    background: #152227; /* hover greenish tint */
+    background: #13242c; /* hover greenish tint */
 }
 
 /* Alignments */
@@ -931,6 +1110,65 @@ input:checked + .slider:before {
     height: 100%;
     border-radius: var(--radius-md);
     overflow: hidden;
+}
+
+/* ─── Modal select inputs ────────────────────────────────────────────────────
+   Native <select> dropdowns don't inherit CSS variables in the OS-rendered
+   options list, so we must use solid fallback colors here.
+   Without this, near-white text on a white OS-default background is invisible.
+   ─────────────────────────────────────────────────────────────────────────── */
+.modal select,
+.modal-select {
+    background: #1a2035;
+    color: #e2e8f0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 0.6rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    /* Chevron indicator */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.2rem;
+}
+
+.modal select:focus,
+.modal-select:focus {
+    border-color: hsl(217, 95%, 62%);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.modal select:hover,
+.modal-select:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Force option elements to use solid colors so they are always readable */
+.modal select option,
+.modal-select option {
+    background: #1a2035;
+    color: #e2e8f0;
+}
+
+/* Light-mode overrides */
+body[data-theme="light"] .modal select,
+body[data-theme="light"] .modal-select {
+    background: #f8fafc;
+    color: #1e293b;
+    border-color: rgba(0, 0, 0, 0.15);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+body[data-theme="light"] .modal select option,
+body[data-theme="light"] .modal-select option {
+    background: #f8fafc;
+    color: #1e293b;
 }
 
 /* Animations */
@@ -1296,7 +1534,9 @@ input:checked + .slider:before {
 
 .watchlist-table {
     width: 100%;
-    border-collapse: collapse;
+    /* border-collapse:separate is required for position:sticky on <td>/<th> to work */
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 0.85rem;
 }
 
@@ -1310,6 +1550,14 @@ input:checked + .slider:before {
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     white-space: nowrap;
+}
+
+/* Sortable column header hover state */
+.watchlist-table th[style*="cursor:pointer"]:hover,
+.watchlist-table th[style*="cursor: pointer"]:hover {
+    color: var(--color-text-primary) !important;
+    background: rgba(255, 255, 255, 0.025);
+    border-radius: 4px;
 }
 
 .watchlist-table td {
@@ -1344,6 +1592,35 @@ input:checked + .slider:before {
     font-weight: 700;
     color: var(--color-text-primary);
     font-family: 'Outfit', sans-serif;
+    /* Sticky first column */
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: hsl(230, 24%, 8%);
+    /* Subtle right-edge divider so it looks clean when values scroll under it */
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.45);
+    /* Ensure the cell never shrinks below its content */
+    min-width: 80px;
+    max-width: 160px;
+}
+
+/* Sticky Symbol column — match row hover background */
+.watchlist-table tbody tr:hover td.watchlist-symbol {
+    background: hsl(230, 24%, 10%);
+}
+
+/* Sticky Symbol column — match active-row background */
+.watchlist-table tbody tr.active-row td.watchlist-symbol {
+    background: hsl(224, 40%, 10%);
+}
+
+/* Sticky Symbol column header (th) */
+.watchlist-table thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: hsl(230, 24%, 8%);
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.45);
 }
 
 .watchlist-cell-right {
@@ -2457,6 +2734,18 @@ body[data-theme="light"] .announcement-card:hover {
 
 body[data-theme="light"] .watchlist-table tbody tr.active-row {
     background: rgba(59, 130, 246, 0.06);
+}
+
+/* Light-mode sticky symbol column backgrounds */
+body[data-theme="light"] td.watchlist-symbol,
+body[data-theme="light"] .watchlist-table thead th:first-child {
+    background: hsl(220, 20%, 97%);
+}
+body[data-theme="light"] .watchlist-table tbody tr:hover td.watchlist-symbol {
+    background: hsl(220, 20%, 94%);
+}
+body[data-theme="light"] .watchlist-table tbody tr.active-row td.watchlist-symbol {
+    background: hsl(217, 50%, 93%);
 }
 
 body[data-theme="light"] .modal-content {
@@ -4999,13 +5288,13 @@ body[data-theme="light"] .sector-pill-progress-track {
 .workspace-tabs-container {
   display: flex;
   position: relative;
-  background: rgba(18, 24, 38, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 30px;
   padding: 4px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  backdrop-filter: var(--blur-fx);
+  -webkit-backdrop-filter: var(--blur-fx);
+  box-shadow: var(--shadow-premium);
   z-index: 10;
 }
 .workspace-tab {
@@ -5022,7 +5311,7 @@ body[data-theme="light"] .sector-pill-progress-track {
   border-radius: 20px;
   cursor: pointer;
   z-index: 2;
-  transition: color 250ms ease;
+  transition: var(--transition-smooth);
   white-space: nowrap;
 }
 .workspace-tab svg {
@@ -5034,7 +5323,7 @@ body[data-theme="light"] .sector-pill-progress-track {
 }
 .workspace-tab:hover svg {
   opacity: 0.9;
-  transform: translateY(-0.5px);
+  transform: translateY(-1px);
 }
 .workspace-tab.active {
   color: #ffffff;
@@ -5042,16 +5331,17 @@ body[data-theme="light"] .sector-pill-progress-track {
 .workspace-tab.active svg {
   opacity: 1;
   color: var(--accent-blue);
+  filter: drop-shadow(0 0 5px rgba(59, 130, 246, 0.5));
 }
 
-/* Sliding active indicator capsule */
+/* Sliding active indicator capsule with premium glow */
 .workspace-sliding-cap {
   position: absolute;
   height: calc(100% - 8px);
   top: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.12) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  box-shadow: 0 0 15px -3px var(--glow-purple);
   border-radius: 20px;
   z-index: 1;
   transition: left 240ms cubic-bezier(0.16, 1, 0.3, 1), width 240ms cubic-bezier(0.16, 1, 0.3, 1);

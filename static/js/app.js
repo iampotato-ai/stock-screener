@@ -386,6 +386,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
         } else if (viewName === 'ipo') {
             if (typeof renderIPOWorkspace === 'function') renderIPOWorkspace();
+        } else if (viewName === 'ep') {
+            if (typeof renderEPWorkspace === 'function') renderEPWorkspace();
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
             if (currentTab === 'journal') {
@@ -3448,6 +3450,8 @@ function handleHeaderDragEnd(e) {
 let watchlistStocks = [];
 let watchlistSections = [];
 let watchlistDataMap = {};
+// Per-section sort state: { [sectionId]: { field: 'cmp'|'change'|'vol', dir: 'asc'|'desc' } }
+let watchlistSectionSort = {};
 let watchlistCurrentPage = 1;
 const watchlistItemsPerPage = 10;
 let activeNewsFilter = 'all'; // 'all' or ticker symbol
@@ -4144,6 +4148,16 @@ function removeStockFromSection(sectionId, ticker) {
     
     const sec = watchlistSections.find(s => s.id === sectionId);
     if (!sec) return;
+
+    // Save scroll position of the watchlist panel before any DOM changes
+    const wlPanel = document.getElementById('watchlist-sections');
+    const savedScrollTop = wlPanel ? wlPanel.closest('.watchlist-scroll-area, .watchlist-body, [id="watchlist-sections"]')?.scrollTop ?? 0 : 0;
+    const wlContainer = wlPanel ? wlPanel.parentElement : null;
+    const containerScrollTop = wlContainer ? wlContainer.scrollTop : 0;
+    
+    // Save horizontal scroll position of the specific section list
+    const secListDiv = document.querySelector(`.watchlist-section-card[data-section-id="${sectionId}"] .section-stocks-list`);
+    const savedScrollLeft = secListDiv ? secListDiv.scrollLeft : 0;
     
     fetch('/api/watchlist/items', {
         method: 'DELETE',
@@ -4160,15 +4174,24 @@ function removeStockFromSection(sectionId, ticker) {
                 saveWatchlistSections();
                 
                 const row = document.querySelector(`.watchlist-row[data-symbol="${ticker}"][data-section-id="${sectionId}"]`);
+                const doRender = () => {
+                    renderWatchlist();
+                    // Restore vertical and horizontal scroll positions after DOM layout is recalculated
+                    setTimeout(() => {
+                        const container = document.getElementById('watchlist-list-container');
+                        if (container) container.scrollTop = containerScrollTop;
+                        
+                        const targetSecListDiv = document.querySelector(`.watchlist-section-card[data-section-id="${sectionId}"] .section-stocks-list`);
+                        if (targetSecListDiv) targetSecListDiv.scrollLeft = savedScrollLeft;
+                    }, 0);
+                };
                 if (row) {
-                    row.style.transition = 'all 0.3s ease';
+                    row.style.transition = 'all 0.25s ease';
                     row.style.opacity = '0';
                     row.style.transform = 'translateX(20px)';
-                    setTimeout(() => {
-                        renderWatchlist();
-                    }, 250);
+                    setTimeout(doRender, 250);
                 } else {
-                    renderWatchlist();
+                    doRender();
                 }
                 
                 if (activeNewsFilter === ticker) {
@@ -4383,38 +4406,86 @@ function renderWatchlist() {
         } else {
             const table = document.createElement('table');
             table.className = 'watchlist-table';
-            
-            // Add missing table headers
+
+            // Current sort state for this section
+            const sortState = watchlistSectionSort[section.id] || { field: null, dir: 'desc' };
+
+            // Helper: render a sortable column header
+            const mkSortTh = (label, field, align = 'right', extraStyle = '') => {
+                const th = document.createElement('th');
+                th.style.cssText = `text-align:${align}; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.75rem; cursor:pointer; user-select:none; white-space:nowrap; ${extraStyle}`;
+                const isActive = sortState.field === field;
+                const arrow = isActive ? (sortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+                th.innerHTML = `${label}<span style="color:var(--accent-blue); font-size:0.65rem;">${arrow}</span>`;
+                th.title = `Sort by ${label}`;
+                th.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const cur = watchlistSectionSort[section.id] || { field: null, dir: 'desc' };
+                    watchlistSectionSort[section.id] = {
+                        field,
+                        dir: cur.field === field ? (cur.dir === 'asc' ? 'desc' : 'asc') : 'desc'
+                    };
+                    renderWatchlist();
+                });
+                return th;
+            };
+
+            // Add table headers
             const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
             if (showWatchlistKronosColumns) {
-                thead.innerHTML = `
-                    <tr>
-                        <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem; min-width: 60px;">Symbol</th>
-                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;"># Rank</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">AI Return</th>
-                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Bias</th>
-                        <th style="text-align: center; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Conf.</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">CMP</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.7rem;">Change%</th>
-                        <th style="width: 24px;"></th>
-                    </tr>
-                `;
+                const thSym = document.createElement('th');
+                thSym.style.cssText = 'text-align:left; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.7rem; min-width:60px;';
+                thSym.textContent = 'Symbol';
+                headerRow.appendChild(thSym);
+                ['# Rank','AI Return','Bias','Conf.'].forEach(lbl => {
+                    const th = document.createElement('th');
+                    th.style.cssText = 'text-align:center; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.7rem;';
+                    th.textContent = lbl;
+                    headerRow.appendChild(th);
+                });
+                headerRow.appendChild(mkSortTh('CMP', 'cmp', 'right', 'font-size:0.7rem;'));
+                headerRow.appendChild(mkSortTh('CHANGE%', 'change', 'right', 'font-size:0.7rem;'));
+                const thDel = document.createElement('th'); thDel.style.width = '24px';
+                headerRow.appendChild(thDel);
             } else {
-                thead.innerHTML = `
-                    <tr>
-                        <th style="text-align: left; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Symbol</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">CMP</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Change%</th>
-                        <th style="text-align: right; padding-bottom: 0.5rem; color: var(--color-text-muted); font-weight: 500; font-size: 0.75rem;">Vol</th>
-                        <th style="width: 24px;"></th>
-                    </tr>
-                `;
+                const thSym = document.createElement('th');
+                thSym.style.cssText = 'text-align:left; padding-bottom:0.5rem; color:var(--color-text-muted); font-weight:500; font-size:0.75rem;';
+                thSym.textContent = 'Symbol';
+                headerRow.appendChild(thSym);
+                headerRow.appendChild(mkSortTh('CMP', 'cmp'));
+                headerRow.appendChild(mkSortTh('CHANGE%', 'change'));
+                headerRow.appendChild(mkSortTh('VOL', 'vol'));
+                const thDel = document.createElement('th'); thDel.style.width = '24px';
+                headerRow.appendChild(thDel);
             }
+            thead.appendChild(headerRow);
             table.appendChild(thead);
-            
+
+            // Sort the stocks list for this section
+            let stocksToRender = [...section.stocks];
+            if (sortState.field) {
+                stocksToRender.sort((a, b) => {
+                    const sa = watchlistDataMap[a] || stocksData.find(s => s.clean_ticker === a);
+                    const sb = watchlistDataMap[b] || stocksData.find(s => s.clean_ticker === b);
+                    let va = 0, vb = 0;
+                    if (sortState.field === 'cmp') {
+                        va = sa ? (parseFloat(sa.close) || 0) : 0;
+                        vb = sb ? (parseFloat(sb.close) || 0) : 0;
+                    } else if (sortState.field === 'change') {
+                        va = sa ? (parseFloat(sa.change) || 0) : -Infinity;
+                        vb = sb ? (parseFloat(sb.change) || 0) : -Infinity;
+                    } else if (sortState.field === 'vol') {
+                        va = sa ? (parseFloat(sa.volume) || 0) : 0;
+                        vb = sb ? (parseFloat(sb.volume) || 0) : 0;
+                    }
+                    return sortState.dir === 'asc' ? va - vb : vb - va;
+                });
+            }
+
             const tbody = document.createElement('tbody');
             
-            section.stocks.forEach(symbol => {
+            stocksToRender.forEach(symbol => {
                 let stock = watchlistDataMap[symbol];
                 if (!stock) {
                     stock = stocksData.find(s => s.clean_ticker === symbol);
@@ -10879,3 +10950,1120 @@ function renderVerdictStrip(containerId, label, returnPct, confidenceLabel, conf
         </div>
     `;
 }
+
+
+// ---------- Episodic Pivot (EP) Tab Controllers ----------
+
+let epActiveFilters = {
+    ep_type: 'all',
+    confidence: 'all',
+    min_score: 0.55,
+    min_mktcap: '',
+    max_mktcap: ''
+};
+let epListingsData = [];
+let epWatchlistData = [];
+let epSugarData = [];
+let epListenersBound = false;
+// EP table sort state
+let epTableSort = { field: 'ep_score', dir: 'desc' };
+
+window.renderEPWorkspace = function() {
+    bindEPListeners();
+    const activeSubTab = document.querySelector('.ep-sub-tab.active');
+    const sub = activeSubTab ? activeSubTab.dataset.sub : 'today';
+    loadEPSubTab(sub);
+};
+
+function bindEPListeners() {
+    if (epListenersBound) return;
+    
+    // Main tab clicks
+    document.querySelectorAll('.ep-sub-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.ep-sub-tab').forEach(t => {
+                t.classList.remove('active');
+                t.style.borderBottomColor = 'transparent';
+                t.style.color = 'var(--color-text-secondary)';
+                t.style.fontWeight = '500';
+            });
+            tab.classList.add('active');
+            tab.style.borderBottomColor = 'var(--accent-blue)';
+            tab.style.color = '#fff';
+            tab.style.fontWeight = '600';
+            
+            // Toggle panels
+            const sub = tab.dataset.sub;
+            document.getElementById('ep-panel-today').style.display = sub === 'today' ? 'block' : 'none';
+            document.getElementById('ep-panel-watchlist').style.display = sub === 'watchlist' ? 'block' : 'none';
+            document.getElementById('ep-panel-sugar-babies').style.display = sub === 'sugar-babies' ? 'block' : 'none';
+            document.getElementById('ep-panel-themes').style.display = sub === 'themes' ? 'block' : 'none';
+            document.getElementById('ep-panel-backtest').style.display = sub === 'backtest' ? 'block' : 'none';
+            
+            loadEPSubTab(sub);
+        });
+    });
+    
+    // Filter changes
+    const filterType = document.getElementById('filter-ep-type');
+    if (filterType) {
+        filterType.addEventListener('change', () => {
+            epActiveFilters.ep_type = filterType.value;
+            fetchEPListings();
+        });
+    }
+    
+    const filterConf = document.getElementById('filter-ep-confidence');
+    if (filterConf) {
+        filterConf.addEventListener('change', () => {
+            epActiveFilters.confidence = filterConf.value;
+            fetchEPListings();
+        });
+    }
+    
+    const filterMinScore = document.getElementById('filter-ep-min-score');
+    if (filterMinScore) {
+        filterMinScore.addEventListener('change', () => {
+            epActiveFilters.min_score = parseFloat(filterMinScore.value) || 0.55;
+            fetchEPListings();
+        });
+    }
+
+    const filterMinMkt = document.getElementById('filter-ep-min-mktcap');
+    if (filterMinMkt) {
+        filterMinMkt.addEventListener('change', () => {
+            epActiveFilters.min_mktcap = filterMinMkt.value;
+            fetchEPListings();
+        });
+    }
+
+    const filterMaxMkt = document.getElementById('filter-ep-max-mktcap');
+    if (filterMaxMkt) {
+        filterMaxMkt.addEventListener('change', () => {
+            epActiveFilters.max_mktcap = filterMaxMkt.value;
+            fetchEPListings();
+        });
+    }
+    
+    // Refresh button
+    const refreshBtn = document.getElementById('ep-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', triggerEPRefresh);
+    }
+
+    // Column header sorting for EP listings table
+    document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (epTableSort.field === field) {
+                epTableSort.dir = epTableSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                epTableSort.field = field;
+                // Numeric fields default desc, text fields default asc
+                const textFields = ['symbol', 'ep_type', 'confidence'];
+                epTableSort.dir = textFields.includes(field) ? 'asc' : 'desc';
+            }
+            // Update header arrow indicators
+            document.querySelectorAll('#ep-table thead th[data-sort]').forEach(h => {
+                const arrow = h.querySelector('.ep-sort-arrow');
+                if (arrow) arrow.textContent = '';
+                h.classList.remove('sort-asc', 'sort-desc');
+            });
+            th.classList.add(epTableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+            renderEPListingsTable();
+        });
+    });
+
+    epListenersBound = true;
+}
+
+function loadEPSubTab(sub) {
+    if (sub === 'today') {
+        fetchEPListings();
+    } else if (sub === 'watchlist') {
+        fetchEPWatchlist();
+    } else if (sub === 'sugar-babies') {
+        fetchEPSugarBabies();
+    } else if (sub === 'themes') {
+        loadEPThemesAndRotation();
+    } else if (sub === 'backtest') {
+        initEPBacktestDashboard();
+    }
+}
+
+function fetchEPListings() {
+    const tbody = document.getElementById('ep-table-body');
+    if (tbody && epListingsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    Loading EP listings...
+                </td>
+            </tr>
+        `;
+    }
+    
+    const params = new URLSearchParams({
+        ep_type: epActiveFilters.ep_type,
+        confidence: epActiveFilters.confidence,
+        min_score: epActiveFilters.min_score,
+        min_mktcap: epActiveFilters.min_mktcap,
+        max_mktcap: epActiveFilters.max_mktcap
+    });
+    
+    fetch(`/api/ep/today?${params.toString()}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            epListingsData = data.listings || [];
+            
+            // Update badge in main nav tab if there are HIGH confidence EPs
+            const highCount = data.summary ? (data.summary.HIGH || 0) : 0;
+            const badge = document.getElementById('ep-high-count');
+            if (badge) {
+                badge.innerText = highCount;
+                badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+            }
+            
+            renderEPListingsTable();
+        })
+        .catch(err => {
+            console.error('Error fetching EP listings:', err);
+            if (typeof showToast === 'function') showToast('Failed to load EP listings', 'error');
+        });
+}
+
+function openEPDetailModal(symbol) {
+    const modal = document.getElementById('ep-detail-modal');
+    if (!modal) return;
+    
+    // Clear dynamic content first
+    document.getElementById('ep-detail-title-ticker').textContent = symbol;
+    document.getElementById('ep-detail-type').textContent = 'Loading...';
+    document.getElementById('ep-detail-score').textContent = '...';
+    document.getElementById('ep-detail-confidence').textContent = '...';
+    document.getElementById('ep-detail-mktcap').textContent = '';
+    
+    const fundTbody = document.getElementById('ep-detail-fundamentals-body');
+    fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading financials...</td></tr>`;
+    
+    const eventsContainer = document.getElementById('ep-detail-events-container');
+    eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading events...</div>`;
+    
+    modal.classList.remove('hidden');
+    
+    fetch(`/api/ep/${symbol}/detail`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Failed to load details: ${data.error}`, 'error');
+                modal.classList.add('hidden');
+                return;
+            }
+            
+            // Populate header details
+            document.getElementById('ep-detail-title-ticker').textContent = data.symbol;
+            document.getElementById('ep-detail-type').textContent = data.ep_type;
+            document.getElementById('ep-detail-score').textContent = data.ep_score ? data.ep_score.toFixed(2) : '-';
+            
+            const confEl = document.getElementById('ep-detail-confidence');
+            confEl.textContent = data.confidence || 'LOW';
+            confEl.style.color = data.confidence === 'HIGH' ? '#10b981' : data.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af';
+            
+            document.getElementById('ep-detail-mktcap').textContent = data.market_cap_cr ? `| Mkt Cap: ₹${data.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})} Cr` : '';
+            
+            // Populate Quarterly Fundamentals
+            if (!data.fundamentals || data.fundamentals.length === 0) {
+                fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No quarterly financial data available.</td></tr>`;
+            } else {
+                fundTbody.innerHTML = data.fundamentals.map(q => {
+                    const rev = q.revenue !== null ? q.revenue.toFixed(1) : '-';
+                    const revYoY = q.revenue_yoy_pct !== null ? `${q.revenue_yoy_pct > 0 ? '+' : ''}${q.revenue_yoy_pct.toFixed(1)}%` : '-';
+                    const revYoYStyle = q.revenue_yoy_pct !== null ? (q.revenue_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
+                    
+                    const prof = q.net_profit !== null ? q.net_profit.toFixed(1) : '-';
+                    const profYoY = q.net_profit_yoy_pct !== null ? `${q.net_profit_yoy_pct > 0 ? '+' : ''}${q.net_profit_yoy_pct.toFixed(1)}%` : '-';
+                    const profYoYStyle = q.net_profit_yoy_pct !== null ? (q.net_profit_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
+                    
+                    const eps = q.eps !== null ? q.eps.toFixed(2) : '-';
+                    
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                            <td style="padding: 8px; font-weight:600;">${q.quarter || '-'}</td>
+                            <td style="padding: 8px; color:var(--color-text-secondary);">${q.result_date || '-'}</td>
+                            <td style="padding: 8px; text-align:right;">${rev}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}</td>
+                            <td style="padding: 8px; text-align:right;">${prof}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}</td>
+                            <td style="padding: 8px; text-align:right;">${eps}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+            
+            // Populate Corporate Announcements
+            if (!data.corporate_events || data.corporate_events.length === 0) {
+                eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No corporate events recorded in the last 6 months.</div>`;
+            } else {
+                eventsContainer.innerHTML = data.corporate_events.map(ev => {
+                    const sentClass = ev.sentiment === 1 ? 'sent-positive' : ev.sentiment === -1 ? 'sent-negative' : 'sent-neutral';
+                    const sentText = ev.sentiment === 1 ? '🟢 Positive' : ev.sentiment === -1 ? '🔴 Negative' : '🟡 Neutral';
+                    
+                    const score = ev.catalyst_score ? ev.catalyst_score.toFixed(2) : '-';
+                    const hasNlp = ev.nlp_sentiment_score !== null && ev.nlp_sentiment_score !== undefined;
+                    const nlpSentimentStr = hasNlp ? (ev.nlp_sentiment_score >= 0 ? `+${ev.nlp_sentiment_score.toFixed(2)}` : ev.nlp_sentiment_score.toFixed(2)) : null;
+                    const categoryBadgeText = ev.nlp_category ? ev.nlp_category.toUpperCase() : ev.event_type;
+                    
+                    return `
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
+                                <span style="font-weight:700; color:var(--color-text-muted);">${ev.event_date}</span>
+                                <div style="display:flex; gap:0.5rem; align-items:center;">
+                                    <span class="badge" style="background: rgba(255,255,255,0.06); font-size:0.7rem; padding: 1px 4px;">${categoryBadgeText}</span>
+                                    <span class="sentiment-badge ${sentClass}" style="font-size:0.7rem; padding: 1px 4px;">${sentText} ${nlpSentimentStr ? `(${nlpSentimentStr})` : ''}</span>
+                                    <span style="font-weight:600; color:var(--accent-blue);">Cat Score: ${score}</span>
+                                </div>
+                            </div>
+                            <div style="font-size:0.8rem; color:#fff; line-height:1.4;">${ev.headline || '-'}</div>
+                            ${ev.summary ? `<div style="font-size:0.75rem; color:var(--color-text-secondary); font-style:italic; margin-top:0.3rem; background: rgba(255,255,255,0.01); padding: 0.4rem; border-left: 2px solid var(--accent-blue); border-radius: 2px;"><b>Summary:</b> ${ev.summary}</div>` : ''}
+                            ${ev.raw_url ? `<a href="${ev.raw_url}" target="_blank" style="font-size:0.7rem; color:var(--accent-blue); text-decoration:none; align-self:flex-start;">🔗 View Attachment</a>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            // Populate Watchlist & Sugar Babies Controls
+            window.currentEPDetailSymbol = data.symbol || symbol;
+            
+            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
+            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
+            
+            const addWatchlistBtn = document.getElementById('btn-ep-detail-add-watchlist');
+            const triggerWatchlistBtn = document.getElementById('btn-ep-detail-trigger-watchlist');
+            const removeWatchlistBtn = document.getElementById('btn-ep-detail-remove-watchlist');
+            const addSugarBtn = document.getElementById('btn-ep-detail-add-sugar');
+            
+            if (data.watchlist_status === 'ACTIVE') {
+                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Update Watchlist';
+                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'inline-block';
+                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'inline-block';
+            } else {
+                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Add to Watchlist';
+                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'none';
+                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'none';
+            }
+            
+            if (data.is_sugar_baby === 1) {
+                if (addSugarBtn) addSugarBtn.textContent = 'Remove Sugar Baby';
+            } else {
+                if (addSugarBtn) addSugarBtn.textContent = 'Add to Sugar Babies';
+            }
+            
+            if (!window.epDetailListenersBound) {
+                window.epDetailListenersBound = true;
+                
+                if (addWatchlistBtn) {
+                    addWatchlistBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        const stopVal = document.getElementById('ep-detail-stop-input').value;
+                        const notesVal = document.getElementById('ep-detail-notes-input').value;
+                        
+                        fetch('/api/ep/watchlist', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                symbol: sym,
+                                stop_price: stopVal,
+                                notes: notesVal
+                            })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
+                                if (typeof fetchEPListings === 'function') fetchEPListings();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error adding/updating watchlist:', err);
+                            if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
+                        });
+                    });
+                }
+                
+                if (removeWatchlistBtn) {
+                    removeWatchlistBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        
+                        fetch('/api/ep/watchlist/remove', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ symbol: sym })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
+                                if (typeof fetchEPListings === 'function') fetchEPListings();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error deleting watchlist:', err);
+                            if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
+                        });
+                    });
+                }
+                
+                if (triggerWatchlistBtn) {
+                    triggerWatchlistBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        
+                        fetch('/api/ep/watchlist/trigger', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ symbol: sym })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
+                                if (typeof fetchEPListings === 'function') fetchEPListings();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error triggering watchlist:', err);
+                            if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
+                        });
+                    });
+                }
+                
+                if (addSugarBtn) {
+                    addSugarBtn.addEventListener('click', () => {
+                        const sym = window.currentEPDetailSymbol;
+                        if (!sym) return;
+                        
+                        const isCurrentlySugar = addSugarBtn.textContent.includes('Remove');
+                        const is_active = isCurrentlySugar ? 0 : 1;
+                        const notesVal = document.getElementById('ep-detail-notes-input').value;
+                        
+                        fetch('/api/ep/sugar-babies', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                symbol: sym,
+                                is_active: is_active,
+                                notes: notesVal
+                            })
+                        })
+                        .then(res => res.json())
+                        .then(resData => {
+                            if (resData.success) {
+                                if (typeof showToast === 'function') showToast(resData.message, 'success');
+                                openEPDetailModal(sym);
+                                if (typeof fetchEPSugarBabies === 'function') fetchEPSugarBabies();
+                            } else {
+                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error updating Sugar Babies:', err);
+                            if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
+                        });
+                    });
+                }
+            }
+        })
+        .catch(err => {
+            console.error('Error fetching EP details:', err);
+            if (typeof showToast === 'function') showToast('Failed to load episodic pivot details', 'error');
+            modal.classList.add('hidden');
+        });
+}
+window.openEPDetailModal = openEPDetailModal;
+
+function renderEPListingsTable() {
+    const tbody = document.getElementById('ep-table-body');
+    if (!tbody) return;
+    
+    if (epListingsData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    No candidates match the selected filters.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    // Sort the data
+    const textFields = ['symbol', 'ep_type', 'confidence'];
+    const sorted = [...epListingsData].sort((a, b) => {
+        let va = a[epTableSort.field];
+        let vb = b[epTableSort.field];
+        if (va == null) va = textFields.includes(epTableSort.field) ? '' : -Infinity;
+        if (vb == null) vb = textFields.includes(epTableSort.field) ? '' : -Infinity;
+        let cmp;
+        if (textFields.includes(epTableSort.field)) {
+            cmp = String(va).localeCompare(String(vb));
+        } else {
+            cmp = Number(va) - Number(vb);
+        }
+        return epTableSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    // Refresh sort arrow indicator on active header
+    document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === epTableSort.field) {
+            th.classList.add(epTableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
+    
+    tbody.innerHTML = sorted.map(item => {
+        let rowStyle = '';
+        if (item.confidence === 'HIGH' && (item.ep_type === 'Growth EP' || item.ep_type === 'Turnaround EP')) {
+            rowStyle = 'background: rgba(16, 185, 129, 0.05);';
+        } else if (item.confidence === 'HIGH' && item.ep_type === 'Volume EP') {
+            rowStyle = 'background: rgba(59, 130, 246, 0.05);';
+        } else if (item.ep_type === 'Short EP') {
+            rowStyle = 'background: rgba(239, 68, 68, 0.05);';
+        }
+        
+        let scoreStyle = 'font-weight: 700;';
+        if (item.ep_score >= 0.72) scoreStyle += ' color: var(--accent-green, #10b981);';
+        else if (item.ep_score >= 0.55) scoreStyle += ' color: var(--accent-blue, #3b82f6);';
+        else scoreStyle += ' color: var(--color-text-secondary);';
+        
+        const gapVal = item.gap_pct || 0.0;
+        const changeText = gapVal >= 0 ? `+${gapVal.toFixed(2)}%` : `${gapVal.toFixed(2)}%`;
+        const changeStyle = gapVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
+
+        // Day's Change %
+        const dayChgVal = item.price_change_pct != null ? item.price_change_pct : gapVal;
+        const dayChgText = dayChgVal >= 0 ? `+${dayChgVal.toFixed(2)}%` : `${dayChgVal.toFixed(2)}%`;
+        const dayChgStyle = dayChgVal >= 0 ? 'color: var(--color-success, #10b981); font-weight: 600;' : 'color: var(--color-error, #ef4444); font-weight: 600;';
+        
+        const rvolVal = item.rel_volume || 0.0;
+        const closeLocVal = item.close_loc || 0.0;
+        const mktcapVal = item.market_cap_cr || 0.0;
+        const turnoverVal = item.avg_turnover_cr || 0.0;
+        
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; ${rowStyle}" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                </td>
+                <td style="font-weight: 500;">${item.ep_type}</td>
+                <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}</td>
+                <td class="text-center" style="color: var(--color-text-secondary);">${item.neglect_score.toFixed(2)}</td>
+                <td class="text-center" style="color: var(--color-text-secondary);">${item.catalyst_score.toFixed(2)}</td>
+                <td class="text-center" style="color: var(--color-text-secondary);">${item.repricing_score.toFixed(2)}</td>
+                <td class="text-right" style="${changeStyle} font-weight: 500;">${changeText}</td>
+                <td class="text-right" style="${dayChgStyle}">${dayChgText}</td>
+                <td class="text-right" style="font-weight: 600; color: #fff;">${rvolVal.toFixed(2)}x</td>
+                <td class="text-right">${closeLocVal.toFixed(2)}</td>
+                <td class="text-right">₹${mktcapVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
+                <td class="text-right">₹${turnoverVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
+                <td style="font-weight: 600; color: ${item.confidence === 'HIGH' ? '#10b981' : item.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af'}">${item.confidence}</td>
+                <td class="text-center" style="white-space: nowrap;">
+                    <button class="btn btn-xs btn-outline" onclick="openEPDetailModal('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; margin-right: 4px;">Details</button>
+                    <button class="btn btn-xs btn-outline" onclick="openTradingView('${item.symbol}.NS')" style="padding: 2px 6px; font-size: 0.7rem;">Chart</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function fetchEPWatchlist() {
+    const tbody = document.getElementById('ep-watchlist-body');
+    if (tbody && epWatchlistData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    Loading watchlist...
+                </td>
+            </tr>
+        `;
+    }
+    
+    fetch('/api/ep/watchlist')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            epWatchlistData = data.watchlist || [];
+            renderEPWatchlistTable();
+        })
+        .catch(err => {
+            console.error('Error fetching EP watchlist:', err);
+            if (typeof showToast === 'function') showToast('Failed to load EP watchlist', 'error');
+        });
+}
+
+function renderEPWatchlistTable() {
+    const tbody = document.getElementById('ep-watchlist-body');
+    if (!tbody) return;
+    
+    if (epWatchlistData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    No active watchlist candidates found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = epWatchlistData.map(item => {
+        const scoreVal = item.ep_score || 0.0;
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                </td>
+                <td style="font-weight: 500;">${item.ep_type}</td>
+                <td>${item.catalyst_date}</td>
+                <td class="text-center" style="font-weight: 700; color: var(--accent-blue);">${scoreVal.toFixed(2)}</td>
+                <td class="text-right">₹${item.entry_price ? item.entry_price.toFixed(2) : '-'}</td>
+                <td class="text-right" style="color: var(--accent-red);">₹${item.stop_price ? item.stop_price.toFixed(2) : '-'}</td>
+                <td class="text-center">${item.days_on_watch} / 20</td>
+                <td><span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">${item.status}</span></td>
+                <td>${item.trigger_type || 'None'}</td>
+                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function fetchEPSugarBabies() {
+    const tbody = document.getElementById('ep-sugar-body');
+    if (tbody && epSugarData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    Loading Sugar Babies...
+                </td>
+            </tr>
+        `;
+    }
+    
+    fetch('/api/ep/sugar-babies')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
+                return;
+            }
+            epSugarData = data.sugar_babies || [];
+            renderEPSugarTable();
+        })
+        .catch(err => {
+            console.error('Error fetching Sugar Babies:', err);
+            if (typeof showToast === 'function') showToast('Failed to load Sugar Babies', 'error');
+        });
+}
+
+function renderEPSugarTable() {
+    const tbody = document.getElementById('ep-sugar-body');
+    if (!tbody) return;
+    
+    if (epSugarData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                    No Sugar Baby listings found.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = epSugarData.map(item => {
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
+                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                </td>
+                <td>${item.exchange}</td>
+                <td>${item.added_date || '-'}</td>
+                <td class="text-right" style="color: var(--accent-green); font-weight: 600;">+${item.avg_burst_pct ? item.avg_burst_pct.toFixed(1) : '0.0'}%</td>
+                <td class="text-right">${item.avg_burst_days ? item.avg_burst_days.toFixed(1) : '0.0'} days</td>
+                <td class="text-center" style="font-weight: 600;">${item.episode_count || 0}</td>
+                <td>${item.notes || ''}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function triggerEPRefresh() {
+    const refreshBtn = document.getElementById('ep-refresh-btn');
+    if (!refreshBtn) return;
+    
+    const btnText = refreshBtn.querySelector('span');
+    const btnSvg = refreshBtn.querySelector('svg');
+    
+    if (refreshBtn.disabled) return;
+    
+    refreshBtn.disabled = true;
+    if (btnText) btnText.innerText = 'Scanning...';
+    if (btnSvg) btnSvg.classList.add('spin-loader');
+    
+    fetch('/api/ep/refresh', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Sync Error: ${data.error}`, 'error');
+                resetEPBtn();
+                return;
+            }
+            if (typeof showToast === 'function') showToast('Background EP scan started.', 'success');
+            
+            let pollCount = 0;
+            const interval = setInterval(() => {
+                pollCount++;
+                fetch('/api/ep/refresh/status')
+                    .then(res => res.json())
+                    .then(statusRes => {
+                        if (!statusRes.running) {
+                            clearInterval(interval);
+                            fetch('/api/ep/today')
+                                .then(res => res.json())
+                                .then(todayRes => {
+                                    epListingsData = todayRes.listings || [];
+                                    
+                                    const highCount = todayRes.summary ? (todayRes.summary.HIGH || 0) : 0;
+                                    const badge = document.getElementById('ep-high-count');
+                                    if (badge) {
+                                        badge.innerText = highCount;
+                                        badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                                    }
+                                    
+                                    renderEPListingsTable();
+                                    resetEPBtn();
+                                    if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
+                                });
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error polling status:', err);
+                    });
+                
+                if (pollCount >= 24) { // 2 minutes max
+                    clearInterval(interval);
+                    resetEPBtn();
+                }
+            }, 5000);
+        })
+        .catch(err => {
+            console.error('Error triggering EP refresh:', err);
+            if (typeof showToast === 'function') showToast('Failed to start EP scan', 'error');
+            resetEPBtn();
+        });
+        
+    function resetEPBtn() {
+        refreshBtn.disabled = false;
+        if (btnText) btnText.innerText = 'Scan EPs';
+        if (btnSvg) btnSvg.classList.remove('spin-loader');
+    }
+}
+
+// Phase 4 - Themes & Backtesting Dashboard Logic
+
+let epBacktestChart = null;
+
+function loadEPThemesAndRotation() {
+    const themesContainer = document.getElementById('ep-themes-container');
+    const rotationBody = document.getElementById('ep-sector-rotation-body');
+    
+    if (themesContainer) {
+        themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading themes...</div>';
+    }
+    if (rotationBody) {
+        rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading sector rotation...</td></tr>';
+    }
+    
+    fetch('/api/ep/themes')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Themes error: ${data.error}`, 'error');
+                return;
+            }
+            const themes = data.themes || [];
+            if (!themesContainer) return;
+            
+            if (themes.length === 0) {
+                themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">No themes detected for today. Run a scan.</div>';
+                return;
+            }
+            
+            themesContainer.innerHTML = themes.map(t => {
+                const scoreStyle = t.avg_score >= 0.72 ? 'color: var(--accent-green, #10b981); font-weight:700;' : t.avg_score >= 0.55 ? 'color: var(--accent-blue, #3b82f6); font-weight:700;' : 'color: var(--color-text-secondary);';
+                const symbolsHtml = t.symbols.map(sym => 
+                    `<span class="ticker-box" style="cursor: pointer; background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.06); color: #fff;" onclick="openTradingView('${sym}.NS')">${sym}</span>`
+                ).join(' ');
+                
+                return `
+                    <div class="glass-panel" style="padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 0.5rem; transition: transform 0.2s, border-color 0.2s;" onmouseenter="this.style.borderColor='rgba(59,130,246,0.3)'; this.style.transform='translateY(-2px)';" onmouseleave="this.style.borderColor='rgba(255,255,255,0.05)'; this.style.transform='translateY(0)';">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 700; color: #fff; font-size: 0.9rem;">${t.theme}</span>
+                            <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: var(--accent-blue, #60a5fa); border: 1px solid rgba(59, 130, 246, 0.2); font-size: 0.75rem; padding: 2px 6px; font-weight: 600;">${t.count} Stocks</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--color-text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                            <span>Avg EP Score:</span>
+                            <strong style="${scoreStyle}">${t.avg_score.toFixed(2)}</strong>
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.25rem;">
+                            ${symbolsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error('Error fetching themes:', err);
+            if (themesContainer) {
+                themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Error loading themes.</div>';
+            }
+        });
+        
+    fetch('/api/ep/sector-rotation')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Rotation error: ${data.error}`, 'error');
+                return;
+            }
+            const rotation = data.rotation || [];
+            if (!rotationBody) return;
+            
+            if (rotation.length === 0) {
+                rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">No sector rotation data available.</td></tr>';
+                return;
+            }
+            
+            rotationBody.innerHTML = rotation.map(r => {
+                let quadColor = '';
+                let quadBg = '';
+                if (r.quadrant === 'Leading') {
+                    quadColor = 'var(--accent-green, #10b981)';
+                    quadBg = 'rgba(16, 185, 129, 0.1)';
+                } else if (r.quadrant === 'Improving') {
+                    quadColor = 'var(--accent-blue, #3b82f6)';
+                    quadBg = 'rgba(59, 130, 246, 0.1)';
+                } else if (r.quadrant === 'Weakening') {
+                    quadColor = 'var(--accent-orange, #f59e0b)';
+                    quadBg = 'rgba(245, 158, 11, 0.1)';
+                } else {
+                    quadColor = 'var(--accent-red, #ef4444)';
+                    quadBg = 'rgba(239, 68, 68, 0.1)';
+                }
+                
+                const wlBadge = r.active_ep_count > 0 
+                    ? `<span class="badge" style="background: rgba(16,185,129,0.1); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.2); font-size: 0.75rem; padding: 2px 6px; font-weight: 700;">${r.active_ep_count} Active</span>`
+                    : `<span style="color: var(--color-text-muted); font-size: 0.75rem;">0</span>`;
+                    
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                        <td style="padding: 10px 8px; font-weight: 600; color: #fff;">${r.sector}</td>
+                        <td style="padding: 10px 8px;">
+                            <span style="color: ${quadColor}; background: ${quadBg}; border: 1px solid ${quadColor}40; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                                ${r.quadrant}
+                            </span>
+                        </td>
+                        <td style="padding: 10px 8px;" class="text-right">${r.jdk_rs.toFixed(2)}</td>
+                        <td style="padding: 10px 8px;" class="text-right">${r.jdk_rs_momentum.toFixed(2)}</td>
+                        <td style="padding: 10px 8px;" class="text-center font-weight-bold" style="color:#fff;">${r.score.toFixed(1)}</td>
+                        <td style="padding: 10px 8px;" class="text-center">${wlBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error('Error fetching sector rotation:', err);
+            if (rotationBody) {
+                rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Error loading sector rotation.</td></tr>';
+            }
+        });
+}
+
+let backtestPrepInterval = null;
+
+function initEPBacktestDashboard() {
+    // Check initial prep status
+    fetch('/api/ep/backtest/prep_status')
+        .then(res => res.json())
+        .then(status => {
+            if (status.running) {
+                showBacktestPrepProgress(status);
+            }
+        });
+        
+    // Bind buttons
+    const btnRun = document.getElementById('btn-run-ep-backtest');
+    if (btnRun) {
+        btnRun.onclick = runEPBacktest;
+    }
+    
+    const btnPrep = document.getElementById('btn-prep-backtest');
+    if (btnPrep) {
+        btnPrep.onclick = prepBacktestData;
+    }
+}
+
+function prepBacktestData() {
+    const btnPrep = document.getElementById('btn-prep-backtest');
+    if (btnPrep) btnPrep.disabled = true;
+    
+    const startDate = document.getElementById('backtest-start-date').value;
+    const endDate = document.getElementById('backtest-end-date').value;
+    
+    fetch('/api/ep/backtest/prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate,
+            symbols: ''
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            if (typeof showToast === 'function') showToast(`Prep failed: ${data.error}`, 'error');
+            if (btnPrep) btnPrep.disabled = false;
+            return;
+        }
+        if (typeof showToast === 'function') showToast('Historical prep backfill started.', 'success');
+        
+        // Start polling status
+        if (backtestPrepInterval) clearInterval(backtestPrepInterval);
+        
+        const statusBar = document.getElementById('backtest-prep-status-bar');
+        if (statusBar) statusBar.style.display = 'flex';
+        
+        backtestPrepInterval = setInterval(() => {
+            fetch('/api/ep/backtest/prep_status')
+                .then(res => res.json())
+                .then(status => {
+                    showBacktestPrepProgress(status);
+                    if (!status.running) {
+                        clearInterval(backtestPrepInterval);
+                        if (statusBar) statusBar.style.display = 'none';
+                        if (btnPrep) btnPrep.disabled = false;
+                        
+                        if (status.error) {
+                            if (typeof showToast === 'function') showToast(`Prep finished with error: ${status.error}`, 'error');
+                        } else {
+                            if (typeof showToast === 'function') showToast('Historical prep backfill completed successfully!', 'success');
+                        }
+                    }
+                })
+                .catch(err => console.error('Error polling prep status:', err));
+        }, 2000);
+    })
+    .catch(err => {
+        console.error('Error starting backtest prep:', err);
+        if (btnPrep) btnPrep.disabled = false;
+    });
+}
+
+function showBacktestPrepProgress(status) {
+    const statusBar = document.getElementById('backtest-prep-status-bar');
+    if (statusBar) statusBar.style.display = 'flex';
+    
+    const currentSymbolEl = document.getElementById('backtest-prep-current');
+    if (currentSymbolEl) currentSymbolEl.textContent = status.current_symbol || 'Initializing...';
+    
+    const progressTextEl = document.getElementById('backtest-prep-progress');
+    if (progressTextEl) progressTextEl.textContent = `${status.processed}/${status.total} processed`;
+    
+    const progressBarEl = document.getElementById('backtest-prep-progress-bar');
+    if (progressBarEl && status.total > 0) {
+        const pct = (status.processed / status.total) * 100;
+        progressBarEl.style.width = `${pct}%`;
+    }
+}
+
+function runEPBacktest() {
+    const btnRun = document.getElementById('btn-run-ep-backtest');
+    if (btnRun) {
+        btnRun.disabled = true;
+        btnRun.textContent = 'Running...';
+    }
+    
+    const params = {
+        ep_type: document.getElementById('backtest-ep-type').value,
+        from_date: document.getElementById('backtest-start-date').value,
+        to_date: document.getElementById('backtest-end-date').value,
+        min_ep_score: parseFloat(document.getElementById('backtest-min-score').value) || 0.55,
+        entry_rule: document.getElementById('backtest-entry-rule').value,
+        stop_rule: document.getElementById('backtest-stop-rule').value,
+        exit_rule: document.getElementById('backtest-exit-rule').value,
+        position_size_pct: parseFloat(document.getElementById('backtest-pos-size').value) || 5.0,
+        capital: 1000000.0
+    };
+    
+    fetch('/api/ep/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (btnRun) {
+            btnRun.disabled = false;
+            btnRun.textContent = 'Run Backtest';
+        }
+        
+        if (data.error) {
+            if (typeof showToast === 'function') showToast(`Backtest failed: ${data.error}`, 'error');
+            return;
+        }
+        
+        // Show dashboard panel
+        const dashboard = document.getElementById('backtest-dashboard');
+        if (dashboard) dashboard.style.display = 'grid';
+        
+        // Populate stats
+        const summary = data.summary || {};
+        document.getElementById('backtest-stat-trades').textContent = summary.total_trades || 0;
+        
+        const wrEl = document.getElementById('backtest-stat-winrate');
+        wrEl.textContent = `${(summary.win_rate || 0).toFixed(1)}%`;
+        wrEl.style.color = (summary.win_rate || 0) >= 50.0 ? '#10b981' : '#ef4444';
+        
+        document.getElementById('backtest-stat-pf').textContent = (summary.profit_factor || 0).toFixed(2);
+        document.getElementById('backtest-stat-expectancy').textContent = `${(summary.expectancy || 0).toFixed(2)}R`;
+        
+        const winEl = document.getElementById('backtest-stat-avg-win');
+        winEl.textContent = `+${(summary.avg_win || 0).toFixed(1)}%`;
+        
+        const lossEl = document.getElementById('backtest-stat-avg-loss');
+        lossEl.textContent = `${(summary.avg_loss || 0).toFixed(1)}%`;
+        
+        document.getElementById('backtest-stat-drawdown').textContent = `${(summary.max_drawdown || 0).toFixed(1)}%`;
+        
+        // Render Chart
+        renderEquityChart(data.equity_curve || []);
+        
+        if (typeof showToast === 'function') showToast(`Backtest completed! ${summary.total_trades} trades simulated.`, 'success');
+    })
+    .catch(err => {
+        console.error('Error running backtest:', err);
+        if (btnRun) {
+            btnRun.disabled = false;
+            btnRun.textContent = 'Run Backtest';
+        }
+        if (typeof showToast === 'function') showToast('Network error running backtest', 'error');
+    });
+}
+
+function renderEquityChart(equityCurve) {
+    const ctx = document.getElementById('backtest-equity-chart');
+    if (!ctx) return;
+    
+    if (epBacktestChart) {
+        epBacktestChart.destroy();
+        epBacktestChart = null;
+    }
+    
+    if (equityCurve.length === 0) return;
+    
+    const labels = equityCurve.map(d => d.date);
+    const dataPoints = equityCurve.map(d => d.equity);
+    
+    const chartCtx = ctx.getContext('2d');
+    
+    // Create modern smooth blue gradient
+    const gradient = chartCtx.createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.35)');
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+    
+    epBacktestChart = new Chart(chartCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Portfolio Value (₹)',
+                data: dataPoints,
+                borderColor: '#3b82f6',
+                borderWidth: 2.5,
+                backgroundColor: gradient,
+                fill: true,
+                tension: 0.2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                pointHitRadius: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    borderWidth: 1,
+                    titleColor: '#fff',
+                    bodyColor: '#9ca3af',
+                    titleFont: { family: 'Outfit', weight: 'bold' },
+                    bodyFont: { family: 'Outfit' },
+                    callbacks: {
+                        label: function(context) {
+                            return ` Equity: ₹${context.parsed.y.toLocaleString('en-IN', {maximumFractionDigits:2})}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.03)', drawBorder: false },
+                    ticks: {
+                        color: '#9ca3af',
+                        font: { family: 'Outfit', size: 10 },
+                        maxTicksLimit: 8
+                    }
+                },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
+                    ticks: {
+                        color: '#9ca3af',
+                        font: { family: 'Outfit', size: 10 },
+                        callback: function(value) {
+                            return '₹' + (value / 100000.0).toFixed(1) + 'L';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+

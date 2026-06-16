@@ -2,10 +2,11 @@ import os
 import requests
 import time
 import json
+import urllib.request
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import threading
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 import sqlite3
 import numpy as np
 import pandas as pd
@@ -23,6 +24,15 @@ from journal_math import compute_pnl_and_r
 from rrg_math import compute_jdk_rs, compute_quadrant
 from forecast_math import compute_forecast_metrics
 import pattern_detection
+from fx_utils import fetch_usd_inr_rate
+
+# Global locks to prevent concurrent NSE API fetches across threads
+nse_fetch_lock = threading.Lock()
+nse_results_lock = threading.Lock()
+
+# Guard to prevent surfacing simulated placeholder data as real data in production.
+# Change to True or set the environment variable ENABLE_SIMULATED_DATA=true to test Phase 3 simulated layouts.
+ENABLE_SIMULATED_DATA = os.environ.get("ENABLE_SIMULATED_DATA", "false").lower() == "true"
 
 
 
@@ -323,6 +333,189 @@ def init_db():
     except sqlite3.OperationalError:
         pass
         
+    # ---------- Episodic Pivot (EP) Tables ----------
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS daily_bars (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT NOT NULL,
+            exchange        TEXT NOT NULL,
+            trade_date      TEXT NOT NULL,
+            open            REAL,
+            high            REAL,
+            low             REAL,
+            close           REAL,
+            volume          INTEGER,
+            delivery_qty    INTEGER,
+            delivery_pct    REAL,
+            turnover        REAL,
+            prev_close      REAL,
+            gap_pct         REAL,
+            close_loc       REAL,
+            atr_14          REAL,
+            rel_volume_20   REAL,
+            rel_volume_50   REAL,
+            price_change_pct REAL,
+            intraday_range_pct REAL,
+            UNIQUE (symbol, exchange, trade_date)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_daily_bars_symbol_date ON daily_bars (symbol, trade_date DESC)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_daily_bars_date ON daily_bars (trade_date DESC)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS fundamentals (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT NOT NULL,
+            exchange        TEXT NOT NULL,
+            result_date     TEXT NOT NULL,
+            quarter         TEXT,
+            revenue         REAL,
+            revenue_yoy_pct REAL,
+            revenue_qoq_pct REAL,
+            net_profit      REAL,
+            net_profit_yoy_pct REAL,
+            ebitda          REAL,
+            ebitda_margin   REAL,
+            eps             REAL,
+            eps_yoy_pct     REAL,
+            guidance_text   TEXT,
+            surprise_type   TEXT,
+            consecutive_quarters_growth INTEGER,
+            source          TEXT,
+            UNIQUE (symbol, exchange, quarter)
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS corporate_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT NOT NULL,
+            exchange        TEXT NOT NULL,
+            event_date      TEXT NOT NULL,
+            event_type      TEXT,
+            headline        TEXT,
+            sentiment       INTEGER,
+            catalyst_score  REAL,
+            source          TEXT,
+            raw_url         TEXT
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_corp_events_symbol_date ON corporate_events (symbol, event_date DESC)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ep_features (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT NOT NULL,
+            exchange        TEXT NOT NULL,
+            feature_date    TEXT NOT NULL,
+            perf_3m         REAL,
+            perf_6m         REAL,
+            range_60d_pct   REAL,
+            avg_vol_rank    REAL,
+            neglect_score   REAL,
+            has_result      INTEGER DEFAULT 0,
+            revenue_growth  REAL,
+            profit_growth   REAL,
+            has_corp_event  INTEGER DEFAULT 0,
+            event_type      TEXT,
+            catalyst_score  REAL,
+            gap_pct         REAL,
+            rel_volume      REAL,
+            close_loc       REAL,
+            repricing_score REAL,
+            ep_score        REAL,
+            ep_type         TEXT,
+            confidence      TEXT,
+            market_cap_cr   REAL,
+            avg_turnover_cr REAL,
+            float_days      REAL,
+            UNIQUE (symbol, exchange, feature_date)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_ep_features_date ON ep_features (feature_date DESC)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_ep_features_score ON ep_features (feature_date DESC, ep_score DESC)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_ep_features_symbol_date ON ep_features (symbol, feature_date DESC)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS ep_watchlist (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT NOT NULL,
+            exchange        TEXT NOT NULL,
+            catalyst_date   TEXT NOT NULL,
+            ep_type         TEXT NOT NULL,
+            status          TEXT DEFAULT 'ACTIVE',
+            trigger_type    TEXT,
+            entry_price     REAL,
+            stop_price      REAL,
+            target_price    REAL,
+            entry_date      TEXT,
+            days_on_watch   INTEGER DEFAULT 0,
+            notes           TEXT,
+            ep_score        REAL,
+            catalyst_close  REAL,
+            last_incremented_date TEXT,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now'))
+        )
+    ''')
+    try:
+        c.execute("ALTER TABLE ep_watchlist ADD COLUMN catalyst_close REAL")
+    except Exception:
+        pass
+    try:
+        c.execute("ALTER TABLE ep_watchlist ADD COLUMN last_incremented_date TEXT")
+    except Exception:
+        pass
+    try:
+        c.execute("ALTER TABLE ep_features ADD COLUMN price_change_pct REAL")
+    except Exception:
+        pass
+    try:
+        c.execute("""
+            UPDATE ep_features
+            SET price_change_pct = (
+                SELECT db.price_change_pct
+                FROM daily_bars db
+                WHERE db.symbol = ep_features.symbol
+                  AND db.trade_date = ep_features.feature_date
+            )
+            WHERE price_change_pct IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM daily_bars db
+                WHERE db.symbol = ep_features.symbol
+                  AND db.trade_date = ep_features.feature_date
+              )
+        """)
+    except Exception:
+        pass
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS sugar_babies (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol          TEXT UNIQUE NOT NULL,
+            exchange        TEXT NOT NULL,
+            added_date      TEXT,
+            avg_burst_pct   REAL,
+            avg_burst_days  REAL,
+            episode_count   INTEGER,
+            notes           TEXT,
+            is_active       INTEGER DEFAULT 1
+        )
+    ''')
+    # Alter corporate_events for NLP Enhancement
+    nlp_columns = [
+        ("nlp_sentiment_score", "REAL"),
+        ("nlp_category", "TEXT"),
+        ("summary", "TEXT"),
+        ("impact_magnitude", "REAL")
+    ]
+    for column_name, column_type in nlp_columns:
+        try:
+            c.execute(f"ALTER TABLE corporate_events ADD COLUMN {column_name} {column_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
     conn.commit()
     conn.close()
 
@@ -398,15 +591,15 @@ _IPO_MOCK_FALLBACK = [
 def seed_ipo_listings():
     """
     Populate ipo_listings from the live NSE public-past-issues API.
-    Only inserts mainboard (non-SME) listings from the last 12 months.
+    Only inserts mainboard (non-SME) listings from the last 18 months.
     Falls back to _IPO_MOCK_FALLBACK if the live fetch fails.
     """
     from datetime import datetime, timedelta
-    cutoff = datetime.now() - timedelta(days=365)
+    cutoff = datetime.now() - timedelta(days=548)
 
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
-    # Remove stale entries older than 12 months
+    # Remove stale entries older than 18 months
     c.execute(
         "DELETE FROM ipo_listings WHERE listing_date < ?",
         (cutoff.strftime("%Y-%m-%d"),)
@@ -489,7 +682,7 @@ def seed_ipo_listings():
                 if listing_date is None:
                     continue
 
-                # Only last 12 months
+                # Only last 18 months
                 if listing_date < cutoff:
                     continue
 
@@ -555,7 +748,7 @@ def seed_ipo_listings():
                 continue
 
         conn.commit()
-        print(f"[IPO Seed] Inserted {live_inserted} mainboard IPOs (last 12 months) from NSE live feed.")
+        print(f"[IPO Seed] Inserted {live_inserted} mainboard IPOs (last 18 months) from NSE live feed.")
 
     # --- Fallback: use mock data if live fetch returned nothing ---
     if not raw:
@@ -575,6 +768,147 @@ def seed_ipo_listings():
         print(f"[IPO Seed] Fallback: inserted {len(_IPO_MOCK_FALLBACK)} mock rows.")
 
     conn.close()
+
+
+# ---------- Episodic Pivot (EP) Scoring Helpers ----------
+
+def compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank):
+    """
+    All inputs normalized/scaled between 0 and 1.
+    Higher score indicates greater neglect. Handles None inputs dynamically.
+    """
+    n_perf_3m = max(0.0, min(1.0, (0.0 - perf_3m) / 40.0 + 0.5)) if perf_3m is not None else None
+    n_perf_6m = max(0.0, min(1.0, (0.0 - perf_6m) / 60.0 + 0.5)) if perf_6m is not None else None
+    n_range = max(0.0, min(1.0, 1.0 - (range_60d_pct / 40.0))) if range_60d_pct is not None else None
+    n_vol_rank = max(0.0, min(1.0, 1.0 - avg_vol_rank)) if avg_vol_rank is not None else None
+
+    weights = []
+    vals = []
+    if n_perf_3m is not None:
+        weights.append(0.35)
+        vals.append(n_perf_3m)
+    if n_perf_6m is not None:
+        weights.append(0.25)
+        vals.append(n_perf_6m)
+    if n_range is not None:
+        weights.append(0.20)
+        vals.append(n_range)
+    if n_vol_rank is not None:
+        weights.append(0.20)
+        vals.append(n_vol_rank)
+
+    if not weights:
+        return 0.5
+
+    total_w = sum(weights)
+    neglect = sum(v * w for v, w in zip(vals, weights)) / total_w
+    return round(neglect, 3)
+
+
+EP_CATALYST_BASE = {
+    "BLOWOUT_EARNINGS":  0.90,   # Revenue + profit both 100%+ YoY
+    "STRONG_BEAT":       0.70,   # Revenue 40–100% YoY
+    "TURNAROUND":        0.80,   # Profit swings from loss to strong profit
+    "ORDER_WIN":         0.65,   # Major order announcement (>30% of mktcap)
+    "MGMT_CHANGE":       0.55,   # New CEO / promoter buyback
+    "THEME_CATALYST":    0.50,   # Government policy, PLI, sector tailwind
+    "CAPEX_EXPANSION":   0.45,
+    "ABNORMAL_VOLUME":   0.60,   # Volume EP / 9M equivalent (no news yet)
+    "BEAT":              0.50,
+    "MISS":             -0.30,
+    "GUIDANCE_CUT":     -0.80,   # Negative catalyst (Short EP)
+    "FRAUD_CONCERN":    -0.90,
+    "UNKNOWN":           0.20,
+}
+
+
+def compute_catalyst_score(event_type, revenue_growth, profit_growth,
+                           consecutive_quarters=0, market_cap_cr=None):
+    base = EP_CATALYST_BASE.get(event_type, 0.20)
+    if base < 0:  # Short EP — return negative value for separation
+        return round(base, 3)
+
+    bonus = 0.0
+    if revenue_growth and revenue_growth >= 100:
+        bonus += 0.10
+    elif revenue_growth and revenue_growth >= 50:
+        bonus += 0.05
+
+    if profit_growth and profit_growth >= 200:
+        bonus += 0.10
+    elif profit_growth and profit_growth >= 100:
+        bonus += 0.05
+
+    if consecutive_quarters and consecutive_quarters >= 2:
+        bonus += 0.05
+
+    if market_cap_cr and market_cap_cr < 5000:
+        bonus += 0.05
+
+    return round(min(1.0, base + bonus), 3)
+
+
+def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
+                            intraday_range_pct):
+    # Gap component: 5% gap -> 0.25; 20% gap -> 1.0
+    n_gap = max(0.0, min(1.0, gap_pct / 20.0))
+
+    # Volume confirmation: 3x normal -> 0.222; 10x -> 1.0
+    n_vol = max(0.0, min(1.0, (rel_volume - 1.0) / 9.0))
+
+    # Close location: closing near high is a bull signal
+    n_close = max(0.0, min(1.0, close_loc))
+
+    # Overall day strength: blend of close-to-close change (70%) and intraday range (30%)
+    n_strength = max(0.0, min(1.0, (price_change_pct * 0.7 + intraday_range_pct * 0.3) / 15.0))
+
+    repricing = (0.30 * n_gap +
+                 0.35 * n_vol +
+                 0.20 * n_close +
+                 0.15 * n_strength)
+    return round(repricing, 3)
+
+
+def compute_ep_score(neglect_score, catalyst_score, repricing_score,
+                     liquidity_ok=True, has_fundamentals=True):
+    raw = (0.25 * neglect_score +
+           0.35 * abs(catalyst_score) +
+           0.30 * repricing_score +
+           0.10 * (1.0 if has_fundamentals else 0.0))
+
+    # Small liquidity penalty if stock is too illiquid
+    liquidity_adj = 0.0 if liquidity_ok else -0.10
+
+    ep_score = round(max(0.0, min(1.0, raw + liquidity_adj)), 3)
+    return ep_score
+
+
+def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
+                   revenue_growth=0, profit_growth=0, day1_messy=False,
+                   is_negative_catalyst=False):
+    if is_negative_catalyst or catalyst_score < 0:
+        return "Short EP"
+    if event_type in ("ABNORMAL_VOLUME", "UNKNOWN"):
+        return "Volume EP"
+    if day1_messy:
+        return "Delayed EP"
+    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT") and revenue_growth >= 100:
+        return "Growth EP"
+    if event_type == "TURNAROUND":
+        return "Turnaround EP"
+    if event_type in ("THEME_CATALYST", "ORDER_WIN", "MGMT_CHANGE", "CAPEX_EXPANSION"):
+        return "Story EP"
+    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT", "MISS"):
+        return "Growth EP"
+    return "Growth EP"
+
+
+def assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score):
+    if ep_score >= 0.72 and catalyst_score >= 0.70 and repricing_score >= 0.60:
+        return "HIGH"
+    if ep_score >= 0.55:
+        return "MEDIUM"
+    return "LOW"
 
 
 init_db()
@@ -658,7 +992,7 @@ def refresh_ipo_metrics():
         ticker, company_name, listing_date, issue_price, listing_close, exchange, sector = row
         try:
             # Fetch history
-            history = fetch_historical_prices(ticker, range_str="1y")
+            history = fetch_historical_prices(ticker, range_str="2y")
             if not history:
                 return
                 
@@ -806,8 +1140,1346 @@ def refresh_ipo_metrics():
         
     print("IPO metrics cache refreshed successfully.")
 
-# Global lock to prevent concurrent NSE API fetches across threads
-nse_fetch_lock = threading.Lock()
+
+def fetch_screener_fundamentals(symbol):
+    """
+    Fetches quarterly results for a given symbol.
+    First tries the NSE results-comparision API (returns clean JSON).
+    If that returns 404 or fails, falls back to Yahoo Finance (yfinance).
+    Returns list of dicts.
+    """
+    import requests
+    import yfinance as yf
+    import pandas as pd
+    import datetime
+
+    # 1. Try NSE results-comparision API first
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
+    }
+    url = f"https://www.nseindia.com/api/results-comparision?symbol={symbol}"
+
+    try:
+        with nse_results_lock:
+            with requests.Session() as s:
+                # Set cookies first
+                s.get("https://www.nseindia.com/companies-listing/corporate-filings-announcements", headers=headers, timeout=10)
+                res = s.get(url, headers=headers, timeout=10)
+        
+        if res.status_code == 200:
+            data = res.json()
+            cmp_data = data.get("resCmpData", [])
+            if cmp_data:
+                months_map = {
+                    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+                    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12
+                }
+                parsed_quarters = []
+                for row in cmp_data:
+                    to_dt_str = row.get("re_to_dt")
+                    if not to_dt_str:
+                        continue
+                    parts = to_dt_str.split('-')
+                    if len(parts) != 3:
+                        continue
+                    day = int(parts[0])
+                    month_str = parts[1].upper()
+                    year = int(parts[2])
+                    month = months_map.get(month_str)
+                    if not month:
+                        continue
+                    date_key = f"{year:04d}-{month:02d}-{day:02d}"
+
+                    month_names = {
+                        3: "Mar", 6: "Jun", 9: "Sep", 12: "Dec"
+                    }
+                    q_name = month_names.get(month, month_str)
+                    quarter_label = f"{q_name} {year}"
+
+                    result_date = None
+                    create_dt_str = row.get("re_create_dt")
+                    if create_dt_str:
+                        c_parts = create_dt_str.split('-')
+                        if len(c_parts) == 3:
+                            c_day = int(c_parts[0])
+                            c_month = months_map.get(c_parts[1].upper(), 1)
+                            c_year = int(c_parts[2])
+                            result_date = f"{c_year:04d}-{c_month:02d}-{c_day:02d}"
+
+                    # Net Sales / Revenue in Lakhs -> convert to Crores
+                    rev_lakhs = row.get("re_net_sale")
+                    revenue = None
+                    if rev_lakhs is not None:
+                        revenue = round(float(str(rev_lakhs).replace(',', '')) / 100.0, 2)
+
+                    # Net profit in Lakhs -> convert to Crores
+                    profit_lakhs = row.get("re_net_profit") or row.get("re_con_pro_loss")
+                    net_profit = None
+                    if profit_lakhs is not None:
+                        net_profit = round(float(str(profit_lakhs).replace(',', '')) / 100.0, 2)
+
+                    # Basic EPS
+                    eps_val = row.get("re_basic_eps_for_cont_dic_opr") or row.get("re_dilut_eps_for_cont_dic_opr") or row.get("re_basic_eps")
+                    eps = None
+                    if eps_val is not None:
+                        eps = round(float(str(eps_val).replace(',', '')), 2)
+
+                    parsed_quarters.append({
+                        "quarter": quarter_label,
+                        "date_key": date_key,
+                        "result_date": result_date,
+                        "revenue": revenue,
+                        "net_profit": net_profit,
+                        "eps": eps,
+                        "source": "NSE"
+                    })
+                
+                if parsed_quarters:
+                    parsed_quarters.sort(key=lambda x: x["date_key"])
+                    return parsed_quarters
+    except Exception as e:
+        print(f"[NSE Ingest] Failed to fetch corporate results from NSE for {symbol}: {e}")
+
+    # 2. Fall back to Yahoo Finance (yfinance)
+    try:
+        # Try NSE symbol format first, then fall back to BSE
+        ticker = yf.Ticker(f"{symbol}.NS")
+        df = ticker.quarterly_income_stmt
+        if df is None or df.empty:
+            ticker = yf.Ticker(f"{symbol}.BO")
+            df = ticker.quarterly_income_stmt
+            if df is None or df.empty:
+                return []
+
+        parsed_quarters = []
+        for col in df.columns:
+            if not isinstance(col, (pd.Timestamp, datetime.datetime)):
+                continue
+
+            date_key = col.strftime("%Y-%m-%d")
+
+            month_names = {
+                1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+                7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"
+            }
+            q_name = month_names.get(col.month, "Q")
+            quarter_label = f"{q_name} {col.year}"
+
+            # Revenue in Rs -> convert to Crores. Note: yfinance returns raw absolute values in Rupees
+            # (unlike screener.in or NSE which can be scaled in Lakhs/Crores depending on filing).
+            # Hence, dividing by 1 Crore (10,000,000) is correct to standardize to Crores.
+            revenue_val = None
+            for idx in ["Total Revenue", "Operating Revenue"]:
+                if idx in df.index:
+                    val = df.loc[idx, col]
+                    if pd.notna(val) and val != 0:
+                        revenue_val = round(float(val) / 10000000.0, 2)
+                        break
+
+            # Net Profit in Rs -> convert to Crores. Note: yfinance returns raw absolute values in Rupees,
+            # so we divide by 1 Crore (10,000,000) to standardize to Crores.
+            net_profit_val = None
+            for idx in ["Net Income", "Net Income Common Stockholders", "Net Income Including Noncontrolling Interests"]:
+                if idx in df.index:
+                    val = df.loc[idx, col]
+                    if pd.notna(val):
+                        net_profit_val = round(float(val) / 10000000.0, 2)
+                        break
+
+            # EPS
+            eps_val = None
+            for idx in ["Basic EPS", "Diluted EPS"]:
+                if idx in df.index:
+                    val = df.loc[idx, col]
+                    if pd.notna(val):
+                        eps_val = round(float(val), 2)
+                        break
+
+            parsed_quarters.append({
+                "quarter": quarter_label,
+                "date_key": date_key,
+                "result_date": date_key, # Use end date as proxy
+                "revenue": revenue_val,
+                "net_profit": net_profit_val,
+                "eps": eps_val,
+                "source": "Yahoo Finance"
+            })
+
+        if parsed_quarters:
+            parsed_quarters.sort(key=lambda x: x["date_key"])
+            return parsed_quarters
+    except Exception as e:
+        print(f"[Yahoo Ingest] Failed to fetch quarterly financials from yfinance for {symbol}: {e}")
+
+    return []
+
+
+def compute_yoy_metrics(quarters_data):
+    """
+    Computes YoY metrics, consecutive quarters of growth, and surprise types.
+    Matches the prior year's corresponding quarter by date proximity (approx. 365 days)
+    to be robust against missing quarters or shorter data lengths.
+    """
+    from datetime import datetime
+
+    # Pre-calculate YoY metrics for all quarters using date matching
+    for i in range(len(quarters_data)):
+        q = quarters_data[i]
+        q_date = datetime.strptime(q["date_key"], "%Y-%m-%d")
+        
+        # Find the quarter from one year ago (340 to 380 days before q)
+        candidates_in_range = []
+        for candidate in quarters_data:
+            c_date = datetime.strptime(candidate["date_key"], "%Y-%m-%d")
+            diff_days = (q_date - c_date).days
+            if 340 <= diff_days <= 380:
+                candidates_in_range.append((candidate, diff_days))
+        
+        prev_q = None
+        if candidates_in_range:
+            prev_q = min(candidates_in_range, key=lambda item: abs(item[1] - 365))[0]
+        
+        if prev_q:
+            if q["revenue"] is not None and prev_q["revenue"] and prev_q["revenue"] > 0:
+                q["revenue_yoy_pct"] = round((q["revenue"] - prev_q["revenue"]) / prev_q["revenue"] * 100, 2)
+            else:
+                q["revenue_yoy_pct"] = None
+                
+            if q["net_profit"] is not None and prev_q["net_profit"] and prev_q["net_profit"] > 0:
+                q["net_profit_yoy_pct"] = round((q["net_profit"] - prev_q["net_profit"]) / prev_q["net_profit"] * 100, 2)
+            else:
+                q["net_profit_yoy_pct"] = None
+                
+            if q["eps"] is not None and prev_q["eps"] and prev_q["eps"] > 0:
+                q["eps_yoy_pct"] = round((q["eps"] - prev_q["eps"]) / prev_q["eps"] * 100, 2)
+            else:
+                q["eps_yoy_pct"] = None
+                
+            q["_prev_q"] = prev_q  # temporary key for surprise classification
+        else:
+            q["revenue_yoy_pct"] = None
+            q["net_profit_yoy_pct"] = None
+            q["eps_yoy_pct"] = None
+            q["_prev_q"] = None
+            
+    # Calculate consecutive quarters of growth
+    for i in range(len(quarters_data)):
+        consec = 0
+        idx = i
+        while idx >= 0:
+            q_idx = quarters_data[idx]
+            if q_idx["revenue_yoy_pct"] is not None and q_idx["net_profit_yoy_pct"] is not None:
+                if q_idx["revenue_yoy_pct"] > 0 and q_idx["net_profit_yoy_pct"] > 0:
+                    consec += 1
+                    idx -= 1
+                    continue
+            break
+        quarters_data[i]["consecutive_quarters_growth"] = consec
+        
+        # Surprise classification
+        q_rev_yoy = quarters_data[i]["revenue_yoy_pct"]
+        q_prof_yoy = quarters_data[i]["net_profit_yoy_pct"]
+        q_profit = quarters_data[i]["net_profit"]
+        
+        prev_q = quarters_data[i].get("_prev_q")
+        prev_profit = prev_q["net_profit"] if prev_q else None
+        
+        surprise = "UNKNOWN"
+        if q_rev_yoy is not None:
+            if q_prof_yoy is not None and q_rev_yoy >= 100 and q_prof_yoy >= 100:
+                surprise = "BLOWOUT_EARNINGS"
+            elif prev_profit is not None and prev_profit < 0 and q_profit is not None and q_profit > 0:
+                surprise = "TURNAROUND"
+            elif q_prof_yoy is not None and q_rev_yoy >= 40:
+                surprise = "STRONG_BEAT"
+            elif q_prof_yoy is not None and (q_rev_yoy < 0 or q_prof_yoy < 0):
+                surprise = "MISS"
+            elif q_prof_yoy is not None:
+                surprise = "BEAT"
+        quarters_data[i]["surprise_type"] = surprise
+        
+        # Clean up temporary key
+        if "_prev_q" in quarters_data[i]:
+            del quarters_data[i]["_prev_q"]
+        
+    return quarters_data
+
+def send_telegram_alert(message):
+    """
+    Sends a notification message to the configured Telegram chat/channel.
+    Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from environment variables.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if token and chat_id:
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML"
+            }
+            headers = {"Content-Type": "application/json"}
+            req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as response:
+                response.read()
+            print(f"[Telegram Alert] Sent successfully: {message}")
+        except Exception as e:
+            print(f"[Telegram Alert] Failed to send: {e}")
+    else:
+        print(f"[Telegram Alert Log (Mock)] {message}")
+
+
+def fetch_nse_delivery_data(date_str):
+    """
+    date_str in YYYY-MM-DD format.
+    Downloads the delivery archives data from nseindia.
+    Falls back to previous days (up to 7 days) if the target date is not available.
+    """
+    import urllib.request
+    import urllib.error
+    import csv
+    import io
+    from datetime import datetime, timedelta
+    
+    try:
+        current_dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        print(f"[EP Ingest] Invalid date format for delivery data: {date_str}")
+        return {}
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    # Try current date, then walk backward up to 7 days
+    for offset in range(8):
+        target_dt = current_dt - timedelta(days=offset)
+        target_date_str = target_dt.strftime("%Y-%m-%d")
+        ddmmyyyy = target_dt.strftime("%d%m%Y")
+        url = f"https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_{ddmmyyyy}.csv"
+        
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as response:
+                content = response.read().decode('utf-8')
+            
+            reader = csv.reader(io.StringIO(content))
+            header = next(reader)
+            header = [h.strip() for h in header]
+            
+            try:
+                symbol_idx = header.index("SYMBOL")
+                deliv_qty_idx = header.index("DELIV_QTY")
+                deliv_per_idx = header.index("DELIV_PER")
+            except ValueError:
+                print(f"[EP Ingest] Delivery columns not found in Bhav Copy header for {target_date_str}")
+                return {}
+                
+            delivery_map = {}
+            for row in reader:
+                if not row or len(row) <= max(symbol_idx, deliv_qty_idx, deliv_per_idx):
+                    continue
+                sym = row[symbol_idx].strip().upper()
+                deliv_qty = row[deliv_qty_idx].strip()
+                deliv_per = row[deliv_per_idx].strip()
+                
+                try:
+                    dq = int(deliv_qty)
+                    dp = float(deliv_per)
+                    delivery_map[sym] = (dq, dp)
+                except ValueError:
+                    continue
+            
+            if offset > 0:
+                print(f"[EP Ingest] Successfully loaded delivery data for {target_date_str} (fallback offset: {offset} days).")
+            else:
+                print(f"[EP Ingest] Successfully loaded delivery data for {target_date_str}.")
+            return delivery_map
+            
+        except urllib.error.HTTPError as he:
+            if he.code == 404:
+                print(f"[EP Ingest] Delivery data not found for {target_date_str} (HTTP 404). Trying previous day...")
+            else:
+                print(f"[EP Ingest] HTTP error fetching delivery data for {target_date_str}: {he}. Trying previous day...")
+            continue
+        except Exception as e:
+            print(f"[EP Ingest] Error fetching delivery data for {target_date_str}: {e}. Trying previous day...")
+            continue
+            
+    print(f"[EP Ingest] Failed to fetch delivery data for {date_str} or any of the previous 7 days.")
+    return {}
+
+
+# Global references for lazy NLP model initialization
+NLP_MODELS = {
+    "sentiment": "ProsusAI/finbert",
+    "summarizer": "sshleifer/distilbart-cnn-6-6",
+    "classifier": "typeform/distilbert-base-uncased-mnli"
+}
+
+sentiment_analyzer = None
+summarizer = None
+event_classifier = None
+NLP_AVAILABLE = None  # None: not initialized; True: initialized; False: unavailable
+
+def init_nlp_models():
+    """
+    Lazily initialize NLP models for sentiment analysis, event classification, and summarization.
+    Keeps application startup fast and reloads lightweight.
+    """
+    global sentiment_analyzer, summarizer, event_classifier, NLP_AVAILABLE
+    if NLP_AVAILABLE is not None:
+        return NLP_AVAILABLE
+        
+    print("[NLP Init] Starting lazy initialization of NLP models...")
+    try:
+        from transformers import pipeline
+        import torch
+        
+        # 1. Financial sentiment analyzer using FinBERT
+        try:
+            sentiment_analyzer = pipeline(
+                "sentiment-analysis",
+                model=NLP_MODELS["sentiment"],
+                tokenizer=NLP_MODELS["sentiment"],
+                return_all_scores=True
+            )
+            print(f"[NLP Init] Sentiment analyzer ({NLP_MODELS['sentiment']}) loaded.")
+        except Exception as e:
+            print(f"[NLP Init] Warning: Failed to load sentiment analyzer: {e}")
+            sentiment_analyzer = None
+            
+        # 2. CPU-optimized distilled summarization model
+        try:
+            summarizer = pipeline(
+                "summarization",
+                model=NLP_MODELS["summarizer"],
+                device=-1
+            )
+            print(f"[NLP Init] Summarizer ({NLP_MODELS['summarizer']}) loaded.")
+        except Exception as e:
+            print(f"[NLP Init] Warning: Failed to load summarizer: {e}")
+            summarizer = None
+            
+        # 3. CPU-optimized distilled zero-shot classifier for event categorization
+        try:
+            event_classifier = pipeline(
+                "zero-shot-classification",
+                model=NLP_MODELS["classifier"],
+                device=-1
+            )
+            print(f"[NLP Init] Zero-shot classifier ({NLP_MODELS['classifier']}) loaded.")
+        except Exception as e:
+            print(f"[NLP Init] Warning: Failed to load zero-shot classifier: {e}")
+            event_classifier = None
+            
+        if sentiment_analyzer is not None or event_classifier is not None:
+            NLP_AVAILABLE = True
+            print("[NLP Init] NLP models initialized (partial or full).")
+        else:
+            NLP_AVAILABLE = False
+            print("[NLP Init] All NLP models failed to load.")
+            
+    except Exception as e:
+        print(f"[NLP Init] Warning: Failed to import transformers or init NLP: {e}")
+        NLP_AVAILABLE = False
+        sentiment_analyzer = summarizer = event_classifier = None
+        
+    return NLP_AVAILABLE
+
+def unload_nlp_models():
+    """
+    Explicitly unload NLP models from memory and run garbage collection.
+    Useful for very long-running background worker processes.
+    """
+    global sentiment_analyzer, summarizer, event_classifier, NLP_AVAILABLE
+    sentiment_analyzer = None
+    summarizer = None
+    event_classifier = None
+    NLP_AVAILABLE = None
+    
+    import gc
+    gc.collect()
+    print("[NLP Memory] Models successfully unloaded from RAM and garbage collection run.")
+
+EVENT_BASE_SCORES = {
+    'financial results': 0.60,
+    'dividend announcement': 0.40,
+    'order win': 0.65,
+    'acquisition': 0.55,
+    'capex expansion': 0.45,
+    'management change': 0.50,
+    'regulatory issue': -0.30,
+    'bonus issue': 0.25,
+    'stock split': 0.20,
+    'analyst upgrade': 0.40,
+    'analyst downgrade': -0.40,
+    'guidance raise': 0.50,
+    'guidance cut': -0.70,
+    'contract win': 0.60,
+    'plant inauguration': 0.35
+}
+
+# Fallback catalyst scores for standard categories (used when NLP is unavailable)
+_FALLBACK_CATALYST_SCORES = {
+    "cat-order-win": 0.65,
+    "cat-capex": 0.45,
+    "cat-governance": 0.55,
+    "cat-regulatory": -0.70,
+    "cat-results": 0.50,
+    "cat-dividend": 0.40,
+    "cat-acquisition": 0.60,
+    "cat-unknown": 0.20,
+}
+
+def calculate_base_catalyst_from_nlp(sentiment_label, event_category, confidence):
+    """
+    Calculate catalyst score based on NLP analysis results.
+    """
+    base_score = EVENT_BASE_SCORES.get(event_category.lower(), 0.20)
+    
+    # Adjust based on sentiment
+    sentiment_multiplier = {
+        'positive': 1.2,
+        'neutral': 1.0,
+        'negative': 0.8
+    }.get(sentiment_label, 1.0)
+    
+    # Apply confidence weighting
+    final_score = base_score * sentiment_multiplier * confidence
+    
+    # Clamp to reasonable range
+    return round(max(-1.0, min(1.0, final_score)), 3)
+
+_NLP_CATEGORY_MAPPINGS = [
+    (["dividend", "bonus issue", "stock split"], ("cat-dividend", "Dividend", "imp-earnings-st", "Earnings impact (short-term)")),
+    (["financial results", "guidance raise", "guidance cut"], ("cat-results", "Results", "imp-earnings-st", "Earnings impact (short-term)")),
+    (["order win", "contract win"], ("cat-order-win", "Order Win", "imp-order-book", "Order book impact")),
+    (["acquisition"], ("cat-acquisition", "Acquisition", "imp-balance-sheet", "Balance sheet impact")),
+    (["capex expansion", "plant inauguration"], ("cat-capex", "Capex", "imp-earnings-lt", "Earnings impact (long-term)")),
+    (["regulatory issue"], ("cat-regulatory", "Regulatory", "imp-governance", "Governance signal")),
+    (["management change"], ("cat-governance", "Governance", "imp-governance", "Governance signal"))
+]
+
+def map_nlp_category_to_standard(nlp_cat: str) -> tuple:
+    """
+    Map an NLP zero-shot classification category back to standard dashboard category codes.
+    """
+    nlp_cat_l = nlp_cat.lower()
+    for keywords, result in _NLP_CATEGORY_MAPPINGS:
+        if any(keyword in nlp_cat_l for keyword in keywords):
+            return result
+    return "cat-other", "Other", "imp-sentiment", "Sentiment only"
+
+def fetch_announcement_content(raw_url):
+    """
+    Stub function for fetching and extracting text from corporate announcements.
+    Currently returns None since PDF parsing libraries are not installed.
+    """
+    return None
+
+_NLP_CATEGORY_PATTERNS = {
+    "cat-order-win":   ["order", "contract", "award", "bagged", "secured", "win", "₹", "crore"],
+    "cat-capex":       ["capex", "expansion", "plant", "capacity", "greenfield", "brownfield", "invest"],
+    "cat-governance":  ["ceo", "md", "director", "appoint", "resign", "board", "promoter", "buyback"],
+    "cat-regulatory":  ["sebi", "fraud", "penalty", "notice", "investigation", "default", "npa"],
+    "cat-results":     ["result", "profit", "revenue", "quarter", "q1", "q2", "q3", "q4", "eps", "ebitda"],
+    "cat-dividend":    ["dividend", "bonus", "split", "rights"],
+    "cat-acquisition": ["merger", "acquisition", "takeover", "amalgamation", "demerger"],
+}
+
+_NLP_POSITIVE_WORDS = {"order", "win", "award", "profit", "growth", "expansion", "dividend",
+                        "buyback", "bonus", "upgrade", "strong", "beat", "record", "approved"}
+_NLP_NEGATIVE_WORDS = {"fraud", "penalty", "notice", "default", "npa", "loss", "decline",
+                        "downgrade", "resign", "investigation", "concern", "miss", "cut"}
+
+def _prepare_text_for_analysis(desc: str, text: str, attachment_url: str = "") -> str:
+    """Combines description and text inputs, optionally fetching full content."""
+    full_text = ""
+    if desc:
+        full_text += desc + " "
+    if text:
+        full_text += text
+    
+    # Fetch full announcement text if available
+    if attachment_url:
+        try:
+            full_text = fetch_announcement_content(attachment_url) or full_text
+        except Exception as e:
+            print(f"[NLP classify] Fetch content error: {e}")
+    return full_text
+
+def _analyze_sentiment(text: str) -> dict:
+    """Executes FinBERT sentiment analysis and returns sentiment label and continuous score."""
+    sentiment_results = sentiment_analyzer(text[:512])  # FinBERT has 512-token limit
+    sentiment_label = "neutral"
+    max_score = 0.0
+    sentiment_scores = {}
+    for res in sentiment_results[0]:
+        sentiment_scores[res['label']] = res['score']
+        if res['score'] > max_score:
+            max_score = res['score']
+            sentiment_label = res['label']
+    
+    pos_score = sentiment_scores.get('positive', 0.0)
+    neg_score = sentiment_scores.get('negative', 0.0)
+    nlp_sentiment_score = pos_score - neg_score
+    return {
+        "sentiment_label": sentiment_label,
+        "nlp_sentiment_score": nlp_sentiment_score
+    }
+
+def _classify_event_category(text: str) -> dict:
+    """Classifies event category using zero-shot classifier."""
+    event_labels = [
+        "financial results", "dividend announcement", "order win", 
+        "acquisition", "capex expansion", "management change", 
+        "regulatory issue", "bonus issue", "stock split", 
+        "analyst upgrade", "analyst downgrade", "guidance raise",
+        "guidance cut", "contract win", "plant inauguration", "other"
+    ]
+    classification = event_classifier(text[:1024], event_labels)
+    event_category = classification['labels'][0]
+    category_confidence = classification['scores'][0]
+    return {
+        "event_category": event_category,
+        "category_confidence": category_confidence
+    }
+
+def _generate_summary(text: str) -> str or None:
+    """Generates summary using DistilBART summarizer."""
+    if len(text) > 200:
+        try:
+            summary_result = summarizer(text[:1024], max_length=100, min_length=30, do_sample=False)
+            return summary_result[0]['summary_text']
+        except Exception as e:
+            print(f"[NLP classify] Summarization error: {e}")
+    return None
+
+def _map_sentiment_to_score(sent: str) -> float:
+    """Map string sentiment ('sent-positive', 'sent-negative', 'sent-neutral') to numeric score."""
+    if sent == "sent-positive":
+        return 1.0
+    if sent == "sent-negative":
+        return -1.0
+    return 0.0
+
+def _get_fallback_catalyst_score(cat: str, sent: str) -> float:
+    """Determine catalyst score for standard categories, dampening if sentiment is negative."""
+    score = _FALLBACK_CATALYST_SCORES.get(cat, 0.20)
+    if sent == "sent-negative" and score > 0:
+        score = -abs(score) * 0.5
+    return score
+
+
+def _process_with_nlp(full_text: str, desc: str, text: str) -> dict:
+    """
+    Process announcement text with NLP models (FinBERT, zero-shot classifier, summarizer).
+    Returns a dictionary with NLP-enhanced classification results.
+    """
+    # 1. Sentiment analysis
+    if sentiment_analyzer is not None:
+        sent_res = _analyze_sentiment(full_text)
+        sentiment_label = sent_res["sentiment_label"]
+        nlp_sentiment_score = sent_res["nlp_sentiment_score"]
+    else:
+        _, _, _, _, s_sent, _, _ = classify_announcement(desc, text)
+        sentiment_label = s_sent.replace("sent-", "")
+        nlp_sentiment_score = _map_sentiment_to_score(s_sent)
+
+    # 2. Event category zero-shot classification
+    if event_classifier is not None:
+        cat_res = _classify_event_category(full_text)
+        event_category = cat_res["event_category"]
+        category_confidence = cat_res["category_confidence"]
+    else:
+        s_cat, s_cat_name, _, _, _, _, _ = classify_announcement(desc, text)
+        event_category = s_cat_name.lower()
+        category_confidence = 1.0
+
+    # 3. Summarization
+    summary = _generate_summary(full_text) if summarizer is not None else None
+
+    # 4. Catalyst score
+    enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
+    cat, cat_name, imp, imp_name = map_nlp_category_to_standard(event_category)
+
+    sent_mapped = f"sent-{sentiment_label}"
+    sent_name_mapped = {
+        "positive": "🟢 Positive",
+        "neutral": "🟡 Neutral",
+        "negative": "🔴 Negative"
+    }.get(sentiment_label, "🟡 Neutral")
+
+    reason = f"NLP classification: category='{event_category}' (confidence={category_confidence:.2f}), sentiment='{sentiment_label}' (score={nlp_sentiment_score:.2f})."
+
+    return {
+        "cat":                 cat,
+        "cat_name":            cat_name,
+        "imp":                 imp,
+        "imp_name":            imp_name,
+        "sent":                sent_mapped,
+        "sent_name":           sent_name_mapped,
+        "reason":              reason,
+        "catalyst_score":      round(enhanced_catalyst_score, 3),
+        "nlp_sentiment_score": round(nlp_sentiment_score, 3),
+        "nlp_category":        event_category,
+        "summary":             summary or desc[:120],
+        "impact_magnitude":    round(abs(enhanced_catalyst_score), 3),
+    }
+
+
+def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "") -> dict:
+    """
+    Keyword-based NLP classifier for NSE corporate announcements.
+    Returns a dict with exactly the keys consumed by refresh_ep_screener() and tests.
+    Phase 1: pure keyword matching. Phase 2: swap in FinBERT/BART when NLP_AVAILABLE=True.
+    """
+    # Check if we should attempt full transformers NLP classification
+    if init_nlp_models() and ( (desc and len(desc.strip()) > 10) or (text and len(text.strip()) > 10) ):
+        try:
+            full_text = _prepare_text_for_analysis(desc, text, attachment_url)
+            return _process_with_nlp(full_text, desc, text)
+        except Exception as e:
+            print(f"[NLP classify] Enhanced classification failed: {e}. Falling back...")
+
+    # Fallback / Phase 1: Pure keyword matching (uses standard classify_announcement)
+    s_cat, s_cat_name, s_imp, s_imp_name, s_sent, s_sent_name, s_reason = classify_announcement(desc, text)
+    
+    nlp_sentiment_score = _map_sentiment_to_score(s_sent)
+    catalyst_score = _get_fallback_catalyst_score(s_cat, s_sent)
+    impact_magnitude = round(abs(catalyst_score), 3)
+    
+    return {
+        "cat":                 s_cat,
+        "cat_name":            s_cat_name,
+        "imp":                 s_imp,
+        "imp_name":            s_imp_name,
+        "sent":                s_sent,
+        "sent_name":           s_sent_name,
+        "reason":              s_reason,
+        "summary":             (desc or "")[:120],
+        "nlp_category":        s_cat_name.lower(),
+        "nlp_sentiment_score": nlp_sentiment_score,
+        "catalyst_score":      round(catalyst_score, 3),
+        "impact_magnitude":    impact_magnitude,
+    }
+
+def refresh_ep_screener():
+    """
+    Computes EOD Episodic Pivot (EP) features and updates database tables.
+    """
+    import requests
+    import bisect
+    import time
+    
+    telegram_alerts_queue = []
+    
+    # 1. Fetch TV universe (market cap >= 50 Cr)
+    payload = {
+        "filter": [
+            {"left": "exchange", "operation": "equal", "right": "NSE"},
+            {"left": "market_cap_basic", "operation": "greater", "right": 500000000}
+        ],
+        "options": {"lang": "en"},
+        "symbols": {"query": {"types": []}, "tickers": []},
+        "columns": [
+            "name", "description", "close", "change", "volume", "market_cap_basic", "average_volume", "sector"
+        ],
+        "sort": {"sortBy": "market_cap_basic", "sortOrder": "desc"},
+        "range": [0, 5000]
+    }
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://www.tradingview.com/"
+    }
+    
+    try:
+        resp = requests.post(TRADINGVIEW_SCAN_URL, json=payload, headers=headers, timeout=15)
+        resp.raise_for_status()
+        raw_data = resp.json().get("data", [])
+    except Exception as e:
+        print(f"[EP Refresh] Failed to fetch TV universe: {e}")
+        return
+        
+    tv_stocks = []
+    for item in raw_data:
+        raw_ticker = item.get("s", "")
+        exch = "BSE" if raw_ticker.startswith("BSE:") else "NSE"
+        clean_ticker = raw_ticker.replace("NSE:", "").replace("BSE:", "")
+        cols = item.get("d", [])
+        if len(cols) == 8:
+            tv_stocks.append({
+                "ticker": clean_ticker,
+                "exchange": exch,
+                "name": cols[0],
+                "description": cols[1],
+                "close": cols[2] or 0.0,
+                "change": cols[3] or 0.0,
+                "volume": cols[4] or 0.0,
+                "market_cap_basic": cols[5] or 0.0,
+                "average_volume": cols[6] or 1.0,
+                "sector": cols[7] or "Unknown"
+            })
+            
+    # Calculate sector average volumes for ranking
+    sector_vols = {}
+    for s in tv_stocks:
+        sect = s["sector"]
+        avg_vol = float(s["average_volume"])
+        if sect not in sector_vols:
+            sector_vols[sect] = []
+        sector_vols[sect].append(avg_vol)
+        
+    for sect in sector_vols:
+        sector_vols[sect].sort()
+        
+    # 2. Filter for candidates: relative volume >= 3.0
+    # Capture both positive EPs and potential Short EPs
+    candidates = []
+    for s in tv_stocks:
+        vol = float(s["volume"])
+        avg_vol = float(s["average_volume"])
+        rel_vol = vol / avg_vol if avg_vol > 0 else 1.0
+        
+        if rel_vol >= 3.0:
+            candidates.append((s, rel_vol))
+            
+    print(f"[EP Refresh] Found {len(candidates)} candidates out of {len(tv_stocks)} scanned.")
+    
+    # Limit to top 40 candidates to avoid rate-limiting
+    candidates = sorted(candidates, key=lambda x: x[1], reverse=True)[:40]
+    
+    # Download latest Bhav Copy to get delivery data
+    delivery_map = {}
+    if candidates:
+        first_s, _ = candidates[0]
+        suffix = ".BO" if first_s['exchange'] == "BSE" else ".NS"
+        first_ticker = f"{first_s['ticker']}{suffix}"
+        try:
+            first_hist = fetch_historical_prices(first_ticker, range_str="1d")
+            if first_hist:
+                feat_date = first_hist[-1]["date"]
+                delivery_map = fetch_nse_delivery_data(feat_date)
+        except Exception as e:
+            print(f"[EP Refresh] Failed to fetch first candidate history to determine date: {e}")
+            
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+    
+    for s, rel_vol in candidates:
+        suffix = ".BO" if s['exchange'] == "BSE" else ".NS"
+        ticker = f"{s['ticker']}{suffix}"
+        try:
+            history = fetch_historical_prices(ticker, range_str="6mo")
+            if not history or len(history) < 5:
+                continue
+                
+            closes = [float(h["close"]) for h in history if h.get("close") is not None]
+            highs = [float(h["high"]) for h in history if h.get("high") is not None]
+            lows = [float(h["low"]) for h in history if h.get("low") is not None]
+            volumes = [float(h["volume"]) for h in history if h.get("volume") is not None]
+            
+            if len(closes) < 5:
+                continue
+                
+            # Pre-calculate ATR-14, 20-day average volume, 50-day average volume
+            atr_14_list = [None] * len(history)
+            avg_vol_20_list = [None] * len(history)
+            avg_vol_50_list = [None] * len(history)
+            
+            tr_list = []
+            for i in range(len(history)):
+                if i == 0:
+                    tr_list.append(highs[i] - lows[i])
+                else:
+                    tr_list.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+                    
+            for i in range(len(history)):
+                if i >= 13:
+                    atr_14_list[i] = sum(tr_list[i-13:i+1]) / 14.0
+                if i >= 19:
+                    avg_vol_20_list[i] = sum(volumes[i-19:i+1]) / 20.0
+                if i >= 49:
+                    avg_vol_50_list[i] = sum(volumes[i-49:i+1]) / 50.0
+            
+            feature_date = history[-1]["date"]
+            
+            # Save daily bars
+            for i in range(1, len(history)):
+                bar = history[i]
+                prev_bar = history[i-1]
+                t_date = bar.get("date")
+                if not t_date:
+                    continue
+                o = float(bar.get("open") or 0)
+                h = float(bar.get("high") or 0)
+                l = float(bar.get("low") or 0)
+                col = float(bar.get("close") or 0)
+                v = int(bar.get("volume") or 0)
+                prev_c = float(prev_bar.get("close") or 0)
+                gap = ((o - prev_c) / prev_c * 100) if prev_c else 0.0
+                chg = ((col - prev_c) / prev_c * 100) if prev_c else 0.0
+                close_loc = ((col - l) / (h - l)) if (h - l) > 0 else 1.0
+                intra_range = ((h - l) / prev_c * 100) if prev_c else 0.0
+                
+                atr = atr_14_list[i]
+                vol_20 = avg_vol_20_list[i]
+                vol_50 = avg_vol_50_list[i]
+                
+                rel_vol_20 = v / vol_20 if (vol_20 and vol_20 > 0) else None
+                rel_vol_50 = v / vol_50 if (vol_50 and vol_50 > 0) else None
+                
+                dq = None
+                dp = None
+                if t_date == feature_date:
+                    dq, dp = delivery_map.get(s['ticker'].upper(), (None, None))
+                
+                c.execute('''
+                    INSERT OR REPLACE INTO daily_bars (
+                        symbol, exchange, trade_date, open, high, low, close, volume,
+                        prev_close, gap_pct, close_loc, price_change_pct, intraday_range_pct,
+                        atr_14, rel_volume_20, rel_volume_50, delivery_qty, delivery_pct
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    s['ticker'], s['exchange'], t_date, o, h, l, col, v,
+                    prev_c, round(gap, 3), round(close_loc, 3), round(chg, 3), round(intra_range, 3),
+                    round(atr, 4) if atr else None,
+                    round(rel_vol_20, 3) if rel_vol_20 else None,
+                    round(rel_vol_50, 3) if rel_vol_50 else None,
+                    dq, dp
+                ))
+
+            # Ingest Fundamentals & YoY metrics
+            quarters_data = fetch_screener_fundamentals(s['ticker'])
+            if quarters_data:
+                quarters_data = compute_yoy_metrics(quarters_data)
+                for q in quarters_data:
+                    c.execute('''
+                        INSERT OR REPLACE INTO fundamentals (
+                            symbol, exchange, result_date, quarter, revenue, revenue_yoy_pct,
+                            net_profit, net_profit_yoy_pct, eps, eps_yoy_pct, surprise_type,
+                            consecutive_quarters_growth, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        s['ticker'], s['exchange'], q.get('result_date') or q['date_key'], q['quarter'], q['revenue'], q['revenue_yoy_pct'],
+                        q['net_profit'], q['net_profit_yoy_pct'], q['eps'], q['eps_yoy_pct'], q['surprise_type'],
+                        q['consecutive_quarters_growth'], q.get('source', 'unknown')
+                    ))
+
+            # Ingest Announcements (NSE only)
+            from datetime import datetime, timedelta
+            seven_days_ago = datetime.now() - timedelta(days=7)
+            
+            if s['exchange'] == "NSE":
+                announcements = fetch_nse_announcements(s['ticker'])
+                if isinstance(announcements, list):
+                    for item in announcements:
+                        sort_date_str = item.get("sort_date")
+                        if not sort_date_str:
+                            continue
+                        try:
+                            dt = datetime.strptime(sort_date_str, "%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            continue
+                        
+                        if dt >= seven_days_ago:
+                            desc = item.get("desc", "")
+                            text = item.get("attchmntText", "")
+                            enhanced_class = enhanced_classify_announcement(desc, text, item.get("attchmntFile", ""))
+                            cat = enhanced_class['cat']
+                            cat_score = enhanced_class['catalyst_score']
+                            
+                            # Map cat to event_type
+                            if cat == "cat-order-win":
+                                event_type_mapped = "ORDER_WIN"
+                            elif cat == "cat-capex":
+                                event_type_mapped = "CAPEX_EXPANSION"
+                            elif cat == "cat-governance":
+                                event_type_mapped = "MGMT_CHANGE"
+                            elif cat == "cat-regulatory":
+                                event_type_mapped = "FRAUD_CONCERN"
+                            else:
+                                event_type_mapped = "UNKNOWN"
+                                
+                            sent_val = 0
+                            sent_str = enhanced_class['sent'].lower()
+                            if "positive" in sent_str:
+                                sent_val = 1
+                            elif "negative" in sent_str:
+                                sent_val = -1
+                                
+                            an_dt = item.get("an_dt", "")
+                            date_str = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                            
+                            # Deduplicate insertion
+                            c.execute('''
+                                SELECT id FROM corporate_events
+                                WHERE symbol = ? AND event_date = ? AND headline = ?
+                            ''', (s['ticker'], date_str, desc if desc else text[:200]))
+                            if not c.fetchone():
+                                c.execute('''
+                                    INSERT INTO corporate_events (
+                                        symbol, exchange, event_date, event_type, headline, sentiment,
+                                        catalyst_score, source, raw_url, nlp_sentiment_score,
+                                        nlp_category, summary, impact_magnitude
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    s['ticker'], s['exchange'], date_str, event_type_mapped,
+                                    desc if desc else text[:200], sent_val, cat_score, 'NSE',
+                                    item.get("attchmntFile", ""),
+                                    enhanced_class['nlp_sentiment_score'],
+                                    enhanced_class['nlp_category'],
+                                    enhanced_class['summary'],
+                                    enhanced_class['impact_magnitude']
+                                ))
+
+            # Retrieve latest fundamentals
+            c.execute('''
+                SELECT revenue_yoy_pct, net_profit_yoy_pct, consecutive_quarters_growth, surprise_type, net_profit
+                FROM fundamentals
+                WHERE symbol = ? AND exchange = ?
+                ORDER BY result_date DESC, id DESC
+                LIMIT 1
+            ''', (s['ticker'], s['exchange']))
+            fund = c.fetchone()
+            
+            if fund:
+                has_result = 1
+                revenue_growth = fund[0] if fund[0] is not None else 0.0
+                profit_growth = fund[1] if fund[1] is not None else 0.0
+                consec_growth = fund[2] if fund[2] is not None else 0
+                surprise_type = fund[3] or "UNKNOWN"
+            else:
+                has_result = 0
+                revenue_growth = 0.0
+                profit_growth = 0.0
+                consec_growth = 0
+                surprise_type = "UNKNOWN"
+                
+            # Retrieve latest event from last 7 days relative to feature_date
+            feat_dt = datetime.strptime(feature_date, "%Y-%m-%d")
+            seven_days_before_feat = (feat_dt - timedelta(days=7)).strftime("%Y-%m-%d")
+            
+            c.execute('''
+                SELECT event_type, catalyst_score
+                FROM corporate_events
+                WHERE symbol = ? AND event_date >= ? AND event_date <= ?
+                ORDER BY event_date DESC, id DESC
+                LIMIT 1
+            ''', (s['ticker'], seven_days_before_feat, feature_date))
+            evt = c.fetchone()
+            
+            if evt:
+                has_corp_event = 1
+                corp_event_type = evt[0]
+            else:
+                has_corp_event = 0
+                corp_event_type = None
+                
+            # Resolve event type
+            resolved_event_type = "ABNORMAL_VOLUME"
+            if corp_event_type and corp_event_type != "UNKNOWN":
+                resolved_event_type = corp_event_type
+            elif surprise_type and surprise_type != "UNKNOWN":
+                resolved_event_type = surprise_type
+
+            # Calculate Neglect metrics
+            # 3m return (requires 63 trading days)
+            perf_3m = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else None
+            # 6m return (requires 126 trading days)
+            perf_6m = ((closes[-1] - closes[-126]) / closes[-126] * 100) if len(closes) >= 126 else None
+            
+            last_60 = closes[-60:]
+            range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
+            
+            # Volume rank
+            sect = s["sector"]
+            avg_vol = float(s["average_volume"])
+            vols = sector_vols.get(sect, [])
+            if len(vols) > 1:
+                rank_idx = bisect.bisect_left(vols, avg_vol)
+                avg_vol_rank = rank_idx / (len(vols) - 1)
+            else:
+                avg_vol_rank = 1.0
+                
+            if len(closes) < 63:
+                # IPO guard: fresh listings (< 3 months history) are not neglected
+                neglect_score = 0.20
+            else:
+                neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
+            
+            # Calculate Catalyst metrics
+            # NOTE: scanner.tradingview.com/india/scan returns market_cap_basic in INR already.
+            # Do NOT multiply by a USD→INR rate — that was a ~84x inflation bug.
+            # fetch_usd_inr_rate() is available (from fx_utils) for any future global-scanner queries.
+            mktcap_cr = float(s["market_cap_basic"]) / 10_000_000  # INR → INR Crores
+            catalyst_score = compute_catalyst_score(
+                event_type=resolved_event_type,
+                revenue_growth=revenue_growth,
+                profit_growth=profit_growth,
+                consecutive_quarters=consec_growth,
+                market_cap_cr=mktcap_cr
+            )
+            
+            # Calculate Repricing metrics
+            yesterday_close = closes[-2] if len(closes) >= 2 else closes[0]
+            today_close = closes[-1]
+            today_open = float(history[-1].get("open") or today_close)
+            today_high = highs[-1]
+            today_low = lows[-1]
+            today_vol = volumes[-1]
+            
+            gap_pct = ((today_open - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
+            close_loc = ((today_close - today_low) / (today_high - today_low)) if (today_high - today_low) > 0 else 1.0
+            price_change_pct = ((today_close - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
+            intraday_range_pct = ((today_high - today_low) / yesterday_close * 100) if yesterday_close else 0.0
+            
+            # Recalculate rel_volume_20 dynamically using avg_vol_20_list
+            avg_vol_20 = avg_vol_20_list[-1] if avg_vol_20_list[-1] else (sum(volumes) / len(volumes))
+            dyn_rel_vol = today_vol / avg_vol_20 if avg_vol_20 > 0 else 1.0
+            
+            repricing_score = compute_repricing_score(gap_pct, dyn_rel_vol, close_loc, price_change_pct, intraday_range_pct)
+            
+            # Liquidity check
+            eod_turnover_cr = (today_close * today_vol) / 10000000
+            liquidity_ok = (
+                eod_turnover_cr >= 5.0        # minimum ₹5 Cr daily turnover
+                and mktcap_cr >= 200.0         # minimum ₹200 Cr market cap
+            )
+            
+            ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, liquidity_ok, has_fundamentals=bool(has_result))
+            day1_messy = bool(gap_pct > 5.0 and close_loc < 0.40)
+            ep_type = assign_ep_type(
+                catalyst_score=catalyst_score,
+                event_type=resolved_event_type,
+                rel_volume=dyn_rel_vol,
+                gap_pct=gap_pct,
+                revenue_growth=revenue_growth,
+                profit_growth=profit_growth,
+                day1_messy=day1_messy
+            )
+            confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
+            
+            c.execute('''
+                INSERT OR REPLACE INTO ep_features (
+                    symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
+                    neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
+                    event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
+                    ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
+                    price_change_pct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?)
+            ''', (
+                s['ticker'], s['exchange'], feature_date, 
+                round(perf_3m, 3) if perf_3m is not None else None, 
+                round(perf_6m, 3) if perf_6m is not None else None, 
+                round(range_60d_pct, 3), round(avg_vol_rank, 3),
+                neglect_score,
+                has_result,
+                round(revenue_growth, 3) if revenue_growth is not None else 0.0,
+                round(profit_growth, 3) if profit_growth is not None else 0.0,
+                has_corp_event,
+                resolved_event_type,
+                catalyst_score,
+                round(gap_pct, 3),
+                round(dyn_rel_vol, 3),
+                round(close_loc, 3),
+                repricing_score,
+                ep_score,
+                ep_type,
+                confidence,
+                round(mktcap_cr, 2),
+                round(avg_vol_20 * today_close / 10000000, 2),
+                round(price_change_pct, 3)
+            ))
+            
+            # Watchlist addition if EP score >= 0.55
+            if ep_score >= 0.55:
+                c.execute("SELECT id FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (s['ticker'],))
+                existing = c.fetchone()
+                if existing:
+                    c.execute('''
+                        UPDATE ep_watchlist
+                        SET ep_score = ?, stop_price = ?, ep_type = ?, updated_at = datetime('now')
+                        WHERE id = ?
+                    ''', (ep_score, today_low, ep_type, existing[0]))
+                else:
+                    c.execute('''
+                        INSERT INTO ep_watchlist (
+                            symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, catalyst_close
+                        ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
+                    ''', (
+                        s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low, today_close
+                    ))
+                
+                # Send alert for new HIGH confidence candidates
+                if confidence == "HIGH" and ep_score >= 0.55 and not existing:
+                    alert_msg = (
+                        f"🚀 <b>New HIGH Confidence EP Detected!</b>\n"
+                        f"<b>Symbol:</b> {s['ticker']}\n"
+                        f"<b>Type:</b> {ep_type}\n"
+                        f"<b>Score:</b> {ep_score:.2f}\n"
+                        f"<b>Exchange:</b> {s['exchange']}\n"
+                        f"<b>Close:</b> ₹{today_close:.2f}\n"
+                        f"<b>Rel Volume:</b> {dyn_rel_vol:.1f}x"
+                    )
+                    telegram_alerts_queue.append(alert_msg)
+            
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = sqlite3.connect('scan_history.db')
+                c = conn.cursor()
+            print(f"Error computing EP features for {ticker}: {e}")
+            import traceback; traceback.print_exc()
+            
+    # Nightly Delayed EP Trigger Checking
+    try:
+        c.execute("""
+            SELECT id, symbol, exchange, catalyst_date, ep_type, ep_score, COALESCE(catalyst_close, entry_price)
+            FROM ep_watchlist WHERE status = 'ACTIVE'
+        """)
+        active_watchlist = c.fetchall()
+        for row in active_watchlist:
+            w_id, symbol, exchange, catalyst_date, ep_type, ep_score, catalyst_close = row
+            ticker_full = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+            try:
+                history_data = fetch_historical_prices(ticker_full, range_str="6mo")
+                if history_data and len(history_data) >= 21:
+                    today_bar = history_data[-1]
+                    if catalyst_date == today_bar["date"]:
+                        continue
+                    prev_bar = history_data[-2]
+                    
+                    today_close = today_bar["close"]
+                    today_open = today_bar["open"]
+                    today_high = today_bar["high"]
+                    today_low = today_bar["low"]
+                    today_vol = today_bar["volume"]
+                    prev_close = prev_bar["close"]
+                    
+                    volumes_data = [h["volume"] for h in history_data]
+                    avg_vol_20_val = sum(volumes_data[-21:-1]) / 20.0
+                    rel_volume_20_val = today_vol / avg_vol_20_val if avg_vol_20_val > 0 else 1.0
+                    
+                    trigger_type = None
+                    if ep_type == "Short EP":
+                        if today_close < prev_close and rel_volume_20_val >= 1.2:
+                            trigger_type = "FAILED_BOUNCE"
+                    else:
+                        # 1. Red-to-Green (RTG)
+                        rtg_triggered = (today_open < prev_close and today_close > prev_close and rel_volume_20_val >= 1.5)
+                        
+                        # 2. Tight Range Breakout
+                        tight_breakout_triggered = False
+                        if len(history_data) >= 6:
+                            prev_5_closes = [h["close"] for h in history_data[-6:-1]]
+                            prev_5_sum = sum(prev_5_closes)
+                            five_day_range = 0.0
+                            if prev_5_sum > 0:
+                                five_day_range = (max(prev_5_closes) - min(prev_5_closes)) / (prev_5_sum / 5.0) * 100
+                            prev_5_highs = [h["high"] for h in history_data[-6:-1]]
+                            five_day_high = max(prev_5_highs)
+                            tight_breakout_triggered = (five_day_range < 8.0 and today_close > five_day_high and rel_volume_20_val >= 2.0)
+                            
+                        # 3. Level Reclaim
+                        reclaim_triggered = (
+                            catalyst_close is not None and
+                            prev_close < catalyst_close and
+                            today_close >= catalyst_close * 0.995 and
+                            rel_volume_20_val >= 1.5
+                        )
+                        
+                        if rtg_triggered:
+                            trigger_type = "RED_TO_GREEN"
+                        elif tight_breakout_triggered:
+                            trigger_type = "RANGE_BREAKOUT"
+                        elif reclaim_triggered:
+                            trigger_type = "RECLAIM"
+                            
+                    if trigger_type:
+                        c.execute("""
+                            UPDATE ep_watchlist
+                            SET status = 'TRIGGERED', trigger_type = ?, entry_price = ?, entry_date = ?, updated_at = datetime('now')
+                            WHERE id = ?
+                        """, (trigger_type, today_close, today_bar["date"], w_id))
+                        conn.commit()
+                        
+                        # Send alert for watchlist trigger
+                        alert_msg = (
+                            f"🔔 <b>EP Watchlist Triggered!</b>\n"
+                            f"<b>Symbol:</b> {symbol}\n"
+                            f"<b>Type:</b> {ep_type}\n"
+                            f"<b>Trigger:</b> {trigger_type}\n"
+                            f"<b>Price:</b> ₹{today_close:.2f}\n"
+                            f"<b>Rel Volume:</b> {rel_volume_20_val:.1f}x\n"
+                            f"<b>Original EP Score:</b> {ep_score:.2f}"
+                        )
+                        telegram_alerts_queue.append(alert_msg)
+            except Exception as w_err:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                print(f"[EP Watchlist check] Error checking triggers for {symbol}: {w_err}")
+    except Exception as list_err:
+        print(f"[EP Watchlist check] Failed to fetch active watchlist: {list_err}")
+
+    # Increment days_on_watch and expire older items in the active watchlist
+    try:
+        c.execute("""
+            UPDATE ep_watchlist SET days_on_watch = days_on_watch + 1
+            WHERE status = 'ACTIVE' AND (last_incremented_date IS NULL OR last_incremented_date < date('now'))
+        """)
+        c.execute("UPDATE ep_watchlist SET last_incremented_date = date('now') WHERE status = 'ACTIVE'")
+        c.execute("UPDATE ep_watchlist SET status = 'EXPIRED' WHERE days_on_watch > 20 AND status = 'ACTIVE'")
+        conn.commit()
+    except Exception as exp_err:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[EP Watchlist check] Error updating days on watch / expiring: {exp_err}")
+    
+    # Update episode_count nightly for all active Sugar Babies
+    # TODO: update episode_count nightly
+    try:
+        c.execute("""
+            UPDATE sugar_babies
+            SET episode_count = (
+                SELECT COUNT(*) FROM ep_features
+                WHERE ep_features.symbol = sugar_babies.symbol AND ep_features.ep_score >= 0.55
+            )
+            WHERE is_active = 1
+        """)
+        conn.commit()
+    except Exception as sb_err:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[EP Sugar Babies Update] Failed to update episode counts: {sb_err}")
+        
+    conn.close()
+    
+    # Process batched Telegram alerts outside of db transaction
+    if telegram_alerts_queue:
+        print(f"[EP Refresh] Sending {len(telegram_alerts_queue)} batched Telegram alerts...")
+        for alert_msg in telegram_alerts_queue:
+            try:
+                send_telegram_alert(alert_msg)
+                time.sleep(0.2)
+            except Exception as alert_err:
+                print(f"[EP Refresh] Error sending queued alert: {alert_err}")
+                
+    print("[EP Refresh] EP screening and cache refresh completed.")
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -1243,79 +2915,99 @@ def compute_extra_fields(stock):
         if ebitda_est > 0:
             stock["cfo_ebitda"] = round((cfo_est / ebitda_est) * 100.0, 2)
 
-    # 2. Working Capital Intensity
-    ticker = stock.get("name", "")
-    h = hash(ticker) % 100
-    
-    sector = stock.get("sector", "") or ""
-    if "technology" in sector.lower() or "software" in sector.lower() or "telecom" in sector.lower():
-        stock["wc_intensity"] = round(5.0 + (h % 10), 2)  # 5% - 15%
-    elif "finance" in sector.lower() or "bank" in sector.lower() or "insurance" in sector.lower():
-        stock["wc_intensity"] = round(10.0 + (h % 8), 2)  # 10% - 18%
-    elif "infra" in sector.lower() or "construct" in sector.lower() or "metal" in sector.lower() or "steel" in sector.lower():
-        stock["wc_intensity"] = round(25.0 + (h % 20), 2) # 25% - 45%
-    else:
-        stock["wc_intensity"] = round(15.0 + (h % 12), 2) # 15% - 27%
-
-    # 3. Growth CAGR filters
-    perf_3m = float(stock.get("Perf.3M")) if stock.get("Perf.3M") is not None else 10.0
-    growth_boost = max(0.0, perf_3m * 0.1)
-    
-    stock["sales_cagr"] = round(8.0 + (h % 12) + growth_boost, 2)
-    stock["revenue_growth_3y"] = stock["sales_cagr"]
-    stock["revenue_growth_yoy"] = round(stock["sales_cagr"] * (0.9 + (h % 5) / 10.0), 2)
-    stock["revenue_growth_qoq"] = round((stock["revenue_growth_yoy"] / 4.0) + ((h % 7) - 3) * 0.3, 2)
-    stock["ebitda_cagr"] = round(stock["sales_cagr"] * (1.02 + (h % 10) / 100.0), 2)
-    stock["eps_cagr"] = round(stock["ebitda_cagr"] * (0.98 + (h % 8) / 100.0), 2)
-    
-    # Book value growth
-    roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
-    if roe is not None and roe > 0:
-        stock["bv_growth"] = round(roe * 0.85, 2)
-    else:
-        stock["bv_growth"] = round(10.0 + (h % 8), 2)
-
-    # Order-Book Growth
-    is_infra_or_con = any(x in sector.lower() for x in ["industrial", "capital goods", "engineer", "construct", "power", "infra"])
-    is_major = ticker in ["RELIANCE", "LT", "LTIM", "BEL", "BHEL", "HAL"]
-    if is_infra_or_con or is_major:
-        stock["order_growth"] = round(12.0 + (h % 18) + growth_boost * 0.5, 2)
-    else:
-        stock["order_growth"] = None
-
-    # Segment Growth
-    segment_map = {
-        "RELIANCE": "Retail +19%, Jio +14%",
-        "LT": "Infrastructure +18%",
-        "ITC": "Agri +15%, FMCG +12%",
-        "SBIN": "Corporate Lending +14%"
-    }
-    if ticker in segment_map:
-        stock["segment_growth"] = segment_map[ticker]
-    else:
-        sector_lower = sector.lower()
-        if "health technology" in sector_lower or "health services" in sector_lower or "pharmaceuticals" in sector_lower:
-            pharma_segments = ["CDMO", "Generics", "API", "Injectables", "Biosimilars"]
-            segment_name = pharma_segments[h % len(pharma_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 10) + 11}%"
-        elif "technology services" in sector_lower or "electronic technology" in sector_lower or ("technology" in sector_lower and "health" not in sector_lower):
-            tech_segments = ["Cloud", "Digital Services", "SaaS", "Enterprise Systems", "AI/Analytics"]
-            segment_name = tech_segments[h % len(tech_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 10) + 12}%"
-        elif "finance" in sector_lower or "bank" in sector_lower or "insurance" in sector_lower:
-            stock["segment_growth"] = f"Retail +{(h % 8) + 14}%"
-        elif "automobil" in sector_lower or "auto" in sector_lower:
-            stock["segment_growth"] = f"EV Segment +{(h % 15) + 20}%"
-        elif "consumer non-durables" in sector_lower or "retail trade" in sector_lower:
-            fmcg_segments = ["FMCG", "Agri-Business", "Foods", "Premium Brands"]
-            segment_name = fmcg_segments[h % len(fmcg_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 8) + 10}%"
-        elif "non-energy minerals" in sector_lower or "metal" in sector_lower or "steel" in sector_lower or "process industries" in sector_lower:
-            materials_segments = ["Value-Added", "Specialty Alloys", "Domestic Sales", "Exports"]
-            segment_name = materials_segments[h % len(materials_segments)]
-            stock["segment_growth"] = f"{segment_name} +{(h % 10) + 8}%"
+    # 2. Working Capital Intensity & other simulated fields (Phase 3 placeholders)
+    if ENABLE_SIMULATED_DATA:
+        ticker = stock.get("name", "")
+        h = hash(ticker) % 100
+        
+        sector = stock.get("sector", "") or ""
+        if "technology" in sector.lower() or "software" in sector.lower() or "telecom" in sector.lower():
+            stock["wc_intensity"] = round(5.0 + (h % 10), 2)  # 5% - 15%
+        elif "finance" in sector.lower() or "bank" in sector.lower() or "insurance" in sector.lower():
+            stock["wc_intensity"] = round(10.0 + (h % 8), 2)  # 10% - 18%
+        elif "infra" in sector.lower() or "construct" in sector.lower() or "metal" in sector.lower() or "steel" in sector.lower():
+            stock["wc_intensity"] = round(25.0 + (h % 20), 2) # 25% - 45%
         else:
-            stock["segment_growth"] = None
+            stock["wc_intensity"] = round(15.0 + (h % 12), 2) # 15% - 27%
+
+        # 3. Growth CAGR filters
+        perf_3m = float(stock.get("Perf.3M")) if stock.get("Perf.3M") is not None else 10.0
+        growth_boost = max(0.0, perf_3m * 0.1)
+        
+        stock["sales_cagr"] = round(8.0 + (h % 12) + growth_boost, 2)
+        stock["revenue_growth_3y"] = stock["sales_cagr"]
+        stock["revenue_growth_yoy"] = round(stock["sales_cagr"] * (0.9 + (h % 5) / 10.0), 2)
+        stock["revenue_growth_qoq"] = round((stock["revenue_growth_yoy"] / 4.0) + ((h % 7) - 3) * 0.3, 2)
+        stock["ebitda_cagr"] = round(stock["sales_cagr"] * (1.02 + (h % 10) / 100.0), 2)
+        stock["eps_cagr"] = round(stock["ebitda_cagr"] * (0.98 + (h % 8) / 100.0), 2)
+        
+        # Book value growth
+        roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
+        if roe is not None and roe > 0:
+            stock["bv_growth"] = round(roe * 0.85, 2)
+        else:
+            stock["bv_growth"] = round(10.0 + (h % 8), 2)
+
+        # Order-Book Growth
+        is_infra_or_con = any(x in sector.lower() for x in ["industrial", "capital goods", "engineer", "construct", "power", "infra"])
+        is_major = ticker in ["RELIANCE", "LT", "LTIM", "BEL", "BHEL", "HAL"]
+        if is_infra_or_con or is_major:
+            stock["order_growth"] = round(12.0 + (h % 18) + growth_boost * 0.5, 2)
+        else:
+            stock["order_growth"] = None
+
+        # Segment Growth
+        segment_map = {
+            "RELIANCE": "Retail +19%, Jio +14%",
+            "LT": "Infrastructure +18%",
+            "ITC": "Agri +15%, FMCG +12%",
+            "SBIN": "Corporate Lending +14%"
+        }
+        if ticker in segment_map:
+            stock["segment_growth"] = segment_map[ticker]
+        else:
+            sector_lower = sector.lower()
+            if "health technology" in sector_lower or "health services" in sector_lower or "pharmaceuticals" in sector_lower:
+                pharma_segments = ["CDMO", "Generics", "API", "Injectables", "Biosimilars"]
+                segment_name = pharma_segments[h % len(pharma_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 10) + 11}%"
+            elif "technology services" in sector_lower or "electronic technology" in sector_lower or ("technology" in sector_lower and "health" not in sector_lower):
+                tech_segments = ["Cloud", "Digital Services", "SaaS", "Enterprise Systems", "AI/Analytics"]
+                segment_name = tech_segments[h % len(tech_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 10) + 12}%"
+            elif "finance" in sector_lower or "bank" in sector_lower or "insurance" in sector_lower:
+                stock["segment_growth"] = f"Retail +{(h % 8) + 14}%"
+            elif "automobil" in sector_lower or "auto" in sector_lower:
+                stock["segment_growth"] = f"EV Segment +{(h % 15) + 20}%"
+            elif "consumer non-durables" in sector_lower or "retail trade" in sector_lower:
+                fmcg_segments = ["FMCG", "Agri-Business", "Foods", "Premium Brands"]
+                segment_name = fmcg_segments[h % len(fmcg_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 8) + 10}%"
+            elif "non-energy minerals" in sector_lower or "metal" in sector_lower or "steel" in sector_lower or "process industries" in sector_lower:
+                materials_segments = ["Value-Added", "Specialty Alloys", "Domestic Sales", "Exports"]
+                segment_name = materials_segments[h % len(materials_segments)]
+                stock["segment_growth"] = f"{segment_name} +{(h % 10) + 8}%"
+            else:
+                stock["segment_growth"] = None
+        stock["growth_data_source"] = "simulated"
+    else:
+        stock["wc_intensity"] = None
+        stock["sales_cagr"] = None
+        stock["revenue_growth_3y"] = None
+        stock["revenue_growth_yoy"] = None
+        stock["revenue_growth_qoq"] = None
+        stock["ebitda_cagr"] = None
+        stock["eps_cagr"] = None
+        
+        roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
+        if roe is not None and roe > 0:
+            stock["bv_growth"] = round(roe * 0.85, 2)
+        else:
+            stock["bv_growth"] = None
+            
+        stock["order_growth"] = None
+        stock["segment_growth"] = None
+        stock["growth_data_source"] = "real"
 
     # Inside Bar calculation
     h_val = float(stock["high"]) if stock.get("high") is not None else None
@@ -1335,7 +3027,7 @@ def compute_extra_fields(stock):
         stock["is_inside_bar"] = bool(is_inside_price and has_vol_compression)
     else:
         stock["is_inside_bar"] = False
-    stock["growth_data_source"] = "simulated"
+
 
 def compute_vol_dryup(stock):
     rvol = float(stock.get("relative_volume_10d_calc") or stock.get("relative_volume") or 0)
@@ -1363,16 +3055,17 @@ def persist_pattern_signals(ticker: str, candle_results: dict,
     Clears today's rows for the ticker first to avoid duplicates.
     """
     now   = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = bar_date if bar_date else datetime.utcnow().strftime("%Y-%m-%d")
 
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
 
     # Remove today's signals for this ticker to avoid duplication on re-scans
     c.execute(
-        "DELETE FROM pattern_signals WHERE ticker = ? AND detected_at LIKE ?",
-        (ticker, f"{today}%")
+        "DELETE FROM pattern_signals WHERE ticker = ? AND bar_date = ?",
+        (ticker, today)
     )
+
 
     # Insert candle signals
     for pat_name, direction in candle_results.items():
@@ -1613,12 +3306,12 @@ def classify_technical_pattern(history):
             # EMA10 and EMA20 calculations
             alpha10 = 2 / (10 + 1)
             ema10 = closes[0]
-            for val in closes:
+            for val in closes[1:]:
                 ema10 = val * alpha10 + ema10 * (1 - alpha10)
                 
             alpha20 = 2 / (20 + 1)
             ema20 = closes[0]
-            for val in closes:
+            for val in closes[1:]:
                 ema20 = val * alpha20 + ema20 * (1 - alpha20)
                 
             is_ema10_close = abs(current_close - ema10) / ema10 * 100 <= 1.5
@@ -1667,35 +3360,87 @@ def classify_technical_pattern(history):
                 }
 
     # 2. VCP (Volatility Contraction Pattern)
-    if len(closes) >= 80:
-        # Check last 80 trading days divided into 3 contraction periods
-        p1_highs = highs[-80:-50]
-        p1_lows = lows[-80:-50]
-        p2_highs = highs[-50:-25]
-        p2_lows = lows[-50:-25]
-        p3_highs = highs[-25:]
-        p3_lows = lows[-25:]
-        
-        if p1_highs and p2_highs and p3_highs:
-            d1 = (max(p1_highs) - min(p1_lows)) / max(p1_highs) * 100
-            d2 = (max(p2_highs) - min(p2_lows)) / max(p2_highs) * 100
-            d3 = (max(p3_highs) - min(p3_lows)) / max(p3_highs) * 100
+    vcp_pattern = None
+    if len(closes) >= 60:
+        # Try to find local peaks to identify contraction periods dynamically
+        best_vcp_pattern = None
+        best_d3 = float('inf')
+        for peak_window in [10, 8, 6, 4]:
+            peaks = []
+            for i in range(peak_window, len(highs) - 2):
+                if highs[i] == max(highs[i - peak_window : i + peak_window + 1]):
+                    if not peaks or (i - peaks[-1] > peak_window):
+                        peaks.append(i)
             
-            if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
-                is_breakout = current_close >= max(p3_highs) * 0.98 and vol_ratio >= 1.4
-                desc = f"Volatility contraction detected with 3 shrinking contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
-                if is_breakout:
-                    return {
-                        "pattern": "VCP Breakout (3T)",
-                        "grade": "A+" if d3 <= 5.0 else "A",
-                        "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
-                    }
-                else:
-                    return {
-                        "pattern": "VCP Consolidation (3T)",
-                        "grade": "A" if d3 <= 5.0 else "B+",
-                        "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
-                    }
+            # Keep only peaks in the last 100 trading days
+            peaks = [p for p in peaks if p >= len(highs) - 100]
+            
+            if len(peaks) >= 3:
+                # Need at least 4 peaks to define 3 contraction intervals between them
+                p_indices = peaks[-4:]
+                depths = []
+                for idx in range(len(p_indices) - 1):
+                    p_start = p_indices[idx]
+                    p_end = p_indices[idx+1]
+                    peak_val = highs[p_start]
+                    trough_val = min(lows[p_start:p_end])
+                    depth = (peak_val - trough_val) / peak_val * 100
+                    depths.append(depth)
+                
+                if len(depths) >= 3:
+                    d1, d2, d3 = depths[-3:]
+                    if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
+                        # Max high in the 3rd contraction is the resistance level
+                        pivot_high = max(highs[p_indices[-2]:])
+                        is_breakout = current_close >= pivot_high * 0.98 and vol_ratio >= 1.4
+                        desc = f"Volatility contraction detected dynamically with 3 contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
+                        if is_breakout:
+                            candidate_pattern = {
+                                "pattern": "VCP Breakout (3T)",
+                                "grade": "A+" if d3 <= 5.0 else "A",
+                                "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
+                            }
+                        else:
+                            candidate_pattern = {
+                                "pattern": "VCP Consolidation (3T)",
+                                "grade": "A" if d3 <= 5.0 else "B+",
+                                "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
+                            }
+                        if d3 < best_d3:
+                            best_d3 = d3
+                            best_vcp_pattern = candidate_pattern
+        vcp_pattern = best_vcp_pattern
+        
+        # Fallback to the original fixed-width 80-day window check if no dynamic pattern is found
+        if not vcp_pattern and len(closes) >= 80:
+            p1_highs = highs[-80:-50]
+            p1_lows = lows[-80:-50]
+            p2_highs = highs[-50:-25]
+            p2_lows = lows[-50:-25]
+            p3_highs = highs[-25:]
+            p3_lows = lows[-25:]
+            if p1_highs and p2_highs and p3_highs:
+                d1 = (max(p1_highs) - min(p1_lows)) / max(p1_highs) * 100
+                d2 = (max(p2_highs) - min(p2_lows)) / max(p2_highs) * 100
+                d3 = (max(p3_highs) - min(p3_lows)) / max(p3_highs) * 100
+                if d1 > d2 and d2 > d3 and d1 <= 30.0 and d3 <= 8.0:
+                    is_breakout = current_close >= max(p3_highs) * 0.98 and vol_ratio >= 1.4
+                    desc = f"Volatility contraction detected with 3 shrinking contractions ({d1:.1f}% → {d2:.1f}% → {d3:.1f}%)."
+                    if is_breakout:
+                        vcp_pattern = {
+                            "pattern": "VCP Breakout (3T)",
+                            "grade": "A+" if d3 <= 5.0 else "A",
+                            "description": f"{desc} Coiled breakout confirmed today on {vol_ratio:.1f}x volume."
+                        }
+                    else:
+                        vcp_pattern = {
+                            "pattern": "VCP Consolidation (3T)",
+                            "grade": "A" if d3 <= 5.0 else "B+",
+                            "description": f"{desc} Price is extremely tight. Watching for breakout above pivot resistance."
+                        }
+        
+        if vcp_pattern:
+            return vcp_pattern
 
     # 3. Cup & Handle
     if len(closes) >= 70:
@@ -2150,6 +3895,29 @@ def get_setup_analysis():
 
     p_bias = pattern_detection.candle_pattern_bias(cand_patterns, chart_results)
 
+    # Compute volume indicators for cache consistency
+    vols = [float(h["volume"]) for h in history if h.get("volume") is not None]
+    if len(vols) >= 50:
+        volume_sma_50 = sum(vols[-50:]) / 50.0
+    elif vols:
+        volume_sma_50 = sum(vols) / len(vols)
+    else:
+        volume_sma_50 = 0.0
+
+    down_day_vols = []
+    for i in range(1, len(history)):
+        current_close = float(history[i]["close"])
+        prev_close = float(history[i-1]["close"])
+        if current_close < prev_close:
+            down_day_vols.append(float(history[i]["volume"]))
+    
+    if len(down_day_vols) >= 10:
+        max_down_vol_10 = max(down_day_vols[-10:])
+    elif down_day_vols:
+        max_down_vol_10 = max(down_day_vols)
+    else:
+        max_down_vol_10 = 0.0
+
     # Persist signals to sqlite
     bar_date = history[-1].get("date") if history else None
     try:
@@ -2164,10 +3932,10 @@ def get_setup_analysis():
         c.execute("""
             INSERT OR REPLACE INTO pattern_cache
                 (ticker, generated_at, pattern_name, pattern_grade, pattern_desc,
-                 candlestick_json, pattern_bias)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 candlestick_json, pattern_bias, max_down_vol_10, volume_sma_50)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ticker, datetime.now().isoformat(), p_name,
-              p_grade, p_desc, json.dumps(cand_patterns), p_bias))
+              p_grade, p_desc, json.dumps(cand_patterns), p_bias, max_down_vol_10, volume_sma_50))
         conn.commit()
         conn.close()
     except Exception as db_ex:
@@ -4493,6 +6261,8 @@ def fetch_nse_announcements(symbol=None):
         
     return []
 
+
+
 def classify_announcement(desc, text):
     desc_l = desc.lower() if desc else ""
     text_l = text.lower() if text else ""
@@ -4634,7 +6404,7 @@ def get_announcements():
                 desc = item.get("desc", "")
                 text = item.get("attchmntText", "")
                 
-                cat, cat_name, imp, imp_name, sent, sent_name, reason = classify_announcement(desc, text)
+                enhanced_class = enhanced_classify_announcement(desc, text, item.get("attchmntFile", ""))
                 
                 an_dt = item.get("an_dt", "")
                 date_str = an_dt.split(" ")[0] if " " in an_dt else an_dt
@@ -4649,17 +6419,22 @@ def get_announcements():
                     "id": str(seq_id),
                     "ticker": ticker,
                     "headline": desc if desc else text[:80],
-                    "category": cat,
-                    "categoryName": cat_name,
-                    "impact": imp,
-                    "impactName": imp_name,
-                    "sentiment": sent,
-                    "sentimentName": sent_name,
-                    "sentimentReason": reason,
+                    "category": enhanced_class['cat'],
+                    "categoryName": enhanced_class['cat_name'],
+                    "impact": enhanced_class['imp'],
+                    "impactName": enhanced_class['imp_name'],
+                    "sentiment": enhanced_class['sent'],
+                    "sentimentName": enhanced_class['sent_name'],
+                    "sentimentReason": enhanced_class['reason'],
                     "date": date_str,
                     "timestamp": ts,
                     "detailContent": text,
-                    "attchmntFile": item.get("attchmntFile", "")
+                    "attchmntFile": item.get("attchmntFile", ""),
+                    "nlp_sentiment_score": enhanced_class['nlp_sentiment_score'],
+                    "nlp_category": enhanced_class['nlp_category'],
+                    "summary": enhanced_class['summary'],
+                    "impact_magnitude": enhanced_class['impact_magnitude'],
+                    "enhanced_catalyst_score": enhanced_class['catalyst_score']
                 })
                 symbol_count += 1
                 
@@ -5887,6 +7662,7 @@ def get_ipo_listings():
             elif days_param == '3m': max_days = 90
             elif days_param == '6m': max_days = 180
             elif days_param == '1y': max_days = 365
+            elif days_param == '18m': max_days = 548
             else:
                 try:
                     max_days = int(days_param)
@@ -5928,6 +7704,7 @@ def get_ipo_listings():
             elif days_param == '3m': max_days = 90
             elif days_param == '6m': max_days = 180
             elif days_param == '1y': max_days = 365
+            elif days_param == '18m': max_days = 548
             else:
                 try:
                     max_days = int(days_param)
@@ -6122,6 +7899,1195 @@ def debug_nse_ipo():
         sample=raw[:3],
         keys=list(raw[0].keys()) if raw else []
     )
+
+# ---------- Episodic Pivot (EP) API Endpoints ----------
+
+ep_refresh_lock = threading.Lock()
+last_ep_refresh_time = 0.0
+
+@app.route('/api/ep/refresh', methods=['POST'])
+def api_refresh_ep():
+    global last_ep_refresh_time
+    import time
+    
+    current_time = time.time()
+    if current_time - last_ep_refresh_time < 60:
+        remaining = int(60 - (current_time - last_ep_refresh_time))
+        return jsonify(error=f"Refresh cooldown active. Please wait {remaining} seconds."), 429
+        
+    def _bg_refresh():
+        global last_ep_refresh_time
+        with ep_refresh_lock:
+            try:
+                refresh_ep_screener()
+            except Exception as e:
+                print(f"Error in background EP refresh: {e}")
+                
+    t = threading.Thread(target=_bg_refresh)
+    t.start()
+    
+    last_ep_refresh_time = current_time
+    return jsonify(success=True, message="Background EP refresh started.")
+
+@app.route('/api/ep/refresh/status', methods=['GET'])
+def api_refresh_ep_status():
+    global ep_refresh_lock
+    is_running = ep_refresh_lock.locked()
+    return jsonify(running=is_running)
+
+
+
+# Phase 4 - Backtesting prep state
+ep_backtest_prep_status = {
+    "running": False,
+    "processed": 0,
+    "total": 0,
+    "current_symbol": "",
+    "error": None
+}
+ep_backtest_prep_lock = threading.Lock()
+
+def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="2025-12-31"):
+    global ep_backtest_prep_status
+    import sqlite3
+    import time
+    from datetime import datetime
+    
+    try:
+        # Determine symbols list
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        if not symbols:
+            c.execute("SELECT DISTINCT symbol FROM daily_bars")
+            db_syms = [r[0] for r in c.fetchall()]
+            c.execute("SELECT DISTINCT ticker FROM ipo_listings")
+            ipo_syms = [r[0] for r in c.fetchall()]
+            c.execute("SELECT DISTINCT symbol FROM ep_watchlist")
+            wl_syms = [r[0] for r in c.fetchall()]
+            symbols = sorted(list(set(db_syms + ipo_syms + wl_syms)))
+        
+        conn.close()
+        
+        with ep_backtest_prep_lock:
+            ep_backtest_prep_status["total"] = len(symbols)
+        
+        for symbol in symbols:
+            with ep_backtest_prep_lock:
+                ep_backtest_prep_status["current_symbol"] = symbol
+            
+            # Fetch history (10y)
+            history = fetch_historical_prices(symbol, range_str="10y")
+            if not history:
+                # Try BSE suffix if it doesn't already have one
+                if not symbol.endswith(".BO") and not symbol.endswith(".NS"):
+                    history = fetch_historical_prices(f"{symbol}.BO", range_str="10y")
+            
+            if not history or len(history) < 50:
+                with ep_backtest_prep_lock:
+                    ep_backtest_prep_status["processed"] += 1
+                time.sleep(0.1)
+                continue
+            
+            # Re-connect to database for inserts
+            conn = sqlite3.connect('scan_history.db')
+            c = conn.cursor()
+            
+            # Pre-calculate indicators
+            closes = [float(h["close"]) for h in history if h.get("close") is not None]
+            highs = [float(h["high"]) for h in history if h.get("high") is not None]
+            lows = [float(h["low"]) for h in history if h.get("low") is not None]
+            volumes = [float(h["volume"]) for h in history if h.get("volume") is not None]
+            
+            atr_14_list = [None] * len(history)
+            avg_vol_20_list = [None] * len(history)
+            avg_vol_50_list = [None] * len(history)
+            
+            tr_list = []
+            for i in range(len(history)):
+                if i == 0:
+                    tr_list.append(highs[i] - lows[i])
+                else:
+                    tr_list.append(max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1])))
+                    
+            for i in range(len(history)):
+                if i >= 13:
+                    atr_14_list[i] = sum(tr_list[i-13:i+1]) / 14.0
+                if i >= 19:
+                    avg_vol_20_list[i] = sum(volumes[i-19:i+1]) / 20.0
+                if i >= 49:
+                    avg_vol_50_list[i] = sum(volumes[i-49:i+1]) / 50.0
+            
+            # Save daily bars & compute ep features
+            for i in range(50, len(history)):
+                bar = history[i]
+                prev_bar = history[i-1]
+                t_date = bar.get("date")
+                if not t_date or t_date < start_date or t_date > end_date:
+                    continue
+                    
+                o = float(bar.get("open") or 0)
+                h = float(bar.get("high") or 0)
+                l = float(bar.get("low") or 0)
+                col = float(bar.get("close") or 0)
+                v = int(bar.get("volume") or 0)
+                prev_c = float(prev_bar.get("close") or 0)
+                
+                gap = ((o - prev_c) / prev_c * 100) if prev_c else 0.0
+                chg = ((col - prev_c) / prev_c * 100) if prev_c else 0.0
+                close_loc = ((col - l) / (h - l)) if (h - l) > 0 else 1.0
+                intra_range = ((h - l) / prev_c * 100) if prev_c else 0.0
+                
+                atr = atr_14_list[i]
+                vol_20 = avg_vol_20_list[i]
+                vol_50 = avg_vol_50_list[i]
+                
+                rel_vol_20 = v / vol_20 if (vol_20 and vol_20 > 0) else 1.0
+                rel_vol_50 = v / vol_50 if (vol_50 and vol_50 > 0) else 1.0
+                
+                # Insert daily bar
+                c.execute('''
+                    INSERT OR REPLACE INTO daily_bars (
+                        symbol, exchange, trade_date, open, high, low, close, volume,
+                        prev_close, gap_pct, close_loc, price_change_pct, intraday_range_pct,
+                        atr_14, rel_volume_20, rel_volume_50
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    symbol, "NSE", t_date, o, h, l, col, v,
+                    prev_c, round(gap, 3), round(close_loc, 3), round(chg, 3), round(intra_range, 3),
+                    round(atr, 4) if atr else None,
+                    round(rel_vol_20, 3) if rel_vol_20 else None,
+                    round(rel_vol_50, 3) if rel_vol_50 else None
+                ))
+                
+                # Check technical EP breakout criteria
+                if rel_vol_20 >= 3.0 and gap >= 2.0 and close_loc >= 0.5:
+                    # Neglect Score
+                    perf_3m = ((col - closes[i-63]) / closes[i-63] * 100) if i >= 63 else None
+                    perf_6m = ((col - closes[i-126]) / closes[i-126] * 100) if i >= 126 else None
+                    last_60 = closes[i-59:i+1]
+                    range_60d_pct = (max(last_60) - min(last_60)) / (sum(last_60) / len(last_60)) * 100 if last_60 else 0.0
+                    # TODO: avg_vol_rank = 0.5 is hardcoded here because there's no full sector volume sorted list
+                    # available in this historical single-stock context. This biases historical neglect scores upward.
+                    avg_vol_rank = 0.5
+                    
+                    neglect_score = compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank)
+                    
+                    # Catalyst Score
+                    c.execute("""
+                        SELECT quarter, revenue_yoy_pct, net_profit_yoy_pct, surprise_type, consecutive_quarters_growth 
+                        FROM fundamentals 
+                        WHERE symbol = ? 
+                          AND (date(result_date) BETWEEN date(?, '-3 days') AND date(?, '+3 days'))
+                        LIMIT 1
+                    """, (symbol, t_date, t_date))
+                    fund_row = c.fetchone()
+                    
+                    if fund_row:
+                        event_type = fund_row[3] or "STRONG_BEAT"
+                        revenue_growth = fund_row[1] or 0.0
+                        profit_growth = fund_row[2] or 0.0
+                        consec_growth = fund_row[4] or 0
+                        has_result = 1
+                    else:
+                        event_type = "ABNORMAL_VOLUME"
+                        revenue_growth = 0.0
+                        profit_growth = 0.0
+                        consec_growth = 0
+                        has_result = 0
+                        
+                    mktcap_cr = 500.0 # Default fallback cap
+                    catalyst_score = compute_catalyst_score(event_type, revenue_growth, profit_growth, consec_growth, mktcap_cr)
+                    
+                    # Repricing Score
+                    repricing_score = compute_repricing_score(gap, rel_vol_20, close_loc, chg, intra_range)
+                    
+                    # EP Score
+                    ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, True, has_result == 1)
+                    
+                    # EP Type & Confidence
+                    ep_type = assign_ep_type(catalyst_score, event_type, rel_vol_20, gap, revenue_growth, profit_growth)
+                    confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
+                    
+                    # Insert EP features
+                    c.execute('''
+                        INSERT OR REPLACE INTO ep_features (
+                            symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
+                            neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
+                            event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
+                            ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
+                            price_change_pct
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0.0, ?)
+                    ''', (
+                        symbol, "NSE", t_date,
+                        round(perf_3m, 3) if perf_3m is not None else None,
+                        round(perf_6m, 3) if perf_6m is not None else None,
+                        round(range_60d_pct, 3), round(avg_vol_rank, 3),
+                        neglect_score, has_result,
+                        round(revenue_growth, 3), round(profit_growth, 3),
+                        0, event_type, catalyst_score,
+                        round(gap, 3), round(rel_vol_20, 3), round(close_loc, 3), repricing_score,
+                        ep_score, ep_type, confidence, mktcap_cr,
+                        round(vol_20 * col / 10000000.0, 2) if vol_20 else 0.0,
+                        round(chg, 3)
+                    ))
+            
+            conn.commit()
+            conn.close()
+            with ep_backtest_prep_lock:
+                ep_backtest_prep_status["processed"] += 1
+            time.sleep(0.5) # Throttle to prevent rate limit
+            
+    except Exception as e:
+        with ep_backtest_prep_lock:
+            ep_backtest_prep_status["error"] = str(e)
+        print(f"Error in backtest prep background thread: {e}")
+    finally:
+        with ep_backtest_prep_lock:
+            ep_backtest_prep_status["running"] = False
+
+@app.route('/api/ep/backtest/prepare', methods=['POST'])
+def api_prep_backtest():
+    global ep_backtest_prep_status
+    from flask import request
+    import threading
+    
+    with ep_backtest_prep_lock:
+        if ep_backtest_prep_status["running"]:
+            return jsonify(error="Preparation is already running."), 400
+            
+        start_date = request.json.get("start_date", "2019-01-01").strip()
+        end_date = request.json.get("end_date", "2025-12-31").strip()
+        symbols_param = request.json.get("symbols", "").strip()
+        
+        symbols = None
+        if symbols_param and symbols_param.lower() != "all" and symbols_param.lower() != "":
+            symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+            
+        ep_backtest_prep_status["running"] = True
+        ep_backtest_prep_status["error"] = None
+        ep_backtest_prep_status["processed"] = 0
+        ep_backtest_prep_status["total"] = 0
+        ep_backtest_prep_status["current_symbol"] = ""
+        
+    t = threading.Thread(target=run_historical_backfill, args=(symbols, start_date, end_date))
+    t.start()
+    
+    return jsonify(success=True, message="Background preparation started.")
+
+@app.route('/api/ep/backtest/prep_status', methods=['GET'])
+def api_prep_backtest_status():
+    global ep_backtest_prep_status
+    with ep_backtest_prep_lock:
+        return jsonify(ep_backtest_prep_status)
+
+@app.route('/api/ep/backtest', methods=['POST'])
+def api_ep_backtest():
+    from flask import request
+    import sqlite3
+    from datetime import datetime, timedelta
+    
+    data = request.json or {}
+    ep_type = data.get("ep_type", "all")
+    from_date = data.get("from_date", "2019-01-01")
+    to_date = data.get("to_date", "2025-12-31")
+    min_ep_score = float(data.get("min_ep_score", 0.55))
+    entry_rule = data.get("entry_rule", "DAY1_OPEN")
+    stop_rule = data.get("stop_rule", "DAY1_LOW")
+    exit_rule = data.get("exit_rule", "SWING_LOW_TRAIL")
+    position_size_pct = float(data.get("position_size_pct", 5.0))
+    capital = float(data.get("capital", 1000000.0))
+    
+    conn = sqlite3.connect('scan_history.db')
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    
+    # Get all EP features in the range
+    query = """
+        SELECT symbol, feature_date, ep_type, ep_score, confidence, gap_pct, rel_volume, close_loc
+        FROM ep_features
+        WHERE feature_date >= ? AND feature_date <= ? AND ep_score >= ?
+    """
+    params = [from_date, to_date, min_ep_score]
+    if ep_type != "all":
+        query += " AND ep_type = ?"
+        params.append(ep_type)
+        
+    query += " ORDER BY feature_date ASC"
+    c.execute(query, params)
+    candidates = [dict(r) for r in c.fetchall()]
+    
+    trades = []
+    
+    # For each candidate, walk forward to simulate the trade
+    for cand in candidates:
+        sym = cand["symbol"]
+        feat_date = cand["feature_date"]
+        
+        # Load 25 bars before EP date and 120 bars after to have in-memory MA/ATR context
+        c.execute("""
+            SELECT trade_date, open, high, low, close, volume, atr_14
+            FROM daily_bars
+            WHERE symbol = ? AND trade_date <= ?
+            ORDER BY trade_date DESC
+            LIMIT 25
+        """, (sym, feat_date))
+        prior_bars = [dict(r) for r in c.fetchall()]
+        prior_bars.reverse()
+        
+        c.execute("""
+            SELECT trade_date, open, high, low, close, volume, atr_14
+            FROM daily_bars
+            WHERE symbol = ? AND trade_date > ?
+            ORDER BY trade_date ASC
+            LIMIT 120
+        """, (sym, feat_date))
+        future_bars = [dict(r) for r in c.fetchall()]
+        
+        bars = prior_bars + future_bars
+        if len(bars) < 2:
+            continue
+            
+        ep_idx = len(prior_bars) - 1 if prior_bars else 0
+        if ep_idx + 1 >= len(bars):
+            continue
+            
+        # Entry is simulated on the next trading bar
+        entry_bar = bars[ep_idx + 1]
+        entry_date = entry_bar["trade_date"]
+        
+        # Determine Entry Price
+        if entry_rule == "DAY1_OPEN":
+            entry_price = float(entry_bar["open"] or entry_bar["close"])
+        else: # DAY1_CLOSE
+            entry_price = float(entry_bar["close"])
+            
+        # Determine initial Stop Price
+        ep_bar = bars[ep_idx]
+        if stop_rule == "DAY1_LOW":
+            stop_price = float(ep_bar["low"])
+        elif stop_rule == "STRUCTURE_LOW":
+            # 5-day lowest low before the entry bar
+            stop_price = min(float(bars[k]["low"]) for k in range(max(0, ep_idx - 4), ep_idx + 1))
+        else: # ATR_2X
+            atr = float(ep_bar["atr_14"] or (float(ep_bar["close"]) * 0.05))
+            stop_price = float(ep_bar["close"]) - (2.0 * atr)
+            
+        # Stop loss cannot be above entry price
+        if stop_price >= entry_price:
+            stop_price = entry_price * 0.95
+            
+        # Walk forward day-by-day starting from entry day
+        exit_date = None
+        exit_price = None
+        exit_reason = None
+        holding_days = 0
+        
+        trail_stop = stop_price
+        
+        for j in range(ep_idx + 1, len(bars)):
+            curr_bar = bars[j]
+            curr_date = curr_bar["trade_date"]
+            curr_low = float(curr_bar["low"])
+            curr_high = float(curr_bar["high"])
+            curr_close = float(curr_bar["close"])
+            curr_open = float(curr_bar["open"])
+            
+            holding_days += 1
+            
+            # Check if stop loss was hit today
+            if curr_low <= trail_stop:
+                exit_date = curr_date
+                exit_price = trail_stop
+                if curr_open < trail_stop:
+                    exit_price = curr_open
+                exit_reason = "Stop Loss"
+                break
+                
+            # Check exit conditions
+            if exit_rule == "FIXED_PCT":
+                target_price = entry_price * 1.20 # +20% target
+                if curr_high >= target_price:
+                    exit_date = curr_date
+                    exit_price = target_price
+                    if curr_open > target_price:
+                        exit_price = curr_open
+                    exit_reason = "Target Hit"
+                    break
+            elif exit_rule == "20D_MA":
+                # 20-day SMA of close price for today
+                ma_val = sum(float(bars[k]["close"]) for k in range(max(0, j-19), j+1)) / min(20, j+1)
+                if curr_close < ma_val:
+                    exit_date = curr_date
+                    exit_price = curr_close
+                    exit_reason = "MA Cross"
+                    break
+            elif exit_rule == "SWING_LOW_TRAIL":
+                # Trail stop under lowest low of last 3 days, only starting from first full day after entry
+                if j >= ep_idx + 2:
+                    trail_low = min(float(bars[k]["low"]) for k in range(max(0, j-3), j))
+                    trail_stop = max(trail_stop, trail_low)
+                    
+            # Check maximum hold time
+            if holding_days >= 60:
+                exit_date = curr_date
+                exit_price = curr_close
+                exit_reason = "Max Hold"
+                break
+                
+        if exit_date is None:
+            last_bar = bars[-1]
+            exit_date = last_bar["trade_date"]
+            exit_price = float(last_bar["close"])
+            exit_reason = "End of History"
+            
+        pnl_pct = ((exit_price - entry_price) / entry_price * 100)
+        risk = entry_price - stop_price
+        r_achieved = (exit_price - entry_price) / risk if risk > 0 else 0.0
+        
+        trades.append({
+            "symbol": sym,
+            "ep_type": cand["ep_type"],
+            "ep_score": cand["ep_score"],
+            "confidence": cand["confidence"],
+            "ep_date": feat_date,
+            "entry_date": entry_date,
+            "entry_price": entry_price,
+            "stop_price": stop_price,
+            "exit_date": exit_date,
+            "exit_price": exit_price,
+            "exit_reason": exit_reason,
+            "pnl_pct": pnl_pct,
+            "r_achieved": r_achieved,
+            "holding_days": holding_days
+        })
+        
+    conn.close()
+    
+    # Portfolio simulation to generate the compounded equity curve
+    trades.sort(key=lambda x: x["entry_date"])
+    if not trades:
+        return jsonify({
+            "summary": {
+                "total_trades": 0,
+                "win_rate": 0.0,
+                "profit_factor": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "expectancy": 0.0,
+                "max_drawdown": 0.0
+            },
+            "equity_curve": [],
+            "trades": []
+        })
+        
+    conn = sqlite3.connect('scan_history.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT trade_date FROM daily_bars 
+        WHERE trade_date >= ? AND trade_date <= ? 
+        ORDER BY trade_date ASC
+    """, (trades[0]["entry_date"], trades[-1]["exit_date"]))
+    trading_dates = [r[0] for r in c.fetchall()]
+    conn.close()
+    
+    if not trading_dates:
+        curr = datetime.strptime(trades[0]["entry_date"], "%Y-%m-%d")
+        end_dt = datetime.strptime(trades[-1]["exit_date"], "%Y-%m-%d")
+        while curr <= end_dt:
+            trading_dates.append(curr.strftime("%Y-%m-%d"))
+            curr += timedelta(days=1)
+            
+    # Pre-load all close prices for symbols in trades to avoid thousands of SQLite connections inside the loop
+    db_prices = {}
+    if trades:
+        all_symbols = list(set(t["symbol"] for t in trades))
+        min_date = trading_dates[0] if trading_dates else trades[0]["entry_date"]
+        max_date = trading_dates[-1] if trading_dates else trades[-1]["exit_date"]
+        
+        conn = sqlite3.connect('scan_history.db')
+        c = conn.cursor()
+        
+        chunk_size = 500
+        for idx in range(0, len(all_symbols), chunk_size):
+            chunk = all_symbols[idx:idx+chunk_size]
+            placeholders = ",".join(["?"] * len(chunk))
+            query = f"""
+                SELECT symbol, trade_date, close 
+                FROM daily_bars 
+                WHERE symbol IN ({placeholders}) 
+                  AND trade_date BETWEEN ? AND ?
+            """
+            params = chunk + [min_date, max_date]
+            c.execute(query, params)
+            for sym, dt, cl in c.fetchall():
+                db_prices[(sym, dt)] = float(cl)
+        conn.close()
+
+    equity = capital
+    active_positions = []
+    equity_curve = []
+    cash = capital
+    
+    trades_by_entry = {}
+    for t in trades:
+        trades_by_entry.setdefault(t["entry_date"], []).append(t)
+        
+    max_portfolio_value = capital
+    max_drawdown = 0.0
+    
+    for t_date in trading_dates:
+        # Process exits
+        exited_positions = []
+        remaining_positions = []
+        for pos in active_positions:
+            t = pos["trade"]
+            if t["exit_date"] == t_date:
+                exit_value = pos["shares"] * t["exit_price"]
+                cash += exit_value
+                exited_positions.append(pos)
+            else:
+                remaining_positions.append(pos)
+        active_positions = remaining_positions
+        
+        # Process entries
+        if t_date in trades_by_entry:
+            for t in trades_by_entry[t_date]:
+                trade_alloc = capital * (position_size_pct / 100.0)
+                if cash >= trade_alloc and len(active_positions) < 10:
+                    shares = trade_alloc / t["entry_price"]
+                    cash -= trade_alloc
+                    active_positions.append({
+                        "trade": t,
+                        "allocated_cash": trade_alloc,
+                        "shares": shares
+                    })
+                    
+        # Calculate portfolio value today
+        current_value = cash
+        for pos in active_positions:
+            t = pos["trade"]
+            close_val = db_prices.get((t["symbol"], t_date))
+            if close_val is not None:
+                current_value += pos["shares"] * close_val
+            else:
+                current_value += pos["shares"] * t["entry_price"]
+        
+        if current_value > max_portfolio_value:
+            max_portfolio_value = current_value
+        dd = (max_portfolio_value - current_value) / max_portfolio_value * 100
+        if dd > max_drawdown:
+            max_drawdown = dd
+            
+        equity_curve.append({
+            "date": t_date,
+            "equity": round(current_value, 2)
+        })
+        
+    wins = [t for t in trades if t["pnl_pct"] > 0]
+    losses = [t for t in trades if t["pnl_pct"] <= 0]
+    
+    total_trades = len(trades)
+    win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0.0
+    
+    gross_wins = sum(t["pnl_pct"] for t in wins)
+    gross_losses = abs(sum(t["pnl_pct"] for t in losses))
+    profit_factor = (gross_wins / gross_losses) if gross_losses > 0 else (gross_wins if gross_wins > 0 else 1.0)
+    
+    avg_win = (sum(t["pnl_pct"] for t in wins) / len(wins)) if wins else 0.0
+    avg_loss = (sum(t["pnl_pct"] for t in losses) / len(losses)) if losses else 0.0
+    expectancy = (win_rate / 100 * avg_win) + ((1 - win_rate / 100) * avg_loss)
+    
+    return jsonify({
+        "summary": {
+            "total_trades": total_trades,
+            "win_rate": round(win_rate, 2),
+            "profit_factor": round(profit_factor, 2),
+            "avg_win": round(avg_win, 2),
+            "avg_loss": round(avg_loss, 2),
+            "expectancy": round(expectancy, 2),
+            "max_drawdown": round(max_drawdown, 2)
+        },
+        "equity_curve": equity_curve,
+        "trades": trades[:200]
+    })
+
+@app.route('/api/ep/themes', methods=['GET'])
+def get_ep_themes():
+    import sqlite3
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        c.execute("SELECT DISTINCT feature_date FROM ep_features ORDER BY feature_date DESC LIMIT 1")
+        latest_date_row = c.fetchone()
+        if not latest_date_row:
+            return jsonify(themes=[])
+        latest_date = latest_date_row[0]
+        
+        # By default, themes only surface Story EP and Volume EP (as they represent sector-narrative plays).
+        # Clients can pass ?types=all to include Growth EP and Turnaround EP, or pass a comma-separated list of types.
+        from flask import request
+        types_param = request.args.get("types", "").strip()
+        if types_param.lower() == "all":
+            allowed_types = ['Story EP', 'Volume EP', 'Growth EP', 'Turnaround EP']
+        elif types_param:
+            allowed_types = [t.strip() for t in types_param.split(',')]
+        else:
+            allowed_types = ['Story EP', 'Volume EP']
+            
+        placeholders = ",".join(["?"] * len(allowed_types))
+        query = f"""
+            SELECT symbol, ep_type, ep_score, confidence, market_cap_cr
+            FROM ep_features
+            WHERE feature_date = ? AND ep_type IN ({placeholders})
+        """
+        c.execute(query, [latest_date] + allowed_types)
+        rows = [dict(r) for r in c.fetchall()]
+        
+        themes_map = {}
+        for r in rows:
+            sym = r["symbol"]
+            c.execute("SELECT sector FROM ipo_listings WHERE ticker = ? LIMIT 1", (sym,))
+            sect_row = c.fetchone()
+            if sect_row and sect_row[0]:
+                sect = sect_row[0]
+            else:
+                sect = "General Markets"
+                
+            themes_map.setdefault(sect, []).append(r)
+            
+        themes = []
+        for sect, items in themes_map.items():
+            avg_score = sum(item["ep_score"] for item in items) / len(items)
+            themes.append({
+                "theme": sect,
+                "count": len(items),
+                "avg_score": round(avg_score, 2),
+                "symbols": [item["symbol"] for item in items]
+            })
+            
+        themes.sort(key=lambda x: x["count"], reverse=True)
+        return jsonify(themes=themes)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/ep/sector-rotation', methods=['GET'])
+def get_ep_sector_rotation():
+    import sqlite3
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db')
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        c.execute("""
+            SELECT w.symbol
+            FROM ep_watchlist w
+            WHERE w.status = 'ACTIVE'
+        """)
+        watchlist_symbols = [r[0] for r in c.fetchall()]
+        
+        c.execute("""
+            SELECT DISTINCT sector FROM rrg_history
+        """)
+        sectors = [r[0] for r in c.fetchall()]
+        
+        sector_rotation_list = []
+        for sector in sectors:
+            c.execute("""
+                SELECT jdk_rs, jdk_rs_momentum, score, quadrant, week
+                FROM rrg_history
+                WHERE sector = ?
+                ORDER BY snapped_at DESC
+                LIMIT 1
+            """, (sector,))
+            row = c.fetchone()
+            if not row:
+                continue
+                
+            sector_wl_count = 0
+            for sym in watchlist_symbols:
+                c.execute("SELECT sector FROM ipo_listings WHERE ticker = ? LIMIT 1", (sym,))
+                sect_row = c.fetchone()
+                if sect_row and sect_row[0] == sector:
+                    sector_wl_count += 1
+                      
+            jdk_rs = row["jdk_rs"]
+            jdk_rs_momentum = row["jdk_rs_momentum"]
+            score = row["score"]
+            quadrant = row["quadrant"]
+            week = row["week"]
+            
+            sector_rotation_list.append({
+                "sector": sector,
+                "quadrant": quadrant,
+                "score": score,
+                "jdk_rs": round(jdk_rs, 2),
+                "jdk_rs_momentum": round(jdk_rs_momentum, 2),
+                "active_ep_count": sector_wl_count,
+                "week": week
+            })
+            
+        sector_rotation_list.sort(key=lambda x: x["score"], reverse=True)
+        return jsonify(rotation=sector_rotation_list)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/today', methods=['GET'])
+def get_ep_today():
+    from flask import request
+    conn = None
+    try:
+        ep_type = request.args.get('ep_type', 'all').strip()
+        confidence = request.args.get('confidence', 'all').strip()
+        min_score_raw = request.args.get('min_score', '').strip()
+        min_score = float(min_score_raw) if min_score_raw else 0.55
+        min_mktcap_raw = request.args.get('min_mktcap', '').strip()
+        min_mktcap = float(min_mktcap_raw) if min_mktcap_raw else 0.0
+        max_mktcap_raw = request.args.get('max_mktcap', '').strip()
+        max_mktcap = float(max_mktcap_raw) if max_mktcap_raw else 999999.0
+        exchange = request.args.get('exchange', 'all').strip()
+        
+        where_clauses = ["ep_score >= ?"]
+        params = [min_score]
+        
+        if ep_type != 'all':
+            where_clauses.append("ep_type = ?")
+            params.append(ep_type)
+            
+        if confidence != 'all':
+            where_clauses.append("confidence = ?")
+            params.append(confidence)
+            
+        if min_mktcap > 0.0:
+            where_clauses.append("market_cap_cr >= ?")
+            params.append(min_mktcap)
+            
+        if max_mktcap < 999999.0:
+            where_clauses.append("market_cap_cr <= ?")
+            params.append(max_mktcap)
+            
+        if exchange != 'all':
+            where_clauses.append("exchange = ?")
+            params.append(exchange)
+            
+        where_str = f" WHERE {' AND '.join(where_clauses)}"
+        
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute(f"SELECT DISTINCT feature_date FROM ep_features ORDER BY feature_date DESC LIMIT 1")
+        latest_date_row = c.fetchone()
+        if latest_date_row:
+            latest_date = latest_date_row[0]
+            where_clauses.append("feature_date = ?")
+            params.append(latest_date)
+            where_str = f" WHERE {' AND '.join(where_clauses)}"
+        else:
+            conn.close()
+            return jsonify(listings=[], total=0, summary={"HIGH": 0, "MEDIUM": 0, "LOW": 0})
+            
+        c.execute(f"SELECT COUNT(*) FROM ep_features{where_str}", tuple(params))
+        total_count = c.fetchone()[0]
+        
+        query = f"""
+            SELECT symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
+                   neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
+                   event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
+                   ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
+                   COALESCE(price_change_pct, gap_pct) as price_change_pct
+            FROM ep_features
+            {where_str}
+            ORDER BY ep_score DESC
+        """
+        c.execute(query, tuple(params))
+        rows = c.fetchall()
+        
+        c.execute(f"SELECT confidence, COUNT(*) FROM ep_features WHERE feature_date = ? GROUP BY confidence", (latest_date,))
+        summary_rows = c.fetchall()
+        summary = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        for conf, cnt in summary_rows:
+            if conf in summary:
+                summary[conf] = cnt
+                
+        conn.close()
+        conn = None
+        
+        cols = [
+            'symbol', 'exchange', 'feature_date', 'perf_3m', 'perf_6m', 'range_60d_pct', 'avg_vol_rank',
+            'neglect_score', 'has_result', 'revenue_growth', 'profit_growth', 'has_corp_event',
+            'event_type', 'catalyst_score', 'gap_pct', 'rel_volume', 'close_loc', 'repricing_score',
+            'ep_score', 'ep_type', 'confidence', 'market_cap_cr', 'avg_turnover_cr', 'float_days',
+            'price_change_pct'
+        ]
+        
+        listings = [dict(zip(cols, r)) for r in rows]
+        return jsonify(listings=listings, total=total_count, summary=summary, latest_date=latest_date)
+        
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist', methods=['GET'])
+def get_ep_watchlist():
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, symbol, exchange, catalyst_date, ep_type, status, trigger_type,
+                   entry_price, stop_price, target_price, entry_date, days_on_watch, notes, ep_score
+            FROM ep_watchlist
+            WHERE status = 'ACTIVE'
+            ORDER BY catalyst_date DESC
+        """)
+        rows = c.fetchall()
+        conn.close()
+        conn = None
+        
+        cols = [
+            'id', 'symbol', 'exchange', 'catalyst_date', 'ep_type', 'status', 'trigger_type',
+            'entry_price', 'stop_price', 'target_price', 'entry_date', 'days_on_watch', 'notes', 'ep_score'
+        ]
+        watchlist = [dict(zip(cols, r)) for r in rows]
+        return jsonify(watchlist=watchlist)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/sugar-babies', methods=['GET'])
+def get_ep_sugar_babies():
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        c.execute("""
+            SELECT id, symbol, exchange, added_date, avg_burst_pct, avg_burst_days, episode_count, notes, is_active
+            FROM sugar_babies
+            WHERE is_active = 1
+            ORDER BY symbol ASC
+        """)
+        rows = c.fetchall()
+        conn.close()
+        conn = None
+        
+        cols = ['id', 'symbol', 'exchange', 'added_date', 'avg_burst_pct', 'avg_burst_days', 'episode_count', 'notes', 'is_active']
+        sugar_babies = [dict(zip(cols, r)) for r in rows]
+        return jsonify(sugar_babies=sugar_babies)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/<symbol>/detail', methods=['GET'])
+def get_ep_detail(symbol):
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("""
+            SELECT symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
+                   neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
+                   event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
+                   ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days
+            FROM ep_features
+            WHERE symbol = ?
+            ORDER BY feature_date DESC LIMIT 1
+        """, (symbol.upper(),))
+        row = c.fetchone()
+        
+        if not row:
+            conn.close()
+            return jsonify(error=f"Symbol {symbol} features not found"), 404
+            
+        cols = [description[0] for description in c.description]
+        detail = dict(zip(cols, row))
+        
+        ticker = f"{symbol.upper()}.NS"
+        history = fetch_historical_prices(ticker, range_str="6mo")
+        detail["history"] = history or []
+        
+        c.execute("""
+            SELECT event_date, event_type, headline, sentiment, catalyst_score, source, raw_url,
+                   nlp_sentiment_score, nlp_category, summary, impact_magnitude
+            FROM corporate_events
+            WHERE symbol = ?
+            ORDER BY event_date DESC LIMIT 10
+        """, (symbol.upper(),))
+        events_rows = c.fetchall()
+        detail["corporate_events"] = [
+            dict(zip([
+                'event_date', 'event_type', 'headline', 'sentiment', 'catalyst_score', 'source', 'raw_url',
+                'nlp_sentiment_score', 'nlp_category', 'summary', 'impact_magnitude'
+            ], ev)) for ev in events_rows
+        ]
+        
+        c.execute("""
+            SELECT quarter, result_date, revenue, revenue_yoy_pct, net_profit, net_profit_yoy_pct, eps
+            FROM fundamentals
+            WHERE symbol = ?
+            ORDER BY result_date DESC LIMIT 8
+        """, (symbol.upper(),))
+        fund_rows = c.fetchall()
+        detail["fundamentals"] = [dict(zip(['quarter', 'result_date', 'revenue', 'revenue_yoy_pct', 'net_profit', 'net_profit_yoy_pct', 'eps'], f)) for f in fund_rows]
+        
+        # Get latest watchlist details
+        c.execute("""
+            SELECT status, stop_price, notes
+            FROM ep_watchlist
+            WHERE symbol = ?
+            ORDER BY id DESC LIMIT 1
+        """, (symbol.upper(),))
+        wl_row = c.fetchone()
+        if wl_row:
+            detail["watchlist_status"] = wl_row[0]
+            detail["watchlist_stop"] = wl_row[1]
+            detail["watchlist_notes"] = wl_row[2]
+        else:
+            detail["watchlist_status"] = None
+            detail["watchlist_stop"] = None
+            detail["watchlist_notes"] = None
+
+        # Check if is sugar baby
+        c.execute("""
+            SELECT is_active
+            FROM sugar_babies
+            WHERE symbol = ? AND is_active = 1
+            LIMIT 1
+        """, (symbol.upper(),))
+        sb_row = c.fetchone()
+        detail["is_sugar_baby"] = 1 if sb_row else 0
+        
+        conn.close()
+        conn = None
+        return jsonify(detail)
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist', methods=['POST'])
+def add_to_ep_watchlist():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+    exchange = data.get("exchange", "NSE").upper().strip()
+    stop_price = data.get("stop_price")
+    notes = data.get("notes", "")
+
+    if stop_price is not None and stop_price != "":
+        try:
+            stop_price = float(stop_price)
+        except ValueError:
+            return jsonify(error="Invalid stop price"), 400
+    else:
+        stop_price = None
+
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("SELECT id FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (symbol,))
+        existing = c.fetchone()
+        
+        if existing:
+            c.execute("""
+                UPDATE ep_watchlist
+                SET stop_price = ?, notes = ?, updated_at = datetime('now')
+                WHERE id = ?
+            """, (stop_price, notes, existing[0]))
+            conn.commit()
+            return jsonify(success=True, message="Updated existing active watchlist entry")
+        else:
+            c.execute("""
+                SELECT ep_type, ep_score, feature_date
+                FROM ep_features
+                WHERE symbol = ?
+                ORDER BY feature_date DESC LIMIT 1
+            """, (symbol,))
+            feat = c.fetchone()
+            
+            if feat:
+                ep_type = feat[0]
+                ep_score = feat[1]
+                catalyst_date = feat[2]
+            else:
+                ep_type = "Manual"
+                ep_score = 0.55
+                catalyst_date = datetime.now().strftime("%Y-%m-%d")
+
+            entry_price = None
+            ticker = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+            try:
+                history = fetch_historical_prices(ticker, range_str="1d")
+                if history:
+                    entry_price = history[-1]["close"]
+                    if not feat:
+                        catalyst_date = history[-1]["date"]
+            except Exception:
+                pass
+
+            c.execute("""
+                INSERT INTO ep_watchlist (
+                    symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, notes, catalyst_close
+                ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+            """, (symbol, exchange, catalyst_date, ep_type, ep_score, entry_price, stop_price, notes, entry_price))
+            conn.commit()
+            return jsonify(success=True, message="Added to watchlist")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist/remove', methods=['POST'])
+def remove_from_ep_watchlist():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+        
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        c.execute("""
+            UPDATE ep_watchlist
+            SET status = 'EXPIRED', updated_at = datetime('now')
+            WHERE symbol = ? AND status = 'ACTIVE'
+        """, (symbol,))
+        conn.commit()
+        return jsonify(success=True, message="Removed symbol from active watchlist")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/watchlist/trigger', methods=['POST'])
+def trigger_ep_watchlist():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+        
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("SELECT exchange, entry_price FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (symbol,))
+        row = c.fetchone()
+        if not row:
+            return jsonify(error="No active watchlist entry found for this symbol"), 404
+            
+        exchange, current_entry_price = row
+        ticker = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+        
+        today_price = current_entry_price
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        try:
+            history = fetch_historical_prices(ticker, range_str="1d")
+            if history:
+                today_price = history[-1]["close"]
+                today_date = history[-1]["date"]
+        except Exception:
+            pass
+            
+        c.execute("""
+            UPDATE ep_watchlist
+            SET status = 'TRIGGERED', trigger_type = 'MANUAL', entry_price = ?, entry_date = ?, updated_at = datetime('now')
+            WHERE symbol = ? AND status = 'ACTIVE'
+        """, (today_price, today_date, symbol))
+        conn.commit()
+        
+        price_str = f"₹{today_price:.2f}" if today_price is not None else "₹0.00"
+        alert_msg = (
+            f"🔔 <b>EP Watchlist Manually Triggered!</b>\n"
+            f"<b>Symbol:</b> {symbol}\n"
+            f"<b>Trigger:</b> MANUAL\n"
+            f"<b>Price:</b> {price_str}"
+        )
+        send_telegram_alert(alert_msg)
+        
+        return jsonify(success=True, message="Watchlist entry marked as TRIGGERED")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route('/api/ep/sugar-babies', methods=['POST'])
+def add_to_sugar_babies():
+    data = request.get_json() or {}
+    symbol = data.get("symbol", "").upper().strip()
+    if not symbol:
+        return jsonify(error="Symbol is required"), 400
+    exchange = data.get("exchange", "NSE").upper().strip()
+    notes = data.get("notes", "")
+    is_active = data.get("is_active", 1)
+
+    conn = None
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=30.0)
+        c = conn.cursor()
+        
+        c.execute("SELECT id FROM sugar_babies WHERE symbol = ?", (symbol,))
+        existing = c.fetchone()
+        
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # TODO: update episode_count nightly
+        c.execute("SELECT COUNT(*) FROM ep_features WHERE symbol = ? AND ep_score >= 0.55", (symbol,))
+        episode_count = c.fetchone()[0]
+        
+        if existing:
+            c.execute("""
+                UPDATE sugar_babies
+                SET notes = ?, is_active = ?, exchange = ?, episode_count = ?
+                WHERE id = ?
+            """, (notes, is_active, exchange, episode_count, existing[0]))
+        else:
+            c.execute("""
+                INSERT INTO sugar_babies (
+                    symbol, exchange, added_date, avg_burst_pct, avg_burst_days, episode_count, notes, is_active
+                ) VALUES (?, ?, ?, 0.0, 0.0, ?, ?, ?)
+            """, (symbol, exchange, today_str, episode_count, notes, is_active))
+            
+        conn.commit()
+        status_text = "added to" if is_active else "removed from"
+        return jsonify(success=True, message=f"Symbol {status_text} Sugar Babies")
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+    finally:
+        if conn:
+            conn.close()
 
 # Initial EOD refresh check (relocated to end of file so all dependencies are defined)
 import sys
