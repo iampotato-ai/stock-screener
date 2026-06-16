@@ -31,7 +31,13 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 ### In Progress (Phase 2 - Core Services)
 - ✅ Migrated watchlist business logic to service (`app/services/watchlist_service.py`)
 - ✅ Created watchlist API blueprint (`app/api/v1/watchlist.py`) and EP watchlist API (`app/api/v1/ep_watchlist.py`)
-- ⏳ Migrating business logic to services (market breadth, journal, alerts, IPO, etc.)
+- ✅ Migrated journal business logic to service (`app/services/journal_service.py`)
+- ✅ Created journal API blueprint (`app/api/v1/journal.py`)
+- ✅ Migrated market breadth business logic to service (`app/services/market_breadth_service.py`)
+- ✅ Created market breadth API blueprint (`app/api/v1/market_breadth.py`)
+- ✅ Migrated alert business logic to service (`app/services/alert_service.py`)
+- ✅ Created alert API blueprint (`app/api/v1/alerts.py`)
+- ⏳ Migrating business logic to services (IPO, news, etc.)
 - ⏳ Creating API blueprints for each feature
 - ⏳ Migrating database helpers and raw SQL queries to a data access layer
 - ⏳ Setting up background worker (APScheduler) using the NLP service singleton
@@ -104,7 +110,7 @@ stock-screener/
 ├─ instance/                   # Instance-specific config (not in version control)
 │   └── config.py
 │
-└─ requirements/
+└─ /requirements/
     ├─ base.txt
     ├─ development.txt
     ├─ production.txt
@@ -121,7 +127,7 @@ stock-screener/
 5. Create `run.py` as new entry point
 6. Verify NLP service works with fallback
 
-### Phase 2: Core Services & API (Next)
+### Phase 2: Core Services & API (Current)
 1. **Create service classes** for each major feature:
    - Start with simpler modules (watchlist, journal)
    - Move business logic from `app.py` to service classes
@@ -182,37 +188,15 @@ stock-screener/
 - Configuration-controlled via `NLP_MODELS_ENABLED` environment variable
 
 ## Immediate Next Steps
-1. Watchlist migration is complete. Next, consider migrating the journal functionality:
-   - Create `app/services/journal_service.py`
-   - Create `app/api/v1/journal.py`
-   - Move journal-related code from `app.py` to these new locations
-2. Alternatively, you could proceed with the market breadth service.
+1. Migrate IPO handling following the established pattern:
+   - Create `app/services/ipo_service.py`
+   - Create `app/api/v1/ipo.py`
+   - Move IPO-related code from `app.py` to these new locations
+   - Update `app/api/v1/__init__.py` to import the ipo module
+   - Test the new component independently
+   
+2. Alternatively, you could proceed with migrating news, screener, or other services.
 3. Set up the background worker scheduler:
    - Create `app/tasks/scheduler.py`
    - Initialize scheduler in `app/__init__.py` after extensions are ready
    - Use `extensions.nlp_service` for NLP processing in the EP refresh job
-
-## Files Created/Updated in Phase 1
-```
-stock-screener/
-├─ config.py
-├─ run.py
-├─ REFACTORING_GUIDE.md          # This file
-│
-├─ app/
-│   ├─ __init__.py
-│   ├─ extensions.py             # Includes nlp_service singleton
-│   ├─ utils/
-│   │   ├─ constants.py
-│   │   └─ helpers.py
-│   └─ services/
-│       └─ nlp_service.py
-│
-└─ /app/api/v1/
-    ├─ __init__.py
-    └─ announcements.py
-```
-
-You can find the detailed implementation in the respective files. The NLP service we've encapsulated serves as an excellent model for how other components should be structured.
-
-Let's proceed with Phase 2 by migrating the watchlist functionality next.
