@@ -1658,6 +1658,69 @@ _NLP_POSITIVE_WORDS = {"order", "win", "award", "profit", "growth", "expansion",
 _NLP_NEGATIVE_WORDS = {"fraud", "penalty", "notice", "default", "npa", "loss", "decline",
                         "downgrade", "resign", "investigation", "concern", "miss", "cut"}
 
+def _prepare_text_for_analysis(desc: str, text: str, attachment_url: str = "") -> str:
+    """Combines description and text inputs, optionally fetching full content."""
+    full_text = ""
+    if desc:
+        full_text += desc + " "
+    if text:
+        full_text += text
+    
+    # Fetch full announcement text if available
+    if attachment_url:
+        try:
+            full_text = fetch_announcement_content(attachment_url) or full_text
+        except Exception as e:
+            print(f"[NLP classify] Fetch content error: {e}")
+    return full_text
+
+def _analyze_sentiment(text: str) -> dict:
+    """Executes FinBERT sentiment analysis and returns sentiment label and continuous score."""
+    sentiment_results = sentiment_analyzer(text[:512])  # FinBERT has 512-token limit
+    sentiment_label = "neutral"
+    max_score = 0.0
+    sentiment_scores = {}
+    for res in sentiment_results[0]:
+        sentiment_scores[res['label']] = res['score']
+        if res['score'] > max_score:
+            max_score = res['score']
+            sentiment_label = res['label']
+    
+    pos_score = sentiment_scores.get('positive', 0.0)
+    neg_score = sentiment_scores.get('negative', 0.0)
+    nlp_sentiment_score = pos_score - neg_score
+    return {
+        "sentiment_label": sentiment_label,
+        "nlp_sentiment_score": nlp_sentiment_score
+    }
+
+def _classify_event_category(text: str) -> dict:
+    """Classifies event category using zero-shot classifier."""
+    event_labels = [
+        "financial results", "dividend announcement", "order win", 
+        "acquisition", "capex expansion", "management change", 
+        "regulatory issue", "bonus issue", "stock split", 
+        "analyst upgrade", "analyst downgrade", "guidance raise",
+        "guidance cut", "contract win", "plant inauguration", "other"
+    ]
+    classification = event_classifier(text[:1024], event_labels)
+    event_category = classification['labels'][0]
+    category_confidence = classification['scores'][0]
+    return {
+        "event_category": event_category,
+        "category_confidence": category_confidence
+    }
+
+def _generate_summary(text: str) -> str or None:
+    """Generates summary using DistilBART summarizer."""
+    if len(text) > 200:
+        try:
+            summary_result = summarizer(text[:1024], max_length=100, min_length=30, do_sample=False)
+            return summary_result[0]['summary_text']
+        except Exception as e:
+            print(f"[NLP classify] Summarization error: {e}")
+    return None
+
 def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "") -> dict:
     """
     Keyword-based NLP classifier for NSE corporate announcements.
@@ -1667,57 +1730,22 @@ def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "
     # Check if we should attempt full transformers NLP classification
     if init_nlp_models() and ( (desc and len(desc.strip()) > 10) or (text and len(text.strip()) > 10) ):
         try:
-            full_text = ""
-            if desc:
-                full_text += desc + " "
-            if text:
-                full_text += text
-            
-            # Fetch full announcement text if available
-            if attachment_url:
-                try:
-                    full_text = fetch_announcement_content(attachment_url) or full_text
-                except Exception as e:
-                    print(f"[NLP classify] Fetch content error: {e}")
+            full_text = _prepare_text_for_analysis(desc, text, attachment_url)
             
             # 1. Sentiment analysis with FinBERT
-            sentiment_results = sentiment_analyzer(full_text[:512])  # FinBERT has 512-token limit
-            sentiment_label = "neutral"
-            max_score = 0.0
-            sentiment_scores = {}
-            for res in sentiment_results[0]:
-                sentiment_scores[res['label']] = res['score']
-                if res['score'] > max_score:
-                    max_score = res['score']
-                    sentiment_label = res['label']
+            sent_res = _analyze_sentiment(full_text)
+            sentiment_label = sent_res["sentiment_label"]
+            nlp_sentiment_score = sent_res["nlp_sentiment_score"]
             
-            # Continuous sentiment score (positive score - negative score)
-            pos_score = sentiment_scores.get('positive', 0.0)
-            neg_score = sentiment_scores.get('negative', 0.0)
-            nlp_sentiment_score = pos_score - neg_score
+            # 2. Event category zero-shot classification
+            cat_res = _classify_event_category(full_text)
+            event_category = cat_res["event_category"]
+            category_confidence = cat_res["category_confidence"]
             
-            # Event category zero-shot classification
-            event_labels = [
-                "financial results", "dividend announcement", "order win", 
-                "acquisition", "capex expansion", "management change", 
-                "regulatory issue", "bonus issue", "stock split", 
-                "analyst upgrade", "analyst downgrade", "guidance raise",
-                "guidance cut", "contract win", "plant inauguration", "other"
-            ]
-            classification = event_classifier(full_text[:1024], event_labels)
-            event_category = classification['labels'][0]
-            category_confidence = classification['scores'][0]
+            # 3. Summarization
+            summary = _generate_summary(full_text)
             
-            # Summarization
-            summary = None
-            if len(full_text) > 200:
-                try:
-                    summary_result = summarizer(full_text[:1024], max_length=100, min_length=30, do_sample=False)
-                    summary = summary_result[0]['summary_text']
-                except Exception as e:
-                    print(f"[NLP classify] Summarization error: {e}")
-            
-            # Catalyst score
+            # 4. Catalyst score
             enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
             cat, cat_name, imp, imp_name = map_nlp_category_to_standard(event_category)
             
