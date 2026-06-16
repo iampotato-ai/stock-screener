@@ -1607,33 +1607,24 @@ def calculate_base_catalyst_from_nlp(sentiment_label, event_category, confidence
     # Clamp to reasonable range
     return round(max(-1.0, min(1.0, final_score)), 3)
 
-def map_nlp_category_to_standard(nlp_cat):
+_NLP_CATEGORY_MAPPINGS = [
+    (["dividend", "bonus issue", "stock split"], ("cat-dividend", "Dividend", "imp-earnings-st", "Earnings impact (short-term)")),
+    (["financial results", "guidance raise", "guidance cut"], ("cat-results", "Results", "imp-earnings-st", "Earnings impact (short-term)")),
+    (["order win", "contract win"], ("cat-order-win", "Order Win", "imp-order-book", "Order book impact")),
+    (["acquisition"], ("cat-acquisition", "Acquisition", "imp-balance-sheet", "Balance sheet impact")),
+    (["capex expansion", "plant inauguration"], ("cat-capex", "Capex", "imp-earnings-lt", "Earnings impact (long-term)")),
+    (["regulatory issue"], ("cat-regulatory", "Regulatory", "imp-governance", "Governance signal")),
+    (["management change"], ("cat-governance", "Governance", "imp-governance", "Governance signal"))
+]
+
+def map_nlp_category_to_standard(nlp_cat: str) -> tuple:
     """
     Map an NLP zero-shot classification category back to standard dashboard category codes.
     """
     nlp_cat_l = nlp_cat.lower()
-    
-    if "dividend" in nlp_cat_l or "bonus issue" in nlp_cat_l or "stock split" in nlp_cat_l:
-        return "cat-dividend", "Dividend", "imp-earnings-st", "Earnings impact (short-term)"
-    
-    if "financial results" in nlp_cat_l or "guidance raise" in nlp_cat_l or "guidance cut" in nlp_cat_l:
-        return "cat-results", "Results", "imp-earnings-st", "Earnings impact (short-term)"
-    
-    if "order win" in nlp_cat_l or "contract win" in nlp_cat_l:
-        return "cat-order-win", "Order Win", "imp-order-book", "Order book impact"
-        
-    if "acquisition" in nlp_cat_l:
-        return "cat-acquisition", "Acquisition", "imp-balance-sheet", "Balance sheet impact"
-        
-    if "capex expansion" in nlp_cat_l or "plant inauguration" in nlp_cat_l:
-        return "cat-capex", "Capex", "imp-earnings-lt", "Earnings impact (long-term)"
-        
-    if "regulatory issue" in nlp_cat_l:
-        return "cat-regulatory", "Regulatory", "imp-governance", "Governance signal"
-        
-    if "management change" in nlp_cat_l:
-        return "cat-governance", "Governance", "imp-governance", "Governance signal"
-        
+    for keywords, result in _NLP_CATEGORY_MAPPINGS:
+        if any(keyword in nlp_cat_l for keyword in keywords):
+            return result
     return "cat-other", "Other", "imp-sentiment", "Sentiment only"
 
 def fetch_announcement_content(raw_url):
