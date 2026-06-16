@@ -101,7 +101,7 @@ def send_ep_refresh_alerts():
         return jsonify(error=str(e)), 500
 
 
-@api_bp.route('/config', methods=['GET'])
+@api_bp.route('/alerts/config', methods=['GET'])
 def get_alert_config():
     """
     Get current alert configuration.

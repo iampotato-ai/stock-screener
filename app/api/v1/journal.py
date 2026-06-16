@@ -29,7 +29,7 @@ def get_journal():
             limit=limit_int,
             offset=offset_int
         )
-        return jsonify(journal_entries)
+        return jsonify(success=True, data=journal_entries)
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except Exception as e:

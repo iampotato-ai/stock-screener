@@ -20,7 +20,7 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 warnings.simplefilter('ignore', ConvergenceWarning)
 warnings.simplefilter('ignore', UserWarning)
 
-from journal_math import compute_pnl_and_r
+from app.utils.journal_math import compute_pnl_and_r
 from rrg_math import compute_jdk_rs, compute_quadrant
 from forecast_math import compute_forecast_metrics
 import pattern_detection

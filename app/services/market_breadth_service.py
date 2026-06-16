@@ -2,6 +2,7 @@
 Market breadth service for managing breadth data and calculations.
 """
 import sqlite3
+import statistics
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.database import get_db
@@ -15,10 +16,9 @@ class MarketBreadthService:
                             avg_recommend: float, regime_score: int, regime_band: str) -> None:
         """Save a market breadth snapshot to the database."""
         conn = get_db()
-        try:
-            c = conn.cursor()
-            today, now_time = datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%H:%M')
-            c.execute(
+        c = conn.cursor()
+        today, now_time = datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%H:%M')
+        c.execute(
                 """
                 INSERT OR REPLACE INTO breadth_history
                 (date, time, advances, declines, unchanged, pct_sma21, pct_sma50,
@@ -28,16 +28,13 @@ class MarketBreadthService:
                 (today, now_time, advances, declines, unchanged,
                  pct_sma21, pct_sma50, pct_52high, avg_recommend, regime_score, regime_band)
             )
-            conn.commit()
-        finally:
-            pass
+        conn.commit()
 
     def get_breadth_history(self, limit: int = 30) -> List[Dict[str, Any]]:
         """Get market breadth history with optional limit."""
         conn = get_db()
-        try:
-            c = conn.cursor()
-            c.execute(
+        c = conn.cursor()
+        c.execute(
                 """
                 SELECT date, time, advances, declines, unchanged,
                        pct_sma21, pct_sma50, pct_52high,
@@ -48,13 +45,8 @@ class MarketBreadthService:
                 """,
                 (limit,)
             )
-            rows = c.fetchall()
-            cols = ['date', 'time', 'advances', 'declines', 'unchanged',
-                   'pct_sma21', 'pct_sma50', 'pct_52high',
-                   'regime_score', 'regime_band', 'avg_recommend']
-            return [dict(zip(cols, row)) for row in rows]
-        finally:
-            pass
+        rows = c.fetchall()
+        return [dict(row) for row in rows]
 
     def get_latest_breadth_snapshot(self) -> Optional[Dict[str, Any]]:
         """Get the most recent market breadth snapshot."""
@@ -67,7 +59,6 @@ class MarketBreadthService:
         This replicates the calculate_backend_sector_scores function from app.py.
         Returns: (sector_scores, uni_median_w, uni_median_m, uni_median_3m)
         """
-        import statistics
 
         # Group stocks by sector
         sectors_map = {}

@@ -1,6 +1,6 @@
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import create_app
 
@@ -15,7 +15,7 @@ def test_alerts_api():
 
     # Test 1: Get alert config
     print("\n1. Getting alert config:")
-    response = client.get('/api/v1/config')
+    response = client.get('/api/v1/alerts/config')
     print('Status Code:', response.status_code)
     data = response.get_json()
     print('Response:', data)

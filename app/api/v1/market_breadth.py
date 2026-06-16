@@ -83,7 +83,7 @@ def get_latest_breadth_snapshot():
     try:
         snapshot = market_breadth_service.get_latest_breadth_snapshot()
         if snapshot:
-            return jsonify(snapshot)
+            return jsonify(success=True, data=snapshot)
         else:
             return jsonify(error="No breadth data available"), 404
     except Exception as e:

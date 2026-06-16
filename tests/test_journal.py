@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app import create_app
 
 app = create_app()
@@ -6,12 +10,21 @@ client = app.test_client()
 
 print("Testing Journal API...")
 
-# Test 1: Get empty journal
-print("\n1. Getting initial journal (should be empty):")
+# Test 1: Get journal
+print("\n1. Getting journal:")
 response = client.get('/api/v1/journal')
 print('Status Code:', response.status_code)
 data = response.get_json()
 print('Response:', data)
+if isinstance(data, dict) and 'data' in data:
+    journal_data = data['data']
+    print('Number of entries:', len(journal_data) if isinstance(journal_data, list) else 'Not a list')
+elif isinstance(data, list):
+    journal_data = data
+    print('Number of entries:', len(journal_data))
+else:
+    journal_data = []
+    print('Unexpected response format')
 
 # Test 2: Create a journal entry
 print("\n2. Creating a journal entry:")
@@ -42,6 +55,15 @@ response = client.get('/api/v1/journal')
 print('Status Code:', response.status_code)
 data = response.get_json()
 print('Response:', data)
+if isinstance(data, dict) and 'data' in data:
+    journal_data = data['data']
+    print('Number of entries:', len(journal_data) if isinstance(journal_data, list) else 'Not a list')
+elif isinstance(data, list):
+    journal_data = data
+    print('Number of entries:', len(journal_data))
+else:
+    journal_data = []
+    print('Unexpected response format')
 
 # Test 4: Create another entry
 print("\n4. Creating another journal entry:")
@@ -71,9 +93,20 @@ print("\n5. Getting journal after creating second entry:")
 response = client.get('/api/v1/journal')
 print('Status Code:', response.status_code)
 data = response.get_json()
-print('Number of entries:', len(data) if isinstance(data, list) else 'Not a list')
-if isinstance(data, list) and len(data) > 0:
-    print('First entry:', data[0])
+print('Response:', data)
+if isinstance(data, dict) and 'data' in data:
+    journal_data = data['data']
+    print('Number of entries:', len(journal_data) if isinstance(journal_data, list) else 'Not a list')
+    if isinstance(journal_data, list) and len(journal_data) > 0:
+        print('First entry:', journal_data[0])
+elif isinstance(data, list):
+    journal_data = data
+    print('Number of entries:', len(journal_data))
+    if len(journal_data) > 0:
+        print('First entry:', journal_data[0])
+else:
+    journal_data = []
+    print('Unexpected response format')
 
 # Test 6: Update the first entry (add exit price to trigger P&L calculation)
 print("\n6. Updating first entry with exit price:")
@@ -91,8 +124,15 @@ print("\n7. Getting journal after updating first entry:")
 response = client.get('/api/v1/journal')
 print('Status Code:', response.status_code)
 data = response.get_json()
-if isinstance(data, list):
-    for entry in data:
+print('Response:', data)
+journal_data = []
+if isinstance(data, dict) and 'data' in data:
+    journal_data = data['data']
+elif isinstance(data, list):
+    journal_data = data
+
+if isinstance(journal_data, list):
+    for entry in journal_data:
         if entry.get('id') == 'trade-001':
             print('Updated entry:', entry)
             break
@@ -116,6 +156,15 @@ print("\n10. Getting journal after deleting second entry:")
 response = client.get('/api/v1/journal')
 print('Status Code:', response.status_code)
 data = response.get_json()
-print('Number of entries:', len(data) if isinstance(data, list) else 'Not a list')
+print('Response:', data)
+if isinstance(data, dict) and 'data' in data:
+    journal_data = data['data']
+    print('Number of entries:', len(journal_data) if isinstance(journal_data, list) else 'Not a list')
+elif isinstance(data, list):
+    journal_data = data
+    print('Number of entries:', len(journal_data))
+else:
+    journal_data = []
+    print('Unexpected response format')
 
 print("\nJournal API test completed.")

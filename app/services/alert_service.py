@@ -5,7 +5,6 @@ import os
 import json
 import urllib.request
 from typing import Dict, Any, Optional
-from app.database import get_db
 from flask import current_app
 
 
@@ -45,7 +44,7 @@ class AlertService:
             )
             with urllib.request.urlopen(req, timeout=5) as response:
                 response.read()
-            current_app.logger.info(f"Telegram alert sent successfully: {message[:50]}...")
+            current_app.logger.info(f"Telegram alert sent successfully: {message[:50]}{'...' if len(message) > 50 else ''}")
             return True
         except Exception as e:
             current_app.logger.error(f"Error sending telegram alert: {e}")
@@ -95,9 +94,9 @@ class AlertService:
         Returns:
             Dictionary containing alert configuration
         """
+        configured = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
         return {
-            "telegram_enabled": bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")),
-            "telegram_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID")),
+            "telegram_configured": configured,
             # Add other alert configurations as needed
         }
 

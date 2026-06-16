@@ -1,5 +1,5 @@
 import pytest
-from journal_math import compute_pnl_and_r
+from app.utils.journal_math import compute_pnl_and_r
 
 @pytest.mark.parametrize(
     "entry, stop, qty, exit_price, risk_amount, expected_pnl, expected_r",
