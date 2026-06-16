@@ -1537,35 +1537,52 @@ def init_nlp_models():
         from transformers import pipeline
         import torch
         
-        # Financial sentiment analyzer using FinBERT
-        sentiment_analyzer = pipeline(
-            "sentiment-analysis",
-            model=NLP_MODELS["sentiment"],
-            tokenizer=NLP_MODELS["sentiment"],
-            return_all_scores=True
-        )
-        print(f"[NLP Init] Sentiment analyzer ({NLP_MODELS['sentiment']}) loaded.")
-        
-        # CPU-optimized distilled summarization model
-        summarizer = pipeline(
-            "summarization",
-            model=NLP_MODELS["summarizer"],
-            device=-1
-        )
-        print(f"[NLP Init] Summarizer ({NLP_MODELS['summarizer']}) loaded.")
-        
-        # CPU-optimized distilled zero-shot classifier for event categorization
-        event_classifier = pipeline(
-            "zero-shot-classification",
-            model=NLP_MODELS["classifier"],
-            device=-1
-        )
-        print(f"[NLP Init] Zero-shot classifier ({NLP_MODELS['classifier']}) loaded.")
-        
-        NLP_AVAILABLE = True
-        print("[NLP Init] All NLP models loaded successfully.")
+        # 1. Financial sentiment analyzer using FinBERT
+        try:
+            sentiment_analyzer = pipeline(
+                "sentiment-analysis",
+                model=NLP_MODELS["sentiment"],
+                tokenizer=NLP_MODELS["sentiment"],
+                return_all_scores=True
+            )
+            print(f"[NLP Init] Sentiment analyzer ({NLP_MODELS['sentiment']}) loaded.")
+        except Exception as e:
+            print(f"[NLP Init] Warning: Failed to load sentiment analyzer: {e}")
+            sentiment_analyzer = None
+            
+        # 2. CPU-optimized distilled summarization model
+        try:
+            summarizer = pipeline(
+                "summarization",
+                model=NLP_MODELS["summarizer"],
+                device=-1
+            )
+            print(f"[NLP Init] Summarizer ({NLP_MODELS['summarizer']}) loaded.")
+        except Exception as e:
+            print(f"[NLP Init] Warning: Failed to load summarizer: {e}")
+            summarizer = None
+            
+        # 3. CPU-optimized distilled zero-shot classifier for event categorization
+        try:
+            event_classifier = pipeline(
+                "zero-shot-classification",
+                model=NLP_MODELS["classifier"],
+                device=-1
+            )
+            print(f"[NLP Init] Zero-shot classifier ({NLP_MODELS['classifier']}) loaded.")
+        except Exception as e:
+            print(f"[NLP Init] Warning: Failed to load zero-shot classifier: {e}")
+            event_classifier = None
+            
+        if sentiment_analyzer is not None or event_classifier is not None:
+            NLP_AVAILABLE = True
+            print("[NLP Init] NLP models initialized (partial or full).")
+        else:
+            NLP_AVAILABLE = False
+            print("[NLP Init] All NLP models failed to load.")
+            
     except Exception as e:
-        print(f"[NLP Init] Warning: Failed to load NLP models: {e}")
+        print(f"[NLP Init] Warning: Failed to import transformers or init NLP: {e}")
         NLP_AVAILABLE = False
         sentiment_analyzer = summarizer = event_classifier = None
         
@@ -1764,18 +1781,28 @@ def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "
         try:
             full_text = _prepare_text_for_analysis(desc, text, attachment_url)
             
-            # 1. Sentiment analysis with FinBERT
-            sent_res = _analyze_sentiment(full_text)
-            sentiment_label = sent_res["sentiment_label"]
-            nlp_sentiment_score = sent_res["nlp_sentiment_score"]
+            # 1. Sentiment analysis
+            if sentiment_analyzer is not None:
+                sent_res = _analyze_sentiment(full_text)
+                sentiment_label = sent_res["sentiment_label"]
+                nlp_sentiment_score = sent_res["nlp_sentiment_score"]
+            else:
+                _, _, _, _, s_sent, _, _ = classify_announcement(desc, text)
+                sentiment_label = s_sent.replace("sent-", "")
+                nlp_sentiment_score = _map_sentiment_to_score(s_sent)
             
             # 2. Event category zero-shot classification
-            cat_res = _classify_event_category(full_text)
-            event_category = cat_res["event_category"]
-            category_confidence = cat_res["category_confidence"]
+            if event_classifier is not None:
+                cat_res = _classify_event_category(full_text)
+                event_category = cat_res["event_category"]
+                category_confidence = cat_res["category_confidence"]
+            else:
+                s_cat, s_cat_name, _, _, _, _, _ = classify_announcement(desc, text)
+                event_category = s_cat_name.lower()
+                category_confidence = 1.0
             
             # 3. Summarization
-            summary = _generate_summary(full_text)
+            summary = _generate_summary(full_text) if summarizer is not None else None
             
             # 4. Catalyst score
             enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
