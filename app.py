@@ -1621,6 +1621,18 @@ EVENT_BASE_SCORES = {
     'plant inauguration': 0.35
 }
 
+# Fallback catalyst scores for standard categories (used when NLP is unavailable)
+_FALLBACK_CATALYST_SCORES = {
+    "cat-order-win": 0.65,
+    "cat-capex": 0.45,
+    "cat-governance": 0.55,
+    "cat-regulatory": -0.70,
+    "cat-results": 0.50,
+    "cat-dividend": 0.40,
+    "cat-acquisition": 0.60,
+    "cat-unknown": 0.20,
+}
+
 def calculate_base_catalyst_from_nlp(sentiment_label, event_category, confidence):
     """
     Calculate catalyst score based on NLP analysis results.
@@ -1755,20 +1767,68 @@ def _map_sentiment_to_score(sent: str) -> float:
 
 def _get_fallback_catalyst_score(cat: str, sent: str) -> float:
     """Determine catalyst score for standard categories, dampening if sentiment is negative."""
-    _CAT_CATALYST = {
-        "cat-order-win": 0.65,
-        "cat-capex": 0.45,
-        "cat-governance": 0.55,
-        "cat-regulatory": -0.70,
-        "cat-results": 0.50,
-        "cat-dividend": 0.40,
-        "cat-acquisition": 0.60,
-        "cat-unknown": 0.20,
-    }
-    score = _CAT_CATALYST.get(cat, 0.20)
+    score = _FALLBACK_CATALYST_SCORES.get(cat, 0.20)
     if sent == "sent-negative" and score > 0:
         score = -abs(score) * 0.5
     return score
+
+
+def _process_with_nlp(full_text: str, desc: str, text: str) -> dict:
+    """
+    Process announcement text with NLP models (FinBERT, zero-shot classifier, summarizer).
+    Returns a dictionary with NLP-enhanced classification results.
+    """
+    # 1. Sentiment analysis
+    if sentiment_analyzer is not None:
+        sent_res = _analyze_sentiment(full_text)
+        sentiment_label = sent_res["sentiment_label"]
+        nlp_sentiment_score = sent_res["nlp_sentiment_score"]
+    else:
+        _, _, _, _, s_sent, _, _ = classify_announcement(desc, text)
+        sentiment_label = s_sent.replace("sent-", "")
+        nlp_sentiment_score = _map_sentiment_to_score(s_sent)
+
+    # 2. Event category zero-shot classification
+    if event_classifier is not None:
+        cat_res = _classify_event_category(full_text)
+        event_category = cat_res["event_category"]
+        category_confidence = cat_res["category_confidence"]
+    else:
+        s_cat, s_cat_name, _, _, _, _, _ = classify_announcement(desc, text)
+        event_category = s_cat_name.lower()
+        category_confidence = 1.0
+
+    # 3. Summarization
+    summary = _generate_summary(full_text) if summarizer is not None else None
+
+    # 4. Catalyst score
+    enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
+    cat, cat_name, imp, imp_name = map_nlp_category_to_standard(event_category)
+
+    sent_mapped = f"sent-{sentiment_label}"
+    sent_name_mapped = {
+        "positive": "🟢 Positive",
+        "neutral": "🟡 Neutral",
+        "negative": "🔴 Negative"
+    }.get(sentiment_label, "🟡 Neutral")
+
+    reason = f"NLP classification: category='{event_category}' (confidence={category_confidence:.2f}), sentiment='{sentiment_label}' (score={nlp_sentiment_score:.2f})."
+
+    return {
+        "cat":                 cat,
+        "cat_name":            cat_name,
+        "imp":                 imp,
+        "imp_name":            imp_name,
+        "sent":                sent_mapped,
+        "sent_name":           sent_name_mapped,
+        "reason":              reason,
+        "catalyst_score":      round(enhanced_catalyst_score, 3),
+        "nlp_sentiment_score": round(nlp_sentiment_score, 3),
+        "nlp_category":        event_category,
+        "summary":             summary or desc[:120],
+        "impact_magnitude":    round(abs(enhanced_catalyst_score), 3),
+    }
+
 
 def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "") -> dict:
     """
@@ -1780,57 +1840,7 @@ def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "
     if init_nlp_models() and ( (desc and len(desc.strip()) > 10) or (text and len(text.strip()) > 10) ):
         try:
             full_text = _prepare_text_for_analysis(desc, text, attachment_url)
-            
-            # 1. Sentiment analysis
-            if sentiment_analyzer is not None:
-                sent_res = _analyze_sentiment(full_text)
-                sentiment_label = sent_res["sentiment_label"]
-                nlp_sentiment_score = sent_res["nlp_sentiment_score"]
-            else:
-                _, _, _, _, s_sent, _, _ = classify_announcement(desc, text)
-                sentiment_label = s_sent.replace("sent-", "")
-                nlp_sentiment_score = _map_sentiment_to_score(s_sent)
-            
-            # 2. Event category zero-shot classification
-            if event_classifier is not None:
-                cat_res = _classify_event_category(full_text)
-                event_category = cat_res["event_category"]
-                category_confidence = cat_res["category_confidence"]
-            else:
-                s_cat, s_cat_name, _, _, _, _, _ = classify_announcement(desc, text)
-                event_category = s_cat_name.lower()
-                category_confidence = 1.0
-            
-            # 3. Summarization
-            summary = _generate_summary(full_text) if summarizer is not None else None
-            
-            # 4. Catalyst score
-            enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
-            cat, cat_name, imp, imp_name = map_nlp_category_to_standard(event_category)
-            
-            sent_mapped = f"sent-{sentiment_label}"
-            sent_name_mapped = {
-                "positive": "🟢 Positive",
-                "neutral": "🟡 Neutral",
-                "negative": "🔴 Negative"
-            }.get(sentiment_label, "🟡 Neutral")
-            
-            reason = f"NLP classification: category='{event_category}' (confidence={category_confidence:.2f}), sentiment='{sentiment_label}' (score={nlp_sentiment_score:.2f})."
-            
-            return {
-                "cat":                 cat,
-                "cat_name":            cat_name,
-                "imp":                 imp,
-                "imp_name":            imp_name,
-                "sent":                sent_mapped,
-                "sent_name":           sent_name_mapped,
-                "reason":              reason,
-                "catalyst_score":      round(enhanced_catalyst_score, 3),
-                "nlp_sentiment_score": round(nlp_sentiment_score, 3),
-                "nlp_category":        event_category,
-                "summary":             summary or desc[:120],
-                "impact_magnitude":    round(abs(enhanced_catalyst_score), 3),
-            }
+            return _process_with_nlp(full_text, desc, text)
         except Exception as e:
             print(f"[NLP classify] Enhanced classification failed: {e}. Falling back...")
 
