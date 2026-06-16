@@ -1859,7 +1859,7 @@ def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "
         "sent":                s_sent,
         "sent_name":           s_sent_name,
         "reason":              s_reason,
-        "summary":             (desc or "")[:120] or None,
+        "summary":             (desc or "")[:120],
         "nlp_category":        s_cat_name.lower(),
         "nlp_sentiment_score": nlp_sentiment_score,
         "catalyst_score":      round(catalyst_score, 3),
