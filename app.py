@@ -504,22 +504,17 @@ def init_db():
         )
     ''')
     # Alter corporate_events for NLP Enhancement
-    try:
-        c.execute("ALTER TABLE corporate_events ADD COLUMN nlp_sentiment_score REAL")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE corporate_events ADD COLUMN nlp_category TEXT")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE corporate_events ADD COLUMN summary TEXT")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE corporate_events ADD COLUMN impact_magnitude REAL")
-    except sqlite3.OperationalError:
-        pass
+    nlp_columns = [
+        ("nlp_sentiment_score", "REAL"),
+        ("nlp_category", "TEXT"),
+        ("summary", "TEXT"),
+        ("impact_magnitude", "REAL")
+    ]
+    for column_name, column_type in nlp_columns:
+        try:
+            c.execute(f"ALTER TABLE corporate_events ADD COLUMN {column_name} {column_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     conn.commit()
     conn.close()
@@ -1517,6 +1512,12 @@ def fetch_nse_delivery_data(date_str):
 
 
 # Global references for lazy NLP model initialization
+NLP_MODELS = {
+    "sentiment": "ProsusAI/finbert",
+    "summarizer": "sshleifer/distilbart-cnn-6-6",
+    "classifier": "typeform/distilbert-base-uncased-mnli"
+}
+
 sentiment_analyzer = None
 summarizer = None
 event_classifier = None
@@ -1539,27 +1540,27 @@ def init_nlp_models():
         # Financial sentiment analyzer using FinBERT
         sentiment_analyzer = pipeline(
             "sentiment-analysis",
-            model="ProsusAI/finbert",
-            tokenizer="ProsusAI/finbert",
+            model=NLP_MODELS["sentiment"],
+            tokenizer=NLP_MODELS["sentiment"],
             return_all_scores=True
         )
-        print("[NLP Init] FinBERT sentiment analyzer loaded.")
+        print(f"[NLP Init] Sentiment analyzer ({NLP_MODELS['sentiment']}) loaded.")
         
         # CPU-optimized distilled summarization model
         summarizer = pipeline(
             "summarization",
-            model="sshleifer/distilbart-cnn-6-6",
+            model=NLP_MODELS["summarizer"],
             device=-1
         )
-        print("[NLP Init] DistilBART summarizer loaded.")
+        print(f"[NLP Init] Summarizer ({NLP_MODELS['summarizer']}) loaded.")
         
         # CPU-optimized distilled zero-shot classifier for event categorization
         event_classifier = pipeline(
             "zero-shot-classification",
-            model="typeform/distilbert-base-uncased-mnli",
+            model=NLP_MODELS["classifier"],
             device=-1
         )
-        print("[NLP Init] DistilBERT zero-shot classifier loaded.")
+        print(f"[NLP Init] Zero-shot classifier ({NLP_MODELS['classifier']}) loaded.")
         
         NLP_AVAILABLE = True
         print("[NLP Init] All NLP models loaded successfully.")
@@ -1570,29 +1571,44 @@ def init_nlp_models():
         
     return NLP_AVAILABLE
 
+def unload_nlp_models():
+    """
+    Explicitly unload NLP models from memory and run garbage collection.
+    Useful for very long-running background worker processes.
+    """
+    global sentiment_analyzer, summarizer, event_classifier, NLP_AVAILABLE
+    sentiment_analyzer = None
+    summarizer = None
+    event_classifier = None
+    NLP_AVAILABLE = None
+    
+    import gc
+    gc.collect()
+    print("[NLP Memory] Models successfully unloaded from RAM and garbage collection run.")
+
+EVENT_BASE_SCORES = {
+    'financial results': 0.60,
+    'dividend announcement': 0.40,
+    'order win': 0.65,
+    'acquisition': 0.55,
+    'capex expansion': 0.45,
+    'management change': 0.50,
+    'regulatory issue': -0.30,
+    'bonus issue': 0.25,
+    'stock split': 0.20,
+    'analyst upgrade': 0.40,
+    'analyst downgrade': -0.40,
+    'guidance raise': 0.50,
+    'guidance cut': -0.70,
+    'contract win': 0.60,
+    'plant inauguration': 0.35
+}
+
 def calculate_base_catalyst_from_nlp(sentiment_label, event_category, confidence):
     """
     Calculate catalyst score based on NLP analysis results.
     """
-    event_base_scores = {
-        'financial results': 0.60,
-        'dividend announcement': 0.40,
-        'order win': 0.65,
-        'acquisition': 0.55,
-        'capex expansion': 0.45,
-        'management change': 0.50,
-        'regulatory issue': -0.30,
-        'bonus issue': 0.25,
-        'stock split': 0.20,
-        'analyst upgrade': 0.40,
-        'analyst downgrade': -0.40,
-        'guidance raise': 0.50,
-        'guidance cut': -0.70,
-        'contract win': 0.60,
-        'plant inauguration': 0.35
-    }
-    
-    base_score = event_base_scores.get(event_category.lower(), 0.20)
+    base_score = EVENT_BASE_SCORES.get(event_category.lower(), 0.20)
     
     # Adjust based on sentiment
     sentiment_multiplier = {
@@ -1712,6 +1728,31 @@ def _generate_summary(text: str) -> str or None:
             print(f"[NLP classify] Summarization error: {e}")
     return None
 
+def _map_sentiment_to_score(sent: str) -> float:
+    """Map string sentiment ('sent-positive', 'sent-negative', 'sent-neutral') to numeric score."""
+    if sent == "sent-positive":
+        return 1.0
+    if sent == "sent-negative":
+        return -1.0
+    return 0.0
+
+def _get_fallback_catalyst_score(cat: str, sent: str) -> float:
+    """Determine catalyst score for standard categories, dampening if sentiment is negative."""
+    _CAT_CATALYST = {
+        "cat-order-win": 0.65,
+        "cat-capex": 0.45,
+        "cat-governance": 0.55,
+        "cat-regulatory": -0.70,
+        "cat-results": 0.50,
+        "cat-dividend": 0.40,
+        "cat-acquisition": 0.60,
+        "cat-unknown": 0.20,
+    }
+    score = _CAT_CATALYST.get(cat, 0.20)
+    if sent == "sent-negative" and score > 0:
+        score = -abs(score) * 0.5
+    return score
+
 def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "") -> dict:
     """
     Keyword-based NLP classifier for NSE corporate announcements.
@@ -1769,23 +1810,8 @@ def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "
     # Fallback / Phase 1: Pure keyword matching (uses standard classify_announcement)
     s_cat, s_cat_name, s_imp, s_imp_name, s_sent, s_sent_name, s_reason = classify_announcement(desc, text)
     
-    # Map s_sent to a numeric score
-    if s_sent == "sent-positive":
-        nlp_sentiment_score = 1.0
-    elif s_sent == "sent-negative":
-        nlp_sentiment_score = -1.0
-    else:
-        nlp_sentiment_score = 0.0
-        
-    _CAT_CATALYST = {
-        "cat-order-win": 0.65, "cat-capex": 0.45, "cat-governance": 0.55,
-        "cat-regulatory": -0.70, "cat-results": 0.50, "cat-dividend": 0.40,
-        "cat-acquisition": 0.60, "cat-unknown": 0.20,
-    }
-    catalyst_score = _CAT_CATALYST.get(s_cat, 0.20)
-    if s_sent == "sent-negative" and catalyst_score > 0:
-        catalyst_score = -abs(catalyst_score) * 0.5
-        
+    nlp_sentiment_score = _map_sentiment_to_score(s_sent)
+    catalyst_score = _get_fallback_catalyst_score(s_cat, s_sent)
     impact_magnitude = round(abs(catalyst_score), 3)
     
     return {
