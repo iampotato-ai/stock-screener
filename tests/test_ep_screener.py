@@ -455,7 +455,7 @@ def test_enhanced_classify_announcement_fallback():
         assert res['sent'] == s_sent
         assert res['sent_name'] == s_sent_name
         assert res['reason'] == s_reason
-        assert res['summary'] is None
+        assert res['summary'] == (desc or "")[:120] or None
         assert res['nlp_category'] == s_cat_name.lower()
         assert res['nlp_sentiment_score'] == 1.0  # Positive sentiment translates to 1.0
 
