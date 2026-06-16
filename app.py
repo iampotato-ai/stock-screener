@@ -1516,6 +1516,274 @@ def fetch_nse_delivery_data(date_str):
     return {}
 
 
+# Global references for lazy NLP model initialization
+sentiment_analyzer = None
+summarizer = None
+event_classifier = None
+NLP_AVAILABLE = None  # None: not initialized; True: initialized; False: unavailable
+
+def init_nlp_models():
+    """
+    Lazily initialize NLP models for sentiment analysis, event classification, and summarization.
+    Keeps application startup fast and reloads lightweight.
+    """
+    global sentiment_analyzer, summarizer, event_classifier, NLP_AVAILABLE
+    if NLP_AVAILABLE is not None:
+        return NLP_AVAILABLE
+        
+    print("[NLP Init] Starting lazy initialization of NLP models...")
+    try:
+        from transformers import pipeline
+        import torch
+        
+        # Financial sentiment analyzer using FinBERT
+        sentiment_analyzer = pipeline(
+            "sentiment-analysis",
+            model="ProsusAI/finbert",
+            tokenizer="ProsusAI/finbert",
+            return_all_scores=True
+        )
+        print("[NLP Init] FinBERT sentiment analyzer loaded.")
+        
+        # CPU-optimized distilled summarization model
+        summarizer = pipeline(
+            "summarization",
+            model="sshleifer/distilbart-cnn-6-6",
+            device=-1
+        )
+        print("[NLP Init] DistilBART summarizer loaded.")
+        
+        # CPU-optimized distilled zero-shot classifier for event categorization
+        event_classifier = pipeline(
+            "zero-shot-classification",
+            model="typeform/distilbert-base-uncased-mnli",
+            device=-1
+        )
+        print("[NLP Init] DistilBERT zero-shot classifier loaded.")
+        
+        NLP_AVAILABLE = True
+        print("[NLP Init] All NLP models loaded successfully.")
+    except Exception as e:
+        print(f"[NLP Init] Warning: Failed to load NLP models: {e}")
+        NLP_AVAILABLE = False
+        sentiment_analyzer = summarizer = event_classifier = None
+        
+    return NLP_AVAILABLE
+
+def calculate_base_catalyst_from_nlp(sentiment_label, event_category, confidence):
+    """
+    Calculate catalyst score based on NLP analysis results.
+    """
+    event_base_scores = {
+        'financial results': 0.60,
+        'dividend announcement': 0.40,
+        'order win': 0.65,
+        'acquisition': 0.55,
+        'capex expansion': 0.45,
+        'management change': 0.50,
+        'regulatory issue': -0.30,
+        'bonus issue': 0.25,
+        'stock split': 0.20,
+        'analyst upgrade': 0.40,
+        'analyst downgrade': -0.40,
+        'guidance raise': 0.50,
+        'guidance cut': -0.70,
+        'contract win': 0.60,
+        'plant inauguration': 0.35
+    }
+    
+    base_score = event_base_scores.get(event_category.lower(), 0.20)
+    
+    # Adjust based on sentiment
+    sentiment_multiplier = {
+        'positive': 1.2,
+        'neutral': 1.0,
+        'negative': 0.8
+    }.get(sentiment_label, 1.0)
+    
+    # Apply confidence weighting
+    final_score = base_score * sentiment_multiplier * confidence
+    
+    # Clamp to reasonable range
+    return round(max(-1.0, min(1.0, final_score)), 3)
+
+def map_nlp_category_to_standard(nlp_cat):
+    """
+    Map an NLP zero-shot classification category back to standard dashboard category codes.
+    """
+    nlp_cat_l = nlp_cat.lower()
+    
+    if "dividend" in nlp_cat_l or "bonus issue" in nlp_cat_l or "stock split" in nlp_cat_l:
+        return "cat-dividend", "Dividend", "imp-earnings-st", "Earnings impact (short-term)"
+    
+    if "financial results" in nlp_cat_l or "guidance raise" in nlp_cat_l or "guidance cut" in nlp_cat_l:
+        return "cat-results", "Results", "imp-earnings-st", "Earnings impact (short-term)"
+    
+    if "order win" in nlp_cat_l or "contract win" in nlp_cat_l:
+        return "cat-order-win", "Order Win", "imp-order-book", "Order book impact"
+        
+    if "acquisition" in nlp_cat_l:
+        return "cat-acquisition", "Acquisition", "imp-balance-sheet", "Balance sheet impact"
+        
+    if "capex expansion" in nlp_cat_l or "plant inauguration" in nlp_cat_l:
+        return "cat-capex", "Capex", "imp-earnings-lt", "Earnings impact (long-term)"
+        
+    if "regulatory issue" in nlp_cat_l:
+        return "cat-regulatory", "Regulatory", "imp-governance", "Governance signal"
+        
+    if "management change" in nlp_cat_l:
+        return "cat-governance", "Governance", "imp-governance", "Governance signal"
+        
+    return "cat-other", "Other", "imp-sentiment", "Sentiment only"
+
+def fetch_announcement_content(raw_url):
+    """
+    Stub function for fetching and extracting text from corporate announcements.
+    Currently returns None since PDF parsing libraries are not installed.
+    """
+    return None
+
+_NLP_CATEGORY_PATTERNS = {
+    "cat-order-win":   ["order", "contract", "award", "bagged", "secured", "win", "₹", "crore"],
+    "cat-capex":       ["capex", "expansion", "plant", "capacity", "greenfield", "brownfield", "invest"],
+    "cat-governance":  ["ceo", "md", "director", "appoint", "resign", "board", "promoter", "buyback"],
+    "cat-regulatory":  ["sebi", "fraud", "penalty", "notice", "investigation", "default", "npa"],
+    "cat-results":     ["result", "profit", "revenue", "quarter", "q1", "q2", "q3", "q4", "eps", "ebitda"],
+    "cat-dividend":    ["dividend", "bonus", "split", "rights"],
+    "cat-acquisition": ["merger", "acquisition", "takeover", "amalgamation", "demerger"],
+}
+
+_NLP_POSITIVE_WORDS = {"order", "win", "award", "profit", "growth", "expansion", "dividend",
+                        "buyback", "bonus", "upgrade", "strong", "beat", "record", "approved"}
+_NLP_NEGATIVE_WORDS = {"fraud", "penalty", "notice", "default", "npa", "loss", "decline",
+                        "downgrade", "resign", "investigation", "concern", "miss", "cut"}
+
+def enhanced_classify_announcement(desc: str, text: str, attachment_url: str = "") -> dict:
+    """
+    Keyword-based NLP classifier for NSE corporate announcements.
+    Returns a dict with exactly the keys consumed by refresh_ep_screener() and tests.
+    Phase 1: pure keyword matching. Phase 2: swap in FinBERT/BART when NLP_AVAILABLE=True.
+    """
+    # Check if we should attempt full transformers NLP classification
+    if init_nlp_models() and ( (desc and len(desc.strip()) > 10) or (text and len(text.strip()) > 10) ):
+        try:
+            full_text = ""
+            if desc:
+                full_text += desc + " "
+            if text:
+                full_text += text
+            
+            # Fetch full announcement text if available
+            if attachment_url:
+                try:
+                    full_text = fetch_announcement_content(attachment_url) or full_text
+                except Exception as e:
+                    print(f"[NLP classify] Fetch content error: {e}")
+            
+            # 1. Sentiment analysis with FinBERT
+            sentiment_results = sentiment_analyzer(full_text[:512])  # FinBERT has 512-token limit
+            sentiment_label = "neutral"
+            max_score = 0.0
+            sentiment_scores = {}
+            for res in sentiment_results[0]:
+                sentiment_scores[res['label']] = res['score']
+                if res['score'] > max_score:
+                    max_score = res['score']
+                    sentiment_label = res['label']
+            
+            # Continuous sentiment score (positive score - negative score)
+            pos_score = sentiment_scores.get('positive', 0.0)
+            neg_score = sentiment_scores.get('negative', 0.0)
+            nlp_sentiment_score = pos_score - neg_score
+            
+            # Event category zero-shot classification
+            event_labels = [
+                "financial results", "dividend announcement", "order win", 
+                "acquisition", "capex expansion", "management change", 
+                "regulatory issue", "bonus issue", "stock split", 
+                "analyst upgrade", "analyst downgrade", "guidance raise",
+                "guidance cut", "contract win", "plant inauguration", "other"
+            ]
+            classification = event_classifier(full_text[:1024], event_labels)
+            event_category = classification['labels'][0]
+            category_confidence = classification['scores'][0]
+            
+            # Summarization
+            summary = None
+            if len(full_text) > 200:
+                try:
+                    summary_result = summarizer(full_text[:1024], max_length=100, min_length=30, do_sample=False)
+                    summary = summary_result[0]['summary_text']
+                except Exception as e:
+                    print(f"[NLP classify] Summarization error: {e}")
+            
+            # Catalyst score
+            enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
+            cat, cat_name, imp, imp_name = map_nlp_category_to_standard(event_category)
+            
+            sent_mapped = f"sent-{sentiment_label}"
+            sent_name_mapped = {
+                "positive": "🟢 Positive",
+                "neutral": "🟡 Neutral",
+                "negative": "🔴 Negative"
+            }.get(sentiment_label, "🟡 Neutral")
+            
+            reason = f"NLP classification: category='{event_category}' (confidence={category_confidence:.2f}), sentiment='{sentiment_label}' (score={nlp_sentiment_score:.2f})."
+            
+            return {
+                "cat":                 cat,
+                "cat_name":            cat_name,
+                "imp":                 imp,
+                "imp_name":            imp_name,
+                "sent":                sent_mapped,
+                "sent_name":           sent_name_mapped,
+                "reason":              reason,
+                "catalyst_score":      round(enhanced_catalyst_score, 3),
+                "nlp_sentiment_score": round(nlp_sentiment_score, 3),
+                "nlp_category":        event_category,
+                "summary":             summary or desc[:120],
+                "impact_magnitude":    round(abs(enhanced_catalyst_score), 3),
+            }
+        except Exception as e:
+            print(f"[NLP classify] Enhanced classification failed: {e}. Falling back...")
+
+    # Fallback / Phase 1: Pure keyword matching (uses standard classify_announcement)
+    s_cat, s_cat_name, s_imp, s_imp_name, s_sent, s_sent_name, s_reason = classify_announcement(desc, text)
+    
+    # Map s_sent to a numeric score
+    if s_sent == "sent-positive":
+        nlp_sentiment_score = 1.0
+    elif s_sent == "sent-negative":
+        nlp_sentiment_score = -1.0
+    else:
+        nlp_sentiment_score = 0.0
+        
+    _CAT_CATALYST = {
+        "cat-order-win": 0.65, "cat-capex": 0.45, "cat-governance": 0.55,
+        "cat-regulatory": -0.70, "cat-results": 0.50, "cat-dividend": 0.40,
+        "cat-acquisition": 0.60, "cat-unknown": 0.20,
+    }
+    catalyst_score = _CAT_CATALYST.get(s_cat, 0.20)
+    if s_sent == "sent-negative" and catalyst_score > 0:
+        catalyst_score = -abs(catalyst_score) * 0.5
+        
+    impact_magnitude = round(abs(catalyst_score), 3)
+    
+    return {
+        "cat":                 s_cat,
+        "cat_name":            s_cat_name,
+        "imp":                 s_imp,
+        "imp_name":            s_imp_name,
+        "sent":                s_sent,
+        "sent_name":           s_sent_name,
+        "reason":              s_reason,
+        "summary":             None,
+        "nlp_category":        s_cat_name.lower(),
+        "nlp_sentiment_score": nlp_sentiment_score,
+        "catalyst_score":      round(catalyst_score, 3),
+        "impact_magnitude":    impact_magnitude,
+    }
+
 def refresh_ep_screener():
     """
     Computes EOD Episodic Pivot (EP) features and updates database tables.
@@ -5911,257 +6179,7 @@ def fetch_nse_announcements(symbol=None):
         
     return []
 
-# Global references for lazy NLP model initialization
-sentiment_analyzer = None
-summarizer = None
-event_classifier = None
-NLP_AVAILABLE = None  # None: not initialized; True: initialized; False: unavailable
 
-def init_nlp_models():
-    """
-    Lazily initialize NLP models for sentiment analysis, event classification, and summarization.
-    Keeps application startup fast and reloads lightweight.
-    """
-    global sentiment_analyzer, summarizer, event_classifier, NLP_AVAILABLE
-    if NLP_AVAILABLE is not None:
-        return NLP_AVAILABLE
-        
-    print("[NLP Init] Starting lazy initialization of NLP models...")
-    try:
-        from transformers import pipeline
-        import torch
-        
-        # Financial sentiment analyzer using FinBERT
-        sentiment_analyzer = pipeline(
-            "sentiment-analysis",
-            model="ProsusAI/finbert",
-            tokenizer="ProsusAI/finbert",
-            return_all_scores=True
-        )
-        print("[NLP Init] FinBERT sentiment analyzer loaded.")
-        
-        # CPU-optimized distilled summarization model
-        summarizer = pipeline(
-            "summarization",
-            model="sshleifer/distilbart-cnn-6-6",
-            device=-1
-        )
-        print("[NLP Init] DistilBART summarizer loaded.")
-        
-        # CPU-optimized distilled zero-shot classifier for event categorization
-        event_classifier = pipeline(
-            "zero-shot-classification",
-            model="typeform/distilbert-base-uncased-mnli",
-            device=-1
-        )
-        print("[NLP Init] DistilBERT zero-shot classifier loaded.")
-        
-        NLP_AVAILABLE = True
-        print("[NLP Init] All NLP models loaded successfully.")
-    except Exception as e:
-        print(f"[NLP Init] Warning: Failed to load NLP models: {e}")
-        NLP_AVAILABLE = False
-        sentiment_analyzer = summarizer = event_classifier = None
-        
-    return NLP_AVAILABLE
-
-def calculate_base_catalyst_from_nlp(sentiment_label, event_category, confidence):
-    """
-    Calculate catalyst score based on NLP analysis results.
-    """
-    event_base_scores = {
-        'financial results': 0.60,
-        'dividend announcement': 0.40,
-        'order win': 0.65,
-        'acquisition': 0.55,
-        'capex expansion': 0.45,
-        'management change': 0.50,
-        'regulatory issue': -0.30,
-        'bonus issue': 0.25,
-        'stock split': 0.20,
-        'analyst upgrade': 0.40,
-        'analyst downgrade': -0.40,
-        'guidance raise': 0.50,
-        'guidance cut': -0.70,
-        'contract win': 0.60,
-        'plant inauguration': 0.35
-    }
-    
-    base_score = event_base_scores.get(event_category.lower(), 0.20)
-    
-    # Adjust based on sentiment
-    sentiment_multiplier = {
-        'positive': 1.2,
-        'neutral': 1.0,
-        'negative': 0.8
-    }.get(sentiment_label, 1.0)
-    
-    # Apply confidence weighting
-    final_score = base_score * sentiment_multiplier * confidence
-    
-    # Clamp to reasonable range
-    return round(max(-1.0, min(1.0, final_score)), 3)
-
-def map_nlp_category_to_standard(nlp_cat):
-    """
-    Map an NLP zero-shot classification category back to standard dashboard category codes.
-    """
-    nlp_cat_l = nlp_cat.lower()
-    
-    if "dividend" in nlp_cat_l or "bonus issue" in nlp_cat_l or "stock split" in nlp_cat_l:
-        return "cat-dividend", "Dividend", "imp-earnings-st", "Earnings impact (short-term)"
-    
-    if "financial results" in nlp_cat_l or "guidance raise" in nlp_cat_l or "guidance cut" in nlp_cat_l:
-        return "cat-results", "Results", "imp-earnings-st", "Earnings impact (short-term)"
-    
-    if "order win" in nlp_cat_l or "contract win" in nlp_cat_l:
-        return "cat-order-win", "Order Win", "imp-order-book", "Order book impact"
-        
-    if "acquisition" in nlp_cat_l:
-        return "cat-acquisition", "Acquisition", "imp-balance-sheet", "Balance sheet impact"
-        
-    if "capex expansion" in nlp_cat_l or "plant inauguration" in nlp_cat_l:
-        return "cat-capex", "Capex", "imp-earnings-lt", "Earnings impact (long-term)"
-        
-    if "regulatory issue" in nlp_cat_l:
-        return "cat-regulatory", "Regulatory", "imp-governance", "Governance signal"
-        
-    if "management change" in nlp_cat_l:
-        return "cat-governance", "Governance", "imp-governance", "Governance signal"
-        
-def fetch_announcement_content(raw_url):
-    """
-    Stub function for fetching and extracting text from corporate announcements.
-    Currently returns None since PDF parsing libraries are not installed.
-    """
-    return None
-
-def enhanced_classify_announcement(desc, text, raw_url=None):
-    """
-    Classify announcement using Financial NLP models if available.
-    Falls back to standard keyword-based classification on failure or if disabled.
-    """
-    # Check if we should attempt NLP classification
-    if init_nlp_models() and ( (desc and len(desc.strip()) > 10) or (text and len(text.strip()) > 10) ):
-        try:
-            full_text = ""
-            if desc:
-                full_text += desc + " "
-            if text:
-                full_text += text
-            
-            # Fetch full announcement text if available
-            if raw_url:
-                try:
-                    full_text = fetch_announcement_content(raw_url) or full_text
-                except Exception as e:
-                    print(f"[NLP classify] Fetch content error: {e}")
-            
-            # 1. Sentiment analysis with FinBERT
-            sentiment_results = sentiment_analyzer(full_text[:512])  # FinBERT has 512-token limit
-            sentiment_label = "neutral"
-            max_score = 0.0
-            sentiment_scores = {}
-            for res in sentiment_results[0]:
-                sentiment_scores[res['label']] = res['score']
-                if res['score'] > max_score:
-                    max_score = res['score']
-                    sentiment_label = res['label']
-            
-            # Continuous sentiment score (positive score - negative score)
-            pos_score = sentiment_scores.get('positive', 0.0)
-            neg_score = sentiment_scores.get('negative', 0.0)
-            nlp_sentiment_score = pos_score - neg_score
-            
-            if sentiment_label == 'positive':
-                sent = 'sent-positive'
-                sent_name = '🟢 Positive'
-            elif sentiment_label == 'negative':
-                sent = 'sent-negative'
-                sent_name = '🔴 Negative'
-            else:
-                sent = 'sent-neutral'
-                sent_name = '🟡 Neutral'
-                
-            # 2. Event category zero-shot classification
-            event_labels = [
-                "financial results", "dividend announcement", "order win", 
-                "acquisition", "capex expansion", "management change", 
-                "regulatory issue", "bonus issue", "stock split", 
-                "analyst upgrade", "analyst downgrade", "guidance raise",
-                "guidance cut", "contract win", "plant inauguration", "other"
-            ]
-            classification = event_classifier(full_text[:1024], event_labels)
-            event_category = classification['labels'][0]
-            category_confidence = classification['scores'][0]
-            
-            # 3. Summarization
-            summary = None
-            if len(full_text) > 200:
-                try:
-                    summary_result = summarizer(full_text[:1024], max_length=100, min_length=30, do_sample=False)
-                    summary = summary_result[0]['summary_text']
-                except Exception as e:
-                    print(f"[NLP classify] Summarization error: {e}")
-            
-            # 4. Catalyst score
-            enhanced_catalyst_score = calculate_base_catalyst_from_nlp(sentiment_label, event_category, category_confidence)
-            
-            cat, cat_name, imp, imp_name = map_nlp_category_to_standard(event_category)
-            reason = f"NLP Analysis ({event_category.title()}): {summary or desc or (text[:200] + '...')}"
-            
-            return {
-                'cat': cat,
-                'cat_name': cat_name,
-                'imp': imp,
-                'imp_name': imp_name,
-                'sent': sent,
-                'sent_name': sent_name,
-                'reason': reason,
-                'nlp_sentiment_score': round(nlp_sentiment_score, 3),
-                'nlp_category': event_category,
-                'summary': summary,
-                'impact_magnitude': abs(enhanced_catalyst_score),
-                'catalyst_score': enhanced_catalyst_score
-            }
-        except Exception as e:
-            print(f"[NLP classify] Enhanced classification failed: {e}. Falling back...")
-            
-    # Fallback keyword matching
-    cat, cat_name, imp, imp_name, sent, sent_name, reason = classify_announcement(desc, text)
-    
-    sent_score = 0
-    if "positive" in sent.lower():
-        sent_score = 1
-    elif "negative" in sent.lower():
-        sent_score = -1
-        
-    event_type_mapped = "UNKNOWN"
-    if cat == "cat-order-win":
-        event_type_mapped = "ORDER_WIN"
-    elif cat == "cat-capex":
-        event_type_mapped = "CAPEX_EXPANSION"
-    elif cat == "cat-governance":
-        event_type_mapped = "MGMT_CHANGE"
-    elif cat == "cat-regulatory":
-        event_type_mapped = "FRAUD_CONCERN"
-    
-    cat_score = EP_CATALYST_BASE.get(event_type_mapped, 0.20)
-    
-    return {
-        'cat': cat,
-        'cat_name': cat_name,
-        'imp': imp,
-        'imp_name': imp_name,
-        'sent': sent,
-        'sent_name': sent_name,
-        'reason': reason,
-        'nlp_sentiment_score': float(sent_score),
-        'nlp_category': cat_name.lower(),
-        'summary': None,
-        'impact_magnitude': abs(cat_score),
-        'catalyst_score': cat_score
-    }
 
 def classify_announcement(desc, text):
     desc_l = desc.lower() if desc else ""
