@@ -3,7 +3,7 @@ Announcement processing API endpoints.
 """
 from flask import request, jsonify, current_app
 from . import api_bp
-from ..extensions import nlp_service
+from app.services.nlp_service import nlp_service
 
 @api_bp.route('/announcements/process', methods=['POST'])
 def process_announcement_endpoint():
@@ -42,7 +42,7 @@ def classify_announcement_endpoint():
     desc = data.get('desc', '')
     text = data.get('text', '')
 
-    from ..utils.helpers import classify_announcement
+    from app.utils.helpers import classify_announcement
     cat, cat_name, imp, imp_name, sent, sent_name, reason = classify_announcement(desc, text)
 
     return jsonify({

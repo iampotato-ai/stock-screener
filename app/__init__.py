@@ -3,7 +3,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, request, current_app
 from config import config
-from .extensions import db, migrate, login, mail, bootstrap, moment, cache
+from .extensions import init_extensions
 
 def create_app(config_name=None):
     """Application factory pattern."""
@@ -20,18 +20,7 @@ def create_app(config_name=None):
         pass
 
     # Initialize extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    login.init_app(app)
-    mail.init_app(app)
-    bootstrap.init_app(app)
-    moment.init_app(app)
-    cache.init_app(app)
-
-    # Login manager configuration
-    login.login_view = 'auth.login'
-    login.login_message = 'Please log in to access this page.'
-    login.login_message_category = 'info'
+    init_extensions(app)
 
     # Register blueprints
     from .api.v1 import api_bp
@@ -42,7 +31,7 @@ def create_app(config_name=None):
 
     # Configure logging for production
     if not app.debug and not app.testing:
-        if app.config['LOG_TO_STDOUT']:
+        if app.config.get('LOG_TO_STDOUT'):
             stream_handler = logging.StreamHandler()
             stream_handler.setLevel(logging.INFO)
             app.logger.addHandler(stream_handler)

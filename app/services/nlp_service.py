@@ -132,8 +132,10 @@ class NLPService:
         }
 
 
-# Convenience function for direct use (if not needing instance)
+# Singleton instance
+nlp_service = NLPService()
+
+# Convenience function for direct use
 def process_announcement(desc: str, text: str, attachment_url: str = "") -> Dict:
-    """Process announcement using default NLP service instance."""
-    service = NLPService()
-    return service.process_announcement(desc, text, attachment_url)
+    """Process announcement using the singleton NLP service instance."""
+    return nlp_service.process_announcement(desc, text, attachment_url)

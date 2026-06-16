@@ -1,8 +1,6 @@
 import os
-from dotenv import load_dotenv
 
 basedir = os.path.abspath(os.path.dirname(__file__))
-load_dotenv(os.path.join(basedir, '.env'))
 
 class Config:
     """Base configuration."""
@@ -10,6 +8,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         'sqlite:///' + os.path.join(basedir, 'app.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    DATABASE = os.environ.get('DATABASE') or 'scan_history.db'
 
     # NLP Configuration
     NLP_MODELS_ENABLED = os.environ.get('NLP_MODELS_ENABLED', 'True').lower() == 'true'
