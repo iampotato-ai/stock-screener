@@ -30,6 +30,7 @@ def _get_connection():
     If in Flask context and a connection exists in g, use it and don't close.
     Otherwise, create a new connection that the caller must close.
     """
+    global _DATABASE_PATH
     try:
         from flask import g as flask_g, has_app_context
         if has_app_context() and hasattr(flask_g, 'db'):
