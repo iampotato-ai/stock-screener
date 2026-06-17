@@ -25,6 +25,11 @@ def create_app(config_name=None):
     # Initialize scheduler
     from .tasks.scheduler import init_scheduler
     scheduler = init_scheduler(app)
+    if scheduler is not None:
+        app.scheduler = scheduler
+        logger.info("Background scheduler initialized and stored on app")
+    else:
+        logger.debug("Scheduler initialization skipped in reloader process")
 
     # Register blueprints
     from .api.v1 import api_bp

@@ -5,12 +5,19 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import atexit
 import logging
-from flask import current_app
+import os
+from flask import Flask
 
 logger = logging.getLogger(__name__)
 
-def init_scheduler(app):
+def init_scheduler(app: Flask):
     """Initialize the background scheduler."""
+    # Prevent double initialization in Flask debug mode
+    if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        # We are in the Flask reloader process, skip initialization
+        logger.debug("Scheduler not initialized in reloader process")
+        return None
+
     scheduler = BackgroundScheduler()
 
     # Add EP refresh job - runs every 30 minutes
@@ -19,7 +26,8 @@ def init_scheduler(app):
         trigger=IntervalTrigger(minutes=30),
         id='ep_refresh_job',
         name='Refresh EP screener data every 30 minutes',
-        replace_existing=True
+        replace_existing=True,
+        args=[app]  # Pass app for context
     )
 
     # Add IPO refresh job - runs every hour
@@ -28,7 +36,8 @@ def init_scheduler(app):
         trigger=IntervalTrigger(hours=1),
         id='ipo_refresh_job',
         name='Refresh IPO data every hour',
-        replace_existing=True
+        replace_existing=True,
+        args=[app]  # Pass app for context
     )
 
     # Start the scheduler
@@ -38,29 +47,30 @@ def init_scheduler(app):
     # Shut down the scheduler when exiting the app
     atexit.register(lambda: scheduler.shutdown())
 
+    # Store scheduler on app for potential future access
+    app.scheduler = scheduler
+
     return scheduler
 
-def refresh_ep_task():
+def refresh_ep_task(app: Flask):
     """Background task to refresh EP screener data."""
     try:
         # Import here to avoid circular imports
-        from app import refresh_ep_screener
-        # In a real implementation, we'd need to call this within an app context
-        # For now, we'll just log that the task would run
-        logger.info("Background EP refresh task executed")
-        # refresh_ep_screener()  # This would be called in real implementation
+        with app.app_context():
+            from app import refresh_ep_screener
+            refresh_ep_screener()
+            logger.info("EP refresh task completed successfully")
     except Exception as e:
         logger.error(f"Error in background EP refresh task: {e}")
 
-def refresh_ipo_task():
+def refresh_ipo_task(app: Flask):
     """Background task to refresh IPO data."""
     try:
         # Import here to avoid circular imports
-        from app.services.ipo_service import ipo_service
-        # In a real implementation, we'd need to call this within an app context
-        # For now, we'll just log that the task would run
-        logger.info("Background IPO refresh task executed")
-        # ipo_service.refresh_ipo_metrics()  # This would be called in real implementation
+        with app.app_context():
+            from app.services.ipo_service import ipo_service
+            ipo_service.refresh_ipo_metrics()
+            logger.info("IPO refresh task completed successfully")
     except Exception as e:
         logger.error(f"Error in background IPO refresh task: {e}")
 
