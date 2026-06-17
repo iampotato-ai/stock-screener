@@ -1,6 +1,7 @@
 """
 IPO API endpoints.
 """
+import os
 from flask import request, jsonify, current_app
 from . import api_bp
 from app.services.ipo_service import ipo_service
@@ -48,6 +49,7 @@ def get_ipo_listings():
         )
         # Return in the same format as the original endpoint
         return jsonify(
+            success=True,
             listings=result["listings"],
             total=result["total"],
             summary=result["summary"]
@@ -74,7 +76,10 @@ def get_ipo_detail(ticker):
 
         detail = ipo_service.get_ipo_detail(clean_ticker)
         # Return detail object directly like the original endpoint
-        return jsonify(detail)
+        return jsonify(
+            success=True,
+            data=detail
+        )
     except ValueError as e:
         # Check if it's a "not found" or "not cached" error for 404
         if "not found" in str(e).lower() or "not cached" in str(e).lower():
@@ -102,22 +107,23 @@ def refresh_ipo_metrics():
 
 
 # Optional debug endpoint (can be removed in production)
-@api_bp.route('/ipo/debug-nse')
-def debug_nse_ipo():
-    """
-    One-time debug route — inspect raw NSE public-past-issues field names.
-    Remove or gate behind an env flag once field names are confirmed.
-    """
-    try:
-        from app.utils.helpers import fetch_nse_past_issues
-        raw = fetch_nse_past_issues()
-        if not raw:
-            return jsonify(error="NSE returned no data — check cookies / network"), 500
-        return jsonify(
-            total_count=len(raw),
-            sample=raw[:3],
-            keys=list(raw[0].keys()) if raw else []
-        )
-    except Exception as e:
-        current_app.logger.error(f"Error in debug NSE IPO: {e}")
-        return jsonify(error=str(e)), 500
+if os.environ.get('FLASK_ENV') == 'development':
+    @api_bp.route('/ipo/debug-nse')
+    def debug_nse_ipo():
+        """
+        One-time debug route — inspect raw NSE public-past-issues field names.
+        Remove or gate behind an env flag once field names are confirmed.
+        """
+        try:
+            from app.utils.helpers import fetch_nse_past_issues
+            raw = fetch_nse_past_issues()
+            if not raw:
+                return jsonify(error="NSE returned no data — check cookies / network"), 500
+            return jsonify(
+                total_count=len(raw),
+                sample=raw[:3],
+                keys=list(raw[0].keys()) if raw else []
+            )
+        except Exception as e:
+            current_app.logger.error(f"Error in debug NSE IPO: {e}")
+            return jsonify(error=str(e)), 500

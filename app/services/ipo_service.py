@@ -1,20 +1,19 @@
 """
 IPO service for managing IPO listings and metrics.
 """
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from app.database import get_db
 import sqlite3
 import time
 import threading
 from datetime import datetime
-from app import (
+from app.utils.technical import (
     fetch_historical_prices,
     compute_swing_score,
     classify_technical_pattern,
     classify_momentum_phase,
     _calculate_rsi
 )
-from app.utils.journal_math import compute_pnl_and_r
 
 
 class IPOService:
@@ -23,6 +22,50 @@ class IPOService:
     def __init__(self):
         self.refresh_lock = threading.Lock()
         self.last_refresh_time = 0.0
+
+    def _build_volume_alert_clauses(self, volume_alert_param: str) -> Tuple[List[str], List[str]]:
+        """
+        Build WHERE clause and parameters for volume alert filters.
+        Returns a tuple (clauses, params) where clauses is a list of SQL clause strings
+        and params is a list of parameter values (empty for this filter).
+        """
+        if volume_alert_param == 'all' or volume_alert_param == '':
+            return [], []
+        selected_alerts = volume_alert_param.split(',')
+        alert_clauses = []
+        for alert in selected_alerts:
+            if alert == 'ppv':
+                alert_clauses.append("is_blue_bar = 1")
+            elif alert == 'vol-surge':
+                alert_clauses.append("is_green_bar = 1")
+            elif alert == 'dry-vol':
+                alert_clauses.append("is_orange_bar = 1")
+        if alert_clauses:
+            return [f"({ ' OR '.join(alert_clauses) })"], []
+        return [], []
+
+    def _parse_days_param(self, days_param: str) -> Optional[int]:
+        """
+        Parse days parameter into maximum days since listing.
+        Returns None if days_param is 'all' or invalid.
+        """
+        if days_param == 'all':
+            return None
+        try:
+            if days_param == '1m':
+                return 30
+            elif days_param == '3m':
+                return 90
+            elif days_param == '6m':
+                return 180
+            elif days_param == '1y':
+                return 365
+            elif days_param == '18m':
+                return 548
+            else:
+                return int(days_param)
+        except ValueError:
+            return None
 
     def get_ipo_listings(self, exchange_param: str = 'all', days_param: str = 'all',
                         phase_param: str = 'all', volume_alert_param: str = 'all',
@@ -37,22 +80,14 @@ class IPOService:
         """
         conn = None
         try:
+            conn = get_db()
             where_clauses = []
             params = []
 
             # Volume alert filters
-            if volume_alert_param != 'all' and volume_alert_param != '':
-                selected_alerts = volume_alert_param.split(',')
-                alert_clauses = []
-                for alert in selected_alerts:
-                    if alert == 'ppv':
-                        alert_clauses.append("is_blue_bar = 1")
-                    elif alert == 'vol-surge':
-                        alert_clauses.append("is_green_bar = 1")
-                    elif alert == 'dry-vol':
-                        alert_clauses.append("is_orange_bar = 1")
-                if alert_clauses:
-                    where_clauses.append(f"({ ' OR '.join(alert_clauses) })")
+            volume_alert_clauses, volume_alert_params = self._build_volume_alert_clauses(volume_alert_param)
+            where_clauses.extend(volume_alert_clauses)
+            params.extend(volume_alert_params)
 
             # Minimum volume filter
             min_vol = self._parse_volume_param(min_volume_param)
@@ -68,21 +103,10 @@ class IPOService:
                     where_clauses.append("exchange = 'BSE'")
 
             # Days filter
-            if days_param != 'all':
-                max_days = None
-                if days_param == '1m': max_days = 30
-                elif days_param == '3m': max_days = 90
-                elif days_param == '6m': max_days = 180
-                elif days_param == '1y': max_days = 365
-                elif days_param == '18m': max_days = 548
-                else:
-                    try:
-                        max_days = int(days_param)
-                    except ValueError:
-                        pass
-                if max_days is not None:
-                    where_clauses.append("days_since_listing <= ?")
-                    params.append(max_days)
+            max_days = self._parse_days_param(days_param)
+            if max_days is not None:
+                where_clauses.append("days_since_listing <= ?")
+                params.append(max_days)
 
             # Phase filter
             if phase_param != 'all':
@@ -93,7 +117,6 @@ class IPOService:
             if where_clauses:
                 where_str = f" WHERE {' AND '.join(where_clauses)}"
 
-            conn = sqlite3.connect('scan_history.db', timeout=30.0)
             c = conn.cursor()
 
             # Count total recent IPOs (avoid double counting when exchange is 'all')
@@ -111,34 +134,15 @@ class IPOService:
                     summary_clauses.append("exchange = 'NSE'")
                 elif exchange_param == 'BSE':
                     summary_clauses.append("exchange = 'BSE'")
-            if days_param != 'all':
-                max_days = None
-                if days_param == '1m': max_days = 30
-                elif days_param == '3m': max_days = 90
-                elif days_param == '6m': max_days = 180
-                elif days_param == '1y': max_days = 365
-                elif days_param == '18m': max_days = 548
-                else:
-                    try:
-                        max_days = int(days_param)
-                    except ValueError:
-                        pass
-                if max_days is not None:
-                    summary_clauses.append("days_since_listing <= ?")
-                    summary_params.append(max_days)
+            # Reuse max_days from above
+            if max_days is not None:
+                summary_clauses.append("days_since_listing <= ?")
+                summary_params.append(max_days)
 
-            if volume_alert_param != 'all' and volume_alert_param != '':
-                selected_alerts = volume_alert_param.split(',')
-                alert_clauses = []
-                for alert in selected_alerts:
-                    if alert == 'ppv':
-                        alert_clauses.append("is_blue_bar = 1")
-                    elif alert == 'vol-surge':
-                        alert_clauses.append("is_green_bar = 1")
-                    elif alert == 'dry-vol':
-                        alert_clauses.append("is_orange_bar = 1")
-                if alert_clauses:
-                    summary_clauses.append(f"({ ' OR '.join(alert_clauses) })")
+            # Volume alert filters for summary (same as main)
+            summary_volume_alert_clauses, summary_volume_alert_params = self._build_volume_alert_clauses(volume_alert_param)
+            summary_clauses.extend(summary_volume_alert_clauses)
+            summary_params.extend(summary_volume_alert_params)
 
             if min_vol is not None:
                 summary_clauses.append("volume >= ?")
@@ -164,7 +168,7 @@ class IPOService:
                 'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
                 'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
                 'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-                'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high',
+                'momentum_phase': current_price, volume, change_pct, day_low, day_high,
                 'is_blue_bar', 'is_green_bar', 'is_orange_bar', 'day_range_pct'
             ]
             if sort_by not in allowed_sort_cols:
@@ -208,13 +212,13 @@ class IPOService:
                 'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
                 'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
                 'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-                'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high',
+                'momentum_phase': current_price, volume, change_pct, day_low, day_high,
                 'is_blue_bar', 'is_green_bar', 'is_orange_bar', 'cached_at'
             ]
 
             listings = []
             for r in rows:
-                ipo = dict(zip(cols, r))
+                ipo = dict(r)  # Use dict(row) because get_db() sets row_factory to sqlite3.Row
                 # Recalculate days_since_listing dynamically so it never goes stale
                 try:
                     lst_dt = datetime.strptime(ipo["listing_date"], "%Y-%m-%d")
@@ -230,9 +234,7 @@ class IPOService:
             }
         except Exception as e:
             raise e
-        finally:
-            if conn:
-                conn.close()
+        # Note: Connection is closed by Flask's teardown_appcontext, do not close here
 
     def get_ipo_detail(self, ticker: str) -> Dict[str, Any]:
         """
@@ -246,14 +248,14 @@ class IPOService:
         """
         conn = None
         try:
-            conn = sqlite3.connect('scan_history.db', timeout=30.0)
+            conn = get_db()
             c = conn.cursor()
             c.execute("SELECT * FROM ipo_metrics_cache WHERE ticker = ?", (ticker,))
             row = c.fetchone()
 
             if not row:
                 # Check if exists in ipo_listings at least
-                c.execute("SELECT ticker FROM ipo_listings WHERE ticker = ?", (ticker,))
+                conn.execute("SELECT ticker FROM ipo_listings WHERE ticker = ?", (ticker,))
                 exists = c.fetchone()
                 if not exists:
                     raise ValueError(f"Ticker {ticker} not found in IPO listings")
@@ -261,7 +263,7 @@ class IPOService:
                     raise ValueError(f"Ticker {ticker} is not cached yet")
 
             cols = [description[0] for description in c.description]
-            detail = dict(zip(cols, row))
+            detail = dict(row)  # Use dict(row) because get_db() sets row_factory to sqlite3.Row
 
             # Get price history
             history = fetch_historical_prices(ticker, range_str="1y")
@@ -270,9 +272,7 @@ class IPOService:
             return detail
         except Exception as e:
             raise e
-        finally:
-            if conn:
-                conn.close()
+        # Note: Connection is closed by Flask's teardown_appcontext, do not close here
 
     def refresh_ipo_metrics(self) -> bool:
         """
@@ -281,9 +281,11 @@ class IPOService:
         Returns:
             True if refresh started, False if cooldown active
         """
-        current_time = time.time()
-        if current_time - self.last_refresh_time < 60:
-            return False  # Cooldown active
+        with self.refresh_lock:
+            current_time = time.time()
+            if current_time - self.last_refresh_time < 60:
+                return False  # Cooldown active
+            self.last_refresh_time = current_time
 
         # Start background thread to refresh cache asynchronously
         def _bg_refresh():
@@ -295,8 +297,6 @@ class IPOService:
 
         t = threading.Thread(target=_bg_refresh)
         t.start()
-
-        self.last_refresh_time = current_time
         return True
 
     def _refresh_ipo_metrics_internal(self):
