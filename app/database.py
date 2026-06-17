@@ -10,6 +10,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Module-level variable to store the database path for standalone usage
+_DATABASE_PATH = None
+
 def get_db():
     """Get a database connection."""
     if 'db' not in g:
@@ -22,17 +25,50 @@ def get_db():
     return g.db
 
 
+def _get_connection():
+    """Get a database connection, returning (connection, should_close).
+    If in Flask context and a connection exists in g, use it and don't close.
+    Otherwise, create a new connection that the caller must close.
+    """
+    try:
+        from flask import g as flask_g, has_app_context
+        if has_app_context() and hasattr(flask_g, 'db'):
+            return flask_g.db, False
+    except Exception:
+        pass
+
+    # If we are here, we are not in Flask context or g.db doesn't exist
+    if _DATABASE_PATH is None:
+        # Try to get the database path from current_app if available
+        try:
+            from flask import current_app
+            _DATABASE_PATH = current_app.config['DATABASE']
+        except Exception:
+            raise RuntimeError(
+                "Database path not initialized. Call init_db_app() or init_db_standalone() first."
+            )
+
+    conn = sqlite3.connect(_DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn, True
+
+
 def init_db_app():
     """Initialize the database application context version."""
+    global _DATABASE_PATH
+    _DATABASE_PATH = current_app.config['DATABASE']
     db = get_db()
     _create_tables(db)
     db.commit()
     logger.info("Database initialized with app context")
 
 
-def init_db_standalone():
+def init_db_standalone(db_path):
     """Initialize the database standalone version (for scripts)."""
-    with get_db_connection() as conn:
+    global _DATABASE_PATH
+    _DATABASE_PATH = db_path
+    with get_db_connection(db_path) as conn:
         _create_tables(conn)
         conn.commit()
     logger.info("Database initialized standalone")
@@ -536,10 +572,14 @@ def init_db():
 
 
 @contextmanager
-def get_db_connection():
-    """Context manager for database connections outside Flask context."""
-    conn = sqlite3.connect(current_app.config['DATABASE'])
+def get_db_connection(db_path=None):
+    """Context manager for database connections, inside or outside Flask context."""
+    if db_path is None:
+        from flask import current_app
+        db_path = current_app.config['DATABASE']
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
     finally:
@@ -548,7 +588,8 @@ def get_db_connection():
 
 def execute_query(query, params=(), commit=False):
     """Execute a query and return results."""
-    with get_db_connection() as conn:
+    conn, should_close = _get_connection()
+    try:
         cursor = conn.cursor()
         cursor.execute(query, params)
         if commit:
@@ -556,22 +597,33 @@ def execute_query(query, params=(), commit=False):
             return cursor.lastrowid
         else:
             return cursor.fetchall()
+    finally:
+        if should_close:
+            conn.close()
 
 
 def fetch_one(query, params=()):
     """Fetch a single row."""
-    with get_db_connection() as conn:
+    conn, should_close = _get_connection()
+    try:
         cursor = conn.cursor()
         cursor.execute(query, params)
         return cursor.fetchone()
+    finally:
+        if should_close:
+            conn.close()
 
 
 def fetch_all(query, params=()):
     """Fetch all rows."""
-    with get_db_connection() as conn:
+    conn, should_close = _get_connection()
+    try:
         cursor = conn.cursor()
         cursor.execute(query, params)
         return cursor.fetchall()
+    finally:
+        if should_close:
+            conn.close()
 
 
 # ========== SCREENER RELATED FUNCTIONS ==========
@@ -704,11 +756,13 @@ def get_watchlist_items(section_id):
 
 def add_watchlist_section(name):
     """Add a new watchlist section."""
+    import uuid
+    section_id = str(uuid.uuid4())
     query = '''
-        INSERT OR REPLACE INTO watchlist_sections (name)
-        VALUES (?)
+        INSERT OR IGNORE INTO watchlist_sections (id, name)
+        VALUES (?, ?)
     '''
-    return execute_query(query, (name,), commit=True)
+    return execute_query(query, (section_id, name), commit=True)
 
 
 def delete_watchlist_section(section_id):
@@ -763,19 +817,31 @@ def create_journal_entry(entry_data):
     """Create a new journal entry."""
     query = '''
         INSERT OR IGNORE INTO trade_journal (
-            entry, qty, stop, target, strategy,
-            setup, profit_loss, date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            id, ticker, name, date, setupLabel, swingband, entry, stop,
+            target1, target2, target3, riskAmount, qty, status, exitPrice,
+            exitDate, pnl, rAchieved, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     '''
     params = (
+        entry_data.get('id'),
+        entry_data.get('ticker'),
+        entry_data.get('name'),
+        entry_data.get('date'),
+        entry_data.get('setupLabel'),
+        entry_data.get('swingband'),
         entry_data.get('entry'),
-        entry_data.get('qty'),
         entry_data.get('stop'),
-        entry_data.get('target'),
-        entry_data.get('strategy'),
-        entry_data.get('setup'),
-        entry_data.get('profit_loss'),
-        entry_data.get('date')
+        entry_data.get('target1'),
+        entry_data.get('target2'),
+        entry_data.get('target3'),
+        entry_data.get('riskAmount'),
+        entry_data.get('qty'),
+        entry_data.get('status'),
+        entry_data.get('exitPrice'),
+        entry_data.get('exitDate'),
+        entry_data.get('pnl'),
+        entry_data.get('rAchieved'),
+        entry_data.get('notes')
     )
     return execute_query(query, params, commit=True)
 
@@ -829,7 +895,7 @@ def get_ep_watchlist(status=None):
     query = '''
         SELECT ew.*, ef.ep_score, ef.confidence
         FROM ep_watchlist ew
-        LEFT JOIN ep_features ef ON ew.symbol = ef.symbol AND ew.feature_date = ef.feature_date
+        LEFT JOIN ep_features ef ON ew.symbol = ef.symbol AND ew.catalyst_date = ef.feature_date
     '''
     params = ()
 
@@ -863,7 +929,7 @@ def get_sugar_babies():
         FROM sugar_babies sb
         LEFT JOIN ep_features ef ON sb.symbol = ef.symbol AND ef.ep_score >= 0.55
         GROUP BY sb.symbol
-        ORDER BY sb.rank_position ASC
+        ORDER BY sb.avg_burst_pct DESC
     '''
     return fetch_all(query)
 

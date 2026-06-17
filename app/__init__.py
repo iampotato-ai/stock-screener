@@ -5,6 +5,8 @@ from flask import Flask, request, current_app
 from config import config
 from .extensions import init_extensions
 
+logger = logging.getLogger(__name__)
+
 def create_app(config_name=None):
     """Application factory pattern."""
     if config_name is None:
