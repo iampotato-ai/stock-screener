@@ -37,8 +37,10 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Created market breadth API blueprint (`app/api/v1/market_breadth.py`)
 - ✅ Migrated alert business logic to service (`app/services/alert_service.py`)
 - ✅ Created alert API blueprint (`app/api/v1/alerts.py`)
-- ⏳ Migrating business logic to services (IPO, news, etc.)
-- ⏳ Creating API blueprints for each feature
+- ✅ Migrated IPO business logic to service (`app/services/ipo_service.py`)
+- ✅ Created IPO API blueprint (`app/api/v1/ipo.py`)
+- ⏳ Migrating business logic to services (news, screener, etc.)
+- ⏳ Creating API blueprints for each feature (news, screener, etc.)
 - ⏳ Migrating database helpers and raw SQL queries to a data access layer
 - ⏳ Setting up background worker (APScheduler) using the NLP service singleton
 
@@ -74,7 +76,7 @@ stock-screener/
 │   │       ├─ watchlist.py        # (to be created) watchlist management
 │   │       ├─ journal.py          # (to be created) trade journal
 │   │       ├─ alerts.py           # (to be created) alert processing
-│   │       ├─ ipo.py              # (to be created) IPO handling
+│   │       ├─ ipo.py              # (created) IPO handling
 │   │       ├─ news.py             # (to be created) news and corporate events
 │   │       └─ market_breadth.py   # (to be created) market breadth indicators
 │   │
@@ -85,7 +87,7 @@ stock-screener/
 │   │   ├─ screener_service.py   # (to be created)
 │   │   ├─ journal_service.py    # (to be created)
 │   │   ├─ alert_service.py      # (to be created)
-│   │   ├─ ipo_service.py        # (to be created)
+│   │   ├─ ipo_service.py        # (created)
 │   │   ├─ news_service.py       # (to be created)
 │   │   └─ market_breadth_service.py  # (to be created)
 │   │
@@ -188,14 +190,18 @@ stock-screener/
 - Configuration-controlled via `NLP_MODELS_ENABLED` environment variable
 
 ## Immediate Next Steps
-1. Migrate IPO handling following the established pattern:
-   - Create `app/services/ipo_service.py`
-   - Create `app/api/v1/ipo.py`
-   - Move IPO-related code from `app.py` to these new locations
-   - Update `app/api/v1/__init__.py` to import the ipo module
+1. Migrate news handling following the established pattern:
+   - Create `app/services/news_service.py`
+   - Create `app/api/v1/news.py`
+   - Move news-related code from `app.py` to these new locations
+   - Update `app/api/v1/__init__.py` to import the news module
    - Test the new component independently
-   
-2. Alternatively, you could proceed with migrating news, screener, or other services.
+2. Migrate screener handling following the established pattern:
+   - Create `app/services/screener_service.py`
+   - Create `app/api/v1/screener.py`
+   - Move screener-related code from `app.py` to these new locations
+   - Update `app/api/v1/__init__.py` to import the screener module
+   - Test the new component independently
 3. Set up the background worker scheduler:
    - Create `app/tasks/scheduler.py`
    - Initialize scheduler in `app/__init__.py` after extensions are ready
