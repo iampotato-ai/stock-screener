@@ -168,7 +168,7 @@ class IPOService:
                 'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
                 'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
                 'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-                'momentum_phase': current_price, volume, change_pct, day_low, day_high,
+                'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high',
                 'is_blue_bar', 'is_green_bar', 'is_orange_bar', 'day_range_pct'
             ]
             if sort_by not in allowed_sort_cols:
@@ -212,7 +212,7 @@ class IPOService:
                 'ticker', 'company_name', 'listing_date', 'exchange', 'sector', 'issue_price',
                 'listing_gain_pct', 'current_vs_issue_pct', 'current_vs_listing_pct', 'days_since_listing',
                 'rvol_ratio', 'above_listing_high', 'drawdown_from_ath', 'swing_score', 'pattern_name',
-                'momentum_phase': current_price, volume, change_pct, day_low, day_high,
+                'momentum_phase', 'current_price', 'volume', 'change_pct', 'day_low', 'day_high',
                 'is_blue_bar', 'is_green_bar', 'is_orange_bar', 'cached_at'
             ]
 
@@ -255,7 +255,7 @@ class IPOService:
 
             if not row:
                 # Check if exists in ipo_listings at least
-                conn.execute("SELECT ticker FROM ipo_listings WHERE ticker = ?", (ticker,))
+                c.execute("SELECT ticker FROM ipo_listings WHERE ticker = ?", (ticker,))
                 exists = c.fetchone()
                 if not exists:
                     raise ValueError(f"Ticker {ticker} not found in IPO listings")
