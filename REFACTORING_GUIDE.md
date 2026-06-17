@@ -39,8 +39,10 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Created alert API blueprint (`app/api/v1/alerts.py`)
 - ✅ Migrated IPO business logic to service (`app/services/ipo_service.py`)
 - ✅ Created IPO API blueprint (`app/api/v1/ipo.py`)
-- ⏳ Migrating business logic to services (news, screener, etc.)
-- ⏳ Creating API blueprints for each feature (news, screener, etc.)
+- ✅ Migrated news business logic to service (`app/services/news_service.py`)
+- ✅ Created news API blueprint (`app/api/v1/news.py`)
+- ✅ Migrated screener business logic to service (`app/services/screener_service.py`)
+- ✅ Created screener API blueprint (`app/api/v1/screener.py`)
 - ⏳ Migrating database helpers and raw SQL queries to a data access layer
 - ⏳ Setting up background worker (APScheduler) using the NLP service singleton
 
@@ -73,22 +75,22 @@ stock-screener/
 │   │       ├─ __init__.py
 │   │       ├─ announcements.py    # NLP processing endpoint
 │   │       ├─ screener.py         # (to be created) market data and screening
-│   │       ├─ watchlist.py        # (to be created) watchlist management
-│   │       ├─ journal.py          # (to be created) trade journal
-│   │       ├─ alerts.py           # (to be created) alert processing
+│   │       ├─ watchlist.py        # (created) watchlist management
+│   │       ├─ journal.py          # (created) trade journal
+│   │       ├─ alerts.py           # (created) alert processing
 │   │       ├─ ipo.py              # (created) IPO handling
-│   │       ├─ news.py             # (to be created) news and corporate events
+│   │       ├─ news.py             # (created) news and corporate events
 │   │       └─ market_breadth.py   # (to be created) market breadth indicators
 │   │
 │   ├─ /services               # Business logic layer
 │   │   ├─ __init__.py
 │   │   ├─ nlp_service.py        # NLP processing (completed)
-│   │   ├─ watchlist_service.py  # (to be created)
+│   │   ├─ watchlist_service.py  # (created)
 │   │   ├─ screener_service.py   # (to be created)
-│   │   ├─ journal_service.py    # (to be created)
-│   │   ├─ alert_service.py      # (to be created)
+│   │   ├─ journal_service.py    # (created)
+│   │   ├─ alert_service.py      # (created)
 │   │   ├─ ipo_service.py        # (created)
-│   │   ├─ news_service.py       # (to be created)
+│   │   ├─ news_service.py       # (created)
 │   │   └─ market_breadth_service.py  # (to be created)
 │   │
 │   ├─ /utils                  # Cross-cutting utilities
@@ -190,19 +192,15 @@ stock-screener/
 - Configuration-controlled via `NLP_MODELS_ENABLED` environment variable
 
 ## Immediate Next Steps
-1. Migrate news handling following the established pattern:
-   - Create `app/services/news_service.py`
-   - Create `app/api/v1/news.py`
-   - Move news-related code from `app.py` to these new locations
-   - Update `app/api/v1/__init__.py` to import the news module
-   - Test the new component independently
-2. Migrate screener handling following the established pattern:
-   - Create `app/services/screener_service.py`
-   - Create `app/api/v1/screener.py`
-   - Move screener-related code from `app.py` to these new locations
-   - Update `app/api/v1/__init__.py` to import the screener module
-   - Test the new component independently
-3. Set up the background worker scheduler:
+1. ✅ Completed screener migration following the established pattern:
+   - Created `app/services/screener_service.py`
+   - Created `app/api/v1/screener.py`
+   - Migrated screener-related code from `app.py` to these new locations
+   - Updated `app/api/v1/__init__.py` to import the screener module
+   - Verified the new component works correctly
+2. 🔄 Set up the background worker scheduler:
    - Create `app/tasks/scheduler.py`
    - Initialize scheduler in `app/__init__.py` after extensions are ready
    - Use `extensions.nlp_service` for NLP processing in the EP refresh job
+3. 🔄 Complete market breadth service migration (if not already done)
+4. 🔄 Migrate database helpers and raw SQL queries to a data access layer (`app/database.py`)

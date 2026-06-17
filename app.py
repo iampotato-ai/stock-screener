@@ -6760,8 +6760,6 @@ import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 
-NEWS_CACHE = {}
-NEWS_CACHE_TIMEOUT = 900  # 15 mins
 
 def fetch_google_news(ticker):
     now = time.time()
@@ -6830,19 +6828,6 @@ def fetch_google_news(ticker):
             
     return news_list
 
-@app.route("/api/news", methods=["GET"])
-def get_news():
-    from flask import request as flask_request
-    symbol = flask_request.args.get("symbol", "").strip().upper()
-    if not symbol:
-        return jsonify({"error": "Symbol required", "news": []}), 400
-        
-    # strip "NSE:" if present
-    if symbol.startswith("NSE:"):
-        symbol = symbol[4:]
-        
-    articles = fetch_google_news(symbol)
-    return jsonify({"symbol": symbol, "news": articles})
 
 @app.route('/api/breadth-snapshot', methods=['POST'])
 def save_breadth_snapshot():
