@@ -40,7 +40,11 @@ from app.database import get_market_breadth
 def init_db():
     """Initialize the database using the database module."""
     from app.database import init_db_standalone
-    init_db_standalone('scan_history.db')
+    from config import config
+    import os
+    config_name = os.environ.get('FLASK_ENV', 'default')
+    database_path = config[config_name].DATABASE
+    init_db_standalone(database_path)
 
 
 # ---------------------------------------------------------------------------
@@ -6399,10 +6403,7 @@ def get_breadth_latest():
             return jsonify({})
 
         # Convert sqlite3.Row to dict
-        cols = ['date','time','advances','declines','unchanged',
-                'pct_sma21','pct_sma50','pct_52high','avg_recommend',
-                'regime_score','regime_band']
-        return jsonify(dict(zip(cols, row)))
+        return jsonify(dict(row))
     except Exception as e:
         return jsonify(error=str(e)), 500
 
