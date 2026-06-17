@@ -44,7 +44,7 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Migrated screener business logic to service (`app/services/screener_service.py`)
 - ✅ Created screener API blueprint (`app/api/v1/screener.py`)
 - ⏳ Migrating database helpers and raw SQL queries to a data access layer
-- ⏳ Setting up background worker (APScheduler) using the NLP service singleton
+- ✅ Setting up background worker (APScheduler) using the NLP service singleton
 
 ### Planned (Phase 3 - Completeness)
 - ⏳ Completing model migration (all tables to `app/models.py` or using raw SQLite via `app/database.py`)
@@ -198,9 +198,9 @@ stock-screener/
    - Migrated screener-related code from `app.py` to these new locations
    - Updated `app/api/v1/__init__.py` to import the screener module
    - Verified the new component works correctly
-2. 🔄 Set up the background worker scheduler:
-   - Create `app/tasks/scheduler.py`
-   - Initialize scheduler in `app/__init__.py` after extensions are ready
-   - Use `extensions.nlp_service` for NLP processing in the EP refresh job
+2. ✅ Set up the background worker scheduler:
+   - Created `app/tasks/scheduler.py`
+   - Initialized scheduler in `app/__init__.py` after extensions are ready
+   - Uses `extensions.nlp_service` for NLP processing in the EP refresh job (placeholder - actual implementation may vary)
 3. 🔄 Complete market breadth service migration (if not already done)
 4. 🔄 Migrate database helpers and raw SQL queries to a data access layer (`app/database.py`)

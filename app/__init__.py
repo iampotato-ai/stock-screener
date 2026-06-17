@@ -22,6 +22,10 @@ def create_app(config_name=None):
     # Initialize extensions
     init_extensions(app)
 
+    # Initialize scheduler
+    from .tasks.scheduler import init_scheduler
+    scheduler = init_scheduler(app)
+
     # Register blueprints
     from .api.v1 import api_bp
     app.register_blueprint(api_bp, url_prefix='/api/v1')
