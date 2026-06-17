@@ -43,10 +43,12 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Created news API blueprint (`app/api/v1/news.py`)
 - ✅ Migrated screener business logic to service (`app/services/screener_service.py`)
 - ✅ Created screener API blueprint (`app/api/v1/screener.py`)
+- ✅ Started migrating database helpers to `app/database.py`
 - ⏳ Migrating database helpers and raw SQL queries to a data access layer
 - ✅ Setting up background worker (APScheduler) using the NLP service singleton
 
 ### Planned (Phase 3 - Completeness)
+- ✅ Created `app/database.py` with database helper functions for raw SQLite access
 - ⏳ Completing model migration (all tables to `app/models.py` or using raw SQLite via `app/database.py`)
 - ⏳ Migrating remaining utility functions to `app/utils/`
 - ⏳ Adding environment-based configuration for external APIs and feature flags
