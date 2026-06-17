@@ -44,6 +44,8 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Migrated screener business logic to service (`app/services/screener_service.py`)
 - ✅ Created screener API blueprint (`app/api/v1/screener.py`)
 - ✅ Migrated database helpers to `app/database.py`
+- ✅ **Added import for database module functions in app.py** (`from app.database import get_market_breadth`)
+- ✅ **Created new API endpoint `/api/breadth-latest` using database module function**
 - 🔄 Continuing migration of database helpers and raw SQL queries to a data access layer
 - ✅ Setting up background worker (APScheduler) using the NLP service singleton
 
@@ -204,5 +206,7 @@ stock-screener/
    - Created `app/tasks/scheduler.py`
    - Initialized scheduler in `app/__init__.py` after extensions are ready
    - Uses `extensions.nlp_service` for NLP processing in the EP refresh job (placeholder - actual implementation may vary)
-3. 🔄 Complete market breadth service migration (if not already done)
-4. 🔄 Migrate database helpers and raw SQL queries to a data access layer (`app/database.py`)
+3. ✅ **Started market breadth service integration**:
+   - Added `from app.database import get_market_breadth` import to app.py
+   - Created `/api/breadth-latest` endpoint using the database module function
+4. 🔄 Continue migrating database helpers and raw SQL queries to a data access layer (`app/database.py`)

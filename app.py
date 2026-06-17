@@ -34,11 +34,13 @@ nse_results_lock = threading.Lock()
 # Change to True or set the environment variable ENABLE_SIMULATED_DATA=true to test Phase 3 simulated layouts.
 ENABLE_SIMULATED_DATA = os.environ.get("ENABLE_SIMULATED_DATA", "false").lower() == "true"
 
+from app.database import get_market_breadth
+
 
 def init_db():
     """Initialize the database using the database module."""
-    from .database import init_db_app
-    init_db_app()
+    from app.database import init_db_standalone
+    init_db_standalone('scan_history.db')
 
 
 # ---------------------------------------------------------------------------
@@ -6383,6 +6385,24 @@ def get_breadth_history():
         cols = ['date','time','advances','declines','pctAboveSMA21',
                 'pctAboveSMA50','pctNear52High','regimeScore','regimeBand','avgRecommend']
         return jsonify(history=[dict(zip(cols, r)) for r in rows])
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+
+@app.route('/api/breadth-latest', methods=['GET'])
+def get_breadth_latest():
+    """Get the latest market breadth data."""
+    try:
+        # Use the database module function
+        row = get_market_breadth()
+        if row is None:
+            return jsonify({})
+
+        # Convert sqlite3.Row to dict
+        cols = ['date','time','advances','declines','unchanged',
+                'pct_sma21','pct_sma50','pct_52high','avg_recommend',
+                'regime_score','regime_band']
+        return jsonify(dict(zip(cols, row)))
     except Exception as e:
         return jsonify(error=str(e)), 500
 

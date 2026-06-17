@@ -763,7 +763,8 @@ def add_watchlist_section(name):
         INSERT OR IGNORE INTO watchlist_sections (id, name)
         VALUES (?, ?)
     '''
-    return execute_query(query, (section_id, name), commit=True)
+    execute_query(query, (section_id, name), commit=True)
+    return section_id
 
 
 def delete_watchlist_section(section_id):
@@ -821,7 +822,7 @@ def create_journal_entry(entry_data):
             id, ticker, name, date, setupLabel, swingband, entry, stop,
             target1, target2, target3, riskAmount, qty, status, exitPrice,
             exitDate, pnl, rAchieved, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     '''
     params = (
         entry_data.get('id'),
