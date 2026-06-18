@@ -29,16 +29,34 @@ class ScreenerService:
             current_app.logger.error(f"Error getting latest scan date: {e}")
             return None
 
-    def get_scan_results(self, limit: int = 50) -> List[Dict[str, Any]]:
+    def get_scan_results(self, limit: int = 500, live: bool = False) -> List[Dict[str, Any]]:
         """
-        Get the latest scan results from the database using raw SQL.
+        Get the latest scan results.
+        If live is True, performs a live scan via TradingView.
+        Otherwise, returns latest scan results from the database.
 
         Args:
             limit: Maximum number of results to return
+            live: Whether to perform a live scan
 
         Returns:
-            List of stock dictionaries from the latest scan
+            List of stock dictionaries from the scan
         """
+        if live:
+            try:
+                from app.api.v1.legacy_routes import scan_stocks
+                response = scan_stocks()
+                response_data = response.get_json()
+                if response_data and 'stocks' in response_data:
+                    results = []
+                    for s in response_data['stocks']:
+                        s['setup_label'] = s.get('setupLabel', '')
+                        results.append(s)
+                    return results[:limit]
+            except Exception as e:
+                current_app.logger.error(f"Error performing live scan: {e}")
+                # Fall back to database results if live scan fails
+
         try:
             from app.database import get_latest_scan_results
             scan_results = get_latest_scan_results(limit)
@@ -95,8 +113,8 @@ class ScreenerService:
         def _bg_refresh():
             with app.app_context():
                 try:
-                    # Call the scan function from app.py
-                    from app import scan_stocks
+                    # Call the scan function from legacy_routes
+                    from app.api.v1.legacy_routes import scan_stocks
                     # We need to call this in a request context, but for background we'll
                     # simulate what the scan endpoint does
                     # For now, we'll just log that refresh was triggered

@@ -15,13 +15,13 @@ def get_screener_scan():
     - limit: maximum number of results to return (default: 50)
     """
     try:
-        limit = request.args.get('limit', '50').strip()
+        limit = request.args.get('limit', '500').strip()
         try:
-            limit = int(limit) if limit.isdigit() else 50
+            limit = int(limit) if limit.isdigit() else 500
         except ValueError:
-            limit = 50
+            limit = 500
 
-        results = screener_service.get_scan_results(limit=limit)
+        results = screener_service.get_scan_results(limit=limit, live=True)
         return jsonify(
             success=True,
             count=len(results),
