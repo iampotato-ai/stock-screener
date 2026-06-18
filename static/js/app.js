@@ -1291,24 +1291,25 @@ async function runScan() {
             return;
         }
         
-        if (stocksData && stocksData.length > 0) {
+        const newStocksData = result.data || [];
+        if (newStocksData && newStocksData.length > 0) {
             previousScanMap = {};
-            stocksData.forEach(s => { previousScanMap[s.clean_ticker] = s; });
+            newStocksData.forEach(s => { previousScanMap[s.clean_ticker] = s; });
         }
-        
-        stocksData = result.stocks || [];
+        stocksData = newStocksData;
+        universeData = [];   // No universe data from backend, so we'll let calculateSectorScores fall back to stocksData
+
+        // Update stats - we don't have total_scanned and total_matched from backend, so we use count for matched and set scanned to the same (for now)
+        if (window.valScanned) valScanned.textContent = result.count.toLocaleString();
+        if (window.valMatched) valMatched.textContent = result.count.toLocaleString();
+
         stocksData.forEach(s => {
             const h = parseFloat(s.high);
             const l = parseFloat(s.low);
             const c = parseFloat(s.close);
             s.day_range_pct = (!isNaN(h) && !isNaN(l) && h > l && !isNaN(c)) ? ((c - l) / (h - l)) * 100 : -1;
         });
-        universeData = result.universe || [];
         filteredStocks = [...stocksData];
-        
-        // Update stats
-        if (window.valScanned) valScanned.textContent = result.total_scanned.toLocaleString();
-        if (window.valMatched) valMatched.textContent = result.total_matched.toLocaleString();
         
         // Update timestamp
         const timeStr = new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
@@ -1826,10 +1827,23 @@ window.applyRegimePreset = applyRegimePreset;
 async function saveBreadthSnapshot() {
   if (!marketBreadth.total) return;
   try {
+    // Convert camelCase field names to snake_case for API compatibility
+    const payload = {
+      advances: marketBreadth.advances,
+      declines: marketBreadth.declines,
+      unchanged: marketBreadth.unchanged,
+      pct_sma21: marketBreadth.pctAboveSMA21,
+      pct_sma50: marketBreadth.pctAboveSMA50,
+      pct_52high: marketBreadth.pctNear52High,
+      avg_recommend: marketBreadth.avgRecommend,
+      regime_score: marketBreadth.regimeScore,
+      regime_band: marketBreadth.regimeBand
+    };
+
     await fetch('/api/breadth-snapshot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(marketBreadth),
+      body: JSON.stringify(payload),
     });
   } catch (_) {}
 }
@@ -2763,9 +2777,10 @@ function renderTable() {
                 `;
 
             } else if (col.id === 'description') {
+                const description = stock.description || '';
                 html += `
-                    <td data-column="description" style="font-weight: 600; color: var(--color-text-primary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 200px;" title="${escapeHtml(stock.description)}">
-                        ${stock.description}
+                    <td data-column="description" style="font-weight: 600; color: var(--color-text-primary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 200px;" title="${escapeHtml(description)}">
+                        ${description || '—'}
                     </td>
                 `;
             } else if (col.id === 'close') {
@@ -2773,25 +2788,26 @@ function renderTable() {
                     <td data-column="close" class="text-right" style="font-weight:700; color:var(--color-text-primary);">₹${stock.close.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                 `;
             } else if (col.id === 'change') {
-                const changeClass = stock.change >= 0 ? 'val-up' : 'val-down';
-                const changeSign = stock.change > 0 ? '+' : '';
-                const arrow = stock.change >= 0 ? '▲' : '▼';
+                const change = stock.change || 0;
+                const changeClass = change >= 0 ? 'val-up' : 'val-down';
+                const changeSign = change > 0 ? '+' : '';
+                const arrow = change >= 0 ? '▲' : '▼';
                 html += `
-                    <td data-column="change" class="text-right ${changeClass}" aria-label="${changeSign}${stock.change.toFixed(2)} percent change">
-                        <span class="colorblind-arrow">${arrow}</span>${changeSign}${stock.change.toFixed(2)}%
+                    <td data-column="change" class="text-right ${changeClass}" aria-label="${changeSign}${change.toFixed(2)} percent change">
+                        <span class="colorblind-arrow">${arrow}</span>${changeSign}${change.toFixed(2)}%
                     </td>
                 `;
             } else if (col.id === 'day_range') {
-                const high = parseFloat(stock.high);
-                const low = parseFloat(stock.low);
-                const closePrice = parseFloat(stock.close);
+                const high = stock.high !== null && stock.high !== undefined ? parseFloat(stock.high) : null;
+                const low = stock.low !== null && stock.low !== undefined ? parseFloat(stock.low) : null;
+                const closePrice = stock.close !== null && stock.close !== undefined ? parseFloat(stock.close) : null;
                 let rangeHtml = '-';
-                
-                if (!isNaN(high) && !isNaN(low) && !isNaN(closePrice) && high > low) {
+
+                if (high !== null && low !== null && closePrice !== null && !isNaN(high) && !isNaN(low) && !isNaN(closePrice) && high > low) {
                     const range = high - low;
                     const pos = closePrice - low;
                     const pct = Math.max(0, Math.min(100, (pos / range) * 100));
-                    
+
                     rangeHtml = `
                         <div class="day-range-container" title="Low: ₹${low.toFixed(2)} | High: ₹${high.toFixed(2)} | Close: ₹${closePrice.toFixed(2)}">
                             <div class="day-range-bar">
@@ -2801,27 +2817,32 @@ function renderTable() {
                         </div>
                     `;
                 }
-                
+
                 html += `
                     <td data-column="day_range" class="text-center">${rangeHtml}</td>
                 `;
             } else if (col.id === 'volume') {
-                let volContent = formatVolume(stock.volume);
-                if (stock.is_blue_bar) {
+                const volume = stock.volume !== null && stock.volume !== undefined ? stock.volume : 0;
+                let volContent = formatVolume(volume);
+                const isBlueBar = stock.is_blue_bar === true;
+                const isGreenBar = stock.is_green_bar === true;
+                const isOrangeBar = stock.is_orange_bar === true;
+                if (isBlueBar) {
                     volContent = `<span class="vol-capsule vol-capsule--ppv" title="Pocket Pivot (Blue Bar)">${volContent}</span>`;
-                } else if (stock.is_green_bar) {
+                } else if (isGreenBar) {
                     volContent = `<span class="vol-capsule vol-capsule--vol-surge" title="Volume Surge (Green Bar)">${volContent}</span>`;
-                } else if (stock.is_orange_bar) {
+                } else if (isOrangeBar) {
                     volContent = `<span class="vol-capsule vol-capsule--dry-vol" title="Dry Volume (Orange Bar)">${volContent}</span>`;
                 }
                 html += `
                     <td data-column="volume" class="text-right" style="font-family: 'Outfit', sans-serif;">${volContent}</td>
                 `;
             } else if (col.id === 'perf_w') {
-                const perfWClass = stock.perf_w >= 0 ? 'val-up' : 'val-down';
-                const perfWSign = stock.perf_w > 0 ? '+' : '';
+                const perf_w = stock.perf_w !== null && stock.perf_w !== undefined ? stock.perf_w : 0;
+                const perfWClass = perf_w >= 0 ? 'val-up' : 'val-down';
+                const perfWSign = perf_w > 0 ? '+' : '';
                 html += `
-                    <td data-column="perf_w" class="text-right ${perfWClass}">${perfWSign}${stock.perf_w.toFixed(2)}%</td>
+                    <td data-column="perf_w" class="text-right ${perfWClass}">${perfWSign}${perf_w.toFixed(2)}%</td>
                 `;
             } else if (col.id === 'perf_m') {
                 const perfMClass = stock.perf_m >= 0 ? 'val-up' : 'val-down';
@@ -2830,22 +2851,26 @@ function renderTable() {
                     <td data-column="perf_m" class="text-right ${perfMClass}">${perfMSign}${stock.perf_m.toFixed(2)}%</td>
                 `;
             } else if (col.id === 'perf_3m') {
-                const perf3mClass = stock.perf_3m >= 0 ? 'val-up' : 'val-down';
-                const perf3mSign = stock.perf_3m > 0 ? '+' : '';
+                const perf_3m = stock.perf_3m !== null && stock.perf_3m !== undefined ? stock.perf_3m : 0;
+                const perf3mClass = perf_3m >= 0 ? 'val-up' : 'val-down';
+                const perf3mSign = perf_3m > 0 ? '+' : '';
                 html += `
-                    <td data-column="perf_3m" class="text-right ${perf3mClass}">${perf3mSign}${stock.perf_3m.toFixed(2)}%</td>
+                    <td data-column="perf_3m" class="text-right ${perf3mClass}">${perf3mSign}${perf_3m.toFixed(2)}%</td>
                 `;
             } else if (col.id === 'mkt_cap_cr') {
+                const mkt_cap_cr = stock.mkt_cap_cr !== null && stock.mkt_cap_cr !== undefined ? stock.mkt_cap_cr : 0;
                 html += `
-                    <td data-column="mkt_cap_cr" class="text-right">₹${stock.mkt_cap_cr.toLocaleString('en-IN', {maximumFractionDigits: 0})} Cr</td>
+                    <td data-column="mkt_cap_cr" class="text-right">₹${mkt_cap_cr.toLocaleString('en-IN', {maximumFractionDigits: 0})} Cr</td>
                 `;
             } else if (col.id === 'atr_pct') {
+                const atr_pct = stock.atr_pct !== null && stock.atr_pct !== undefined ? stock.atr_pct : 0;
                 html += `
-                    <td data-column="atr_pct" class="text-right" style="font-weight:600; color:var(--color-text-primary);">${stock.atr_pct}%</td>
+                    <td data-column="atr_pct" class="text-right" style="font-weight:600; color:var(--color-text-primary);">${atr_pct}%</td>
                 `;
             } else if (col.id === 'relative_volume') {
+                const relative_volume = stock.relative_volume !== null && stock.relative_volume !== undefined ? stock.relative_volume : 0;
                 html += `
-                    <td data-column="relative_volume" class="text-right" style="font-weight:600; color:var(--color-text-primary);">${stock.relative_volume}</td>
+                    <td data-column="relative_volume" class="text-right" style="font-weight:600; color:var(--color-text-primary);">${relative_volume}</td>
                 `;
             } else if (col.id === 'gap') {
                 const gapClass = stock.gap != null ? (stock.gap >= 0 ? 'val-up' : 'val-down') : '';
@@ -2861,12 +2886,14 @@ function renderTable() {
                 const rsiClass = stock.RSI != null ? (stock.RSI >= 70 ? 'val-up' : stock.RSI <= 30 ? 'val-down' : '') : '';
                 html += `<td data-column="rsi" class="text-right ${rsiClass}" style="font-weight:600;">${renderFundVal(stock.RSI, 1)}</td>`;
             } else if (col.id === 'pct_above_low') {
+                const pct_above_low = stock.pct_above_low !== null && stock.pct_above_low !== undefined ? stock.pct_above_low : 0;
                 html += `
-                    <td data-column="pct_above_low" class="text-right" style="color:var(--accent-green); font-weight:600;">+${stock.pct_above_low}%</td>
+                    <td data-column="pct_above_low" class="text-right" style="color:var(--accent-green); font-weight:600;">+${pct_above_low}%</td>
                 `;
             } else if (col.id === 'turnover_m') {
+                const turnover_m = stock.turnover_m !== null && stock.turnover_m !== undefined ? stock.turnover_m : 0;
                 html += `
-                    <td data-column="turnover_m" class="text-right">₹${stock.turnover_m.toFixed(1)} Cr</td>
+                    <td data-column="turnover_m" class="text-right">₹${turnover_m.toFixed(1)} Cr</td>
                 `;
             } else if (col.id === 'pe_ratio') {
                 html += `<td data-column="pe_ratio" class="text-right">${renderFundVal(stock.pe_ratio, 1)}</td>`;
@@ -2907,10 +2934,12 @@ function renderTable() {
                 html += `<td data-column="cfo_pat" class="text-right ${cfoClass}">${renderFundVal(stock.cfo_pat, 1, '%')}</td>`;
             } else if (col.id === 'net_income_cr') {
                 const niClass = stock.net_income_cr != null ? (stock.net_income_cr >= 0 ? 'val-up' : 'val-down') : '';
-                html += `<td data-column="net_income_cr" class="text-right ${niClass}">₹${stock.net_income_cr != null ? stock.net_income_cr.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' Cr' : '<span class="val-na">—</span>'}</td>`;
+                const net_income_cr = stock.net_income_cr !== null && stock.net_income_cr !== undefined ? stock.net_income_cr : null;
+                html += `<td data-column="net_income_cr" class="text-right ${niClass}">₹${net_income_cr !== null ? net_income_cr.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' Cr' : '<span class="val-na">—</span>'}</td>`;
             } else if (col.id === 'fcf_cr') {
                 const fcfCrClass = stock.fcf_cr != null ? (stock.fcf_cr >= 0 ? 'val-up' : 'val-down') : '';
-                html += `<td data-column="fcf_cr" class="text-right ${fcfCrClass}">₹${stock.fcf_cr != null ? stock.fcf_cr.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' Cr' : '<span class="val-na">—</span>'}</td>`;
+                const fcf_cr = stock.fcf_cr !== null && stock.fcf_cr !== undefined ? stock.fcf_cr : null;
+                html += `<td data-column="fcf_cr" class="text-right ${fcfCrClass}">₹${fcf_cr !== null ? fcf_cr.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' Cr' : '<span class="val-na">—</span>'}</td>`;
             } else if (col.id === 'cfo_ebitda') {
                 const cfoEbClass = stock.cfo_ebitda != null ? (stock.cfo_ebitda >= 70 ? 'val-up' : stock.cfo_ebitda < 40 ? 'val-down' : '') : '';
                 html += `<td data-column="cfo_ebitda" class="text-right ${cfoEbClass}">${renderFundVal(stock.cfo_ebitda, 1, '%')}</td>`;
@@ -3079,6 +3108,7 @@ function openTradingView(ticker) {
 
 // Helper to escape HTML tags
 function escapeHtml(text) {
+    if (text === undefined || text === null) return '';
     const map = {
         '&': '&amp;',
         '<': '&lt;',
