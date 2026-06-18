@@ -20,12 +20,16 @@ def initialized_db(temp_db_path):
 
 @pytest.fixture
 def flask_app(monkeypatch, temp_db_path):
-    """Create a Flask app configured for testing with the temporary database."""
+    """Create a Flask app configured for testing with the temporary database.
+    Yields the app instance; tests can utilize the app context as needed.
+    """
     monkeypatch.setenv('DATABASE', temp_db_path)
     from app import create_app
     app = create_app('testing')
+    
     # Initialize database within app context
     with app.app_context():
         from app.database import init_db_app
         init_db_app()
+        
     yield app
