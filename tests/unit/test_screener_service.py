@@ -85,6 +85,24 @@ class TestScreenerService:
             assert result is None
 
     @patch('app.database.get_stock_details')
+    def test_get_stock_details_empty_price_data(self, mock_get_stock_details, flask_app):
+        """Test handling of stock found but with empty price data."""
+        # Mock stock data found but with no price data
+        mock_get_stock_details.return_value = {
+            'ticker': 'TEST',
+            'price_data': None,
+            'fundamentals': None,
+            'ep_features': None
+        }
+
+        with flask_app.app_context():
+            # Call the method
+            result = screener_service.get_stock_details('TEST')
+
+            # Assertions
+            assert result is None
+
+    @patch('app.database.get_stock_details')
     def test_get_stock_details_exception(self, mock_get_stock_details, flask_app):
         """Test handling of database exceptions."""
         # Mock an exception

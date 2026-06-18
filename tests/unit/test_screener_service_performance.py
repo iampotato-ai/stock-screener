@@ -21,41 +21,40 @@ SQLALCHEMY_PERF_DATABASE_URI = 'sqlite:///file:perf_test_db?mode=memory&cache=sh
 
 def create_test_data(app, num_scan_dates=10, num_tickers_per_date=50):
     """Create test data for performance testing."""
-    with app.app_context():
-        # Clear existing data
-        db.session.query(ScanPriceLog).delete()
-        db.session.query(ScanHistory).delete()
+    # Clear existing data
+    db.session.query(ScanPriceLog).delete()
+    db.session.query(ScanHistory).delete()
 
-        # Create scan history records for different dates
-        scan_dates = [date(2023, 1, i+1) for i in range(num_scan_dates)]
+    # Create scan history records for different dates
+    scan_dates = [date(2023, 1, i+1) for i in range(num_scan_dates)]
 
-        scan_history_records = []
-        for d in scan_dates:
-            # Create different tickers for each date to avoid unique constraint violations
-            for i in range(num_tickers_per_date):
-                ticker = f'TICKER{i:03d}'
-                scan_history = ScanHistory(date=d, ticker=ticker)
-                scan_history_records.append(scan_history)
-                db.session.add(scan_history)
+    scan_history_records = []
+    for d in scan_dates:
+        # Create different tickers for each date to avoid unique constraint violations
+        for i in range(num_tickers_per_date):
+            ticker = f'TICKER{i:03d}'
+            scan_history = ScanHistory(date=d, ticker=ticker)
+            scan_history_records.append(scan_history)
+            db.session.add(scan_history)
 
-        db.session.flush()
+    db.session.flush()
 
-        # Create scan price log records
-        price_log_records = []
-        for scan_history in scan_history_records:
-            # Create price data for each scan history record
-            close_price = 100.0 + (hash(scan_history.ticker + str(scan_history.date)) % 50)
-            price_log = ScanPriceLog(
-                date=scan_history.date,
-                ticker=scan_history.ticker,
-                close=close_price,
-                setupLabel=f'Setup {(hash(scan_history.ticker) % 10)}'
-            )
-            price_log_records.append(price_log)
-            db.session.add(price_log)
+    # Create scan price log records
+    price_log_records = []
+    for scan_history in scan_history_records:
+        # Create price data for each scan history record
+        close_price = 100.0 + (hash(scan_history.ticker + str(scan_history.date)) % 50)
+        price_log = ScanPriceLog(
+            date=scan_history.date,
+            ticker=scan_history.ticker,
+            close=close_price,
+            setupLabel=f'Setup {(hash(scan_history.ticker) % 10)}'
+        )
+        price_log_records.append(price_log)
+        db.session.add(price_log)
 
-        db.session.commit()
-        return len(scan_history_records), len(price_log_records)
+    db.session.commit()
+    return len(scan_history_records), len(price_log_records)
 
 
 def benchmark_get_scan_results(app, iterations=100):
