@@ -2,7 +2,8 @@
 Journal service for managing trade journal entries.
 """
 from typing import List, Dict, Any, Optional
-from app.database import get_db
+from app.extensions import db
+from app.models import TradeJournal
 from app.utils.journal_math import compute_pnl_and_r
 
 
@@ -12,38 +13,20 @@ class JournalService:
     def get_journal_entries(self, status_filter: str = '', limit: Optional[int] = None,
                            offset: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get journal entries with optional filtering and pagination."""
-        conn = get_db()
-        c = conn.cursor()
-
-        query = """
-            SELECT id, ticker, name, date, setupLabel, swingband, entry, stop,
-                   target1, target2, target3, riskAmount, qty, status,
-                   exitPrice, exitDate, pnl, rAchieved, notes
-            FROM trade_journal
-        """
-        where_clauses = []
-        params = []
+        query = db.session.query(TradeJournal)
 
         if status_filter:
-            where_clauses.append("LOWER(status) = ?")
-            params.append(status_filter.strip().lower())
+            query = query.filter(db.func.lower(TradeJournal.status) == status_filter.strip().lower())
 
-        if where_clauses:
-            query += f" WHERE {' AND '.join(where_clauses)}"
-
-        query += " ORDER BY id DESC"
+        query = query.order_by(TradeJournal.id.desc())
 
         if limit is not None:
-            query += " LIMIT ?"
-            params.append(limit)
+            query = query.limit(limit)
             if offset is not None:
-                query += " OFFSET ?"
-                params.append(offset)
+                query = query.offset(offset)
 
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
-
-        return [dict(row) for row in rows]
+        entries = query.all()
+        return [entry.to_dict() for entry in entries]
 
     def create_journal_entry(self, entry_data: Dict[str, Any]) -> bool:
         """
@@ -54,30 +37,35 @@ class JournalService:
         if not trade_id:
             raise ValueError("id is required")
 
-        conn = get_db()
-        c = conn.cursor()
-
         # Check if entry already exists
-        c.execute("SELECT id FROM trade_journal WHERE id = ?", (trade_id,))
-        if c.fetchone():
+        existing = db.session.query(TradeJournal).filter(TradeJournal.id == trade_id).first()
+        if existing:
             return False  # Already exists
 
         # Insert new entry
-        c.execute("""
-            INSERT OR IGNORE INTO trade_journal (
-                id, ticker, name, date, setupLabel, swingband, entry, stop,
-                target1, target2, target3, riskAmount, qty, status,
-                exitPrice, exitDate, pnl, rAchieved, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            trade_id, entry_data.get('ticker'), entry_data.get('name'), entry_data.get('date'),
-            entry_data.get('setupLabel'), entry_data.get('swingband'), entry_data.get('entry', 0.0),
-            entry_data.get('stop', 0.0), entry_data.get('target1', 0.0), entry_data.get('target2', 0.0),
-            entry_data.get('target3', 0.0), entry_data.get('riskAmount', 0.0), entry_data.get('qty', 0),
-            entry_data.get('status', 'open'), entry_data.get('exitPrice'), entry_data.get('exitDate'),
-            entry_data.get('pnl'), entry_data.get('rAchieved'), entry_data.get('notes', '')
-        ))
-        conn.commit()
+        new_entry = TradeJournal(
+            id=trade_id,
+            ticker=entry_data.get('ticker'),
+            name=entry_data.get('name'),
+            date=entry_data.get('date'),
+            setupLabel=entry_data.get('setupLabel'),
+            swingband=entry_data.get('swingband'),
+            entry=entry_data.get('entry', 0.0),
+            stop=entry_data.get('stop', 0.0),
+            target1=entry_data.get('target1', 0.0),
+            target2=entry_data.get('target2', 0.0),
+            target3=entry_data.get('target3', 0.0),
+            riskAmount=entry_data.get('riskAmount', 0.0),
+            qty=entry_data.get('qty', 0),
+            status=entry_data.get('status', 'open'),
+            exitPrice=entry_data.get('exitPrice'),
+            exitDate=entry_data.get('exitDate'),
+            pnl=entry_data.get('pnl'),
+            rAchieved=entry_data.get('rAchieved'),
+            notes=entry_data.get('notes', '')
+        )
+        db.session.add(new_entry)
+        db.session.commit()
         return True  # Created new
 
     def update_journal_entry(self, trade_id: str, update_data: Dict[str, Any]) -> bool:
@@ -92,39 +80,35 @@ class JournalService:
         if 'id' in update_data and update_data['id'] != trade_id:
             raise ValueError("Trade ID mismatch between URL and body")
 
-        conn = get_db()
-        c = conn.cursor()
+        # Fetch original trade entry
+        entry = db.session.query(TradeJournal).filter(TradeJournal.id == trade_id).first()
+        if not entry:
+            return False
 
         # Calculate server-side P&L and R-Achieved when exitPrice is provided
         if 'exitPrice' in update_data and update_data['exitPrice'] is not None and str(update_data['exitPrice']).strip() != '':
-            # Fetch original trade fields
-            c.execute("SELECT entry, qty, stop FROM trade_journal WHERE id = ?", (trade_id,))
-            orig = c.fetchone()
-            if orig:
-                entry_price, qty, stop = orig
+            entry_price = update_data.get('entry')
+            if entry_price is None:
+                entry_price = entry.entry or 0.0
+            entry_price = float(entry_price)
 
-                entry_val = update_data.get('entry')
-                if entry_val is None:
-                    entry_val = entry_price or 0.0
-                entry_price = float(entry_val)
+            qty = update_data.get('qty')
+            if qty is None:
+                qty = entry.qty or 0
+            qty = int(qty)
 
-                qty_val = update_data.get('qty')
-                if qty_val is None:
-                    qty_val = qty or 0
-                qty = int(qty_val)
+            stop = update_data.get('stop')
+            if stop is None:
+                stop = entry.stop or 0.0
+            stop = float(stop)
 
-                stop_val = update_data.get('stop')
-                if stop_val is None:
-                    stop_val = stop or 0.0
-                stop = float(stop_val)
+            exit_price = float(update_data['exitPrice'])
+            pnl, r_achieved = compute_pnl_and_r(entry_price, stop, qty, exit_price,
+                                              risk_amount=update_data.get('riskAmount'))
 
-                exit_price = float(update_data['exitPrice'])
-                pnl, r_achieved = compute_pnl_and_r(entry_price, stop, qty, exit_price,
-                                                  risk_amount=update_data.get('riskAmount'))
-
-                update_data['pnl'] = pnl
-                update_data['rAchieved'] = r_achieved
-                update_data['status'] = 'closed'
+            update_data['pnl'] = pnl
+            update_data['rAchieved'] = r_achieved
+            update_data['status'] = 'closed'
 
         # Prepare update fields
         type_map = {
@@ -140,8 +124,7 @@ class JournalService:
             'rAchieved': float
         }
 
-        fields = []
-        params = []
+        has_updates = False
         for key in ['status', 'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes', 'entry', 'stop',
                    'target1', 'target2', 'target3', 'riskAmount', 'qty', 'ticker', 'name', 'date',
                    'setupLabel', 'swingband']:
@@ -156,20 +139,13 @@ class JournalService:
                 else:
                     val = None
 
-                fields.append(f"{key} = ?")
-                params.append(val)
+                setattr(entry, key, val)
+                has_updates = True
 
-        if not fields:
+        if not has_updates:
             raise ValueError("No fields to update")
 
-        params.append(trade_id)
-        query = f"UPDATE trade_journal SET {', '.join(fields)} WHERE id = ?"
-        c.execute(query, tuple(params))
-
-        if c.rowcount == 0:
-            return False  # Not found
-
-        conn.commit()
+        db.session.commit()
         return True  # Updated
 
     def delete_journal_entry(self, trade_id: str) -> bool:
@@ -180,13 +156,12 @@ class JournalService:
         if not trade_id:
             raise ValueError("Trade ID is required")
 
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("DELETE FROM trade_journal WHERE id = ?", (trade_id,))
-        conn.commit()
-
-        if c.rowcount == 0:
+        entry = db.session.query(TradeJournal).filter(TradeJournal.id == trade_id).first()
+        if not entry:
             return False  # Not found
+
+        db.session.delete(entry)
+        db.session.commit()
         return True  # Deleted
 
 

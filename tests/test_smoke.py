@@ -20,7 +20,7 @@ def use_test_db(monkeypatch, tmp_path):
     orig_connect = sqlite3.connect
 
     def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
+        if isinstance(database, str) and (database == "scan_history.db" or database.endswith("scan_history.db")):
             return orig_connect(db_file, *args, **kwargs)
         return orig_connect(database, *args, **kwargs)
 
@@ -66,8 +66,18 @@ def use_test_db(monkeypatch, tmp_path):
     conn.commit()
     conn.close()
 
-    # Initialize app with test database
+    # Initialize app with test database configuration
     app.config['DATABASE'] = db_file
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_file
+
+    # Force SQLAlchemy to recreate engines with new configuration
+    from app.extensions import db
+    try:
+        app.extensions.pop("sqlalchemy", None)
+        db.init_app(app)
+    except Exception as e:
+        print("Error re-initializing SQLAlchemy extension:", e)
+
     with app.app_context():
         from app.database import init_db_standalone
         init_db_standalone(db_file)
@@ -78,6 +88,7 @@ def use_test_db(monkeypatch, tmp_path):
 def client(use_test_db):
     app.config['TESTING'] = True
     app.config['DATABASE'] = use_test_db
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + use_test_db
     with app.test_client() as client:
         yield client
 

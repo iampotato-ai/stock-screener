@@ -2,11 +2,12 @@
 IPO service for managing IPO listings and metrics.
 """
 from typing import List, Dict, Any, Optional, Tuple
-from app.database import get_db
 import sqlite3
 import time
 import threading
 from datetime import datetime
+from app.extensions import db
+from app.models import IpoMetricsCache, IpoListing
 from app.utils.technical import (
     fetch_historical_prices,
     compute_swing_score,
@@ -246,24 +247,27 @@ class IPOService:
         Returns:
             Dictionary containing IPO detail and history
         """
-        conn = None
         try:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT * FROM ipo_metrics_cache WHERE ticker = ?", (ticker,))
-            row = c.fetchone()
+            # Clean ticker format (remove NSE: or BO: prefixes if present)
+            clean_ticker = ticker.upper()
+            if clean_ticker.startswith("NSE:"):
+                clean_ticker = clean_ticker[4:]
+            elif clean_ticker.startswith("BO:"):
+                clean_ticker = clean_ticker[3:]
 
-            if not row:
+            # Use the model
+            ipo_detail = IpoMetricsCache.query.filter_by(ticker=clean_ticker).first()
+
+            if not ipo_detail:
                 # Check if exists in ipo_listings at least
-                c.execute("SELECT ticker FROM ipo_listings WHERE ticker = ?", (ticker,))
-                exists = c.fetchone()
+                exists = IpoListing.query.filter_by(ticker=clean_ticker).first()
                 if not exists:
                     raise ValueError(f"Ticker {ticker} not found in IPO listings")
                 else:
                     raise ValueError(f"Ticker {ticker} is not cached yet")
 
-            cols = [description[0] for description in c.description]
-            detail = dict(row)  # Use dict(row) because get_db() sets row_factory to sqlite3.Row
+            # Convert to dictionary
+            detail = ipo_detail.to_dict()
 
             # Get price history
             history = fetch_historical_prices(ticker, range_str="1y")
@@ -272,7 +276,6 @@ class IPOService:
             return detail
         except Exception as e:
             raise e
-        # Note: Connection is closed by Flask's teardown_appcontext, do not close here
 
     def refresh_ipo_metrics(self) -> bool:
         """

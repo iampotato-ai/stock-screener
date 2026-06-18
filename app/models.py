@@ -47,11 +47,12 @@ class User(BaseModel):
         return f'<User {self.username}>'
 
 
-class WatchlistSection(BaseModel):
+class WatchlistSection(db.Model):
     """Watchlist sections (e.g., 'Long Term', 'Intraday')."""
     __tablename__ = 'watchlist_sections'
+    id = db.Column(db.String(100), primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    position = db.Column(db.Integer, default=0)
     # Relationship
     items = db.relationship('WatchlistItem', backref='section', lazy='dynamic',
                             cascade='all, delete-orphan')
@@ -59,39 +60,54 @@ class WatchlistSection(BaseModel):
     def __repr__(self):
         return f'<WatchlistSection {self.name}>'
 
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
-class WatchlistItem(BaseModel):
+
+class WatchlistItem(db.Model):
     """Individual stock/watchlist item."""
     __tablename__ = 'watchlist_items'
-    ticker = db.Column(db.String(20), nullable=False, index=True)
-    exchange = db.Column(db.String(10), default='NSE')
-    name = db.Column(db.String(200))
-    sector = db.Column(db.String(100))
-    # Additional fields for technical/fundamental data
-    # These can be extended as needed
-    section_id = db.Column(db.Integer, db.ForeignKey('watchlist_sections.id'))
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    section_id = db.Column(db.String(100), db.ForeignKey('watchlist_sections.id'))
+    ticker = db.Column(db.String(20), nullable=False)
+    position = db.Column(db.Integer, default=0)
 
     def __repr__(self):
         return f'<WatchlistItem {self.ticker}>'
 
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 # Example: Trade journal model
-class TradeJournal(BaseModel):
+class TradeJournal(db.Model):
     """Trade journal entries."""
     __tablename__ = 'trade_journal'
+    id = db.Column(db.String(100), primary_key=True)
     ticker = db.Column(db.String(20), nullable=False)
-    trade_type = db.Column(db.String(10))  # BUY/SELL
-    quantity = db.Column(db.Integer)
-    price = db.Column(db.Float)
-    entry_date = db.Column(db.DateTime)
-    exit_date = db.Column(db.DateTime, nullable=True)
+    name = db.Column(db.String(200), nullable=False)
+    date = db.Column(db.String(20), nullable=False)
+    setupLabel = db.Column(db.String(100), nullable=False)
+    swingband = db.Column(db.String(100), nullable=False)
+    entry = db.Column(db.Float, nullable=False)
+    stop = db.Column(db.Float, nullable=False)
+    target1 = db.Column(db.Float, nullable=False)
+    target2 = db.Column(db.Float, nullable=False)
+    target3 = db.Column(db.Float, nullable=False)
+    riskAmount = db.Column(db.Float, nullable=False)
+    qty = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), nullable=False)
+    exitPrice = db.Column(db.Float)
+    exitDate = db.Column(db.String(20))
     pnl = db.Column(db.Float)
+    rAchieved = db.Column(db.Float)
     notes = db.Column(db.Text)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
 
     def __repr__(self):
-        return f'<TradeJournal {self.ticker} {self.trade_type}>'
+        return f'<TradeJournal {self.ticker}>'
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 # Add other models as needed from existing schema (e.g., IPO, News, Alerts, etc.)
@@ -209,6 +225,11 @@ class IpoMetricsCache(BaseModel):
     exchange = db.Column(db.String(10), nullable=False)
     sector = db.Column(db.String(100))
     issue_price = db.Column(db.Float)
+    listing_open = db.Column(db.Float)
+    listing_close = db.Column(db.Float)
+    issue_size_cr = db.Column(db.Float)
+    lot_size = db.Column(db.Integer)
+    gmp_at_listing = db.Column(db.Float)
     listing_gain_pct = db.Column(db.Float)
     current_vs_issue_pct = db.Column(db.Float)
     current_vs_listing_pct = db.Column(db.Float)
@@ -349,7 +370,7 @@ class EpFeature(BaseModel):
     )
 
 
-class EpWatchlist(BaseModel):
+class EpWatchlist(db.Model):
     """Episodic Pivot watchlist."""
     __tablename__ = 'ep_watchlist'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -373,8 +394,18 @@ class EpWatchlist(BaseModel):
 
     __table_args__ = (db.Index('idx_ep_watchlist_symbol', 'symbol'),)
 
+    def to_dict(self):
+        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        for k, v in res.items():
+            if hasattr(v, 'strftime'):
+                if isinstance(v, datetime):
+                    res[k] = v.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    res[k] = v.strftime('%Y-%m-%d')
+        return res
 
-class SugarBaby(BaseModel):
+
+class SugarBaby(db.Model):
     """Sugar Babies (high momentum stocks)."""
     __tablename__ = 'sugar_babies'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -386,3 +417,13 @@ class SugarBaby(BaseModel):
     episode_count = db.Column(db.Integer)
     notes = db.Column(db.Text)
     is_active = db.Column(db.Integer, default=1)
+
+    def to_dict(self):
+        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        for k, v in res.items():
+            if hasattr(v, 'strftime'):
+                if isinstance(v, datetime):
+                    res[k] = v.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    res[k] = v.strftime('%Y-%m-%d')
+        return res
