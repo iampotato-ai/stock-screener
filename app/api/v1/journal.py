@@ -29,7 +29,10 @@ def get_journal():
             limit=limit_int,
             offset=offset_int
         )
-        return jsonify(success=True, data=journal_entries)
+        if request.path.startswith('/api/v1'):
+            return jsonify(success=True, data=journal_entries)
+        else:
+            return jsonify(journal_entries)
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except Exception as e:
@@ -54,7 +57,10 @@ def create_journal_entry():
     try:
         is_created = journal_service.create_journal_entry(entry_data)
         if is_created:
-            return jsonify(success=True, message="Journal entry created"), 201
+            if request.path.startswith('/api/v1'):
+                return jsonify(success=True, message="Journal entry created"), 201
+            else:
+                return jsonify(success=True, message="Journal entry created"), 200
         else:
             return jsonify(error="Journal entry with this ID already exists"), 409
     except ValueError as e:

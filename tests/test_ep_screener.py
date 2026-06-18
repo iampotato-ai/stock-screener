@@ -1,5 +1,6 @@
 import pytest
 import sqlite3
+import sqlite3.dbapi2
 import json
 import sys
 import os
@@ -9,18 +10,12 @@ from unittest.mock import patch, MagicMock
 # 1. Setup the test DB mock first, before app is imported
 db_fd, db_path = tempfile.mkstemp()
 
-orig_connect = sqlite3.connect
-def mock_connect(database, *args, **kwargs):
-    if database == "scan_history.db":
-        return orig_connect(db_path, *args, **kwargs)
-    return orig_connect(database, *args, **kwargs)
-
-sqlite3.connect = mock_connect
+orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
 
 # Now insert the root path and import app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import app
-app.init_db()
+
 from app import (
     app as flask_app,
     compute_neglect_score,
@@ -34,6 +29,7 @@ from app import (
 
 @pytest.fixture(scope="module", autouse=True)
 def cleanup_temp_db():
+    app.init_db()
     yield
     try:
         os.close(db_fd)
@@ -43,6 +39,12 @@ def cleanup_temp_db():
 
 @pytest.fixture
 def client():
+    from app.extensions import db
+    try:
+        db.session.remove()
+        db.engine.dispose()
+    except Exception:
+        pass
     flask_app.config['TESTING'] = True
     with flask_app.test_client() as client:
         yield client
@@ -273,6 +275,9 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
     conn.close()
 
 def test_api_endpoints(client):
+    with client.application.app_context():
+        from app.extensions import db
+        print("SQLALCHEMY ENGINE URL:", db.engine.url)
     # Setup some dummy data in DB
     conn = orig_connect(db_path)
     c = conn.cursor()
@@ -327,10 +332,17 @@ def test_api_endpoints(client):
     assert res.status_code == 200
     assert len(res.get_json()["listings"]) == 0
     
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("SELECT symbol FROM ep_watchlist")
+    print("WATCHLIST ROWS IN TEMP DB:", c.fetchall())
+    conn.close()
+
     # Test GET /api/ep/watchlist
     res = client.get("/api/ep/watchlist")
     assert res.status_code == 200
     data = res.get_json()
+    print("WATCHLIST API RESPONSE:", data)
     assert "watchlist" in data
     assert len(data["watchlist"]) == 1
     assert data["watchlist"][0]["symbol"] == "EPSTOCK"

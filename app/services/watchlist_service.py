@@ -189,7 +189,7 @@ class WatchlistService:
         ).all()
         
         for item in items:
-            item.status = 'REMOVED'
+            item.status = 'EXPIRED'
             item.updated_at = datetime.utcnow()
         db.session.commit()
 

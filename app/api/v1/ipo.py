@@ -75,11 +75,14 @@ def get_ipo_detail(ticker):
             clean_ticker = clean_ticker[3:]
 
         detail = ipo_service.get_ipo_detail(clean_ticker)
-        # Return detail object directly like the original endpoint
-        return jsonify(
-            success=True,
-            data=detail
-        )
+        # Return detail object directly like the original endpoint if legacy path
+        if request.path.startswith('/api/v1'):
+            return jsonify(
+                success=True,
+                data=detail
+            )
+        else:
+            return jsonify(detail)
     except ValueError as e:
         # Check if it's a "not found" or "not cached" error for 404
         if "not found" in str(e).lower() or "not cached" in str(e).lower():
@@ -98,7 +101,8 @@ def refresh_ipo_metrics():
     try:
         started = ipo_service.refresh_ipo_metrics()
         if started:
-            return jsonify(success=True, message="Background refresh started."), 202
+            status_code = 200 if not request.path.startswith('/api/v1') else 202
+            return jsonify(success=True, message="Background refresh started."), status_code
         else:
             return jsonify(error="Refresh cooldown active. Please wait before triggering another refresh."), 429
     except Exception as e:

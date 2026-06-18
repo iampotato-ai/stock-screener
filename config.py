@@ -61,9 +61,17 @@ class TestingConfig(Config):
     DATABASE = os.environ.get('DATABASE') or ':memory:'
 
 
+class PytestConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    WTF_CSRF_ENABLED = False
+    DATABASE = ':memory:'
+
+
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
     'testing': TestingConfig,
+    'pytest': PytestConfig,
     'default': DevelopmentConfig
 }

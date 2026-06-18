@@ -45,6 +45,19 @@ def init_scheduler(app: Flask):
         args=[app]  # Pass app for context
     )
 
+    # One-shot startup warm-up: fill any missing IPO metrics cache entries
+    # Fires 10 seconds after server start, in the background, without blocking requests.
+    from datetime import datetime, timedelta
+    scheduler.add_job(
+        func=startup_ipo_cache_warmup,
+        trigger='date',
+        run_date=datetime.now() + timedelta(seconds=10),
+        id='startup_ipo_warmup',
+        name='One-shot IPO metrics cache warm-up on server start',
+        replace_existing=True,
+        args=[app]
+    )
+
     # Start the scheduler
     scheduler.start()
     logger.info("Background scheduler started")
@@ -78,6 +91,34 @@ def refresh_ipo_task(app: Flask):
             logger.info("IPO refresh task completed successfully")
     except Exception as e:
         logger.error(f"Error in background IPO refresh task: {e}")
+
+
+def startup_ipo_cache_warmup(app: Flask):
+    """One-shot startup job: fill any IPO listings missing from the metrics cache."""
+    try:
+        import sqlite3
+        import os
+        with app.app_context():
+            db_path = app.config.get('DATABASE', 'scan_history.db')
+            conn = sqlite3.connect(db_path)
+            c = conn.cursor()
+            c.execute(
+                "SELECT COUNT(*) FROM ipo_listings "
+                "WHERE ticker NOT IN (SELECT ticker FROM ipo_metrics_cache)"
+            )
+            missing_cnt = c.fetchone()[0]
+            conn.close()
+            if missing_cnt > 0:
+                logger.info(
+                    f"Startup warm-up: IPO metrics cache is missing {missing_cnt} entries. "
+                    "Refreshing..."
+                )
+                from app import refresh_ipo_metrics
+                refresh_ipo_metrics()
+                logger.info("Startup IPO cache warm-up complete.")
+    except Exception as e:
+        logger.error(f"Error in startup IPO cache warm-up: {e}")
+
 
 # For direct execution (testing)
 if __name__ == "__main__":

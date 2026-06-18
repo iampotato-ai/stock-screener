@@ -318,6 +318,11 @@ def _create_tables(conn):
             exchange                TEXT NOT NULL,
             sector                  TEXT,
             issue_price             REAL,
+            listing_open            REAL,
+            listing_close           REAL,
+            issue_size_cr           REAL,
+            lot_size                INTEGER,
+            gmp_at_listing          REAL,
             listing_gain_pct        REAL,
             current_vs_issue_pct    REAL,
             current_vs_listing_pct  REAL,
@@ -368,6 +373,26 @@ def _create_tables(conn):
         pass
     try:
         c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN is_orange_bar INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN listing_open REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN listing_close REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN issue_size_cr REAL")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN lot_size INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE ipo_metrics_cache ADD COLUMN gmp_at_listing REAL")
     except sqlite3.OperationalError:
         pass
 

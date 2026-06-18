@@ -10,17 +10,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app import app, init_db, classify_momentum_phase, refresh_ipo_metrics
 
+db_file = None
+
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
+    global db_file
     db_file = str(tmp_path / "test_scan_history.db")
-    orig_connect = sqlite3.connect
-    
-    def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
-            return orig_connect(db_file, *args, **kwargs)
-        return orig_connect(database, *args, **kwargs)
-        
-    monkeypatch.setattr("sqlite3.connect", mock_connect)
+    orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
     
     # Initialize the test DB tables
     init_db()
@@ -52,6 +48,13 @@ def use_test_db(monkeypatch, tmp_path):
 
 @pytest.fixture
 def client():
+    from app.extensions import db
+    with app.app_context():
+        try:
+            db.session.remove()
+            db.engine.dispose()
+        except Exception:
+            pass
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client

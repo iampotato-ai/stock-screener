@@ -6,6 +6,7 @@ from . import api_bp
 from app.services.screener_service import screener_service
 
 
+@api_bp.route('/scan', methods=['GET'])
 @api_bp.route('/screener/scan', methods=['GET'])
 def get_screener_scan():
     """
@@ -31,6 +32,7 @@ def get_screener_scan():
         return jsonify(error=str(e)), 500
 
 
+@api_bp.route('/stock/<ticker>', methods=['GET'])
 @api_bp.route('/screener/stock/<ticker>', methods=['GET'])
 def get_screener_stock_detail(ticker):
     """

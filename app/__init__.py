@@ -1,7 +1,7 @@
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask, request, current_app
+from flask import Flask
 from config import config
 from .extensions import db, init_extensions
 
@@ -12,7 +12,12 @@ def create_app(config_name=None, overrides=None):
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
 
-    app = Flask(__name__, instance_relative_config=True)
+    app = Flask(
+        __name__,
+        instance_relative_config=True,
+        template_folder='../templates',
+        static_folder='../static'
+    )
     app.config.from_object(config[config_name])
     
     if overrides:
@@ -38,7 +43,14 @@ def create_app(config_name=None, overrides=None):
 
     # Register blueprints
     from .api.v1 import api_bp
-    app.register_blueprint(api_bp, url_prefix='/api/v1')
+    app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(api_bp, url_prefix='/api/v1', name='api_v1')
+
+    # Register frontend root route
+    from flask import render_template
+    @app.route('/')
+    def index():
+        return render_template('index.html')
 
     # Register error handlers
     register_error_handlers(app)
@@ -94,3 +106,45 @@ def register_error_handlers(app):
     @app.errorhandler(503)
     def service_unavailable(e):
         return {'error': 'Service unavailable'}, 503
+
+# Create a default app instance for backward compatibility with tests/scripts
+app = create_app()
+
+# Export compatibility functions at package level
+from app.api.v1.legacy_routes import (
+    init_db,
+    classify_setup,
+    ensemble_blend,
+    compute_dynamic_weights,
+    refresh_ep_screener,
+    analyze_single_stock,
+    refresh_ipo_metrics,
+    compute_neglect_score,
+    compute_catalyst_score,
+    compute_repricing_score,
+    compute_ep_score,
+    assign_ep_type,
+    assign_confidence,
+    seed_ipo_listings,
+    merge_candlestick_fallback,
+    send_telegram_alert,
+    fetch_screener_fundamentals,
+    fetch_nse_announcements,
+    kronos_predict,
+    prophet_predict,
+    arima_predict,
+    get_kronos_predictor,
+    _compute_rolling_mape,
+    _weight_ema_state,
+    init_nlp_models,
+    summarizer,
+    event_classifier,
+    sentiment_analyzer,
+    classify_announcement,
+    enhanced_classify_announcement
+)
+from app.utils.technical import (
+    classify_technical_pattern,
+    classify_momentum_phase,
+    fetch_historical_prices
+)
