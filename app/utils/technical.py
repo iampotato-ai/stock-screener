@@ -13,6 +13,7 @@ from flask import has_app_context, current_app
 _historical_prices_cache = OrderedDict()  # {(ticker, range_str): (timestamp, data)}
 _HIST_CACHE_TTL = 15 * 60     # 15 minutes
 _MAX_HIST_CACHE = 500         # Cap at 500 unique ticker/range combinations
+_DEFAULT_YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}'
 
 
 def fetch_historical_prices(ticker, range_str="6mo"):
@@ -35,7 +36,6 @@ def fetch_historical_prices(ticker, range_str="6mo"):
         symbol = f"{symbol}.NS"
 
     # Get Yahoo Finance URL from config (Flask app config) or fall back to env/default
-    _DEFAULT_YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}'
     if has_app_context():
         yahoo_finance_url = current_app.config.get('YAHOO_FINANCE_URL', _DEFAULT_YAHOO_URL)
     else:

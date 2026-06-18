@@ -11,6 +11,8 @@ from email.utils import parsedate_to_datetime
 import datetime
 from flask import current_app, has_app_context
 
+_DEFAULT_GOOGLE_NEWS_URL = 'https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en'
+
 
 class NewsService:
     """Service for news-related operations."""
@@ -37,11 +39,10 @@ class NewsService:
 
         query = urllib.parse.quote(f"{ticker} NSE India OR {ticker} stock")
         # Get Google News URL from Flask config or fall back to env/default
-        _DEFAULT_GOOGLE_URL = 'https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en'
         if has_app_context():
-            google_news_url = current_app.config.get('GOOGLE_NEWS_URL', _DEFAULT_GOOGLE_URL)
+            google_news_url = current_app.config.get('GOOGLE_NEWS_URL', _DEFAULT_GOOGLE_NEWS_URL)
         else:
-            google_news_url = os.environ.get('GOOGLE_NEWS_URL', _DEFAULT_GOOGLE_URL)
+            google_news_url = os.environ.get('GOOGLE_NEWS_URL', _DEFAULT_GOOGLE_NEWS_URL)
         url = google_news_url.format(query=query)
 
         news_list = []
