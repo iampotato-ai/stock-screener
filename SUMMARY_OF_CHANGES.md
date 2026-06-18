@@ -65,8 +65,8 @@ Completed Phase 2 Core Services migration for the stock screener application, sp
 56	3. Migrate remaining utility functions to `app/utils/`
 57	4. Add environment-based configuration for external APIs
 58	5. ✅ Write unit and integration tests
-59	6. ⏳ Performance testing and optimization
-60	7. ⏳ Final cleanup and switch to factory pattern
+59	6. ✅ Performance testing and optimization
+60	7. ✅ Final cleanup and switch to factory pattern
 
 ## Technical Notes
 - The screener service follows the same architectural pattern as alert_service.py, journal_service.py, etc.
