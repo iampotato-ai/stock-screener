@@ -7,20 +7,20 @@ import os
 # Ensure the root folder is in the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import app, init_db
+from app import create_app
 
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
     db_file = str(tmp_path / "test_scan_history.db")
     orig_connect = sqlite3.connect
-    
+
     def mock_connect(database, *args, **kwargs):
         if database == "scan_history.db":
             return orig_connect(db_file, *args, **kwargs)
         return orig_connect(database, *args, **kwargs)
-        
+
     monkeypatch.setattr("sqlite3.connect", mock_connect)
-    
+
     # Initialize the test DB tables
     conn = orig_connect(db_file)
     c = conn.cursor()
@@ -60,13 +60,19 @@ def use_test_db(monkeypatch, tmp_path):
     ''')
     conn.commit()
     conn.close()
-    
-    init_db()
-    
+
+    # Initialize app with test database
+    app = create_app()
+    app.config['DATABASE'] = db_file
+    with app.app_context():
+        from app.database import init_db_standalone
+        init_db_standalone(db_file)
+
     yield db_file
 
 @pytest.fixture
 def client():
+    app = create_app()
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client

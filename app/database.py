@@ -797,6 +797,22 @@ def remove_watchlist_item(section_id, ticker):
     return execute_query(query, (section_id, ticker.upper()), commit=True)
 
 
+def get_watchlist():
+    """Get watchlist with sections and items for API response."""
+    sections = get_watchlist_sections()
+    result = []
+    for section in sections:
+        section_id = section['id']
+        items = get_watchlist_items(section_id)
+        tickers = [item['ticker'] for item in items]
+        result.append({
+            "id": section_id,
+            "name": section['name'],
+            "stocks": tickers
+        })
+    return result
+
+
 # ========== JOURNAL RELATED FUNCTIONS ==========
 
 def get_journal_entries(limit=50):

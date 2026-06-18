@@ -1,11 +1,11 @@
 """
 Market breadth service for managing breadth data and calculations.
 """
-import sqlite3
 import statistics
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from app.database import get_db
+from app.models import BreadthHistory
+from app import db
 
 
 class MarketBreadthService:
@@ -15,38 +15,52 @@ class MarketBreadthService:
                             pct_sma21: float, pct_sma50: float, pct_52high: float,
                             avg_recommend: float, regime_score: int, regime_band: str) -> None:
         """Save a market breadth snapshot to the database."""
-        conn = get_db()
-        c = conn.cursor()
-        today, now_time = datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%H:%M')
-        c.execute(
-                """
-                INSERT OR REPLACE INTO breadth_history
-                (date, time, advances, declines, unchanged, pct_sma21, pct_sma50,
-                 pct_52high, avg_recommend, regime_score, regime_band)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (today, now_time, advances, declines, unchanged,
-                 pct_sma21, pct_sma50, pct_52high, avg_recommend, regime_score, regime_band)
+        today = datetime.now().date()
+        now_time = datetime.now().time()
+
+        # Use SQLAlchemy model
+        breadth_record = BreadthHistory.query.filter_by(date=today).first()
+        if breadth_record:
+            # Update existing record
+            breadth_record.time = now_time
+            breadth_record.advances = advances
+            breadth_record.declines = declines
+            breadth_record.unchanged = unchanged
+            breadth_record.pct_sma21 = pct_sma21
+            breadth_record.pct_sma50 = pct_sma50
+            breadth_record.pct_52high = pct_52high
+            breadth_record.avg_recommend = avg_recommend
+            breadth_record.regime_score = regime_score
+            breadth_record.regime_band = regime_band
+        else:
+            # Create new record
+            breadth_record = BreadthHistory(
+                date=today,
+                time=now_time,
+                advances=advances,
+                declines=declines,
+                unchanged=unchanged,
+                pct_sma21=pct_sma21,
+                pct_sma50=pct_sma50,
+                pct_52high=pct_52high,
+                avg_recommend=avg_recommend,
+                regime_score=regime_score,
+                regime_band=regime_band
             )
-        conn.commit()
+            db.session.add(breadth_record)
+
+        db.session.commit()
 
     def get_breadth_history(self, limit: int = 30) -> List[Dict[str, Any]]:
         """Get market breadth history with optional limit."""
-        conn = get_db()
-        c = conn.cursor()
-        c.execute(
-                """
-                SELECT date, time, advances, declines, unchanged,
-                       pct_sma21, pct_sma50, pct_52high,
-                       regime_score, regime_band, avg_recommend
-                FROM breadth_history
-                ORDER BY date DESC, time DESC
-                LIMIT ?
-                """,
-                (limit,)
-            )
-        rows = c.fetchall()
-        return [dict(row) for row in rows]
+        # Use SQLAlchemy model
+        records = BreadthHistory.query.order_by(
+            BreadthHistory.date.desc(),
+            BreadthHistory.time.desc()
+        ).limit(limit).all()
+
+        # Convert to list of dictionaries
+        return [record.to_dict() for record in records]
 
     def get_latest_breadth_snapshot(self) -> Optional[Dict[str, Any]]:
         """Get the most recent market breadth snapshot."""

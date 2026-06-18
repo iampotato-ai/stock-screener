@@ -96,3 +96,283 @@ class TradeJournal(BaseModel):
 
 # Add other models as needed from existing schema (e.g., IPO, News, Alerts, etc.)
 # This initial version focuses on core watchlist functionality.
+
+
+class BreadthHistory(BaseModel):
+    """Market breadth history data."""
+    __tablename__ = 'breadth_history'
+    date = db.Column(db.Date, primary_key=True)  # Using Date since it's the primary key
+    time = db.Column(db.Time)
+    advances = db.Column(db.Integer)
+    declines = db.Column(db.Integer)
+    unchanged = db.Column(db.Integer)
+    pct_sma21 = db.Column(db.Float)
+    pct_sma50 = db.Column(db.Float)
+    pct_52high = db.Column(db.Float)
+    avg_recommend = db.Column(db.Float)
+    regime_score = db.Column(db.Integer)
+    regime_band = db.Column(db.String(50))
+
+
+class KronosForecast(BaseModel):
+    """Kronos forecast predictions."""
+    __tablename__ = 'kronos_forecasts'
+    ticker = db.Column(db.String(20), nullable=False, index=True)
+    generated_at = db.Column(db.DateTime, nullable=False)
+    pred_len = db.Column(db.Integer, nullable=False)
+    forecast_json = db.Column(db.JSON, nullable=False)  # Stores JSON forecast data
+    last_close = db.Column(db.Float, nullable=False)
+    model_type = db.Column(db.String(50), nullable=False, default='kronos')
+
+
+class RrgHistory(BaseModel):
+    """Relative Rotation Graph history."""
+    __tablename__ = 'rrg_history'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    week = db.Column(db.String(20), nullable=False)
+    sector = db.Column(db.String(100), nullable=False)
+    jdk_rs = db.Column(db.Float, nullable=False)
+    jdk_rs_momentum = db.Column(db.Float, nullable=False)
+    score = db.Column(db.Integer)
+    quadrant = db.Column(db.String(20))
+    snapped_at = db.Column(db.DateTime, nullable=False)
+
+    # Unique constraint
+    __table_args__ = (db.UniqueConstraint('week', 'sector', name='_week_sector_uc'),)
+
+
+class PatternCache(BaseModel):
+    """Technical pattern cache."""
+    __tablename__ = 'pattern_cache'
+    ticker = db.Column(db.String(20), primary_key=True)
+    generated_at = db.Column(db.DateTime, nullable=False)
+    pattern_name = db.Column(db.String(100))
+    pattern_grade = db.Column(db.String(20))
+    pattern_desc = db.Column(db.Text)
+    candlestick_json = db.Column(db.JSON)
+    pattern_bias = db.Column(db.Float, default=0.0)
+    max_down_vol_10 = db.Column(db.Float)
+    volume_sma_50 = db.Column(db.Float)
+
+
+class PatternSignal(BaseModel):
+    """Technical pattern signals."""
+    __tablename__ = 'pattern_signals'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ticker = db.Column(db.String(20), nullable=False, index=True)
+    timeframe = db.Column(db.String(10), nullable=False, default='D')
+    signal_type = db.Column(db.String(20), nullable=False)  # 'candle' | 'chart'
+    pattern = db.Column(db.String(100), nullable=False)
+    direction = db.Column(db.Integer, nullable=False)  # 100 bullish, -100 bearish
+    confidence = db.Column(db.Float)  # 0.0-1.0 (chart patterns only)
+    description = db.Column(db.Text)
+    detected_at = db.Column(db.DateTime, nullable=False)
+    bar_date = db.Column(db.Date)  # date of the last bar in the signal
+
+    # Index for fast per-ticker lookups
+    __table_args__ = (db.Index('idx_pattern_signals_ticker', 'ticker', 'detected_at'),)
+
+
+class IpoListing(BaseModel):
+    """IPO listings."""
+    __tablename__ = 'ipo_listings'
+    ticker = db.Column(db.String(20), primary_key=True)
+    company_name = db.Column(db.String(200), nullable=False)
+    listing_date = db.Column(db.Date, nullable=False)
+    issue_price = db.Column(db.Float)
+    listing_open = db.Column(db.Float)
+    listing_close = db.Column(db.Float)
+    exchange = db.Column(db.String(10), default='NSE')
+    sector = db.Column(db.String(100))
+    issue_size_cr = db.Column(db.Float)
+    lot_size = db.Column(db.Integer)
+    gmp_at_listing = db.Column(db.Float)
+    added_at = db.Column(db.DateTime, default=db.func.now())
+
+
+class IpoMetricsCache(BaseModel):
+    """Cached IPO metrics for performance."""
+    __tablename__ = 'ipo_metrics_cache'
+    ticker = db.Column(db.String(20), primary_key=True)
+    company_name = db.Column.db.String(200), nullable=False)
+    listing_date = db.Column(db.Date, nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)
+    sector = db.Column(db.String(100))
+    issue_price = db.Column(db.Float)
+    listing_gain_pct = db.Column(db.Float)
+    current_vs_issue_pct = db.Column(db.Float)
+    current_vs_listing_pct = db.Column(db.Float)
+    days_since_listing = db.Column(db.Integer)
+    rvol_ratio = db.Column(db.Float)
+    above_listing_high = db.Column(db.Integer)
+    drawdown_from_ath = db.Column(db.Float)
+    swing_score = db.Column(db.Integer)
+    pattern_name = db.Column(db.String(100))
+    momentum_phase = db.Column(db.String(20))
+    current_price = db.Column(db.Float)
+    volume = db.Column(db.Float)
+    change_pct = db.Column(db.Float)
+    day_low = db.Column(db.Float)
+    day_high = db.Column(db.Float)
+    is_blue_bar = db.Column(db.Integer, default=0)
+    is_green_bar = db.Column(db.Integer, default=0)
+    is_orange_bar = db.Column(db.Integer, default=0)
+    cached_at = db.Column(db.DateTime, nullable=False)
+
+    __table_args__ = (db.Index('idx_ipo_metrics_phase', 'momentum_phase'),)
+
+
+class DailyBar(BaseModel):
+    """Daily stock price/volume data."""
+    __tablename__ = 'daily_bars'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)
+    trade_date = db.Column(db.Date, nullable=False)
+    open = db.Column(db.Float)
+    high = db.Column(db.Float)
+    low = db.Column(db.Float)
+    close = db.Column(db.Float)
+    volume = db.Column(db.Integer)
+    delivery_qty = db.Column(db.Integer)
+    delivery_pct = db.Column(db.Float)
+    turnover = db.Column(db.Float)
+    prev_close = db.Column(db.Float)
+    gap_pct = db.Column(db.Float)
+    close_loc = db.Column(db.Float)
+    atr_14 = db.Column(db.Float)
+    rel_volume_20 = db.Column(db.Float)
+    rel_volume_50 = db.Column(db.Float)
+    price_change_pct = db.Column(db.Float)
+    intraday_range_pct = db.Column(db.Float)
+
+    __table_args__ = (
+        db.UniqueConstraint('symbol', 'exchange', 'trade_date', name='_symbol_exchange_date_uc'),
+        db.Index('idx_daily_bars_symbol_date', 'symbol', 'trade_date'),
+        db.Index('idx_daily_bars_date', 'trade_date'),
+    )
+
+
+class Fundamental(BaseModel):
+    """Company fundamental data."""
+    __tablename__ = 'fundamentals'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)
+    result_date = db.Column(db.Date, nullable=False)
+    quarter = db.Column(db.String(20))
+    revenue = db.Column(db.Float)
+    revenue_yoy_pct = db.Column(db.Float)
+    revenue_qoq_pct = db.Column(db.Float)
+    net_profit = db.Column(db.Float)
+    net_profit_yoy_pct = db.Column(db.Float)
+    ebitda = db.Column(db.Float)
+    ebitda_margin = db.Column(db.Float)
+    eps = db.Column(db.Float)
+    eps_yoy_pct = db.Column(db.Float)
+    guidance_text = db.Column(db.Text)
+    surprise_type = db.Column(db.String(50))
+    consecutive_quarters_growth = db.Column(db.Integer)
+    source = db.Column(db.String(100))
+
+    __table_args__ = (db.UniqueConstraint('symbol', 'exchange', 'quarter', name='_symbol_exchange_quarter_uc'),)
+
+
+class CorporateEvent(BaseModel):
+    """Corporate events (earnings, results, etc.)."""
+    __tablename__ = 'corporate_events'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)
+    event_date = db.Column(db.Date, nullable=False)
+    event_type = db.Column(db.String(100))
+    headline = db.Column(db.Text)
+    sentiment = db.Column(db.Integer)
+    catalyst_score = db.Column(db.Float)
+    source = db.Column(db.String(100))
+    raw_url = db.Column(db.Text)
+
+    # NLP Enhancement fields
+    nlp_sentiment_score = db.Column(db.Float)
+    nlp_category = db.Column(db.String(100))
+    summary = db.Column(db.Text)
+    impact_magnitude = db.Column(db.Float)
+
+    __table_args__ = (db.Index('idx_corp_events_symbol_date', 'symbol', 'event_date'),)
+
+
+class EpFeature(BaseModel):
+    """Episodic Pivot features."""
+    __tablename__ = 'ep_features'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)
+    feature_date = db.Column(db.Date, nullable=False)
+    perf_3m = db.Column(db.Float)
+    perf_6m = db.Column(db.Float)
+    range_60d_pct = db.Column(db.Float)
+    avg_vol_rank = db.Column(db.Float)
+    neglect_score = db.Column(db.Float)
+    has_result = db.Column(db.Integer, default=0)
+    revenue_growth = db.Column(db.Float)
+    profit_growth = db.Column(db.Float)
+    has_corp_event = db.Column(db.Integer, default=0)
+    event_type = db.Column(db.String(100))
+    catalyst_score = db.Column(db.Float)
+    gap_pct = db.Column(db.Float)
+    rel_volume = db.Column(db.Float)
+    close_loc = db.Column(db.Float)
+    repricing_score = db.Column(db.Float)
+    ep_score = db.Column(db.Float)
+    ep_type = db.Column(db.String(50))
+    confidence = db.Column(db.String(20))
+    market_cap_cr = db.Column(db.Float)
+    avg_turnover_cr = db.Column(db.Float)
+    float_days = db.Column(db.Float)
+    price_change_pct = db.Column(db.Float)
+
+    __table_args__ = (
+        db.UniqueConstraint('symbol', 'exchange', 'feature_date', name='_symbol_exchange_feature_date_uc'),
+        db.Index('idx_ep_features_date', 'feature_date'),
+        db.Index('idx_ep_features_score', 'feature_date', 'ep_score'),
+        db.Index('idx_ep_features_symbol_date', 'symbol', 'feature_date'),
+    )
+
+
+class EpWatchlist(BaseModel):
+    """Episodic Pivot watchlist."""
+    __tablename__ = 'ep_watchlist'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False)
+    exchange = db.Column(db.String(10), nullable=False)
+    catalyst_date = db.Column(db.Date, nullable=False)
+    ep_type = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.String(20), default='ACTIVE')
+    trigger_type = db.Column(db.String(50))
+    entry_price = db.Column(db.Float)
+    stop_price = db.Column(db.Float)
+    target_price = db.Column(db.Float)
+    entry_date = db.Column(db.Date)
+    days_on_watch = db.Column(db.Integer, default=0)
+    notes = db.Column(db.Text)
+    ep_score = db.Column(db.Float)
+    catalyst_close = db.Column(db.Float)
+    last_incremented_date = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    __table_args__ = (db.Index('idx_ep_watchlist_symbol', 'symbol'),)
+
+
+class SugarBaby(BaseModel):
+    """Sugar Babies (high momentum stocks)."""
+    __tablename__ = 'sugar_babies'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False, unique=True)
+    exchange = db.Column(db.String(10), nullable=False)
+    added_date = db.Column(db.Date)
+    avg_burst_pct = db.Column(db.Float)
+    avg_burst_days = db.Column(db.Float)
+    episode_count = db.Column(db.Integer)
+    notes = db.Column(db.Text)
+    is_active = db.Column(db.Integer, default=1)

@@ -34,7 +34,8 @@ nse_results_lock = threading.Lock()
 # Change to True or set the environment variable ENABLE_SIMULATED_DATA=true to test Phase 3 simulated layouts.
 ENABLE_SIMULATED_DATA = os.environ.get("ENABLE_SIMULATED_DATA", "false").lower() == "true"
 
-from app.database import get_market_breadth
+from app.database import get_market_breadth, _get_connection, get_watchlist as db_get_watchlist
+from app.services.journal_service import journal_service
 
 
 def init_db():
@@ -6410,22 +6411,8 @@ def get_breadth_latest():
 @app.route('/api/watchlist', methods=['GET'])
 def get_watchlist():
     try:
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
-        c.execute("SELECT id, name FROM watchlist_sections ORDER BY position ASC, id ASC")
-        sections = c.fetchall()
-        
-        result = []
-        for sec_id, sec_name in sections:
-            c.execute("SELECT ticker FROM watchlist_items WHERE section_id = ? ORDER BY position ASC, id ASC", (sec_id,))
-            tickers = [r[0] for r in c.fetchall()]
-            result.append({
-                "id": sec_id,
-                "name": sec_name,
-                "stocks": tickers
-            })
-        conn.close()
-        return jsonify(result)
+        watchlist_data = db_get_watchlist()
+        return jsonify(watchlist_data)
     except Exception as e:
         return jsonify(error=str(e)), 500
 
@@ -6876,268 +6863,120 @@ def delete_watchlist_item():
 @app.route('/api/journal', methods=['GET'])
 def get_journal():
     from flask import request
-    conn = None
     try:
-        status_filter = request.args.get('status', '').strip().lower()
+        status_filter = request.args.get('status', '').strip()
         limit = request.args.get('limit', '').strip()
         offset = request.args.get('offset', '').strip()
-        
-        query = """
-            SELECT id, ticker, name, date, setupLabel, swingband, entry, stop, 
-                   target1, target2, target3, riskAmount, qty, status, 
-                   exitPrice, exitDate, pnl, rAchieved, notes 
-            FROM trade_journal
-        """
-        where_clauses = []
-        params = []
-        
-        if status_filter:
-            where_clauses.append("LOWER(status) = ?")
-            params.append(status_filter)
-            
-        if where_clauses:
-            query += f" WHERE {' AND '.join(where_clauses)}"
-            
-        query += " ORDER BY id DESC"
-        
-        if limit:
-            try:
-                limit_val = int(limit)
-                query += " LIMIT ?"
-                params.append(limit_val)
-                if offset:
-                    try:
-                        offset_val = int(offset)
-                        query += " OFFSET ?"
-                        params.append(offset_val)
-                    except ValueError:
-                        pass
-            except ValueError:
-                pass
 
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
-        conn.close()
-        conn = None
-        
-        cols = ['id', 'ticker', 'name', 'date', 'setupLabel', 'swingband', 'entry', 'stop', 
-                'target1', 'target2', 'target3', 'riskAmount', 'qty', 'status', 
-                'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes']
-        trades = [dict(zip(cols, r)) for r in rows]
+        limit_int = int(limit) if limit.isdigit() else None
+        offset_int = int(offset) if offset.isdigit() else None
+
+        trades = journal_service.get_journal_entries(
+            status_filter=status_filter,
+            limit=limit_int,
+            offset=offset_int
+        )
         return jsonify(trades)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except Exception as e:
         return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 @app.route('/api/journal', methods=['POST'])
 def create_journal_entry():
     from flask import request
-    conn = None
     try:
         data = request.get_json() or {}
-        trade_id = data.get('id')
-        if not trade_id:
-            return jsonify(error="id is required"), 400
-            
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
-        
-        c.execute("SELECT id FROM trade_journal WHERE id = ?", (trade_id,))
-        if c.fetchone():
-            conn.close()
-            conn = None
-            return jsonify(error="Trade already exists. Use PUT to update."), 409
-            
-        c.execute("""
-            INSERT OR IGNORE INTO trade_journal (
-                id, ticker, name, date, setupLabel, swingband, entry, stop, 
-                target1, target2, target3, riskAmount, qty, status, 
-                exitPrice, exitDate, pnl, rAchieved, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            trade_id, data.get('ticker'), data.get('name'), data.get('date'),
-            data.get('setupLabel'), data.get('swingband'), data.get('entry', 0.0),
-            data.get('stop', 0.0), data.get('target1', 0.0), data.get('target2', 0.0),
-            data.get('target3', 0.0), data.get('riskAmount', 0.0), data.get('qty', 0),
-            data.get('status', 'open'), data.get('exitPrice'), data.get('exitDate'),
-            data.get('pnl'), data.get('rAchieved'), data.get('notes', '')
-        ))
-        conn.commit()
-        conn.close()
-        conn = None
-        return jsonify(success=True)
+
+        is_created = journal_service.create_journal_entry(data)
+        if is_created:
+            return jsonify(success=True), 201
+        else:
+            return jsonify(error="Journal entry with this ID already exists"), 409
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except Exception as e:
         return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 @app.route('/api/journal/<trade_id>', methods=['PUT'])
 def update_journal_entry(trade_id):
     from flask import request
     try:
         data = request.get_json() or {}
-        
-        if 'id' in data and data['id'] != trade_id:
-            return jsonify(error="Trade ID mismatch between URL and body"), 400
-            
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
-        
-        # Calculate server-side P&L and R-Achieved when exitPrice is provided
-        if 'exitPrice' in data and data['exitPrice'] is not None and str(data['exitPrice']).strip() != '':
-            # Fetch original trade fields
-            c.execute("SELECT entry, qty, stop FROM trade_journal WHERE id = ?", (trade_id,))
-            orig = c.fetchone()
-            if orig:
-                entry_price, qty, stop = orig
-                
-                entry_val = data.get('entry')
-                if entry_val is None:
-                    entry_val = entry_price or 0.0
-                entry_price = float(entry_val)
 
-                qty_val = data.get('qty')
-                if qty_val is None:
-                    qty_val = qty or 0
-                qty = int(qty_val)
-
-                stop_val = data.get('stop')
-                if stop_val is None:
-                    stop_val = stop or 0.0
-                stop = float(stop_val)
-
-                exit_price = float(data['exitPrice'])
-                pnl, r_achieved = compute_pnl_and_r(entry_price, stop, qty, exit_price, risk_amount=data.get('riskAmount'))
-                
-                data['pnl'] = pnl
-                data['rAchieved'] = r_achieved
-                data['status'] = 'closed'
-        
-        type_map = {
-            'qty': int,
-            'entry': float,
-            'stop': float,
-            'target1': float,
-            'target2': float,
-            'target3': float,
-            'riskAmount': float,
-            'exitPrice': float,
-            'pnl': float,
-            'rAchieved': float
-        }
-        
-        fields = []
-        params = []
-        for key in ['status', 'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes', 'entry', 'stop', 'target1', 'target2', 'target3', 'riskAmount', 'qty', 'ticker', 'name', 'date', 'setupLabel', 'swingband']:
-            if key in data:
-                val = data[key]
-                if val is not None and str(val).strip() != '':
-                    if key in type_map:
-                        try:
-                            val = type_map[key](val)
-                        except (ValueError, TypeError):
-                            conn.close()
-                            return jsonify(error=f"Invalid value type for {key}"), 400
-                else:
-                    val = None
-                
-                fields.append(f"{key} = ?")
-                params.append(val)
-                
-        if not fields:
-            conn.close()
-            return jsonify(error="No fields to update"), 400
-            
-        params.append(trade_id)
-        query = f"UPDATE trade_journal SET {', '.join(fields)} WHERE id = ?"
-        c.execute(query, tuple(params))
-        conn.commit()
-        conn.close()
-        return jsonify(success=True)
+        is_updated = journal_service.update_journal_entry(trade_id, data)
+        if is_updated:
+            return jsonify(success=True)
+        else:
+            return jsonify(error="Journal entry not found"), 404
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except Exception as e:
-        try:
-            conn.close()
-        except Exception:
-            pass
         return jsonify(error=str(e)), 500
 
 @app.route('/api/journal/<trade_id>', methods=['DELETE'])
 def delete_journal_entry(trade_id):
-    conn = None
     try:
-        conn = sqlite3.connect('scan_history.db')
-        c = conn.cursor()
-        c.execute("DELETE FROM trade_journal WHERE id = ?", (trade_id,))
-        if c.rowcount == 0:
-            conn.close()
-            conn = None
-            return jsonify(error="Trade not found"), 404
-        conn.commit()
-        conn.close()
-        conn = None
-        return jsonify(success=True)
+        is_deleted = journal_service.delete_journal_entry(trade_id)
+        if is_deleted:
+            return jsonify(success=True)
+        else:
+            return jsonify(error="Journal entry not found"), 404
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except Exception as e:
         return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 @app.route('/api/migrate-local-data', methods=['POST'])
 def migrate_local_data():
     from flask import request
-    conn = None
     try:
         data = request.get_json() or {}
         sections = data.get('watchlist_sections', [])
         journal = data.get('journal', [])
-        
-        conn = sqlite3.connect('scan_history.db')
-        conn.execute("PRAGMA foreign_keys = ON;")
-        c = conn.cursor()
-        
-        # Migrate watchlists
-        for sec in sections:
-            sec_id = sec.get('id')
-            sec_name = sec.get('name')
-            if sec_id and sec_name:
-                c.execute("INSERT OR IGNORE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
-                for idx, sym in enumerate(sec.get('stocks', [])):
-                    if sym:
-                        c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker, position) VALUES (?, ?, ?)", (sec_id, sym.upper(), idx))
-                        
-        # Migrate journal
-        for entry in journal:
-            trade_id = entry.get('id')
-            if trade_id:
-                c.execute("""
-                    INSERT OR IGNORE INTO trade_journal (
-                        id, ticker, name, date, setupLabel, swingband, entry, stop, 
-                        target1, target2, target3, riskAmount, qty, status, 
-                        exitPrice, exitDate, pnl, rAchieved, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    trade_id, entry.get('ticker'), entry.get('name'), entry.get('date'),
-                    entry.get('setupLabel'), entry.get('swingband'), entry.get('entry', 0.0),
-                    entry.get('stop', 0.0), entry.get('target1', 0.0), entry.get('target2', 0.0),
-                    entry.get('target3', 0.0), entry.get('riskAmount', 0.0), entry.get('qty', 0),
-                    entry.get('status', 'open'), entry.get('exitPrice'), entry.get('exitDate'),
-                    entry.get('pnl'), entry.get('rAchieved'), entry.get('notes', '')
-                ))
-                
-        conn.commit()
-        conn.close()
-        conn = None
-        return jsonify(success=True)
+
+        # Get connection using database module
+        conn, should_close = _get_connection()
+        try:
+            conn.execute("PRAGMA foreign_keys = ON;")
+            c = conn.cursor()
+
+            # Migrate watchlists
+            for sec in sections:
+                sec_id = sec.get('id')
+                sec_name = sec.get('name')
+                if sec_id and sec_name:
+                    c.execute("INSERT OR IGNORE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
+                    for idx, sym in enumerate(sec.get('stocks', [])):
+                        if sym:
+                            c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker, position) VALUES (?, ?, ?)", (sec_id, sym.upper(), idx))
+
+            # Migrate journal
+            for entry in journal:
+                trade_id = entry.get('id')
+                if trade_id:
+                    c.execute("""
+                        INSERT OR IGNORE INTO trade_journal (
+                            id, ticker, name, date, setupLabel, swingband, entry, stop,
+                            target1, target2, target3, riskAmount, qty, status,
+                            exitPrice, exitDate, pnl, rAchieved, notes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        trade_id, entry.get('ticker'), entry.get('name'), entry.get('date'),
+                        entry.get('setupLabel'), entry.get('swingband'), entry.get('entry', 0.0),
+                        entry.get('stop', 0.0), entry.get('target1', 0.0), entry.get('target2', 0.0),
+                        entry.get('target3', 0.0), entry.get('riskAmount', 0.0), entry.get('qty', 0),
+                        entry.get('status', 'open'), entry.get('exitPrice'), entry.get('exitDate'),
+                        entry.get('pnl'), entry.get('rAchieved'), entry.get('notes', '')
+                    ))
+
+            conn.commit()
+            return jsonify(success=True)
+        finally:
+            if should_close:
+                conn.close()
     except Exception as e:
         return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 # ---------- IPO / SME API ENDPOINTS ----------
 
@@ -8269,34 +8108,6 @@ def get_ep_today():
             conn.close()
 
 
-@app.route('/api/ep/watchlist', methods=['GET'])
-def get_ep_watchlist():
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db', timeout=30.0)
-        c = conn.cursor()
-        c.execute("""
-            SELECT id, symbol, exchange, catalyst_date, ep_type, status, trigger_type,
-                   entry_price, stop_price, target_price, entry_date, days_on_watch, notes, ep_score
-            FROM ep_watchlist
-            WHERE status = 'ACTIVE'
-            ORDER BY catalyst_date DESC
-        """)
-        rows = c.fetchall()
-        conn.close()
-        conn = None
-        
-        cols = [
-            'id', 'symbol', 'exchange', 'catalyst_date', 'ep_type', 'status', 'trigger_type',
-            'entry_price', 'stop_price', 'target_price', 'entry_date', 'days_on_watch', 'notes', 'ep_score'
-        ]
-        watchlist = [dict(zip(cols, r)) for r in rows]
-        return jsonify(watchlist=watchlist)
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 
 @app.route('/api/ep/sugar-babies', methods=['GET'])
@@ -8517,58 +8328,6 @@ def remove_from_ep_watchlist():
             conn.close()
 
 
-@app.route('/api/ep/watchlist/trigger', methods=['POST'])
-def trigger_ep_watchlist():
-    data = request.get_json() or {}
-    symbol = data.get("symbol", "").upper().strip()
-    if not symbol:
-        return jsonify(error="Symbol is required"), 400
-        
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db', timeout=30.0)
-        c = conn.cursor()
-        
-        c.execute("SELECT exchange, entry_price FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (symbol,))
-        row = c.fetchone()
-        if not row:
-            return jsonify(error="No active watchlist entry found for this symbol"), 404
-            
-        exchange, current_entry_price = row
-        ticker = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
-        
-        today_price = current_entry_price
-        today_date = datetime.now().strftime("%Y-%m-%d")
-        try:
-            history = fetch_historical_prices(ticker, range_str="1d")
-            if history:
-                today_price = history[-1]["close"]
-                today_date = history[-1]["date"]
-        except Exception:
-            pass
-            
-        c.execute("""
-            UPDATE ep_watchlist
-            SET status = 'TRIGGERED', trigger_type = 'MANUAL', entry_price = ?, entry_date = ?, updated_at = datetime('now')
-            WHERE symbol = ? AND status = 'ACTIVE'
-        """, (today_price, today_date, symbol))
-        conn.commit()
-        
-        price_str = f"₹{today_price:.2f}" if today_price is not None else "₹0.00"
-        alert_msg = (
-            f"🔔 <b>EP Watchlist Manually Triggered!</b>\n"
-            f"<b>Symbol:</b> {symbol}\n"
-            f"<b>Trigger:</b> MANUAL\n"
-            f"<b>Price:</b> {price_str}"
-        )
-        send_telegram_alert(alert_msg)
-        
-        return jsonify(success=True, message="Watchlist entry marked as TRIGGERED")
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 
 @app.route('/api/ep/sugar-babies', methods=['POST'])

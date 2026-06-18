@@ -46,7 +46,10 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Migrated database helpers to `app/database.py`
 - ✅ **Added import for database module functions in app.py** (`from app.database import get_market_breadth`)
 - ✅ **Created new API endpoint `/api/breadth-latest` using database module function**
-- 🔄 Continuing migration of database helpers and raw SQL queries to a data access layer
+- ✅ Completed migration of watchlist raw SQL queries to data access layer (`/api/watchlist` endpoint)
+- ✅ Completed migration of journal raw SQL queries to data access layer (`/api/journal` endpoints)
+- ✅ Completed migration of local data migration raw SQL queries to data access layer (`/api/migrate-local-data` endpoint)
+- ✅ Completed migration of EP watchlist raw SQL queries to data access layer (`/api/ep/watchlist` endpoints)
 - ✅ Setting up background worker (APScheduler) using the NLP service singleton
 
 ### Planned (Phase 3 - Completeness)
@@ -209,4 +212,10 @@ stock-screener/
 3. ✅ **Started market breadth service integration**:
    - Added `from app.database import get_market_breadth` import to app.py
    - Created `/api/breadth-latest` endpoint using the database module function
-4. 🔄 Continue migrating database helpers and raw SQL queries to a data access layer (`app/database.py`)
+4. ✅ Completed migration of remaining database helpers and raw SQL queries to data access layer (`app/database.py`)
+   - Migrated EP watchlist raw SQL queries to service layer
+   - All major endpoints now use service layer + data access layer
+5. 🔄 Begin model migration: create `app/models.py` with SQLAlchemy models for core tables
+   - Start with trade_journal and watchlist tables
+   - Migrate remaining tables gradually
+   - Update service layer to use models where appropriate
