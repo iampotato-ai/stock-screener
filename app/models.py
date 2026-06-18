@@ -86,6 +86,7 @@ class WatchlistItem(BaseModel):
 class TradeJournal(BaseModel):
     """Trade journal entries."""
     __tablename__ = 'trade_journal'
+    id = db.Column(db.String(100), primary_key=True)
     ticker = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(200), nullable=False)
     date = db.Column(db.String(20), nullable=False)
@@ -402,10 +403,8 @@ class SugarBaby(BaseModel):
 class ScanHistory(BaseModel):
     """Scan history tracking."""
     __tablename__ = 'scan_history'
-    date = db.Column(db.Date, nullable=False)
-    ticker = db.Column(db.String(20), nullable=False)
-
-    __table_args__ = (db.UniqueConstraint('date', 'ticker', name='_date_ticker_uc'),)
+    date = db.Column(db.Date, primary_key=True)
+    ticker = db.Column(db.String(20), primary_key=True)
 
 
 class ScanPriceLog(BaseModel):
