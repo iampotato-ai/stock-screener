@@ -3,6 +3,7 @@ Screener service for managing stock screening operations.
 """
 import time
 import threading
+from datetime import date
 from typing import List, Dict, Any, Optional
 from flask import current_app
 from app.models import ScanPriceLog, ScanHistory
@@ -17,7 +18,7 @@ class ScreenerService:
         self.refresh_lock = threading.Lock()
         self.last_refresh_time = 0.0
 
-    def _get_latest_scan_date(self) -> Optional[str]:
+    def _get_latest_scan_date(self) -> Optional[date]:
         """Get the latest scan date from ScanHistory using SQLAlchemy."""
         try:
             latest_date_result = db.session.query(ScanHistory.date).order_by(
