@@ -68,7 +68,7 @@ class ScreenerService:
         try:
             from app.database import get_stock_details as db_get_stock_details
             result = db_get_stock_details(ticker)
-            if not result:
+            if not result or not result.get('price_data'):
                 return None
             return result
         except Exception as e:

@@ -5,6 +5,7 @@ Script to run performance tests for the stock screener application.
 import subprocess
 import sys
 import time
+import os
 
 def run_unit_tests():
     """Run unit tests."""
@@ -79,7 +80,6 @@ def main():
     print("=" * 60)
 
     # Check if we're in the right directory
-    import os
     if not os.path.exists("app"):
         print("Error: Please run this script from the stock-screener project root directory")
         return False
@@ -100,9 +100,9 @@ def main():
 
     print("\n" + "=" * 60)
     if success:
-        print("ALL TESTS PASSED ✓")
+        print("ALL TESTS PASSED [OK]")
     else:
-        print("SOME TESTS FAILED ✗")
+        print("SOME TESTS FAILED [FAIL]")
     print("=" * 60)
 
     return success

@@ -7,13 +7,16 @@ from .extensions import db, init_extensions
 
 logger = logging.getLogger(__name__)
 
-def create_app(config_name=None):
+def create_app(config_name=None, overrides=None):
     """Application factory pattern."""
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
 
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config[config_name])
+    
+    if overrides:
+        app.config.update(overrides)
 
     # Ensure instance folder exists
     try:

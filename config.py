@@ -56,9 +56,9 @@ class ProductionConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
-    DATABASE = ':memory:'
+    DATABASE = os.environ.get('DATABASE') or ':memory:'
 
 
 config = {

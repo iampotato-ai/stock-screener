@@ -10,7 +10,7 @@ class TestNLPService:
     """Test cases for NLPService."""
 
     @patch('app.services.nlp_service.helpers')
-    def test_fallback_classify(self, mock_helpers):
+    def test_fallback_classify(self, mock_helpers, flask_app):
         """Test fallback classification when NLP is disabled."""
         # Mock the helpers.classify_announcement function
         mock_helpers.classify_announcement.return_value = (
@@ -18,34 +18,30 @@ class TestNLPService:
             'Keyword-based classification'
         )
 
-        # Mock nlp_enabled to be False
-        with patch('app.services.nlp_service.current_app') as mock_app:
-            mock_app.config.get.return_value = False
-            with patch('app.services.nlp_service.has_app_context', return_value=True):
-                result = nlp_service.process_announcement(
-                    desc="Test announcement",
-                    text="This is a test announcement"
-                )
+        # Configure app to disable NLP enrichment and run in app context
+        flask_app.config['ENABLE_NLP_ENRICHMENT'] = False
+        with flask_app.app_context():
+            result = nlp_service.process_announcement(
+                desc="Test announcement",
+                text="This is a test announcement"
+            )
 
-                # Assertions
-                assert result['cat'] == 'news'
-                assert result['cat_name'] == 'News'
-                assert result['imp'] == 'low'
-                assert result['imp_name'] == 'Low'
-                assert result['sent'] == 'sent-neutral'
-                assert result['sent_name'] == '🟡 Neutral'
-                assert 'Keyword-based classification' in result['reason']
+            # Assertions
+            assert result['cat'] == 'news'
+            assert result['cat_name'] == 'News'
+            assert result['imp'] == 'low'
+            assert result['imp_name'] == 'Low'
+            assert result['sent'] == 'sent-neutral'
+            assert result['sent_name'] == '🟡 Neutral'
+            assert 'Keyword-based classification' in result['reason']
 
     @patch('app.services.nlp_service.helpers')
-    @patch('app.services.nlp_service.current_app')
-    def test_nlp_processing_success(self, mock_current_app, mock_helpers):
+    def test_nlp_processing_success(self, mock_helpers, flask_app):
         """Test successful NLP processing."""
-        # Mock app context and NLP enabled
-        mock_current_app.config.get.return_value = True
-        mock_current_app.__bool__.return_value = True
+        # Configure app to enable NLP enrichment
+        flask_app.config['ENABLE_NLP_ENRICHMENT'] = True
 
-        # Mock helpers.init_nlp_models to return True
-        with patch('app.services.nlp_service.helpers.init_nlp_models', return_value=True):
+        with flask_app.app_context():
             # Mock the NLP processing functions
             mock_helpers._prepare_text_for_analysis.return_value = "test text"
             mock_helpers._analyze_sentiment.return_value = {
@@ -82,7 +78,3 @@ class TestNLPService:
             assert result['nlp_category'] == 'earnings'
             assert result['summary'] == "Test summary"
             assert result['impact_magnitude'] == 0.75
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])
