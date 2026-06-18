@@ -86,7 +86,6 @@ class WatchlistItem(BaseModel):
 class TradeJournal(BaseModel):
     """Trade journal entries."""
     __tablename__ = 'trade_journal'
-    id = db.Column(db.String(100), primary_key=True)
     ticker = db.Column(db.String(20), nullable=False)
     name = db.Column(db.String(200), nullable=False)
     date = db.Column(db.String(20), nullable=False)
@@ -398,3 +397,24 @@ class SugarBaby(BaseModel):
     episode_count = db.Column(db.Integer)
     notes = db.Column(db.Text)
     is_active = db.Column(db.Integer, default=1)
+
+
+class ScanHistory(BaseModel):
+    """Scan history tracking."""
+    __tablename__ = 'scan_history'
+    date = db.Column(db.Date, nullable=False)
+    ticker = db.Column(db.String(20), nullable=False)
+
+    __table_args__ = (db.UniqueConstraint('date', 'ticker', name='_date_ticker_uc'),)
+
+
+class ScanPriceLog(BaseModel):
+    """Scan price log with detailed price information."""
+    __tablename__ = 'scan_price_log'
+    date = db.Column(db.Date, nullable=False)
+    ticker = db.Column(db.String(20), nullable=False)
+    close = db.Column(db.Float)
+    swingband = db.Column(db.String(20))
+    setupLabel = db.Column(db.String(100))
+
+    __table_args__ = (db.PrimaryKeyConstraint('date', 'ticker', name='_date_ticker_pk'),)

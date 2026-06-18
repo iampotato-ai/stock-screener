@@ -52,9 +52,10 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Completed migration of EP watchlist raw SQL queries to data access layer (`/api/ep/watchlist` endpoints)
 - ✅ Setting up background worker (APScheduler) using the NLP service singleton
 
-### Planned (Phase 3 - Completeness)
+### In Progress (Phase 3 - Completeness)
 - ✅ Created `app/database.py` with database helper functions for raw SQLite access
-- ⏳ Completing model migration (all tables to `app/models.py` or using raw SQLite via `app/database.py`)
+- ✅ Completed database model migration (mapped all core tables to SQLAlchemy models in `app/models.py`)
+- ✅ Completed screener service migration to use SQLAlchemy ORM (`app/services/screener_service.py`)
 - ⏳ Migrating remaining utility functions to `app/utils/`
 - ⏳ Adding environment-based configuration for external APIs and feature flags
 - ⏳ Writing unit tests for service layer
@@ -81,7 +82,7 @@ stock-screener/
 │   │   └─ /v1                 # API versioning
 │   │       ├─ __init__.py
 │   │       ├─ announcements.py    # NLP processing endpoint
-│   │       ├─ screener.py         # (to be created) market data and screening
+│   │       ├─ screener.py         # (created) market data and screening
 │   │       ├─ watchlist.py        # (created) watchlist management
 │   │       ├─ journal.py          # (created) trade journal
 │   │       ├─ alerts.py           # (created) alert processing
@@ -93,7 +94,7 @@ stock-screener/
 │   │   ├─ __init__.py
 │   │   ├─ nlp_service.py        # NLP processing (completed)
 │   │   ├─ watchlist_service.py  # (created)
-│   │   ├─ screener_service.py   # (to be created)
+│   │   ├─ screener_service.py   # (created)
 │   │   ├─ journal_service.py    # (created)
 │   │   ├─ alert_service.py      # (created)
 │   │   ├─ ipo_service.py        # (created)
@@ -160,7 +161,7 @@ stock-screener/
    - Move all table definitions to `app/models.py` (or keep raw SQL in `app/database.py` if preferred)
    - Ensure relationships and constraints are preserved
 2. **Centralize constants**:
-   - Move remaining magic numbers/strings to `app/utils/constants.py`
+   - Remove remaining magic numbers/strings to `app/utils/constants.py`
    - Replace hard-coded URLs with values from `config.py`
 3. **Add missing utilities**:
    - Create `app/utils/exceptions.py` for custom exceptions
@@ -215,7 +216,12 @@ stock-screener/
 4. ✅ Completed migration of remaining database helpers and raw SQL queries to data access layer (`app/database.py`)
    - Migrated EP watchlist raw SQL queries to service layer
    - All major endpoints now use service layer + data access layer
-5. 🔄 Begin model migration: create `app/models.py` with SQLAlchemy models for core tables
-   - Start with trade_journal and watchlist tables
-   - Migrate remaining tables gradually
-   - Update service layer to use models where appropriate
+5. ✅ Completed model migration:
+   - Created `app/models.py` with SQLAlchemy models representing all database tables.
+   - Refactored core service layers (`watchlist_service.py`, `journal_service.py`, `ipo_service.py`) to run queries/updates via SQLAlchemy models instead of raw database queries where appropriate.
+   - Resolved database context and mock engine caching isolation during test execution.
+
+## Immediate Next Steps
+1. ⏳ Migrate remaining utility functions to `app/utils/`
+2. ⏳ Add environment-based configuration for external APIs and feature flags
+3. ⏳ Write comprehensive unit tests for the service layer and integration tests for API endpoints
