@@ -98,7 +98,7 @@ class TradeJournal(BaseModel):
 # This initial version focuses on core watchlist functionality.
 
 
-class BreadthHistory(BaseModel):
+class BreadthHistory(db.Model):
     """Market breadth history data."""
     __tablename__ = 'breadth_history'
     date = db.Column(db.Date, primary_key=True)  # Using Date since it's the primary key
@@ -112,6 +112,16 @@ class BreadthHistory(BaseModel):
     avg_recommend = db.Column(db.Float)
     regime_score = db.Column(db.Integer)
     regime_band = db.Column(db.String(50))
+
+    def to_dict(self):
+        """Convert model instance to dictionary."""
+        # Convert date and time to strings for JSON serialization
+        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        if res.get('date'):
+            res['date'] = res['date'].strftime('%Y-%m-%d') if hasattr(res['date'], 'strftime') else str(res['date'])
+        if res.get('time'):
+            res['time'] = res['time'].strftime('%H:%M:%S') if hasattr(res['time'], 'strftime') else str(res['time'])
+        return res
 
 
 class KronosForecast(BaseModel):
@@ -194,7 +204,7 @@ class IpoMetricsCache(BaseModel):
     """Cached IPO metrics for performance."""
     __tablename__ = 'ipo_metrics_cache'
     ticker = db.Column(db.String(20), primary_key=True)
-    company_name = db.Column.db.String(200), nullable=False)
+    company_name = db.Column(db.String(200), nullable=False)
     listing_date = db.Column(db.Date, nullable=False)
     exchange = db.Column(db.String(10), nullable=False)
     sector = db.Column(db.String(100))

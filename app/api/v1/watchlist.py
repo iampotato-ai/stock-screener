@@ -173,3 +173,41 @@ def reorder_watchlist_items(section_id):
     except Exception as e:
         current_app.logger.error(f"Error reordering watchlist items: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
+
+@api_bp.route('/migrate-local-data', methods=['POST'])
+def migrate_local_data():
+    """
+    Migrate local data (watchlists and journal entries).
+    Expected JSON: { "watchlist_sections": [...], "journal": [...] }
+    """
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+
+    data = request.get_json() or {}
+    sections = data.get('watchlist_sections', [])
+    journal = data.get('journal', [])
+
+    try:
+        from app.services.journal_service import journal_service
+
+        # Migrate watchlists
+        for sec in sections:
+            sec_id = sec.get('id')
+            sec_name = sec.get('name')
+            if sec_id and sec_name:
+                watchlist_service.create_watchlist_section(sec_id, sec_name)
+                for idx, sym in enumerate(sec.get('stocks', [])):
+                    if sym:
+                        watchlist_service.add_watchlist_item(sec_id, sym)
+
+        # Migrate journal
+        for entry in journal:
+            trade_id = entry.get('id')
+            if trade_id:
+                journal_service.create_journal_entry(entry)
+
+        return jsonify({"success": True, "message": "Local data migrated"}), 200
+    except Exception as e:
+        current_app.logger.error(f"Error migrating local data: {e}")
+        return jsonify({"error": "Internal server error"}), 500

@@ -42,13 +42,13 @@ def test_endpoints():
     else:
         print(f"   FAIL: Journal endpoint failed: {response.get_json()}")
 
-    # Test /api/migrate-local-data (still in app.py, not in blueprint)
+    # Test /api/migrate-local-data (moved to blueprint)
     print("\n4. Testing /api/migrate-local-data:")
     migrate_data = {
         "watchlist_sections": [],
         "journal": []
     }
-    response = client.post('/api/migrate-local-data', json=migrate_data)
+    response = client.post('/api/v1/migrate-local-data', json=migrate_data)
     print(f"   Status Code: {response.status_code}")
     if response.status_code == 200:
         print("   PASS: Local data migration endpoint working")

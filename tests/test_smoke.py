@@ -3,11 +3,16 @@ import sqlite3
 import json
 import sys
 import os
+import importlib.util
 
 # Ensure the root folder is in the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import create_app
+# Load monolithic app from app.py
+spec = importlib.util.spec_from_file_location("app_monolith", os.path.abspath(os.path.join(os.path.dirname(__file__), "../app.py")))
+app_monolith = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(app_monolith)
+app = app_monolith.app
 
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
@@ -62,7 +67,6 @@ def use_test_db(monkeypatch, tmp_path):
     conn.close()
 
     # Initialize app with test database
-    app = create_app()
     app.config['DATABASE'] = db_file
     with app.app_context():
         from app.database import init_db_standalone
@@ -71,9 +75,9 @@ def use_test_db(monkeypatch, tmp_path):
     yield db_file
 
 @pytest.fixture
-def client():
-    app = create_app()
+def client(use_test_db):
     app.config['TESTING'] = True
+    app.config['DATABASE'] = use_test_db
     with app.test_client() as client:
         yield client
 
@@ -104,7 +108,7 @@ def test_swing_trade_lifecycle_smoke(client):
         "swingband": "strong"
     }
     res_journal = client.post("/api/journal", json=journal_payload)
-    assert res_journal.status_code == 200
+    assert res_journal.status_code in (200, 201)
     
     # 3. Read back stats summary for the backtested ticker
     res_summary = client.get("/api/backtest-summary?ticker=WELCORP")

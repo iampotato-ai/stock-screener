@@ -3,7 +3,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, request, current_app
 from config import config
-from .extensions import init_extensions
+from .extensions import db, init_extensions
 
 logger = logging.getLogger(__name__)
 

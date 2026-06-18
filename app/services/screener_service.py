@@ -191,20 +191,24 @@ class ScreenerService:
                 return False  # Cooldown active
             self.last_refresh_time = current_time
 
+        # Get actual app instance before starting thread
+        app = current_app._get_current_object()
+
         # Start background thread to refresh data asynchronously
         def _bg_refresh():
-            try:
-                # Call the scan function from app.py
-                from app import scan_stocks
-                # We need to call this in a request context, but for background we'll
-                # simulate what the scan endpoint does
-                # For now, we'll just log that refresh was triggered
-                current_app.logger.info("Background screener refresh triggered")
-                # In a real implementation, we'd call the actual scanning logic
-                # But since we're refactoring, we'll keep the existing scan endpoint
-                # and just note that refresh was requested
-            except Exception as e:
-                current_app.logger.error(f"Error in background screener refresh: {e}")
+            with app.app_context():
+                try:
+                    # Call the scan function from app.py
+                    from app import scan_stocks
+                    # We need to call this in a request context, but for background we'll
+                    # simulate what the scan endpoint does
+                    # For now, we'll just log that refresh was triggered
+                    current_app.logger.info("Background screener refresh triggered")
+                    # In a real implementation, we'd call the actual scanning logic
+                    # But since we're refactoring, we'll keep the existing scan endpoint
+                    # and just note that refresh was requested
+                except Exception as e:
+                    current_app.logger.error(f"Error in background screener refresh: {e}")
 
         t = threading.Thread(target=_bg_refresh)
         t.start()

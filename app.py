@@ -6930,51 +6930,30 @@ def delete_journal_entry(trade_id):
 @app.route('/api/migrate-local-data', methods=['POST'])
 def migrate_local_data():
     from flask import request
+    from app.services.watchlist_service import watchlist_service
+    from app.services.journal_service import journal_service
     try:
         data = request.get_json() or {}
         sections = data.get('watchlist_sections', [])
         journal = data.get('journal', [])
 
-        # Get connection using database module
-        conn, should_close = _get_connection()
-        try:
-            conn.execute("PRAGMA foreign_keys = ON;")
-            c = conn.cursor()
+        # Migrate watchlists
+        for sec in sections:
+            sec_id = sec.get('id')
+            sec_name = sec.get('name')
+            if sec_id and sec_name:
+                watchlist_service.create_watchlist_section(sec_id, sec_name)
+                for idx, sym in enumerate(sec.get('stocks', [])):
+                    if sym:
+                        watchlist_service.add_watchlist_item(sec_id, sym)
 
-            # Migrate watchlists
-            for sec in sections:
-                sec_id = sec.get('id')
-                sec_name = sec.get('name')
-                if sec_id and sec_name:
-                    c.execute("INSERT OR IGNORE INTO watchlist_sections (id, name) VALUES (?, ?)", (sec_id, sec_name))
-                    for idx, sym in enumerate(sec.get('stocks', [])):
-                        if sym:
-                            c.execute("INSERT OR IGNORE INTO watchlist_items (section_id, ticker, position) VALUES (?, ?, ?)", (sec_id, sym.upper(), idx))
+        # Migrate journal
+        for entry in journal:
+            trade_id = entry.get('id')
+            if trade_id:
+                journal_service.create_journal_entry(entry)
 
-            # Migrate journal
-            for entry in journal:
-                trade_id = entry.get('id')
-                if trade_id:
-                    c.execute("""
-                        INSERT OR IGNORE INTO trade_journal (
-                            id, ticker, name, date, setupLabel, swingband, entry, stop,
-                            target1, target2, target3, riskAmount, qty, status,
-                            exitPrice, exitDate, pnl, rAchieved, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        trade_id, entry.get('ticker'), entry.get('name'), entry.get('date'),
-                        entry.get('setupLabel'), entry.get('swingband'), entry.get('entry', 0.0),
-                        entry.get('stop', 0.0), entry.get('target1', 0.0), entry.get('target2', 0.0),
-                        entry.get('target3', 0.0), entry.get('riskAmount', 0.0), entry.get('qty', 0),
-                        entry.get('status', 'open'), entry.get('exitPrice'), entry.get('exitDate'),
-                        entry.get('pnl'), entry.get('rAchieved'), entry.get('notes', '')
-                    ))
-
-            conn.commit()
-            return jsonify(success=True)
-        finally:
-            if should_close:
-                conn.close()
+        return jsonify(success=True)
     except Exception as e:
         return jsonify(error=str(e)), 500
 
