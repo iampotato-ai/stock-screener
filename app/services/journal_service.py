@@ -124,7 +124,9 @@ class JournalService:
             'rAchieved': float
         }
 
-        has_updates = False
+        nullable_fields = {'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes'}
+        validated_updates = {}
+
         for key in ['status', 'exitPrice', 'exitDate', 'pnl', 'rAchieved', 'notes', 'entry', 'stop',
                    'target1', 'target2', 'target3', 'riskAmount', 'qty', 'ticker', 'name', 'date',
                    'setupLabel', 'swingband']:
@@ -137,13 +139,18 @@ class JournalService:
                         except (ValueError, TypeError):
                             raise ValueError(f"Invalid value type for {key}")
                 else:
+                    if key not in nullable_fields:
+                        raise ValueError(f"{key} cannot be empty or null")
                     val = None
 
-                setattr(entry, key, val)
-                has_updates = True
+                validated_updates[key] = val
 
-        if not has_updates:
+        if not validated_updates:
             raise ValueError("No fields to update")
+
+        # Apply validated updates to the entry
+        for key, val in validated_updates.items():
+            setattr(entry, key, val)
 
         db.session.commit()
         return True  # Updated

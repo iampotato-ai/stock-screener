@@ -9,11 +9,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # )
 
 class BaseModel(db.Model):
-    """Abstract base model."""
+    """Abstract base model with serialization and helper utilities."""
     __abstract__ = True
-    id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def save(self):
         db.session.add(self)
@@ -25,13 +22,25 @@ class BaseModel(db.Model):
         db.session.commit()
 
     def to_dict(self):
-        """Convert model instance to dictionary."""
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        """Convert model instance to dictionary, serializing date/time fields."""
+        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        for k, v in res.items():
+            if hasattr(v, 'strftime'):
+                if hasattr(v, 'hour') and hasattr(v, 'month'): # datetime
+                    res[k] = v.strftime('%Y-%m-%d %H:%M:%S')
+                elif hasattr(v, 'hour'): # time
+                    res[k] = v.strftime('%H:%M:%S')
+                else: # date
+                    res[k] = v.strftime('%Y-%m-%d')
+        return res
 
 
 class User(BaseModel):
     """User model for authentication."""
     __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     username = db.Column(db.String(64), unique=True, nullable=False, index=True)
     email = db.Column(db.String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(128))
@@ -47,7 +56,7 @@ class User(BaseModel):
         return f'<User {self.username}>'
 
 
-class WatchlistSection(db.Model):
+class WatchlistSection(BaseModel):
     """Watchlist sections (e.g., 'Long Term', 'Intraday')."""
     __tablename__ = 'watchlist_sections'
     id = db.Column(db.String(100), primary_key=True)
@@ -60,11 +69,8 @@ class WatchlistSection(db.Model):
     def __repr__(self):
         return f'<WatchlistSection {self.name}>'
 
-    def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
-
-class WatchlistItem(db.Model):
+class WatchlistItem(BaseModel):
     """Individual stock/watchlist item."""
     __tablename__ = 'watchlist_items'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -75,12 +81,9 @@ class WatchlistItem(db.Model):
     def __repr__(self):
         return f'<WatchlistItem {self.ticker}>'
 
-    def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
-
 
 # Example: Trade journal model
-class TradeJournal(db.Model):
+class TradeJournal(BaseModel):
     """Trade journal entries."""
     __tablename__ = 'trade_journal'
     id = db.Column(db.String(100), primary_key=True)
@@ -106,15 +109,12 @@ class TradeJournal(db.Model):
     def __repr__(self):
         return f'<TradeJournal {self.ticker}>'
 
-    def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
-
 
 # Add other models as needed from existing schema (e.g., IPO, News, Alerts, etc.)
 # This initial version focuses on core watchlist functionality.
 
 
-class BreadthHistory(db.Model):
+class BreadthHistory(BaseModel):
     """Market breadth history data."""
     __tablename__ = 'breadth_history'
     date = db.Column(db.Date, primary_key=True)  # Using Date since it's the primary key
@@ -129,20 +129,11 @@ class BreadthHistory(db.Model):
     regime_score = db.Column(db.Integer)
     regime_band = db.Column(db.String(50))
 
-    def to_dict(self):
-        """Convert model instance to dictionary."""
-        # Convert date and time to strings for JSON serialization
-        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        if res.get('date'):
-            res['date'] = res['date'].strftime('%Y-%m-%d') if hasattr(res['date'], 'strftime') else str(res['date'])
-        if res.get('time'):
-            res['time'] = res['time'].strftime('%H:%M:%S') if hasattr(res['time'], 'strftime') else str(res['time'])
-        return res
-
 
 class KronosForecast(BaseModel):
     """Kronos forecast predictions."""
     __tablename__ = 'kronos_forecasts'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ticker = db.Column(db.String(20), nullable=False, index=True)
     generated_at = db.Column(db.DateTime, nullable=False)
     pred_len = db.Column(db.Integer, nullable=False)
@@ -370,7 +361,7 @@ class EpFeature(BaseModel):
     )
 
 
-class EpWatchlist(db.Model):
+class EpWatchlist(BaseModel):
     """Episodic Pivot watchlist."""
     __tablename__ = 'ep_watchlist'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -394,18 +385,8 @@ class EpWatchlist(db.Model):
 
     __table_args__ = (db.Index('idx_ep_watchlist_symbol', 'symbol'),)
 
-    def to_dict(self):
-        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        for k, v in res.items():
-            if hasattr(v, 'strftime'):
-                if isinstance(v, datetime):
-                    res[k] = v.strftime('%Y-%m-%d %H:%M:%S')
-                else:
-                    res[k] = v.strftime('%Y-%m-%d')
-        return res
 
-
-class SugarBaby(db.Model):
+class SugarBaby(BaseModel):
     """Sugar Babies (high momentum stocks)."""
     __tablename__ = 'sugar_babies'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -417,13 +398,3 @@ class SugarBaby(db.Model):
     episode_count = db.Column(db.Integer)
     notes = db.Column(db.Text)
     is_active = db.Column(db.Integer, default=1)
-
-    def to_dict(self):
-        res = {c.name: getattr(self, c.name) for c in self.__table__.columns}
-        for k, v in res.items():
-            if hasattr(v, 'strftime'):
-                if isinstance(v, datetime):
-                    res[k] = v.strftime('%Y-%m-%d %H:%M:%S')
-                else:
-                    res[k] = v.strftime('%Y-%m-%d')
-        return res

@@ -7,6 +7,7 @@ import time
 import threading
 from datetime import datetime
 from app.extensions import db
+from app.database import get_db
 from app.models import IpoMetricsCache, IpoListing
 from app.utils.technical import (
     fetch_historical_prices,

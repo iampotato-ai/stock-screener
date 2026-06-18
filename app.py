@@ -7,6 +7,18 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import threading
 from flask import Flask, jsonify, render_template, request
+
+# Create Flask app immediately
+app = Flask(__name__, template_folder='templates', static_folder='static')
+
+from config import config
+config_name = os.environ.get('FLASK_ENV', 'default')
+app.config.from_object(config[config_name])
+
+# Initialize extensions (SQLAlchemy, teardown, etc.)
+from app.extensions import init_extensions
+init_extensions(app)
+
 import sqlite3
 import numpy as np
 import pandas as pd
@@ -2010,15 +2022,7 @@ def refresh_ep_screener():
                 
     print("[EP Refresh] EP screening and cache refresh completed.")
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
 
-from config import config
-config_name = os.environ.get('FLASK_ENV', 'default')
-app.config.from_object(config[config_name])
-
-# Initialize extensions (SQLAlchemy, teardown, etc.)
-from app.extensions import init_extensions
-init_extensions(app)
 
 @app.after_request
 def add_header(response):

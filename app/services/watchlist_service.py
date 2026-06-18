@@ -226,14 +226,24 @@ class WatchlistService:
 
     def increment_ep_watchlist_days(self) -> None:
         """Increment days_on_watch for all active EP watchlist items and expire old ones."""
-        active_items = db.session.query(EpWatchlist).filter(EpWatchlist.status == 'ACTIVE').all()
         today_date = datetime.now().date()
-        for item in active_items:
-            item.days_on_watch = (item.days_on_watch or 0) + 1
-            item.last_incremented_date = today_date
-            if item.days_on_watch > 20:
-                item.status = 'EXPIRED'
-            item.updated_at = datetime.utcnow()
+
+        # Increment days_on_watch and update last_incremented_date and updated_at for ACTIVE items
+        db.session.query(EpWatchlist).filter(EpWatchlist.status == 'ACTIVE').update({
+            EpWatchlist.days_on_watch: EpWatchlist.days_on_watch + 1,
+            EpWatchlist.last_incremented_date: today_date,
+            EpWatchlist.updated_at: datetime.utcnow()
+        }, synchronize_session=False)
+
+        # Expire watchlist items on watch for more than 20 days
+        db.session.query(EpWatchlist).filter(
+            EpWatchlist.status == 'ACTIVE',
+            EpWatchlist.days_on_watch > 20
+        ).update({
+            EpWatchlist.status: 'EXPIRED',
+            EpWatchlist.updated_at: datetime.utcnow()
+        }, synchronize_session=False)
+
         db.session.commit()
 
 

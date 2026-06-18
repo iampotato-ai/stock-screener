@@ -8,15 +8,18 @@ import importlib.util
 # Ensure the root folder is in the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Load monolithic app from app.py
-spec = importlib.util.spec_from_file_location("app_monolith", os.path.abspath(os.path.join(os.path.dirname(__file__), "../app.py")))
-app_monolith = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(app_monolith)
-app = app_monolith.app
+# Global variable to hold the loaded monolith app
+app = None
 
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
+    global app
     db_file = str(tmp_path / "test_scan_history.db")
+    
+    # Configure environment BEFORE loading app.py
+    monkeypatch.setenv("DATABASE", db_file)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + db_file)
+
     orig_connect = sqlite3.connect
 
     def mock_connect(database, *args, **kwargs):
@@ -66,17 +69,16 @@ def use_test_db(monkeypatch, tmp_path):
     conn.commit()
     conn.close()
 
-    # Initialize app with test database configuration
+    # Load monolithic app from app.py inside the fixture context
+    if app is None:
+        spec = importlib.util.spec_from_file_location("app_monolith", os.path.abspath(os.path.join(os.path.dirname(__file__), "../app.py")))
+        app_monolith = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(app_monolith)
+        app = app_monolith.app
+
+    # Ensure app configurations are set explicitly
     app.config['DATABASE'] = db_file
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_file
-
-    # Force SQLAlchemy to recreate engines with new configuration
-    from app.extensions import db
-    try:
-        app.extensions.pop("sqlalchemy", None)
-        db.init_app(app)
-    except Exception as e:
-        print("Error re-initializing SQLAlchemy extension:", e)
 
     with app.app_context():
         from app.database import init_db_standalone
