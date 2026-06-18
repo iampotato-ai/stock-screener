@@ -28,11 +28,17 @@ def fetch_historical_prices(ticker, range_str="6mo"):
 
     import urllib.request
     import json
+    import os
     symbol = ticker
     if not symbol.endswith(".NS") and not symbol.endswith(".BO") and not symbol.startswith("^"):
         symbol = f"{symbol}.NS"
 
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}"
+    # Get Yahoo Finance URL from environment variable with fallback
+    yahoo_finance_url = os.environ.get(
+        'YAHOO_FINANCE_URL',
+        'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}'
+    )
+    url = yahoo_finance_url.format(symbol=symbol, range_str=range_str)
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
     try:

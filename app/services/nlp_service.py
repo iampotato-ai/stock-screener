@@ -3,6 +3,7 @@ NLP Service for processing corporate announcements.
 Provides a clean interface for announcement classification using
 FinBERT, zero-shot classification, and summarization models.
 """
+import os
 from typing import Dict, Optional
 from ..utils import helpers
 
@@ -35,6 +36,10 @@ class NLPService:
         Returns:
             Dictionary with classification results compatible with existing API.
         """
+        # Check if NLP enrichment is enabled via feature flag
+        if os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() != 'true':
+            return self._fallback_classify(desc, text)
+
         # Check if we should attempt NLP processing
         if not self._ensure_models() or not (
                 (desc and len(desc.strip()) > 10) or

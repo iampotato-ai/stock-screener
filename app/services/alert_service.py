@@ -21,6 +21,11 @@ class AlertService:
         Returns:
             True if sent successfully, False otherwise
         """
+        # Check if Telegram alerts are enabled via feature flag
+        if os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() != 'true':
+            current_app.logger.debug("Telegram alerts are disabled via feature flag")
+            return False
+
         token = os.environ.get("TELEGRAM_BOT_TOKEN")
         chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 

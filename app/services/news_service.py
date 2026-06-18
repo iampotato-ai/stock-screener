@@ -5,6 +5,7 @@ import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 import urllib.request
+import os
 from typing import List, Dict, Any, Optional
 from email.utils import parsedate_to_datetime
 import datetime
@@ -34,7 +35,12 @@ class NewsService:
                 return self.NEWS_CACHE[ticker]["data"]
 
         query = urllib.parse.quote(f"{ticker} NSE India OR {ticker} stock")
-        url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        # Get Google News URL from environment variable with fallback
+        google_news_url = os.environ.get(
+            'GOOGLE_NEWS_URL',
+            'https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en'
+        )
+        url = google_news_url.format(query=query)
 
         news_list = []
         try:

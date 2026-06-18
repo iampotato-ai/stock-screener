@@ -53,15 +53,15 @@ The `app.py` file has grown to approximately 378.5KB, indicating a monolithic st
 - ✅ Setting up background worker (APScheduler) using the NLP service singleton
 
 ### In Progress (Phase 3 - Completeness)
-- ✅ Created `app/database.py` with database helper functions for raw SQLite access
-- ✅ Completed database model migration (mapped all core tables to SQLAlchemy models in `app/models.py`)
-- ✅ Completed screener service migration to use SQLAlchemy ORM (`app/services/screener_service.py`)
-- ⏳ Migrating remaining utility functions to `app/utils/`
-- ⏳ Adding environment-based configuration for external APIs and feature flags
-- ⏳ Writing unit tests for service layer
-- ⏳ Writing integration tests for API endpoints
-- ⏳ Performance testing and optimization
-- ⏳ Final cleanup and switch over to new factory
+56	- ✅ Created `app/database.py` with database helper functions for raw SQLite access
+57	- ✅ Completed database model migration (mapped all core tables to SQLAlchemy models in `app/models.py`)
+58	- ✅ Completed screener service migration to use data access layer (`app/services/screener_service.py`)
+59	- ✅ Migrated remaining utility functions to `app/utils/`
+60	- ✅ Added environment-based configuration for external APIs and feature flags
+61	- ⏳ Writing unit tests for service layer
+62	- ⏳ Writing integration tests for API endpoints
+63	- ⏳ Performance testing and optimization
+64	- ⏳ Final cleanup and switch over to new factory
 
 ## Proposed Directory Structure (Updated)
 ```
@@ -105,10 +105,10 @@ stock-screener/
 │   │   ├─ __init__.py
 │   │   ├─ constants.py          # Central constants (NLP models, scores, etc.)
 │   │   ├─ helpers.py            # All NLP/text processing functions (completed)
-│   │   └─ exceptions.py         # (to be created)
+│   │   ├─ exceptions.py         # (created)
 │   │
 │   └─ /tasks                  # Background tasks (APScheduler jobs)
-│       └─ scheduler.py        # (to be created) uses nlp_service singleton
+│       └─ scheduler.py        # (created) uses nlp_service singleton
 │
 ├─ /migrations                 # Flask-Migrate directory (if using Flask-Migrate)
 │
@@ -222,6 +222,6 @@ stock-screener/
    - Resolved database context and mock engine caching isolation during test execution.
 
 ## Immediate Next Steps
-1. ⏳ Migrate remaining utility functions to `app/utils/`
-2. ⏳ Add environment-based configuration for external APIs and feature flags
+1. ✅ Migrated remaining utility functions to `app/utils/`
+2. ✅ Added environment-based configuration for external APIs and feature flags
 3. ⏳ Write comprehensive unit tests for the service layer and integration tests for API endpoints

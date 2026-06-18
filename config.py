@@ -17,6 +17,13 @@ class Config:
     # External API configuration
     TRADINGVIEW_SCAN_URL = os.environ.get('TRADINGVIEW_SCAN_URL', 'https://scanner.tradingview.com/india/scan')
     NEWS_API_KEY = os.environ.get('NEWS_API_KEY')
+    YAHOO_FINANCE_URL = os.environ.get('YAHOO_FINANCE_URL', 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}')
+    GOOGLE_NEWS_URL = os.environ.get('GOOGLE_NEWS_URL', 'https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en')
+
+    # Feature flags
+    ENABLE_BACKGROUND_TASKS = os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() == 'true'
+    ENABLE_TELEGRAM_ALERTS = os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() == 'true'
+    ENABLE_NLP_ENRICHMENT = os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() == 'true'
 
     # Pagination
     ITEMS_PER_PAGE = int(os.environ.get('ITEMS_PER_PAGE', '50'))

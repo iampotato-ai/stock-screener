@@ -12,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 def init_scheduler(app: Flask):
     """Initialize the background scheduler."""
+    # Check if background tasks are enabled via feature flag
+    if os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() != 'true':
+        logger.info("Background tasks are disabled via feature flag")
+        return None
+
     # Prevent double initialization in Flask debug mode
     if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
         # We are in the Flask reloader process, skip initialization
