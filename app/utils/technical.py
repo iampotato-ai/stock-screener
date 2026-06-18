@@ -7,6 +7,7 @@ import json
 import urllib.request
 from datetime import datetime
 from collections import OrderedDict
+from flask import has_app_context, current_app
 
 # Cache for fetch_historical_prices
 _historical_prices_cache = OrderedDict()  # {(ticker, range_str): (timestamp, data)}
@@ -33,11 +34,12 @@ def fetch_historical_prices(ticker, range_str="6mo"):
     if not symbol.endswith(".NS") and not symbol.endswith(".BO") and not symbol.startswith("^"):
         symbol = f"{symbol}.NS"
 
-    # Get Yahoo Finance URL from environment variable with fallback
-    yahoo_finance_url = os.environ.get(
-        'YAHOO_FINANCE_URL',
-        'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}'
-    )
+    # Get Yahoo Finance URL from config (Flask app config) or fall back to env/default
+    _DEFAULT_YAHOO_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}'
+    if has_app_context():
+        yahoo_finance_url = current_app.config.get('YAHOO_FINANCE_URL', _DEFAULT_YAHOO_URL)
+    else:
+        yahoo_finance_url = os.environ.get('YAHOO_FINANCE_URL', _DEFAULT_YAHOO_URL)
     url = yahoo_finance_url.format(symbol=symbol, range_str=range_str)
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 

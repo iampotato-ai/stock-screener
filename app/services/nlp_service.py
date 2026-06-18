@@ -5,6 +5,7 @@ FinBERT, zero-shot classification, and summarization models.
 """
 import os
 from typing import Dict, Optional
+from flask import current_app, has_app_context
 from ..utils import helpers
 
 
@@ -36,8 +37,13 @@ class NLPService:
         Returns:
             Dictionary with classification results compatible with existing API.
         """
-        # Check if NLP enrichment is enabled via feature flag
-        if os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() != 'true':
+        # Check if NLP enrichment is enabled via feature flag (read from Flask config)
+        nlp_enabled = (
+            current_app.config.get('ENABLE_NLP_ENRICHMENT', True)
+            if has_app_context()
+            else os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() == 'true'
+        )
+        if not nlp_enabled:
             return self._fallback_classify(desc, text)
 
         # Check if we should attempt NLP processing

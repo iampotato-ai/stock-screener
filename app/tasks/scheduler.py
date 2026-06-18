@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 def init_scheduler(app: Flask):
     """Initialize the background scheduler."""
-    # Check if background tasks are enabled via feature flag
-    if os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() != 'true':
+    # Check if background tasks are enabled via feature flag (read from Flask config)
+    if not app.config.get('ENABLE_BACKGROUND_TASKS', True):
         logger.info("Background tasks are disabled via feature flag")
         return None
 

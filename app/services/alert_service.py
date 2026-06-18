@@ -21,13 +21,13 @@ class AlertService:
         Returns:
             True if sent successfully, False otherwise
         """
-        # Check if Telegram alerts are enabled via feature flag
-        if os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() != 'true':
+        # Check if Telegram alerts are enabled via feature flag (read from Flask config)
+        if not current_app.config.get('ENABLE_TELEGRAM_ALERTS', True):
             current_app.logger.debug("Telegram alerts are disabled via feature flag")
             return False
 
-        token = os.environ.get("TELEGRAM_BOT_TOKEN")
-        chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        token = current_app.config.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
+        chat_id = current_app.config.get("TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID")
 
         if not token or not chat_id:
             current_app.logger.warning("Telegram credentials not configured")
@@ -99,7 +99,14 @@ class AlertService:
         Returns:
             Dictionary containing alert configuration
         """
-        configured = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+        from flask import has_app_context
+        if has_app_context():
+            configured = bool(
+                (current_app.config.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")) and
+                (current_app.config.get("TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID"))
+            )
+        else:
+            configured = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
         return {
             "telegram_configured": configured,
             # Add other alert configurations as needed
