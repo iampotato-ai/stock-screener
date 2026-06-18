@@ -7,6 +7,7 @@ import tempfile
 from app import create_app
 from app.models import db, ScanHistory, ScanPriceLog
 from app.services.screener_service import screener_service
+from unittest.mock import patch
 
 
 class TestScreenerServiceIntegration:
@@ -47,15 +48,15 @@ class TestScreenerServiceIntegration:
         """Test get_scan_results with data in database."""
         with app.app_context():
             # Create test data
-            scan_history = ScanHistory(scan_date='2023-01-01')
+            scan_history = ScanHistory(date='2023-01-01', ticker='TEST')
             db.session.add(scan_history)
-            db.session.flush()  # Get the ID
+            db.session.flush()  # Get the ID (though not needed for composite PK)
 
             scan_price_log = ScanPriceLog(
-                scan_history_id=scan_history.id,
+                date='2023-01-01',
                 ticker='TEST',
-                setup_label='Test Setup',
-                close=100.0
+                close=100.0,
+                setupLabel='Test Setup'
             )
             db.session.add(scan_price_log)
             db.session.commit()
@@ -77,15 +78,15 @@ class TestScreenerServiceIntegration:
         """Test get_stock_details with existing ticker."""
         with app.app_context():
             # Create test data
-            scan_history = ScanHistory(scan_date='2023-01-01')
+            scan_history = ScanHistory(date='2023-01-01', ticker='TEST')
             db.session.add(scan_history)
             db.session.flush()
 
             scan_price_log = ScanPriceLog(
-                scan_history_id=scan_history.id,
+                date='2023-01-01',
                 ticker='TEST',
-                setup_label='Test Setup',
-                close=100.0
+                close=100.0,
+                setupLabel='Test Setup'
             )
             db.session.add(scan_price_log)
             db.session.commit()
@@ -106,15 +107,15 @@ class TestScreenerServiceIntegration:
         """Test get_stock_details with non-existent ticker."""
         with app.app_context():
             # Create test data with different ticker
-            scan_history = ScanHistory(scan_date='2023-01-01')
+            scan_history = ScanHistory(date='2023-01-01', ticker='OTHER')
             db.session.add(scan_history)
             db.session.flush()
 
             scan_price_log = ScanPriceLog(
-                scan_history_id=scan_history.id,
+                date='2023-01-01',
                 ticker='OTHER',
-                setup_label='Other Setup',
-                close=50.0
+                close=50.0,
+                setupLabel='Other Setup'
             )
             db.session.add(scan_price_log)
             db.session.commit()
@@ -135,7 +136,3 @@ class TestScreenerServiceIntegration:
 
                 result = screener_service.get_stock_details('TEST')
                 assert result is None
-
-
-# Need to import patch for the exception test
-from unittest.mock import patch

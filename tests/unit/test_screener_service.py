@@ -2,31 +2,24 @@
 Unit tests for the ScreenerService.
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from app.services.screener_service import screener_service
-from app.models import ScanPriceLog, ScanHistory
 
 
 class TestScreenerService:
     """Test cases for ScreenerService."""
 
-    @patch('app.services.screener_service.db')
-    def test_get_scan_results_success(self, mock_db):
+    @patch('app.database.get_latest_scan_results')
+    def test_get_scan_results_success(self, mock_get_latest_scan_results):
         """Test successful retrieval of scan results."""
-        # Mock the database query results
-        mock_scan_history_result = MagicMock()
-        mock_scan_history_result[0] = '2023-01-01'
-
-        mock_scan_price_log_result = MagicMock()
-        mock_scan_price_log_result.to_dict.return_value = {
-            'ticker': 'TEST',
-            'setupLabel': 'Test Setup',
-            'close': 100.0
-        }
-
-        # Configure mocks
-        mock_db.session.query.return_value.order_by.return_value.limit.return_value.first.return_value = mock_scan_history_result
-        mock_db.session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [mock_scan_price_log_result]
+        # Mock the database function to return a list of dictionaries
+        mock_get_latest_scan_results.return_value = [
+            {
+                'ticker': 'TEST',
+                'setupLabel': 'Test Setup',
+                'close': 100.0
+            }
+        ]
 
         # Call the method
         result = screener_service.get_scan_results(limit=10)
@@ -37,15 +30,15 @@ class TestScreenerService:
         assert result[0]['ticker'] == 'TEST'
         assert result[0]['setup_label'] == 'Test Setup'
         assert result[0]['close'] == 100.0
-        # Check that placeholder values are set
+        # Check that placeholder values are set (from the service)
         assert result[0]['volume'] == 0
         assert result[0]['market_cap_basic'] == 0.0
 
-    @patch('app.services.screener_service.db')
-    def test_get_scan_results_no_data(self, mock_db):
+    @patch('app.database.get_latest_scan_results')
+    def test_get_scan_results_no_data(self, mock_get_latest_scan_results):
         """Test handling of no scan data."""
         # Mock no scan history found
-        mock_db.session.query.return_value.order_by.return_value.limit.return_value.first.return_value = None
+        mock_get_latest_scan_results.return_value = []
 
         # Call the method
         result = screener_service.get_scan_results()
@@ -53,23 +46,15 @@ class TestScreenerService:
         # Assertions
         assert result == []
 
-    @patch('app.services.screener_service.db')
-    def test_get_stock_details_success(self, mock_db):
+    @patch('app.database.get_stock_details')
+    def test_get_stock_details_success(self, mock_get_stock_details):
         """Test successful retrieval of stock details."""
-        # Mock the database query results
-        mock_scan_history_result = MagicMock()
-        mock_scan_history_result[0] = '2023-01-01'
-
-        mock_scan_price_log_result = MagicMock()
-        mock_scan_price_log_result.to_dict.return_value = {
+        # Mock the database function to return a dictionary
+        mock_get_stock_details.return_value = {
             'ticker': 'TEST',
             'setupLabel': 'Test Setup',
             'close': 100.0
         }
-
-        # Configure mocks
-        mock_db.session.query.return_value.order_by.return_value.limit.return_value.first.return_value = mock_scan_history_result
-        mock_db.session.query.return_value.filter.return_value.first.return_value = mock_scan_price_log_result
 
         # Call the method
         result = screener_service.get_stock_details('TEST')
@@ -83,16 +68,11 @@ class TestScreenerService:
         assert result['volume'] == 0
         assert result['market_cap_basic'] == 0.0
 
-    @patch('app.services.screener_service.db')
-    def test_get_stock_details_not_found(self, mock_db):
+    @patch('app.database.get_stock_details')
+    def test_get_stock_details_not_found(self, mock_get_stock_details):
         """Test handling of stock not found."""
-        # Mock scan history found but no stock data
-        mock_scan_history_result = MagicMock()
-        mock_scan_history_result[0] = '2023-01-01'
-
-        # Configure mocks
-        mock_db.session.query.return_value.order_by.return_value.limit.return_value.first.return_value = mock_scan_history_result
-        mock_db.session.query.return_value.filter.return_value.first.return_value = None
+        # Mock no stock data found
+        mock_get_stock_details.return_value = None
 
         # Call the method
         result = screener_service.get_stock_details('NONEXISTENT')
@@ -100,11 +80,11 @@ class TestScreenerService:
         # Assertions
         assert result is None
 
-    @patch('app.services.screener_service.db')
-    def test_get_stock_details_exception(self, mock_db):
+    @patch('app.database.get_stock_details')
+    def test_get_stock_details_exception(self, mock_get_stock_details):
         """Test handling of database exceptions."""
         # Mock an exception
-        mock_db.session.query.side_effect = Exception("Database error")
+        mock_get_stock_details.side_effect = Exception("Database error")
 
         # Call the method
         result = screener_service.get_stock_details('TEST')
