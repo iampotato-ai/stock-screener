@@ -26,9 +26,9 @@
     --glow-purple: rgba(139, 92, 246, 0.18);
     
     /* Semantic Colors */
-    --color-text-primary: hsl(210, 40%, 98%);
-    --color-text-secondary: hsl(215, 20%, 65%);
-    --color-text-muted: hsl(215, 15%, 45%);
+    --color-text-primary: #F8FAFC;
+    --color-text-secondary: #94A3B8;
+    --color-text-muted: #64748B;
     
     --accent-blue: hsl(217, 95%, 62%);
     --accent-blue-rgb: 59, 130, 246;
@@ -362,8 +362,8 @@ input:checked + .slider:before {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    background: var(--panel-bg);
-    border: 1px solid var(--panel-border);
+    background: var(--color-surface);
+    border: 1px solid rgba(148, 163, 184, 0.25);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-premium);
     backdrop-filter: var(--blur-fx);
@@ -598,20 +598,20 @@ input:checked + .slider:before {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
-    color: white;
-    box-shadow: 0 4px 15px -3px rgba(59, 130, 246, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-background);
+    --btn-hover-bg: #d97706;
+    --btn-hover-border: #b45309;
 }
 
 .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px -4px rgba(59, 130, 246, 0.5), 0 0 20px -2px var(--glow-purple), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-    filter: brightness(1.12);
+    background-color: var(--btn-hover-bg);
+    border-color: var(--btn-hover-border);
 }
 
 .btn-primary:active {
     transform: translateY(0);
-    box-shadow: 0 4px 10px -2px rgba(59, 130, 246, 0.4);
 }
 
 .btn-secondary {
@@ -4024,8 +4024,8 @@ body[data-theme="light"] .day-range-marker {
 .filter-chip {
     padding: 0.4rem 0.8rem;
     border-radius: 20px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--color-surface);
+    border: 1px solid rgba(148, 163, 184, 0.25);
     color: var(--color-text-secondary);
     font-size: 0.8rem;
     font-weight: 600;
@@ -4036,6 +4036,30 @@ body[data-theme="light"] .day-range-marker {
 .filter-chip:hover {
     background: rgba(255, 255, 255, 0.1);
     color: var(--color-text-primary);
+}
+
+.sector-chip {
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    background: var(--color-surface);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    user-select: none;
+}
+
+.sector-chip:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--color-text-primary);
+}
+
+.sector-chip.active {
+    background: var(--color-accent);
+    color: var(--color-background);
+    border-color: var(--color-accent);
 }
 .filter-chip.active {
     background: var(--accent-blue);
