@@ -1,5 +1,6 @@
 /* Root variables defining our premium color system */
 @import './design-tokens.css';
+@import './glassmorphism.css';
 :root {
 
     /* Type scale */
@@ -3154,6 +3155,8 @@ body[data-theme="light"] .event-date    { color: hsl(220, 10%, 55%); }
 .deals-section-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
     gap: 0.5rem;
     padding: 0.55rem 0.9rem;
     font-size: 0.72rem;
@@ -3163,6 +3166,18 @@ body[data-theme="light"] .event-date    { color: hsl(220, 10%, 55%); }
     color: hsl(38, 90%, 65%);
     background: rgba(251, 191, 36, 0.08);
     border-bottom: 1px solid rgba(251, 191, 36, 0.18);
+}
+
+.deals-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.deals-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .deals-section-icon {
@@ -3179,13 +3194,14 @@ body[data-theme="light"] .event-date    { color: hsl(220, 10%, 55%); }
 }
 
 .deals-date-label {
-    margin-left: auto;
     font-size: 0.62rem;
     color: var(--color-text-muted);
     font-weight: 400;
     letter-spacing: 0;
     text-transform: none;
+    white-space: nowrap;
 }
+
 
 .deals-list {
     display: flex;
