@@ -255,7 +255,7 @@ def test_api_age_filters(client, monkeypatch):
 
     # Insert an IPO listed 14 months ago (~425 days ago)
     # Today is 2026-06-11, so 14 months ago is around 2025-04-11
-    conn = sqlite3.connect("scan_history.db")
+    conn = sqlite3.connect(db_file)
     c = conn.cursor()
     
     # Clean first

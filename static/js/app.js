@@ -1297,11 +1297,11 @@ async function runScan() {
             newStocksData.forEach(s => { previousScanMap[s.clean_ticker] = s; });
         }
         stocksData = newStocksData;
-        universeData = [];   // No universe data from backend, so we'll let calculateSectorScores fall back to stocksData
+        universeData = result.universe || [];
 
-        // Update stats - we don't have total_scanned and total_matched from backend, so we use count for matched and set scanned to the same (for now)
-        if (window.valScanned) valScanned.textContent = result.count.toLocaleString();
-        if (window.valMatched) valMatched.textContent = result.count.toLocaleString();
+        // Update stats
+        if (window.valScanned) valScanned.textContent = (result.total_scanned !== undefined ? result.total_scanned : result.count).toLocaleString();
+        if (window.valMatched) valMatched.textContent = (result.total_matched !== undefined ? result.total_matched : result.count).toLocaleString();
 
         stocksData.forEach(s => {
             const h = parseFloat(s.high);

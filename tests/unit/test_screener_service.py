@@ -46,6 +46,62 @@ class TestScreenerService:
             # Assertions
             assert result == []
 
+    @patch('app.database.get_latest_scan_results')
+    def test_get_scan_results_full_response_success(self, mock_get_latest_scan_results, flask_app):
+        """Test get_scan_results with full_response=True fallback to DB."""
+        mock_get_latest_scan_results.return_value = [
+            {
+                'ticker': 'TEST',
+                'setupLabel': 'Test Setup',
+                'close': 100.0
+            }
+        ]
+
+        with flask_app.app_context():
+            result = screener_service.get_scan_results(limit=10, full_response=True)
+
+            assert isinstance(result, dict)
+            assert 'stocks' in result
+            assert len(result['stocks']) == 1
+            assert result['total_scanned'] == 1
+            assert result['total_matched'] == 1
+            assert result['universe'] == []
+
+    @patch('app.api.v1.legacy_routes.scan_stocks')
+    def test_get_scan_results_full_response_live_success(self, mock_scan_stocks, flask_app):
+        """Test get_scan_results with full_response=True and live=True."""
+        # Mock the legacy scan_stocks endpoint response
+        mock_response = MagicMock()
+        mock_response.get_json.return_value = {
+            'stocks': [
+                {
+                    'ticker': 'TEST',
+                    'setupLabel': 'Test Setup',
+                    'close': 100.0
+                }
+            ],
+            'total_scanned': 1000,
+            'total_matched': 1,
+            'universe': [
+                {
+                    'ticker': 'TEST',
+                    'sector': 'Technology'
+                }
+            ]
+        }
+        mock_scan_stocks.return_value = mock_response
+
+        with flask_app.app_context():
+            result = screener_service.get_scan_results(limit=10, live=True, full_response=True)
+
+            assert isinstance(result, dict)
+            assert 'stocks' in result
+            assert len(result['stocks']) == 1
+            assert result['total_scanned'] == 1000
+            assert result['total_matched'] == 1
+            assert len(result['universe']) == 1
+            assert result['universe'][0]['ticker'] == 'TEST'
+
     @patch('app.database.get_stock_details')
     def test_get_stock_details_success(self, mock_get_stock_details, flask_app):
         """Test successful retrieval of stock details."""

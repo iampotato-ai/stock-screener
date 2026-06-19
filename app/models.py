@@ -129,6 +129,24 @@ class BreadthHistory(BaseModel):
     regime_score = db.Column(db.Integer)
     regime_band = db.Column(db.String(50))
 
+    def to_dict(self):
+        """Convert model instance to dictionary with frontend expected camelCase keys."""
+        # Get baseline serialization which formats Date and Time objects to strings
+        base_dict = super().to_dict()
+        return {
+            'date': base_dict.get('date'),
+            'time': base_dict.get('time'),
+            'advances': self.advances,
+            'declines': self.declines,
+            'unchanged': self.unchanged,
+            'pctAboveSMA21': self.pct_sma21,
+            'pctAboveSMA50': self.pct_sma50,
+            'pctNear52High': self.pct_52high,
+            'regimeScore': self.regime_score,
+            'regimeBand': self.regime_band,
+            'avgRecommend': self.avg_recommend
+        }
+
 
 class KronosForecast(BaseModel):
     """Kronos forecast predictions."""

@@ -258,8 +258,8 @@ def test_ensemble_forecast_route(client, monkeypatch):
 
 def test_breadth_history_limit(client):
     # Insert multiple breadth history records
-    db_file = sqlite3.connect("scan_history.db")
-    c = db_file.cursor()
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
     c.execute("DELETE FROM breadth_history")
     for i in range(15):
         date_str = f"2026-06-{i+1:02d}"
@@ -267,8 +267,8 @@ def test_breadth_history_limit(client):
             INSERT INTO breadth_history (date, time, advances, declines, unchanged, pct_sma21, pct_sma50, pct_52high, avg_recommend, regime_score, regime_band)
             VALUES (?, '15:30', 200, 100, 50, 0.65, 0.55, 0.45, 1.8, 8, 'Bullish')
         """, (date_str,))
-    db_file.commit()
-    db_file.close()
+    conn.commit()
+    conn.close()
 
     # Limit to 5
     res = client.get("/api/breadth-history?limit=5")

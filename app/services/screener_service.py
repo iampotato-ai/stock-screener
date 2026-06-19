@@ -29,7 +29,7 @@ class ScreenerService:
             current_app.logger.error(f"Error getting latest scan date: {e}")
             return None
 
-    def get_scan_results(self, limit: int = 500, live: bool = False) -> List[Dict[str, Any]]:
+    def get_scan_results(self, limit: int = 500, live: bool = False, full_response: bool = False) -> Any:
         """
         Get the latest scan results.
         If live is True, performs a live scan via TradingView.
@@ -38,9 +38,10 @@ class ScreenerService:
         Args:
             limit: Maximum number of results to return
             live: Whether to perform a live scan
+            full_response: Whether to return full response metadata including universe and counts
 
         Returns:
-            List of stock dictionaries from the scan
+            List of stock dictionaries from the scan, or a dict containing metadata if full_response is True.
         """
         if live:
             try:
@@ -52,6 +53,14 @@ class ScreenerService:
                     for s in response_data['stocks']:
                         s['setup_label'] = s.get('setupLabel', '')
                         results.append(s)
+                    
+                    if full_response:
+                        return {
+                            'stocks': results[:limit],
+                            'total_scanned': response_data.get('total_scanned', len(results)),
+                            'total_matched': response_data.get('total_matched', len(results)),
+                            'universe': response_data.get('universe', [])
+                        }
                     return results[:limit]
             except Exception as e:
                 current_app.logger.error(f"Error performing live scan: {e}")
@@ -68,9 +77,24 @@ class ScreenerService:
                 stock['clean_ticker'] = stock.get('ticker', '')
                 stock['setup_label'] = stock.get('setupLabel', '')
                 results.append(stock)
+            
+            if full_response:
+                return {
+                    'stocks': results,
+                    'total_scanned': len(results),
+                    'total_matched': len(results),
+                    'universe': []
+                }
             return results
         except Exception as e:
             current_app.logger.error(f"Error getting scan results: {e}")
+            if full_response:
+                return {
+                    'stocks': [],
+                    'total_scanned': 0,
+                    'total_matched': 0,
+                    'universe': []
+                }
             return []
 
     def get_stock_details(self, ticker: str) -> Optional[Dict[str, Any]]:

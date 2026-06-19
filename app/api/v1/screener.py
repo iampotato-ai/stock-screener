@@ -21,12 +21,25 @@ def get_screener_scan():
         except ValueError:
             limit = 500
 
-        results = screener_service.get_scan_results(limit=limit, live=True)
-        return jsonify(
-            success=True,
-            count=len(results),
-            data=results
-        )
+        scan_data = screener_service.get_scan_results(limit=limit, live=True, full_response=True)
+        if isinstance(scan_data, dict):
+            return jsonify(
+                success=True,
+                count=len(scan_data['stocks']),
+                data=scan_data['stocks'],
+                total_scanned=scan_data.get('total_scanned', len(scan_data['stocks'])),
+                total_matched=scan_data.get('total_matched', len(scan_data['stocks'])),
+                universe=scan_data.get('universe', [])
+            )
+        else:
+            return jsonify(
+                success=True,
+                count=len(scan_data),
+                data=scan_data,
+                total_scanned=len(scan_data),
+                total_matched=len(scan_data),
+                universe=[]
+            )
     except Exception as e:
         current_app.logger.error(f"Error getting screener scan: {e}")
         return jsonify(error=str(e)), 500
