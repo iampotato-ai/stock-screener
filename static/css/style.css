@@ -55,10 +55,10 @@
 }
 
 body {
-    background: var(--bg-main);
-    background-image: var(--bg-gradient);
-    color: var(--color-text-primary);
     font-family: var(--font-body);
+    font-size: var(--text-base);
+    color: var(--color-text-primary, #F8FAFC);
+    background-color: var(--color-background);
     min-height: 100vh;
     padding: 2.5rem 2rem;
     overflow-x: hidden;
