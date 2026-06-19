@@ -8,6 +8,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  --color-accent-track: rgba(245, 158, 11, 0.2);
 }
 
 .market-pulse-svg {

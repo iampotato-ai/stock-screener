@@ -9,6 +9,7 @@ class MarketPulse {
     this.particleCount = options.particleCount || 20;
     this.particles = [];
     this.score = options.initialScore || 50;
+    this.animationFrameId = null;
 
     this.init();
     this.animate();
@@ -27,6 +28,30 @@ class MarketPulse {
       });
     }
 
+    // Create SVG elements that we'll update rather than recreate
+    this.particleElements = [];
+    for (let i = 0; i < this.particleCount; i++) {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('fill', `var(--color-accent)`);
+      this.svg.appendChild(circle);
+      this.particleElements.push(circle);
+    }
+
+    // Create track element
+    this.trackElement = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    this.trackElement.setAttribute('fill', 'none');
+    this.trackElement.setAttribute('stroke', `var(--color-accent-track)`);
+    this.trackElement.setAttribute('stroke-width', '8');
+    this.svg.appendChild(this.trackElement);
+
+    // Create arc element
+    this.arcElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    this.arcElement.setAttribute('fill', 'none');
+    this.arcElement.setAttribute('stroke', `var(--color-accent)`);
+    this.arcElement.setAttribute('stroke-width', '6');
+    this.arcElement.setAttribute('stroke-linecap', 'round');
+    this.svg.appendChild(this.arcElement);
+
     // Initial render
     this.render();
   }
@@ -38,10 +63,20 @@ class MarketPulse {
     this.deltaEl.className = `market-pulse-delta ${delta >= 0 ? 'positive' : 'negative'}`;
 
     // Adjust particle speed based on score (more energy = faster movement)
+    // Preserve direction and adjust magnitude proportionally to avoid jerkiness
     const speedFactor = 0.5 + (this.score / 100) * 1.5;
     this.particles.forEach(p => {
-      p.speedX = (p.speedX / Math.abs(p.speedX || 0.1)) * Math.random() * this.speed * speedFactor * 10;
-      p.speedY = (p.speedY / Math.abs(p.speedY || 0.1)) * Math.random() * this.speed * speedFactor * 10;
+      // Calculate current speed magnitude
+      const currentSpeedX = Math.abs(p.speedX);
+      const currentSpeedY = Math.abs(p.speedY);
+
+      // Avoid division by zero
+      const speedX = currentSpeedX > 0 ? currentSpeedX : 0.1;
+      const speedY = currentSpeedY > 0 ? currentSpeedY : 0.1;
+
+      // Adjust speed proportionally, preserving direction
+      p.speedX = (p.speedX / speedX) * speedX * speedFactor * 0.5;
+      p.speedY = (p.speedY / speedY) * speedY * speedFactor * 0.5;
     });
 
     // Dispatch custom event for external listeners
@@ -51,32 +86,21 @@ class MarketPulse {
   }
 
   render() {
-    // Clear SVG
-    this.svg.innerHTML = '';
-
-    // Draw particles
-    this.particles.forEach(p => {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    // Update particles
+    this.particles.forEach((p, index) => {
+      const circle = this.particleElements[index];
       circle.setAttribute('cx', p.x);
       circle.setAttribute('cy', p.y);
       circle.setAttribute('r', p.radius);
-      circle.setAttribute('fill', `var(--color-accent)`);
       circle.setAttribute('opacity', p.opacity);
-      this.svg.appendChild(circle);
     });
 
-    // Draw circular background track
-    const track = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    track.setAttribute('cx', '60');
-    track.setAttribute('cy', '60');
-    track.setAttribute('r', '50');
-    track.setAttribute('fill', 'none');
-    track.setAttribute('stroke', `rgba(245, 158, 11, 0.2)`);
-    track.setAttribute('stroke-width', '8');
-    this.svg.appendChild(track);
+    // Update track
+    this.trackElement.setAttribute('cx', '60');
+    this.trackElement.setAttribute('cy', '60');
+    this.trackElement.setAttribute('r', '50');
 
-    // Draw score arc (progress indicator)
-    const arc = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    // Update score arc (progress indicator)
     const endAngle = (this.score / 100) * 2 * Math.PI;
     const largeArc = this.score > 50 ? '1' : '0';
     const d = `
@@ -84,12 +108,7 @@ class MarketPulse {
       A 50,50 0 ${largeArc} 1
       ${60 + 50 * Math.sin(endAngle)},${60 - 50 * Math.cos(endAngle)}
     `;
-    arc.setAttribute('d', d.trim());
-    arc.setAttribute('fill', 'none');
-    arc.setAttribute('stroke', `var(--color-accent)`);
-    arc.setAttribute('stroke-width', '6');
-    arc.setAttribute('stroke-linecap', 'round');
-    this.svg.appendChild(arc);
+    this.arcElement.setAttribute('d', d.trim());
   }
 
   animate() {
@@ -98,15 +117,28 @@ class MarketPulse {
       p.x += p.speedX;
       p.y += p.speedY;
 
-      // Wrap around boundaries
-      if (p.x < 0) p.x = 120;
-      if (p.x > 120) p.x = 0;
-      if (p.y < 0) p.y = 120;
-      if (p.y > 120) p.y = 0;
+      // Wrap around boundaries using actual SVG dimensions
+      const svgWidth = this.svg.width.baseVal.value || this.svg.viewBox.baseVal.width || 120;
+      const svgHeight = this.svg.height.baseVal.value || this.svg.viewBox.baseVal.height || 120;
+
+      if (p.x < 0) p.x = svgWidth;
+      if (p.x > svgWidth) p.x = 0;
+      if (p.y < 0) p.y = svgHeight;
+      if (p.y > svgHeight) p.y = 0;
     });
 
     this.render();
-    requestAnimationFrame(() => this.animate());
+    this.animationFrameId = requestAnimationFrame(() => this.animate());
+  }
+
+  /**
+   * Clean up animation frame to prevent memory leaks
+   */
+  destroy() {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+      this.animationFrameId = null;
+    }
   }
 }
 
