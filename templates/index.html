@@ -254,40 +254,11 @@
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
-              <div class="breadth-regime" id="breadth-regime-badge" data-regime="neutral">
-                <span class="regime-emoji" id="regime-emoji">⚖️</span>
-                <div class="regime-text">
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="regime-label">Market Regime</span>
-                    <button class="breadth-action-btn" id="open-regime-history" title="View historical snapshots">History</button>
-                  </div>
-                  <span class="regime-band" id="regime-band">Neutral</span>
-                </div>
-                <div class="regime-score-wrap">
-                  <div class="regime-gauge-wrap">
-                    <svg class="regime-arc" viewBox="0 0 60 34" width="60" height="34">
-                      <defs>
-                        <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stop-color="#ef4444" />
-                          <stop offset="20%" stop-color="#f97316" />
-                          <stop offset="50%" stop-color="#f59e0b" />
-                          <stop offset="75%" stop-color="#14b8a6" />
-                          <stop offset="100%" stop-color="#10b981" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M5,30 A25,25,0,0,1,55,30" fill="none" stroke="url(#gauge-grad)" stroke-width="5" opacity="0.15"/>
-                      <path id="regime-arc-fill" d="M5,30 A25,25,0,0,1,55,30" fill="none"
-                            stroke="url(#gauge-grad)" stroke-width="5" stroke-dasharray="78.5"
-                            stroke-dashoffset="78.5" stroke-linecap="round"/>
-                      <line id="regime-needle" x1="30" y1="30" x2="30" y2="8" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" style="transform-origin: 30px 30px; transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); transform: rotate(-90deg);" />
-                      <circle cx="30" cy="30" r="3.5" fill="#ef4444"/>
-                      <circle cx="30" cy="30" r="1.5" fill="#ffffff"/>
-                    </svg>
-                    <div class="regime-score-val-wrap">
-                      <span class="regime-score-num" id="regime-score-num">--</span>
-                      <span class="regime-score-delta" id="regime-score-delta">--</span>
-                    </div>
-                  </div>
+              <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65">
+                <svg class="market-pulse-svg" width="120" height="120"></svg>
+                <div class="market-pulse-info">
+                  <div class="market-pulse-score">65</div>
+                  <div class="market-pulse-delta">▲ 4</div>
                 </div>
               </div>
     

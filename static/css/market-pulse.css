@@ -1,0 +1,45 @@
+/* static/css/market-pulse.css */
+.market-pulse {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.market-pulse-svg {
+  width: 120px;
+  height: 120px;
+}
+
+.market-pulse-info {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.market-pulse-score {
+  font-family: var(--font-utility);
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #F8FAFC);
+  line-height: 1;
+}
+
+.market-pulse-delta {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.market-pulse-delta.positive {
+  color: var(--color-success);
+}
+
+.market-pulse-delta.negative {
+  color: var(--color-error);
+}
