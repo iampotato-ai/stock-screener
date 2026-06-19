@@ -1,14 +1,11 @@
-/ Root variables defining our premium color system */
+/* Root variables defining our premium color system */
 @import './design-tokens.css';
 :root {
-    --font-body:    'IBM Plex Sans', sans-serif;
-    --font-display: 'IBM Plex Sans', sans-serif;
 
     /* Type scale */
     --text-xs:   0.75rem;
     --text-sm:   0.8rem;
-    --text-base: 0.9rem; --text-md: 1rem;
-    --text-md:   var(--text-base); /* alias */
+    --text-base: 0.9rem;
     --text-lg:   1.125rem;
 
     /* Spacing scale */
@@ -3193,7 +3190,52 @@ body[data-theme="light"] .event-date    { color: hsl(220, 10%, 55%); }
 .deals-list {
     display: flex;
     flex-direction: column;
+    max-height: 350px;
+    overflow-y: auto;
 }
+
+.deals-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.deals-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 3px;
+}
+
+.deals-list::-webkit-scrollbar-thumb {
+    background: rgba(251, 191, 36, 0.3);
+    border-radius: 3px;
+}
+
+.deals-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(251, 191, 36, 0.5);
+}
+
+.btn-deals-export {
+    padding: 0.15rem 0.45rem;
+    font-size: 0.65rem;
+    height: 20px;
+    line-height: 1;
+    border-radius: 4px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-text-secondary);
+    transition: var(--transition-smooth);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-family: var(--font-display);
+    font-weight: 500;
+}
+
+.btn-deals-export:hover {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.3);
+    color: hsl(38, 90%, 65%);
+}
+
 
 .deal-item {
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
