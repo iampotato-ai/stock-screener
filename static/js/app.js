@@ -3,6 +3,7 @@ let previousScanMap = {};
 let stocksData = [];
 let universeData = [];
 let filteredStocks = [];
+let previousRegimeScore = 0; // Track previous regime score for delta calculation
 let marketBreadth = {
   advances: 0, declines: 0, unchanged: 0, total: 0,
   adRatio: 0, adLine: 0,
@@ -935,7 +936,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Regime history modal open/export listeners
-    const btnOpenHistory = document.getElementById('open-regime-history');
+    const btnOpenHistory = document.getElementById('open-regime-history') || document.getElementById('market-pulse');
     const btnExportRegime = document.getElementById('btn-export-regime-csv');
     if (btnOpenHistory) {
         btnOpenHistory.addEventListener('click', openRegimeHistoryModal);
@@ -1583,6 +1584,9 @@ function computeMarketBreadth(universe, filtered) {
     }))
     .sort((a, b) => b.breadthPct - a.breadthPct);
 
+  // Store previous regime score for delta calculation
+  const previousScore = marketBreadth.regimeScore;
+
   Object.assign(marketBreadth, {
     advances, declines, unchanged, total,
     adRatio, adLine: advances - declines,
@@ -1598,6 +1602,9 @@ function computeMarketBreadth(universe, filtered) {
     weakBreadthSectors: sectorArr.slice(-3).reverse(),
     allBreadthSectors: sectorArr,
   });
+
+  // Update previous regime score for next delta calculation
+  previousRegimeScore = previousScore;
 }
 
 function renderBreadthPanel() {
@@ -1620,6 +1627,10 @@ function renderBreadthPanel() {
   if (needle) {
     const angle = (b.regimeScore / 100) * 180 - 90;
     needle.style.transform = `rotate(${angle}deg)`;
+  }
+  if (window.marketPulse) {
+    const regimeDelta = b.regimeScore - previousRegimeScore;
+    window.marketPulse.updateScore(b.regimeScore, regimeDelta);
   }
 
   // A/D
@@ -2379,8 +2390,8 @@ function filterAndRender() {
     const peMax = parseFloat(document.getElementById('filter-pe-max')?.value);
     
     filteredStocks = stocksData.filter(stock => {
-        const matchesSearch = stock.clean_ticker.toLowerCase().includes(searchVal) || 
-                              stock.description.toLowerCase().includes(searchVal) ||
+        const matchesSearch = (stock.clean_ticker && stock.clean_ticker.toLowerCase().includes(searchVal)) || 
+                              (stock.description && stock.description.toLowerCase().includes(searchVal)) ||
                               (stock.setupLabel && stock.setupLabel.toLowerCase().includes(searchVal));
         const matchesSector = sectorVal === 'all' || stock.sector === sectorVal;
         
@@ -6305,6 +6316,10 @@ function renderRRGTimeline(frames, frameIdx) {
 
 function startRRGAnimation() {
     if (rrgAnimTimer) return;
+    if (rrgCurrentFrame >= rrgHistoryFrames.length - 1) {
+        rrgCurrentFrame = 0;
+        renderRRGTimeline(rrgHistoryFrames, 0);
+    }
     document.getElementById('btn-rrg-play')?.classList.add('hidden');
     document.getElementById('btn-rrg-pause')?.classList.remove('hidden');
     
@@ -10385,8 +10400,8 @@ function runRRScreen() {
     if (searchVal || sectorVal !== 'all') {
         targetStocks = targetStocks.filter(stock => {
             const matchesSearch = !searchVal || 
-                                  stock.clean_ticker.toLowerCase().includes(searchVal) || 
-                                  stock.description.toLowerCase().includes(searchVal) ||
+                                  (stock.clean_ticker && stock.clean_ticker.toLowerCase().includes(searchVal)) || 
+                                  (stock.description && stock.description.toLowerCase().includes(searchVal)) ||
                                   (stock.setupLabel && stock.setupLabel.toLowerCase().includes(searchVal));
             const matchesSector = sectorVal === 'all' || stock.sector === sectorVal;
             return matchesSearch && matchesSector;
@@ -11524,13 +11539,39 @@ function renderEPListingsTable() {
         `;
     }).join('');
 }
+function removeFromEPWatchlist(symbol) {
+    if (!confirm(`Are you sure you want to remove ${symbol} from the active watchlist?`)) {
+        return;
+    }
+    fetch('/api/ep/watchlist/remove', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ symbol: symbol })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(`${symbol} removed from watchlist`, 'success');
+            fetchEPWatchlist();
+        } else {
+            if (typeof showToast === 'function') showToast(`Error: ${data.error || 'Failed to remove'}`, 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error removing from EP watchlist:', err);
+        if (typeof showToast === 'function') showToast('Failed to remove symbol from watchlist', 'error');
+    });
+}
+window.removeFromEPWatchlist = removeFromEPWatchlist;
 
 function fetchEPWatchlist() {
     const tbody = document.getElementById('ep-watchlist-body');
     if (tbody && epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     Loading watchlist...
                 </td>
             </tr>
@@ -11560,7 +11601,7 @@ function renderEPWatchlistTable() {
     if (epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     No active watchlist candidates found.
                 </td>
             </tr>
@@ -11584,6 +11625,9 @@ function renderEPWatchlistTable() {
                 <td><span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">${item.status}</span></td>
                 <td>${item.trigger_type || 'None'}</td>
                 <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
+                <td class="text-center" style="white-space: nowrap;">
+                    <button class="btn btn-xs btn-outline" onclick="removeFromEPWatchlist('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05);">Delete</button>
+                </td>
             </tr>
         `;
     }).join('');

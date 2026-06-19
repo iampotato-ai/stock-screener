@@ -2,6 +2,8 @@
 class MarketPulse {
   constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
+    if (!this.container) return;
+    
     this.svg = this.container.querySelector('.market-pulse-svg');
     this.scoreEl = this.container.querySelector('.market-pulse-score');
     this.deltaEl = this.container.querySelector('.market-pulse-delta');
@@ -11,11 +13,15 @@ class MarketPulse {
     this.score = options.initialScore || 50;
     this.animationFrameId = null;
 
+    window.marketPulse = this;
+
     this.init();
     this.animate();
   }
 
   init() {
+    if (!this.svg) return;
+
     // Create particles
     for (let i = 0; i < this.particleCount; i++) {
       this.particles.push({
@@ -58,60 +64,84 @@ class MarketPulse {
 
   updateScore(score, delta) {
     this.score = Math.max(0, Math.min(100, score));
-    this.scoreEl.textContent = this.score;
-    this.deltaEl.textContent = delta >= 0 ? `▲ ${delta}` : `▼ ${Math.abs(delta)}`;
-    this.deltaEl.className = `market-pulse-delta ${delta >= 0 ? 'positive' : 'negative'}`;
+    if (this.scoreEl) this.scoreEl.textContent = this.score;
+    
+    // Set dynamic accent color based on regime score
+    let accentColor = '#F59E0B'; // default Neutral (amber)
+    if (this.score >= 75) accentColor = '#10B981';      // Bull Run (green)
+    else if (this.score >= 55) accentColor = '#14B8A6'; // Bullish (teal)
+    else if (this.score >= 40) accentColor = '#F59E0B'; // Neutral (amber)
+    else if (this.score >= 20) accentColor = '#F97316'; // Bearish (orange)
+    else accentColor = '#EF4444';                      // Bear Market (red)
+
+    if (this.container) {
+      this.container.style.setProperty('--color-accent', accentColor);
+    }
+
+    if (this.deltaEl && delta !== undefined) {
+      const absDelta = Math.abs(delta);
+      this.deltaEl.textContent = delta >= 0 ? `▲ ${absDelta}` : `▼ ${absDelta}`;
+      this.deltaEl.className = `market-pulse-delta ${delta >= 0 ? 'positive' : 'negative'}`;
+    }
 
     // Adjust particle speed based on score (more energy = faster movement)
-    // Preserve direction and adjust magnitude proportionally to avoid jerkiness
     const speedFactor = 0.5 + (this.score / 100) * 1.5;
     this.particles.forEach(p => {
-      // Calculate current speed magnitude
       const currentSpeedX = Math.abs(p.speedX);
       const currentSpeedY = Math.abs(p.speedY);
-
-      // Avoid division by zero
       const speedX = currentSpeedX > 0 ? currentSpeedX : 0.1;
       const speedY = currentSpeedY > 0 ? currentSpeedY : 0.1;
-
-      // Adjust speed proportionally, preserving direction
       p.speedX = (p.speedX / speedX) * speedX * speedFactor * 0.5;
       p.speedY = (p.speedY / speedY) * speedY * speedFactor * 0.5;
     });
 
+    this.render();
+
     // Dispatch custom event for external listeners
-    this.container.dispatchEvent(new CustomEvent('market-pulse-update', {
-      detail: { score: this.score, delta: delta }
-    }));
+    if (this.container) {
+      this.container.dispatchEvent(new CustomEvent('market-pulse-update', {
+        detail: { score: this.score, delta: delta }
+      }));
+    }
   }
 
   render() {
+    if (!this.svg) return;
+
     // Update particles
     this.particles.forEach((p, index) => {
       const circle = this.particleElements[index];
-      circle.setAttribute('cx', p.x);
-      circle.setAttribute('cy', p.y);
-      circle.setAttribute('r', p.radius);
-      circle.setAttribute('opacity', p.opacity);
+      if (circle) {
+        circle.setAttribute('cx', p.x);
+        circle.setAttribute('cy', p.y);
+        circle.setAttribute('r', p.radius);
+        circle.setAttribute('opacity', p.opacity);
+      }
     });
 
     // Update track
-    this.trackElement.setAttribute('cx', '60');
-    this.trackElement.setAttribute('cy', '60');
-    this.trackElement.setAttribute('r', '50');
+    if (this.trackElement) {
+      this.trackElement.setAttribute('cx', '60');
+      this.trackElement.setAttribute('cy', '60');
+      this.trackElement.setAttribute('r', '50');
+    }
 
     // Update score arc (progress indicator)
-    const endAngle = (this.score / 100) * 2 * Math.PI;
-    const largeArc = this.score > 50 ? '1' : '0';
-    const d = `
-      M 60,10
-      A 50,50 0 ${largeArc} 1
-      ${60 + 50 * Math.sin(endAngle)},${60 - 50 * Math.cos(endAngle)}
-    `;
-    this.arcElement.setAttribute('d', d.trim());
+    if (this.arcElement) {
+      const endAngle = (this.score / 100) * 2 * Math.PI;
+      const largeArc = this.score > 50 ? '1' : '0';
+      const d = `
+        M 60,10
+        A 50,50 0 ${largeArc} 1
+        ${60 + 50 * Math.sin(endAngle)},${60 - 50 * Math.cos(endAngle)}
+      `;
+      this.arcElement.setAttribute('d', d.trim());
+    }
   }
 
   animate() {
+    if (!this.svg) return;
+
     // Update particle positions
     this.particles.forEach(p => {
       p.x += p.speedX;
@@ -131,9 +161,6 @@ class MarketPulse {
     this.animationFrameId = requestAnimationFrame(() => this.animate());
   }
 
-  /**
-   * Clean up animation frame to prevent memory leaks
-   */
   destroy() {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
@@ -146,8 +173,6 @@ class MarketPulse {
 document.addEventListener('DOMContentLoaded', () => {
   const pulseContainer = document.getElementById('market-pulse');
   if (pulseContainer) {
-    // Would normally get initial score from data attribute or JS
-    // For now, initialize with sample data
     const initialScore = pulseContainer.getAttribute('data-initial-score') || 65;
     new MarketPulse('market-pulse', {
       initialScore: parseInt(initialScore),

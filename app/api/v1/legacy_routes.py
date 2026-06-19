@@ -5,6 +5,16 @@ from flask import request, jsonify, current_app, render_template
 from . import api_bp
 import os
 import sqlite3
+# Patch sqlite3.connect globally to set default timeout to 30.0 to prevent database lock issues
+_original_connect = sqlite3.connect
+def patched_connect(*args, **kwargs):
+    if len(args) > 0 and 'scan_history.db' in str(args[0]):
+        kwargs.setdefault('timeout', 30.0)
+    elif 'database' in kwargs and 'scan_history.db' in str(kwargs['database']):
+        kwargs.setdefault('timeout', 30.0)
+    return _original_connect(*args, **kwargs)
+sqlite3.connect = patched_connect
+
 import time
 from datetime import datetime, date, timedelta
 import json
@@ -13,6 +23,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import requests
 from app.utils import pattern_detection
+from app.utils.rrg_math import compute_jdk_rs, compute_quadrant
 import numpy as np
 import pandas as pd
 import warnings
@@ -2588,14 +2599,18 @@ def compute_vol_dryup(stock):
     high = float(stock.get("high") or 0)
     low = float(stock.get("low") or 0)
     
-    # Tight day range = (high-low)/close < 1.5%
+    # Tight day range = (high-low)/close as % of close
     day_range_pct = (high - low) / close * 100 if close > 0 else 0
     
+    # Vol Coil: low relative volume + tight intraday range relative to ATR
+    # Note: screener requires atr_pct > 3%, so we compare day range to ATR%
+    # A "tight" day is when current range < 60% of average ATR (inside compression)
+    range_threshold = max(1.5, atrpct * 0.6) if atrpct > 0 else 1.5
+    
     vol_dryup = (
-        rvol < 0.8 and          # Volume below 10d average
-        rvol > 0.2 and          # Not zero volume (holiday/error)
-        atrpct < 3.0 and        # Low volatility
-        day_range_pct < 1.5     # Tight intraday range
+        rvol < 0.8 and                    # Volume below 10d average
+        rvol > 0.2 and                    # Not zero volume (holiday/error)
+        day_range_pct < range_threshold   # Tight intraday range relative to ATR
     )
     stock["volDryUp"] = vol_dryup
     return stock

@@ -49,6 +49,19 @@
     --transition-smooth: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Text color utility classes */
+.text-primary {
+  color: var(--color-text-primary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
 /* Base Settings */
 * {
     margin: 0;
@@ -277,33 +290,9 @@ td.col-numeric, td.text-right {
     color: var(--color-text-secondary);
 }
 
-/* Glassmorphism Panel Base Class */
-.glass-panel {
-    background: var(--panel-bg);
-    backdrop-filter: var(--blur-fx);
-    -webkit-backdrop-filter: var(--blur-fx);
-    border: 1px solid var(--panel-border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-premium);
-    transition: var(--transition-smooth);
-    position: relative;
-}
+/* Glassmorphism Panel Base Class - now imported from glassmorphism.css */
 
-.glass-panel::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-    z-index: 1;
-}
 
-.glass-panel:hover {
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.65), 0 0 30px -5px var(--glow-purple), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
 
 /* Switch Toggle CSS */
 .switch {
@@ -581,7 +570,8 @@ input:checked + .slider:before {
 }
 
 /* Buttons */
-.btn {
+/* Button base styles moved to .btn definition below for Task 9 micro-interactions */
+/* .btn {
     border: none;
     outline: none;
     font-family: inherit;
@@ -596,7 +586,7 @@ input:checked + .slider:before {
     transition: var(--transition-smooth);
     position: relative;
     overflow: hidden;
-}
+} */
 
 .btn-primary {
     background-color: var(--color-accent);
@@ -2686,9 +2676,6 @@ body[data-theme="light"] .watchlist-add-box input:focus {
 }
 
 /* Glass panel light mode shadows & background hover */
-body[data-theme="light"] .glass-panel:hover {
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08), 0 0 20px rgba(59, 130, 246, 0.1);
-}
 
 /* Select Trigger and Dropdown items */
 body[data-theme="light"] .custom-select-wrapper .select-trigger {
@@ -6660,4 +6647,353 @@ body[data-theme="light"] .drawer-risk-banner {
 }
 .spin-loader {
     animation: spin 1s infinite linear;
+}
+
+/* Task 9: Enhanced Hover Micro-interactions and Feedback */
+
+/* Enhanced Button Micro-interactions */
+.btn {
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.6rem 1.5rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent
+    );
+    transition: all 0.6s ease;
+}
+
+.btn:hover::before {
+    left: 100%;
+}
+
+.btn:active {
+    transform: translateY(0) scale(0.97);
+}
+
+.btn-primary {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-background);
+    --btn-hover-bg: #d97706;
+    --btn-hover-border: #b45309;
+}
+
+.btn-primary:hover {
+    background-color: var(--btn-hover-bg);
+    border-color: var(--btn-hover-border);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--panel-border);
+    color: var(--color-text-secondary);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: var(--panel-border-hover);
+    color: var(--color-text-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+}
+
+.btn-secondary:active {
+    transform: translateY(0);
+}
+
+/* Enhanced Focus States for Accessibility */
+.btn:focus-visible,
+.tab-btn:focus-visible,
+.screener-table th:focus-visible,
+.pattern-chip:focus-visible,
+.sortable-header:focus-visible,
+.filter-chip:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+/* Enhanced Table Interactions */
+.screener-table th {
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.screener-table th:hover {
+    background: rgba(255, 255, 255, 0.04);
+    transform: translateY(-1px);
+}
+
+.screener-table th:active {
+    transform: translateY(0);
+}
+
+.screener-table tbody tr {
+    transition: all 0.2s ease;
+}
+
+.screener-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.screener-table tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.screener-table tbody tr:active {
+    transform: translateY(0);
+}
+
+/* Enhanced Interactive Elements */
+.tab-btn {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    transition: all 0.6s ease;
+}
+
+.tab-btn:hover::before {
+    left: 100%;
+}
+
+.tab-btn:active {
+    transform: translateY(0) scale(0.97);
+}
+
+/* Enhanced Pattern Chips */
+.pattern-chip {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pattern-chip:hover {
+    transform: translateY(-2px) scale(1.02);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.pattern-chip:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Enhanced Stat Cards */
+.ipo-stat-card {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ipo-stat-card:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.ipo-stat-card:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Enhanced Filter Chips */
+.ipo-filters-bar .filter-chip {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ipo-filters-bar .filter-chip:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ipo-filters-bar .filter-chip:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Enhanced Sortable Headers */
+.sortable-header {
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sortable-header:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sortable-header:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Tooltip Enhancements (if tooltips exist) */
+.tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: rgba(0, 0, 0, 0.8);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s ease;
+}
+
+.tooltip:hover::after,
+.tooltip:hover::before,
+.tooltip:focus::after,
+.tooltip:focus::before {
+    opacity: 1;
+}
+
+/* Interactive Feedback States */
+.feedback-active {
+    animation: feedbackPulse 0.6s ease-out;
+}
+
+@keyframes feedbackPulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+    }
+    70% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    }
+}
+
+/* Loading State Enhancements */
+.loading-pulse-container {
+    gap: 0.75rem;
+}
+
+.pulse-bubble {
+    width: 14px;
+    height: 14px;
+    animation: pulse 1.4s infinite ease-in-out;
+}
+
+.pulse-bubble:nth-child(2) { animation-delay: 0.2s; }
+.pulse-bubble:nth-child(3) { animation-delay: 0.4s; }
+.pulse-bubble:nth-child(4) { animation-delay: 0.6s; }
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(0.7);
+        opacity: 0.3;
+    }
+    50% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+}
+
+/* Drawer Interaction Enhancements */
+.drawer-section > summary {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.drawer-section > summary:hover {
+    background: rgba(255, 255, 255, 0.02);
+    padding-left: 0.7rem;
+}
+
+.drawer-section > summary::after {
+    transition: transform 0.3s ease;
+}
+
+.drawer-section[open] > summary::after {
+    transform: rotate(180deg);
+}
+
+/* Slide-in animations for drawer content */
+.drawer-section-content {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
