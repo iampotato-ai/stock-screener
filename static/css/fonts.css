@@ -29,7 +29,6 @@
 .font-plex-sans-regular { font-weight: 400; }
 .font-plex-sans-medium { font-weight: 500; }
 .font-plex-sans-semibold { font-weight: 600; }
-.font-plex-sans-bold { font-weight: 700; }
 
 /* Legacy fallback declarations (in case Google Fonts fails) */
 @font-face {
