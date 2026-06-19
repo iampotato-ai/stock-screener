@@ -254,11 +254,13 @@
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
-              <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65">
+              <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65" title="Click to view Regime History">
                 <svg class="market-pulse-svg" width="120" height="120"></svg>
                 <div class="market-pulse-info">
-                  <div class="market-pulse-score">65</div>
-                  <div class="market-pulse-delta">▲ 4</div>
+                  <span class="market-pulse-label">Regime</span>
+                  <span class="market-pulse-score" id="regime-score-num">--</span>
+                  <span class="market-pulse-delta" id="regime-score-delta">--</span>
+                  <span class="market-pulse-band" id="regime-band">Loading...</span>
                 </div>
               </div>
     
@@ -2326,6 +2328,7 @@
         </div>
 
     <!-- App Script -->
+    <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.58"></script>
 </body>

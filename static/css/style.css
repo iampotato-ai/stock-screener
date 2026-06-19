@@ -1,6 +1,7 @@
 /* Root variables defining our premium color system */
 @import './design-tokens.css';
 @import './glassmorphism.css';
+@import './market-pulse.css';
 :root {
 
     /* Type scale */
@@ -5992,15 +5993,6 @@ body[data-theme="light"] .sector-pill-progress-track {
   background: rgba(20, 184, 166, 0.04) !important;
 }
 
-/* Responsive CSS adjustments for secondary header layout */
-@media (max-width: 1100px) {
-  .screener-header-secondary .btn-label {
-    display: none !important;
-  }
-  .screener-header-secondary button {
-    padding: 0.4rem 0.5rem !important;
-  }
-}
 
 /* Colorblind friendly helper styling */
 .colorblind-arrow {
@@ -6158,13 +6150,11 @@ body[data-theme="light"] .sector-pill-progress-track {
 .screener-header-secondary {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0.75rem 0.6rem;
+  padding: 0.4rem 0.75rem 0.6rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(15, 23, 42, 0.25);
-  width: 100%;
+  background: rgba(15, 23, 42, 0.75);
 }
 
 .screener-header-secondary-left {
@@ -6200,12 +6190,11 @@ body[data-theme="light"] .sector-pill-progress-track {
 }
 
 @media (max-width: 1100px) {
-  .screener-header-secondary button .btn-label,
-  .screener-header-secondary .auto-refresh-toggle .btn-label {
-    display: none !important;
-  }
   .screener-header-secondary button {
-    padding: 0.4rem 0.5rem !important;
+    padding-inline: 0.45rem;
+  }
+  .screener-header-secondary .btn-label {
+    display: none;
   }
 }
 
