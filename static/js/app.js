@@ -12422,6 +12422,7 @@ function renderEquityChart(equityCurve) {
             }
         }
     });
+}
 
 // Function to show/hide fundamental analysis sections based on active tab
 function updateFundamentalSectionsVisibility() {
@@ -12667,5 +12668,41 @@ function generateGrowthMetricsHTML(stock) {
             <div class="metric-label">
                 <span class="metric-name">Analyst Revision Trend</span>
                 <span class="metric-help" title="Net up/down revisions over last 30 days (↑↑↑ to ↓↓↓)">ⓘ</span>
-            </div
-
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${analystRevisionTrend}</span>
+                <span class="metric-value-trend ${analystRevisionTrend > 0 ? 'trend-up' : analystRevisionTrend < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Inventory Turnover Trend</span>
+                <span class="metric-help" title="For product companies: rising = better demand">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${inventoryTurnoverTrend.toFixed(2)}</span>
+                <span class="metric-value-trend ${inventoryTurnoverTrend > 0 ? 'trend-up' : inventoryTurnoverTrend < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Order Book/Backlog Growth</span>
+                <span class="metric-help" title="Forward revenue visibility vs current revenue">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${orderBookGrowth.toFixed(1)}%</span>
+                <span class="metric-value-trend ${orderBookGrowth > 0 ? 'trend-up' : orderBookGrowth < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Segment Growth Contribution</span>
+                <span class="metric-help" title="% of total growth coming from fastest-growing segment">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${segmentGrowthContribution.toFixed(1)}%</span>
+                <span class="metric-value-trend ${segmentGrowthContribution > 30 ? 'trend-up' : segmentGrowthContribution > 15 ? 'trend-neutral' : 'trend-down'}"></span>
+            </div>
+        </div>
+    `;
+}
