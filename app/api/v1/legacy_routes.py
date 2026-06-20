@@ -2488,6 +2488,14 @@ def compute_extra_fields(stock):
         if ebitda_est > 0:
             stock["cfo_ebitda"] = round((cfo_est / ebitda_est) * 100.0, 2)
 
+    # 1B. FCF/EBITDA (Free Cash Flow to EBITDA ratio)
+    stock["fcf_ebitda"] = None
+    if fcf_raw is not None and mkt_cap > 0 and ps_ratio is not None and ps_ratio > 0 and ebitda_margin is not None and ebitda_margin > 0:
+        revenue = mkt_cap / ps_ratio
+        ebitda_est = revenue * (ebitda_margin / 100.0)
+        if ebitda_est > 0:
+            stock["fcf_ebitda"] = round((fcf_raw / ebitda_est) * 100.0, 2)
+
     # 2. Working Capital Intensity & other simulated fields (Phase 3 placeholders)
     if ENABLE_SIMULATED_DATA:
         ticker = stock.get("name", "")
