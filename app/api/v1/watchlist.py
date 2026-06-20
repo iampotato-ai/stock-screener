@@ -13,11 +13,13 @@ watchlist_service = WatchlistService()
 def get_watchlist():
     """
     Get all watchlist sections and their items.
-    Returns a list of sections, each with an 'items' list.
+    Returns a list of sections, each with both 'items' and 'stocks' lists for backwards/frontends compatibility.
     """
     sections = watchlist_service.get_watchlist_sections()
     for section in sections:
-        section['items'] = watchlist_service.get_watchlist_items(section['id'])
+        items = watchlist_service.get_watchlist_items(section['id'])
+        section['items'] = items
+        section['stocks'] = items
     return jsonify({"success": True, "data": sections}), 200
 
 
@@ -45,7 +47,7 @@ def create_watchlist_section():
         return jsonify({"error": "Internal server error"}), 500
 
 
-@api_bp.route('/watchlist/sections/<int:sec_id>', methods=['PUT'])
+@api_bp.route('/watchlist/sections/<sec_id>', methods=['PUT'])
 def rename_watchlist_section(sec_id):
     """
     Rename a watchlist section.
@@ -68,7 +70,7 @@ def rename_watchlist_section(sec_id):
         return jsonify({"error": "Internal server error"}), 500
 
 
-@api_bp.route('/watchlist/sections/<int:sec_id>', methods=['DELETE'])
+@api_bp.route('/watchlist/sections/<sec_id>', methods=['DELETE'])
 def delete_watchlist_section(sec_id):
     """
     Delete a watchlist section and all its items.
@@ -152,7 +154,7 @@ def reorder_watchlist_sections():
         return jsonify({"error": "Internal server error"}), 500
 
 
-@api_bp.route('/watchlist/sections/<int:section_id>/reorder', methods=['PUT'])
+@api_bp.route('/watchlist/sections/<section_id>/reorder', methods=['PUT'])
 def reorder_watchlist_items(section_id):
     """
     Reorder items within a watchlist section.

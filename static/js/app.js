@@ -374,7 +374,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (viewName === 'watchlist') {
             const jc = document.getElementById('journal-container');
             if (jc) jc.style.display = 'flex';
-            if (typeof renderJournal === 'function') renderJournal();
+            if (typeof renderJournal === 'function') {
+                renderJournal();
+                const openTrades = (journalData || []).filter(t => t.status === 'open');
+                if (openTrades.length > 0) {
+                    const lastPriceRefresh = parseInt(localStorage.getItem('journal_price_refresh_ts') || '0');
+                    const now = Date.now();
+                    const TWO_MINUTES = 2 * 60 * 1000;
+                    if ((now - lastPriceRefresh) > TWO_MINUTES) {
+                        if (typeof window.updateJournalLivePrices === 'function') {
+                            window.updateJournalLivePrices();
+                            localStorage.setItem('journal_price_refresh_ts', now.toString());
+                        }
+                    }
+                }
+            }
         } else if (viewName === 'rrg') {
             const rc = document.getElementById('rrg-container');
             if (rc) rc.style.display = 'flex';
@@ -1009,10 +1023,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update active tab button
             screenerTabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            
+
             // Switch tab
             currentTab = btn.dataset.tab;
-            
+
+            // Update fundamental analysis sections visibility when tab changes
+            updateFundamentalSectionsVisibility();
+
             const growthDisclaimer = document.getElementById('growth-disclaimer');
             if (growthDisclaimer) {
                 growthDisclaimer.style.display = currentTab === 'growth' ? 'flex' : 'none';
@@ -3553,12 +3570,13 @@ function fetchWatchlistFromBackend() {
     fetch('/api/watchlist')
         .then(res => res.json())
         .then(data => {
-            if (Array.isArray(data)) {
+            const sectionsList = (data && data.success && Array.isArray(data.data)) ? data.data : (Array.isArray(data) ? data : null);
+            if (sectionsList) {
                 const savedOrder = localStorage.getItem('tv_watchlist_sections_order');
                 if (savedOrder) {
                     try {
                         const orderArray = JSON.parse(savedOrder);
-                        data.sort((a, b) => {
+                        sectionsList.sort((a, b) => {
                             const idxA = orderArray.indexOf(a.id);
                             const idxB = orderArray.indexOf(b.id);
                             if (idxA === -1 && idxB === -1) return 0;
@@ -3568,7 +3586,14 @@ function fetchWatchlistFromBackend() {
                         });
                     } catch (e) {}
                 }
-                watchlistSections = data;
+                
+                // Map the sections list to include 'stocks' key for frontend compatibility
+                watchlistSections = sectionsList.map(sec => ({
+                    id: sec.id,
+                    name: sec.name,
+                    stocks: sec.stocks || sec.items || [],
+                    collapsed: sec.collapsed || false
+                }));
                 
                 if (watchlistSections.length === 0) {
                     const defaultId = 'sec-main';
@@ -3593,6 +3618,8 @@ function fetchWatchlistFromBackend() {
                 if (btnKronosBatchSort) {
                     btnKronosBatchSort.disabled = false;
                 }
+            } else {
+                console.error("Invalid watchlist data format received from server:", data);
             }
         })
         .catch(err => {
@@ -4953,6 +4980,47 @@ async function fetchDeals(forceFetch = false) {
     }
 }
 
+// Export Bulk & Block Deals to Excel
+function exportDealsToExcel() {
+    if (!loadedDeals || loadedDeals.length === 0) {
+        alert("No deals data to export.");
+        return;
+    }
+    
+    if (typeof XLSX === 'undefined') {
+        alert("Excel export library is loading, please try again in a moment.");
+        return;
+    }
+    
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+    
+    const headers = ['Trade Date', 'Symbol', 'Client Name', 'Deal Type', 'Buy/Sell', 'Quantity', 'Price', 'Value (Cr)', 'Exchange', 'Source'];
+    const sheetData = [headers];
+    
+    loadedDeals.forEach(d => {
+        sheetData.push([
+            d.tradeDate || '',
+            d.symbol || '',
+            d.clientName || '',
+            d.dealType || '',
+            d.buySell || '',
+            d.volume || 0,
+            d.price || 0,
+            d.valueCr || 0,
+            d.exchange || '',
+            d.source || ''
+        ]);
+    });
+    
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Bulk & Block Deals');
+    
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `NSE_Bulk_Block_Deals_Export_${dateStr}.xlsx`);
+}
+window.exportDealsToExcel = exportDealsToExcel;
+
 function toggleDealExpand(idx) {
     expandedDealIdx = (expandedDealIdx === idx) ? null : idx;
     renderAnnouncementsHtml();
@@ -5046,10 +5114,17 @@ function renderDealsSection() {
     return `
     <div class="deals-section">
         <div class="deals-section-header">
-            <span class="deals-section-icon">⚡</span>
-            <span>Bulk & Block Deals Today</span>
-            <span class="deals-count-badge">${dealsToShow.length}</span>
-            ${dateLabel ? `<span class="deals-date-label">${dateLabel}</span>` : ''}
+            <div class="deals-header-left">
+                <span class="deals-section-icon">⚡</span>
+                <span>Bulk & Block Deals Today</span>
+                <span class="deals-count-badge">${dealsToShow.length}</span>
+                ${dateLabel ? `<span class="deals-date-label">${dateLabel}</span>` : ''}
+            </div>
+            <div class="deals-header-right">
+                <button class="btn-deals-export" onclick="event.stopPropagation(); exportDealsToExcel()" title="Export Deals to Excel">
+                    <span>📥</span> Export
+                </button>
+            </div>
         </div>
         <div class="deals-list">${rows}</div>
     </div>`;
@@ -5115,7 +5190,7 @@ async function fetchGoogleNews(ticker) {
         const res = await fetch(`/api/news?symbol=${ticker}`);
         if (res.ok) {
             const data = await res.json();
-            loadedNews[ticker] = data.news || [];
+            loadedNews[ticker] = (data.data && data.data.news) || data.news || [];
         }
     } catch (e) {
         console.error('Error fetching Google News:', e);
@@ -7078,6 +7153,9 @@ function openTradeDrawer(ticker) {
                 document.getElementById('drawer-intel-pattern').textContent = 'Error';
                 document.getElementById('drawer-intel-desc').textContent = `Pattern scan failed: ${err}`;
             });
+
+            // Show/hide fundamental analysis sections based on active tab
+            updateFundamentalSectionsVisibility();
     }
 }
 
@@ -8100,12 +8178,18 @@ function renderJournal() {
         return;
     }
     
+    // Helper to format currency values cleanly to save table column width
+    const fmtAmt = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return '-';
+        return val % 1 === 0 ? val.toFixed(0) : val.toFixed(2);
+    };
+
     let html = '';
     journal.forEach(trade => {
         let statusBadge = '';
-        if (trade.status === 'open') statusBadge = `<span class="badge badge-swing-watch">Open</span>`;
-        else if (trade.status === 'stopped') statusBadge = `<span class="badge badge-swing-weak">Stopped</span>`;
-        else statusBadge = `<span class="badge badge-swing-elite">${trade.status.toUpperCase()}</span>`;
+        if (trade.status === 'open') statusBadge = `<span class="badge badge-status-open">Open</span>`;
+        else if (trade.status === 'stopped') statusBadge = `<span class="badge badge-status-stopped">Stopped</span>`;
+        else statusBadge = `<span class="badge badge-status-closed">${trade.status.toUpperCase()}</span>`;
         
         let currentPrice = null;
         const currentStock = stocksData.find(s => s.clean_ticker === trade.ticker);
@@ -8126,34 +8210,51 @@ function renderJournal() {
             pnlSuffix = ' <span style="font-size: 0.7rem; color: var(--color-text-muted);">(Open)</span>';
         }
         
-        const pnlText = displayPnl !== null ? `₹${displayPnl.toFixed(2)}${pnlSuffix}` : '-';
+        const pnlText = displayPnl !== null ? `₹${fmtAmt(displayPnl)}${pnlSuffix}` : '-';
         const pnlColor = displayPnl > 0 ? 'var(--accent-green)' : (displayPnl < 0 ? 'var(--accent-red)' : 'var(--color-text-primary)');
         const rText = displayR !== null ? `${displayR.toFixed(2)}R` : '-';
-        const currentPriceText = currentPrice !== null ? `₹${currentPrice.toFixed(2)}` : (trade.exitPrice ? `₹${trade.exitPrice.toFixed(2)}` : '-');
+        const currentPriceText = currentPrice !== null ? `₹${fmtAmt(currentPrice)}` : (trade.exitPrice ? `₹${fmtAmt(trade.exitPrice)}` : '-');
         
         const isRecent = (trade.id === window.lastJournalId);
         const rowClass = isRecent ? 'class="journal-row--recent"' : '';
+        
+        let targetHtml = '';
+        if (trade.target1) targetHtml += `<span class="journal-target-badge"><span style="color:var(--color-text-muted)">T1</span> ₹${fmtAmt(trade.target1)}</span>`;
+        if (trade.target2) targetHtml += `<span class="journal-target-badge"><span style="color:var(--color-text-muted)">T2</span> ₹${fmtAmt(trade.target2)}</span>`;
+        if (trade.target3) targetHtml += `<span class="journal-target-badge"><span style="color:var(--color-text-muted)">T3</span> ₹${fmtAmt(trade.target3)}</span>`;
+        if (!targetHtml) targetHtml = '-';
+
         html += `<tr ${rowClass}>
-            <td>${trade.date}</td>
-            <td style="font-weight: 700; text-decoration: underline;" onclick="event.stopPropagation(); openTradingView('${trade.ticker}')">${trade.ticker}</td>
-            <td style="font-weight: 600;">${currentPriceText}</td>
-            <td>${trade.setupLabel}</td>
-            <td>₹${trade.entry.toFixed(2)}</td>
-            <td>₹${trade.stop.toFixed(2)}</td>
-            <td style="font-size: 0.8rem; color: var(--color-text-secondary);">
-                T1: ₹${(trade.target1 || 0).toFixed(2)}<br>
-                T2: ₹${(trade.target2 || 0).toFixed(2)}<br>
-                T3: ₹${(trade.target3 || 0).toFixed(2)}
+            <td class="text-left" style="white-space: nowrap;">${trade.date}</td>
+            <td class="text-left">
+                <span class="journal-ticker-link" onclick="event.stopPropagation(); openTradingView('${trade.ticker}')" title="Open in TradingView">
+                    ${trade.ticker}
+                </span>
             </td>
-            <td>${trade.qty}</td>
-            <td>₹${trade.riskAmount.toFixed(2)}</td>
-            <td>${statusBadge}</td>
-            <td style="font-weight: 600; color: ${pnlColor};">${pnlText}</td>
-            <td style="font-weight: 600;">${rText}</td>
-            <td style="font-size: 0.85rem; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(trade.notes || '')}">${escapeHtml(trade.notes || '')}</td>
-            <td style="display: flex; gap: 0.5rem; align-items: center; justify-content: center; min-width: 60px;">
-                <button onclick="window.openEditTradeModal('${trade.id}')" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 4px; font-size: 1.1rem;" title="Edit Entry">✏️</button>
-                <button onclick="window.removeTradeFromJournal('${trade.id}')" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 4px; font-size: 1.1rem;" title="Remove Entry">🗑️</button>
+            <td class="text-right" style="font-weight: 600;">${currentPriceText}</td>
+            <td class="text-left"><span class="badge badge-setup">${trade.setupLabel}</span></td>
+            <td class="text-right">₹${fmtAmt(trade.entry)}</td>
+            <td class="text-right">₹${fmtAmt(trade.stop)}</td>
+            <td class="text-left">
+                <div class="journal-targets-container">
+                    ${targetHtml}
+                </div>
+            </td>
+            <td class="text-right" style="font-weight: 600;">${trade.qty}</td>
+            <td class="text-right">₹${fmtAmt(trade.riskAmount)}</td>
+            <td class="text-center">${statusBadge}</td>
+            <td class="text-right" style="font-weight: 700; color: ${pnlColor};">${pnlText}</td>
+            <td class="text-right" style="font-weight: 700; color: ${pnlColor};">${rText}</td>
+            <td class="text-left" style="font-size: 0.8rem; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-secondary);" title="${escapeHtml(trade.notes || '')}">${escapeHtml(trade.notes || '')}</td>
+            <td class="text-center">
+                <div style="display: flex; gap: 0.35rem; align-items: center; justify-content: center; min-width: 70px;">
+                    <button class="journal-action-btn btn-edit" onclick="window.openEditTradeModal('${trade.id}')" title="Edit Entry">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                    </button>
+                    <button class="journal-action-btn btn-delete" onclick="window.removeTradeFromJournal('${trade.id}')" title="Remove Entry">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                    </button>
+                </div>
             </td>
         </tr>`;
     });
@@ -8329,20 +8430,126 @@ window.openManualTradeModal = function() {
     const overlay = document.getElementById('manual-trade-modal-overlay');
     if (!overlay) return;
     
+    // Reset all fields
     document.getElementById('manual-trade-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('manual-trade-ticker').value = '';
     document.getElementById('manual-trade-setup').value = '';
     document.getElementById('manual-trade-entry').value = '';
     document.getElementById('manual-trade-stop').value = '';
     document.getElementById('manual-trade-notes').value = '';
+    document.getElementById('manual-trade-qty').value = '';
+    document.getElementById('manual-trade-qty').disabled = true;
+    document.getElementById('manual-trade-qty').placeholder = 'Auto-calc';
+    document.getElementById('manual-trade-qty').style.opacity = '0.5';
+    // Reset AUTO/MANUAL mode button
+    const modeBtn = document.getElementById('manual-trade-qty-mode-btn');
+    if (modeBtn) {
+        modeBtn.textContent = 'AUTO';
+        modeBtn.style.color = 'var(--accent-blue)';
+        modeBtn.style.background = 'rgba(59,130,246,0.12)';
+        modeBtn.style.borderColor = 'rgba(59,130,246,0.5)';
+    }
+    window._manualQtyMode = 'auto';
+    // Hide preview
+    const preview = document.getElementById('manual-trade-calc-preview');
+    if (preview) preview.style.display = 'none';
     
     overlay.classList.remove('hidden');
+    // Focus ticker input after a tick
+    setTimeout(() => { const el = document.getElementById('manual-trade-ticker'); if(el) el.focus(); }, 50);
 };
+
 
 window.closeManualTradeModal = function() {
     const overlay = document.getElementById('manual-trade-modal-overlay');
     if (overlay) overlay.classList.add('hidden');
+    window._manualQtyMode = 'auto';
 };
+
+// Toggle between AUTO and MANUAL qty calculation mode
+window.toggleManualQtyMode = function() {
+    const isAuto = (window._manualQtyMode || 'auto') === 'auto';
+    window._manualQtyMode = isAuto ? 'manual' : 'auto';
+    const qtyInput = document.getElementById('manual-trade-qty');
+    const modeBtn = document.getElementById('manual-trade-qty-mode-btn');
+    if (window._manualQtyMode === 'manual') {
+        qtyInput.disabled = false;
+        qtyInput.placeholder = 'Enter qty';
+        qtyInput.style.opacity = '1';
+        qtyInput.focus();
+        if (modeBtn) {
+            modeBtn.textContent = 'MANUAL';
+            modeBtn.style.color = 'var(--accent-orange)';
+            modeBtn.style.background = 'rgba(245,158,11,0.12)';
+            modeBtn.style.borderColor = 'rgba(245,158,11,0.5)';
+        }
+    } else {
+        qtyInput.disabled = true;
+        qtyInput.style.opacity = '0.5';
+        if (modeBtn) {
+            modeBtn.textContent = 'AUTO';
+            modeBtn.style.color = 'var(--accent-blue)';
+            modeBtn.style.background = 'rgba(59,130,246,0.12)';
+            modeBtn.style.borderColor = 'rgba(59,130,246,0.5)';
+        }
+        window.updateManualTradeCalc();
+    }
+};
+
+// Called when user types in the qty box (manual mode)
+window.onManualQtyInput = function() {
+    if (window._manualQtyMode !== 'manual') return;
+    const entry = parseFloat(document.getElementById('manual-trade-entry').value) || 0;
+    const qty = parseInt(document.getElementById('manual-trade-qty').value) || 0;
+    const stop = parseFloat(document.getElementById('manual-trade-stop').value) || 0;
+    const riskPerShare = entry - stop;
+    // Update preview
+    const preview = document.getElementById('manual-trade-calc-preview');
+    if (qty > 0 && entry > 0) {
+        if (preview) preview.style.display = 'block';
+        const el_qty = document.getElementById('preview-qty');
+        const el_pos = document.getElementById('preview-position');
+        const el_rps = document.getElementById('preview-risk-per-share');
+        if (el_qty) el_qty.textContent = qty.toLocaleString('en-IN');
+        if (el_pos) el_pos.textContent = '₹' + (qty * entry).toLocaleString('en-IN', {maximumFractionDigits: 0});
+        if (el_rps && riskPerShare > 0) el_rps.textContent = '₹' + riskPerShare.toFixed(2);
+    } else {
+        if (preview) preview.style.display = 'none';
+    }
+};
+
+// Live calculation update (called on entry/stop/risk input)
+window.updateManualTradeCalc = function() {
+    const entry = parseFloat(document.getElementById('manual-trade-entry').value);
+    const stop = parseFloat(document.getElementById('manual-trade-stop').value);
+    const riskAmount = parseFloat(document.getElementById('manual-trade-risk').value) || 5000;
+    const preview = document.getElementById('manual-trade-calc-preview');
+    const qtyInput = document.getElementById('manual-trade-qty');
+    
+    if (!entry || !stop || isNaN(entry) || isNaN(stop) || stop >= entry) {
+        if (preview) preview.style.display = 'none';
+        if (qtyInput && window._manualQtyMode === 'auto') qtyInput.value = '';
+        return;
+    }
+    const riskPerShare = entry - stop;
+    const autoQty = Math.max(1, Math.floor(riskAmount / riskPerShare));
+    
+    // In AUTO mode, fill qty field with calculated value
+    if ((window._manualQtyMode || 'auto') === 'auto' && qtyInput) {
+        qtyInput.value = autoQty;
+    }
+    
+    const displayQty = (window._manualQtyMode === 'manual') ? (parseInt(qtyInput?.value) || autoQty) : autoQty;
+    
+    if (preview) preview.style.display = 'block';
+    const el_qty = document.getElementById('preview-qty');
+    const el_pos = document.getElementById('preview-position');
+    const el_rps = document.getElementById('preview-risk-per-share');
+    if (el_qty) el_qty.textContent = displayQty.toLocaleString('en-IN');
+    if (el_pos) el_pos.textContent = '₹' + (displayQty * entry).toLocaleString('en-IN', {maximumFractionDigits: 0});
+    if (el_rps) el_rps.textContent = '₹' + riskPerShare.toFixed(2);
+};
+
 
 window.saveManualTrade = function() {
     const ticker = document.getElementById('manual-trade-ticker').value.trim().toUpperCase();
@@ -8352,6 +8559,7 @@ window.saveManualTrade = function() {
     const stop = parseFloat(document.getElementById('manual-trade-stop').value);
     const riskAmount = parseFloat(document.getElementById('manual-trade-risk').value) || 5000;
     const notes = document.getElementById('manual-trade-notes').value.trim();
+    const manualQtyVal = parseInt(document.getElementById('manual-trade-qty')?.value);
     
     if (!ticker || !entry || !stop || isNaN(entry) || isNaN(stop)) {
         alert("Please provide a valid Ticker, Entry Price, and Stop Loss.");
@@ -8364,7 +8572,11 @@ window.saveManualTrade = function() {
     }
     
     const riskPerShare = entry - stop;
-    const qty = Math.floor(riskAmount / riskPerShare);
+    // Use manual qty if in manual mode and valid, otherwise auto-calculate
+    const isManualMode = window._manualQtyMode === 'manual';
+    const qty = (isManualMode && manualQtyVal > 0)
+        ? manualQtyVal
+        : Math.max(Math.floor(riskAmount / riskPerShare), 1);
     
     const newTrade = {
         id: 'manual-' + Date.now() + '-' + ticker,
@@ -8380,7 +8592,7 @@ window.saveManualTrade = function() {
         target2: entry + (riskPerShare * 2.0),
         target3: entry + (riskPerShare * 3.0),
         riskAmount: riskAmount,
-        qty: Math.max(qty, 1),
+        qty: qty,
         status: 'open',
         exitPrice: null,
         exitDate: null,
@@ -8389,6 +8601,10 @@ window.saveManualTrade = function() {
         notes: notes
     };
     
+    // Visual feedback on button
+    const btn = document.getElementById('btn-add-manual-trade');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; }
+    
     fetch('/api/journal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -8396,6 +8612,7 @@ window.saveManualTrade = function() {
     })
     .then(res => res.json())
     .then(resData => {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
         if (resData.success) {
             journalData.unshift(newTrade);
             renderJournal();
@@ -8404,8 +8621,12 @@ window.saveManualTrade = function() {
             alert("Failed to save manual trade: " + resData.error);
         }
     })
-    .catch(err => console.error("Error saving manual trade:", err));
+    .catch(err => {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        console.error("Error saving manual trade:", err);
+    });
 };
+
 
 window.openEditTradeModal = function(tradeId) {
     const journal = getJournalData();
@@ -11019,6 +11240,68 @@ window.renderEPWorkspace = function() {
     const sub = activeSubTab ? activeSubTab.dataset.sub : 'today';
     loadEPSubTab(sub);
 };
+
+// ── EP Custom Dropdown Helpers ──────────────────────────────────────────────
+window._epOpenDropdown = null;
+
+window.toggleEpDropdown = function(id) {
+    const menu = document.getElementById(id + '-menu');
+    if (!menu) return;
+    const isOpen = menu.style.display !== 'none';
+    // Close any other open EP dropdown first
+    if (window._epOpenDropdown && window._epOpenDropdown !== id) {
+        const other = document.getElementById(window._epOpenDropdown + '-menu');
+        if (other) other.style.display = 'none';
+    }
+    if (isOpen) {
+        menu.style.display = 'none';
+        window._epOpenDropdown = null;
+    } else {
+        menu.style.display = 'block';
+        window._epOpenDropdown = id;
+    }
+};
+
+window.selectEpOption = function(el) {
+    const val = el.dataset.val;
+    const target = el.dataset.target; // 'ep-type' or 'ep-conf'
+
+    // Map target to IDs
+    const labelId = target === 'ep-type' ? 'ep-type-label' : 'ep-conf-label';
+    const menuId  = target === 'ep-type' ? 'ep-type-select' : 'ep-conf-select';
+    const nativeId = target === 'ep-type' ? 'filter-ep-type' : 'filter-ep-confidence';
+
+    // Update visible label (strip color dot if present, use just text)
+    const labelEl = document.getElementById(labelId);
+    if (labelEl) {
+        // Use text content of the option but strip leading whitespace/dot
+        labelEl.textContent = el.textContent.trim();
+    }
+
+    // Close menu
+    const menu = document.getElementById(menuId + '-menu');
+    if (menu) menu.style.display = 'none';
+    window._epOpenDropdown = null;
+
+    // Sync hidden native select and fire change event so existing listeners work
+    const nativeSel = document.getElementById(nativeId);
+    if (nativeSel) {
+        nativeSel.value = val;
+        nativeSel.dispatchEvent(new Event('change'));
+    }
+};
+
+// Close EP dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.ep-custom-select')) {
+        if (window._epOpenDropdown) {
+            const menu = document.getElementById(window._epOpenDropdown + '-menu');
+            if (menu) menu.style.display = 'none';
+            window._epOpenDropdown = null;
+        }
+    }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 function bindEPListeners() {
     if (epListenersBound) return;

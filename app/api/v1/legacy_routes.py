@@ -3788,6 +3788,7 @@ def prophet_predict(ticker: str, horizon: int = 10) -> list[float]:
             mocked = getattr(app_mod, "prophet_predict")
             if mocked is not prophet_predict:
                 return mocked(ticker, horizon)
+    from prophet import Prophet
     """
     Runs Facebook Prophet on `ticker` and returns a list of `horizon`
     predicted closing prices for the next N trading days.
@@ -3839,6 +3840,7 @@ def arima_predict(ticker: str, horizon: int = 10) -> list[float]:
             mocked = getattr(app_mod, "arima_predict")
             if mocked is not arima_predict:
                 return mocked(ticker, horizon)
+    from statsmodels.tsa.arima.model import ARIMA
     """
     Runs ARIMA(5,1,0) on `ticker` closing prices.
     Order (5,1,0): 5 AR lags, 1 differencing (for stationarity), 0 MA terms.
