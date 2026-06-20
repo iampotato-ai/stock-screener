@@ -231,11 +231,55 @@ class EPService:
         }
 
     def get_ep_detail(self, symbol: str) -> Dict[str, Any]:
-        """Fetch detailed analytics for a single stock."""
+        """Fetch detailed analytics for a single stock.
+
+        Falls back to EpWatchlist when no EpFeature row exists (e.g. stock was
+        added on a previous scan day and is no longer in today's EP results).
+        """
         symbol_upper = symbol.upper().strip()
         feat = EpFeature.query.filter_by(symbol=symbol_upper).order_by(EpFeature.feature_date.desc()).first()
         if not feat:
-            raise ValueError(f"Symbol {symbol} features not found")
+            # Try to build a minimal response from the watchlist entry
+            wl_entry = EpWatchlist.query.filter_by(symbol=symbol_upper).order_by(EpWatchlist.id.desc()).first()
+            if not wl_entry:
+                raise ValueError(f"Symbol {symbol} not found in EP features or watchlist")
+            detail: Dict[str, Any] = {
+                "symbol": symbol_upper,
+                "exchange": wl_entry.exchange or "NSE",
+                "ep_type": wl_entry.ep_type or "Unknown",
+                "ep_score": wl_entry.ep_score,
+                "confidence": "—",
+                "feature_date": str(wl_entry.catalyst_date) if wl_entry.catalyst_date else None,
+                "catalyst_score": None, "neglect_score": None, "repricing_score": None,
+                "close_location": None, "rvol": None, "avg_volume": None,
+                "mktcap_cr": None, "sector": None,
+                "watchlist_status": wl_entry.status,
+                "watchlist_stop": wl_entry.stop_price,
+                "watchlist_notes": wl_entry.notes,
+                "ep_score_prev": None,
+                "history": [], "corporate_events": [], "fundamentals": [],
+            }
+            history = fetch_historical_prices(f"{symbol_upper}.NS", range_str="6mo")
+            detail["history"] = history or []
+            # Safe corporate events query (avoids SQLAlchemy date parse failure)
+            try:
+                rows = db.session.execute(
+                    db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
+                    {"s": symbol_upper}
+                ).fetchall()
+                detail["corporate_events"] = [dict(r._mapping) for r in rows]
+            except Exception:
+                detail["corporate_events"] = []
+            funds = Fundamental.query.filter_by(symbol=symbol_upper).order_by(Fundamental.result_date.desc()).limit(8).all()
+            detail["fundamentals"] = [f.to_dict() for f in funds]
+            for f_dict in detail["fundamentals"]:
+                rev_yoy = f_dict.get("revenue_yoy_pct")
+                prof_yoy = f_dict.get("net_profit_yoy_pct")
+                f_dict["revenue_trend"] = "▲" if (rev_yoy and rev_yoy > 0) else ("▼" if (rev_yoy and rev_yoy < 0) else "—")
+                f_dict["profit_trend"] = "▲" if (prof_yoy and prof_yoy > 0) else ("▼" if (prof_yoy and prof_yoy < 0) else "—")
+            sb = SugarBaby.query.filter_by(symbol=symbol_upper, is_active=1).first()
+            detail["is_sugar_baby"] = 1 if sb else 0
+            return detail
 
         detail = feat.to_dict()
 
@@ -244,9 +288,16 @@ class EPService:
         history = fetch_historical_prices(ticker, range_str="6mo")
         detail["history"] = history or []
 
-        # Corporate events
-        events = CorporateEvent.query.filter_by(symbol=symbol_upper).order_by(CorporateEvent.event_date.desc()).limit(10).all()
-        detail["corporate_events"] = [ev.to_dict() for ev in events]
+        # Corporate events — use raw SQL ORDER BY id to avoid SQLAlchemy crashing
+        # on 'DD-Mon-YYYY' date strings that may exist in the event_date column.
+        try:
+            rows = db.session.execute(
+                db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
+                {"s": symbol_upper}
+            ).fetchall()
+            detail["corporate_events"] = [dict(r._mapping) for r in rows]
+        except Exception:
+            detail["corporate_events"] = []
 
         # Fundamentals
         funds = Fundamental.query.filter_by(symbol=symbol_upper).order_by(Fundamental.result_date.desc()).limit(8).all()

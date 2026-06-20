@@ -1550,7 +1550,12 @@ def refresh_ep_screener():
                                 sent_val = -1
                                 
                             an_dt = item.get("an_dt", "")
-                            date_str = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                            raw_date = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                            # Normalize 'DD-Mon-YYYY' -> ISO 'YYYY-MM-DD'
+                            try:
+                                date_str = datetime.strptime(raw_date, "%d-%b-%Y").strftime("%Y-%m-%d")
+                            except ValueError:
+                                date_str = raw_date
                             
                             # Deduplicate insertion
                             c.execute('''
@@ -6003,7 +6008,12 @@ def get_announcements():
                 enhanced_class = enhanced_classify_announcement(desc, text, item.get("attchmntFile", ""))
                 
                 an_dt = item.get("an_dt", "")
-                date_str = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                raw_date = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                # Normalize 'DD-Mon-YYYY' -> ISO 'YYYY-MM-DD'
+                try:
+                    date_str = datetime.strptime(raw_date, "%d-%b-%Y").strftime("%Y-%m-%d")
+                except ValueError:
+                    date_str = raw_date
                 
                 try:
                     dt = datetime.strptime(item.get("sort_date"), "%Y-%m-%d %H:%M:%S")
