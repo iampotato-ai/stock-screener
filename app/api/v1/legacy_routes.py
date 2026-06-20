@@ -1714,12 +1714,22 @@ def refresh_ep_screener():
                 profit_growth = fund[1] if fund[1] is not None else 0.0
                 consec_growth = fund[2] if fund[2] is not None else 0
                 surprise_type = fund[3] or "UNKNOWN"
+                # ATTACH FUNDAMENTALS DATA TO STOCK OBJECT
+                stock["revenue_growth"] = revenue_growth
+                stock["profit_growth"] = profit_growth
+                stock["consecutive_quarters_growth"] = consec_growth
+                stock["surprise_type"] = surprise_type
             else:
                 has_result = 0
                 revenue_growth = 0.0
                 profit_growth = 0.0
                 consec_growth = 0
                 surprise_type = "UNKNOWN"
+                # ATTACH DEFAULTS WHEN NO FUNDAMENTALS DATA
+                stock["revenue_growth"] = 0.0
+                stock["profit_growth"] = 0.0
+                stock["consecutive_quarters_growth"] = 0
+                stock["surprise_type"] = "UNKNOWN"
                 
             # Retrieve latest event from last 7 days relative to feature_date
             feat_dt = datetime.strptime(feature_date, "%Y-%m-%d")
