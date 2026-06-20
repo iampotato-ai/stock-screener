@@ -6882,6 +6882,9 @@ function openTradeDrawer(ticker) {
     
     initializeTradeParams();
     
+    // Update fundamental analysis sections visibility immediately on open
+    updateFundamentalSectionsVisibility();
+    
     // Fetch Scan History
     const historyContainer = document.getElementById('drawer-history-content');
     if (historyContainer) {
@@ -12764,29 +12767,40 @@ function updateFundamentalSectionsVisibility() {
 
     if (!valuationSection || !qualitySection || !growthSection) return;
 
-    // Hide all sections first
-    valuationSection.removeAttribute('open');
-    qualitySection.removeAttribute('open');
-    growthSection.removeAttribute('open');
+    // Populate all three sections with data if stock is available
+    if (window.currentTradeStock) {
+        const valContent = valuationSection.querySelector('.drawer-section-content');
+        if (valContent) {
+            valContent.innerHTML = generateValuationMetricsHTML(window.currentTradeStock);
+        }
+        const qualContent = qualitySection.querySelector('.drawer-section-content');
+        if (qualContent) {
+            qualContent.innerHTML = generateQualityMetricsHTML(window.currentTradeStock);
+        }
+        const growthContent = growthSection.querySelector('.drawer-section-content');
+        if (growthContent) {
+            growthContent.innerHTML = generateGrowthMetricsHTML(window.currentTradeStock);
+        }
+    }
 
     // Show section based on active tab
     if (currentTab === 'valuation') {
         valuationSection.setAttribute('open', '');
+        qualitySection.removeAttribute('open');
+        growthSection.removeAttribute('open');
     } else if (currentTab === 'quality') {
         qualitySection.setAttribute('open', '');
+        valuationSection.removeAttribute('open');
+        growthSection.removeAttribute('open');
     } else if (currentTab === 'growth') {
         growthSection.setAttribute('open', '');
-    }
-
-    // Populate the visible section with data
-    if (window.currentTradeStock) {
-        if (currentTab === 'valuation' && valuationSection.hasAttribute('open')) {
-            valuationSection.querySelector('.drawer-section-content').innerHTML = generateValuationMetricsHTML(window.currentTradeStock);
-        } else if (currentTab === 'quality' && qualitySection.hasAttribute('open')) {
-            qualitySection.querySelector('.drawer-section-content').innerHTML = generateQualityMetricsHTML(window.currentTradeStock);
-        } else if (currentTab === 'growth' && growthSection.hasAttribute('open')) {
-            growthSection.querySelector('.drawer-section-content').innerHTML = generateGrowthMetricsHTML(window.currentTradeStock);
-        }
+        valuationSection.removeAttribute('open');
+        qualitySection.removeAttribute('open');
+    } else {
+        // If on overview or any other tab, open all three by default so they are visible and populated
+        valuationSection.setAttribute('open', '');
+        qualitySection.setAttribute('open', '');
+        growthSection.setAttribute('open', '');
     }
 }
 
@@ -12975,6 +12989,14 @@ function generateQualityMetricsHTML(stock) {
 
 // Generate HTML for Growth Momentum Signals metrics
 function generateGrowthMetricsHTML(stock) {
+    // Fallback mappings if database fields are available but standard properties are missing
+    if (!stock.revenue_growth_yoy && stock.revenue_growth != null) {
+        stock.revenue_growth_yoy = stock.revenue_growth;
+    }
+    if (!stock.revenue_growth_qoq && stock.profit_growth != null) {
+        stock.revenue_growth_qoq = stock.profit_growth;
+    }
+
     if (!stock.revenue_growth_qoq && !stock.revenue_growth_yoy && !stock.revenue_growth_3y) {
         return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
             Growth data unavailable for this stock.
