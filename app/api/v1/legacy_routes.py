@@ -1581,36 +1581,57 @@ def refresh_ep_screener():
 
             # Retrieve latest fundamentals
             c.execute('''
-                SELECT revenue_yoy_pct, net_profit_yoy_pct, consecutive_quarters_growth, surprise_type, net_profit
+                SELECT revenue_yoy_pct, revenue_qoq_pct, net_profit_yoy_pct,
+                       eps_yoy_pct, ebitda, ebitda_margin, consecutive_quarters_growth, surprise_type
                 FROM fundamentals
                 WHERE symbol = ? AND exchange = ?
                 ORDER BY result_date DESC, id DESC
                 LIMIT 1
             ''', (s['ticker'], s['exchange']))
             fund = c.fetchone()
-            
+
             if fund:
                 has_result = 1
-                revenue_growth = fund[0] if fund[0] is not None else 0.0
-                profit_growth = fund[1] if fund[1] is not None else 0.0
-                consec_growth = fund[2] if fund[2] is not None else 0
-                surprise_type = fund[3] or "UNKNOWN"
+                revenue_growth_yoy = fund[0] if fund[0] is not None else 0.0  # revenue_yoy_pct
+                revenue_growth_qoq = fund[1] if fund[1] is not None else 0.0  # revenue_qoq_pct
+                profit_growth_yoy = fund[2] if fund[2] is not None else 0.0   # net_profit_yoy_pct
+                eps_growth_yoy = fund[3] if fund[3] is not None else 0.0      # eps_yoy_pct
+                ebitda = fund[4] if fund[4] is not None else 0.0
+                ebitda_margin = fund[5] if fund[5] is not None else 0.0
+                consec_growth = fund[6] if fund[6] is not None else 0
+                surprise_type = fund[7] or "UNKNOWN"
                 # ATTACH FUNDAMENTALS DATA TO STOCK OBJECT
-                s["revenue_growth"] = revenue_growth
-                s["profit_growth"] = profit_growth
+                s["revenue_growth"] = revenue_growth_yoy      # YoY
+                s["revenue_growth_qoq"] = revenue_growth_qoq  # QoQ
+                s["profit_growth"] = profit_growth_yoy        # YoY
+                s["profit_growth_qoq"] = 0.0                  # QoQ (not available in table - default to 0.0)
+                s["eps_growth"] = eps_growth_yoy              # YoY
+                s["eps_growth_qoq"] = 0.0                     # QoQ (not available in table - default to 0.0)
+                s["ebitda"] = ebitda
+                s["ebitda_margin"] = ebitda_margin
                 s["consecutive_quarters_growth"] = consec_growth
                 s["surprise_type"] = surprise_type
             else:
                 has_result = 0
-                revenue_growth = 0.0
-                profit_growth = 0.0
+                revenue_growth_yoy = 0.0
+                revenue_growth_qoq = 0.0
+                profit_growth_yoy = 0.0
+                eps_growth_yoy = 0.0
+                ebitda = 0.0
+                ebitda_margin = 0.0
                 consec_growth = 0
                 surprise_type = "UNKNOWN"
                 # ATTACH DEFAULTS WHEN NO FUNDAMENTALS DATA
-                s["revenue_growth"] = 0.0
-                s["profit_growth"] = 0.0
-                s["consecutive_quarters_growth"] = 0
-                s["surprise_type"] = "UNKNOWN"
+                s["revenue_growth"] = revenue_growth_yoy      # YoY
+                s["revenue_growth_qoq"] = revenue_growth_qoq  # QoQ
+                s["profit_growth"] = profit_growth_yoy        # YoY
+                s["profit_growth_qoq"] = 0.0                  # QoQ (not available - default to 0.0)
+                s["eps_growth"] = eps_growth_yoy              # YoY
+                s["eps_growth_qoq"] = 0.0                     # QoQ (not available - default to 0.0)
+                s["ebitda"] = ebitda
+                s["ebitda_margin"] = ebitda_margin
+                s["consecutive_quarters_growth"] = consec_growth
+                s["surprise_type"] = surprise_type
                 
             # Retrieve latest event from last 7 days relative to feature_date
             feat_dt = datetime.strptime(feature_date, "%Y-%m-%d")
@@ -1671,8 +1692,8 @@ def refresh_ep_screener():
             mktcap_cr = float(s["market_cap_basic"]) / 10_000_000  # INR → INR Crores
             catalyst_score = compute_catalyst_score(
                 event_type=resolved_event_type,
-                revenue_growth=revenue_growth,
-                profit_growth=profit_growth,
+                revenue_growth=s["revenue_growth"],
+                profit_growth=s["profit_growth"],
                 consecutive_quarters=consec_growth,
                 market_cap_cr=mktcap_cr
             )
@@ -1710,8 +1731,8 @@ def refresh_ep_screener():
                 event_type=resolved_event_type,
                 rel_volume=dyn_rel_vol,
                 gap_pct=gap_pct,
-                revenue_growth=revenue_growth,
-                profit_growth=profit_growth,
+                revenue_growth=s["revenue_growth"],
+                profit_growth=s["profit_growth"],
                 day1_messy=day1_messy
             )
             confidence = assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score)
@@ -1731,8 +1752,8 @@ def refresh_ep_screener():
                 round(range_60d_pct, 3), round(avg_vol_rank, 3),
                 neglect_score,
                 has_result,
-                round(revenue_growth, 3) if revenue_growth is not None else 0.0,
-                round(profit_growth, 3) if profit_growth is not None else 0.0,
+                round(s["revenue_growth"], 3) if s["revenue_growth"] is not None else 0.0,
+                round(s["profit_growth"], 3) if s["profit_growth"] is not None else 0.0,
                 has_corp_event,
                 resolved_event_type,
                 catalyst_score,
@@ -2457,16 +2478,20 @@ def compute_extra_fields(stock):
         stock["sales_cagr"] = None
         stock["revenue_growth_3y"] = None
         stock["revenue_growth_yoy"] = stock.get("revenue_growth")
-        stock["revenue_growth_qoq"] = stock.get("profit_growth")
+        stock["revenue_growth_qoq"] = stock.get("revenue_growth_qoq")  # Fixed: use actual revenue QoQ data
         stock["ebitda_cagr"] = None
         stock["eps_cagr"] = None
-        
+
+        # Attach additional QoQ growth metrics from fundamentals
+        stock["profit_growth_qoq"] = stock.get("profit_growth_qoq")
+        stock["eps_growth_qoq"] = stock.get("eps_growth_qoq")
+
         roe = float(stock["return_on_equity_fq"]) if stock.get("return_on_equity_fq") is not None else None
         if roe is not None and roe > 0:
             stock["bv_growth"] = round(roe * 0.85, 2)
         else:
             stock["bv_growth"] = None
-            
+
         stock["order_growth"] = None
         stock["segment_growth"] = None
         stock["growth_data_source"] = "real"
@@ -5541,30 +5566,32 @@ def scan_stocks():
             # Query fundamentals from database
             ticker_clean = ticker_symbol.replace("NSE:", "").replace("BSE:", "")
             c.execute('''
-                SELECT revenue_yoy_pct, net_profit_yoy_pct, consecutive_quarters_growth, surprise_type, net_profit
+                SELECT revenue_yoy_pct, revenue_qoq_pct, net_profit_yoy_pct, consecutive_quarters_growth, surprise_type, net_profit
                 FROM fundamentals
                 WHERE symbol = ?
                 ORDER BY result_date DESC, id DESC
                 LIMIT 1
             ''', (ticker_clean,))
             fund = c.fetchone()
-            
+
             if fund:
                 stock["revenue_growth"] = fund[0] if fund[0] is not None else 0.0
-                stock["profit_growth"] = fund[1] if fund[1] is not None else 0.0
-                stock["consecutive_quarters_growth"] = fund[2] if fund[2] is not None else 0
-                stock["surprise_type"] = fund[3] or "UNKNOWN"
-                
+                stock["revenue_growth_qoq"] = fund[1] if fund[1] is not None else 0.0
+                stock["profit_growth"] = fund[2] if fund[2] is not None else 0.0
+                stock["consecutive_quarters_growth"] = fund[3] if fund[3] is not None else 0
+                stock["surprise_type"] = fund[4] or "UNKNOWN"
+
                 # Align with frontend expectations
                 stock["eps_growth_qoq"] = stock["profit_growth"]
                 stock["consecutive_eps_growth_quarters"] = stock["consecutive_quarters_growth"]
                 stock["earnings_surprise_history"] = stock["surprise_type"]
             else:
                 stock["revenue_growth"] = 0.0
+                stock["revenue_growth_qoq"] = 0.0
                 stock["profit_growth"] = 0.0
                 stock["consecutive_quarters_growth"] = 0
                 stock["surprise_type"] = "UNKNOWN"
-                
+
                 # Align with frontend expectations
                 stock["eps_growth_qoq"] = 0.0
                 stock["consecutive_eps_growth_quarters"] = 0
@@ -6907,19 +6934,19 @@ def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="202
                     
                     # Catalyst Score
                     c.execute("""
-                        SELECT quarter, revenue_yoy_pct, net_profit_yoy_pct, surprise_type, consecutive_quarters_growth 
-                        FROM fundamentals 
-                        WHERE symbol = ? 
+                        SELECT quarter, revenue_yoy_pct, revenue_qoq_pct, net_profit_yoy_pct, surprise_type, consecutive_quarters_growth
+                        FROM fundamentals
+                        WHERE symbol = ?
                           AND (date(result_date) BETWEEN date(?, '-3 days') AND date(?, '+3 days'))
                         LIMIT 1
                     """, (symbol, t_date, t_date))
                     fund_row = c.fetchone()
-                    
+
                     if fund_row:
-                        event_type = fund_row[3] or "STRONG_BEAT"
+                        event_type = fund_row[4] or "STRONG_BEAT"
                         revenue_growth = fund_row[1] or 0.0
-                        profit_growth = fund_row[2] or 0.0
-                        consec_growth = fund_row[4] or 0
+                        profit_growth = fund_row[3] or 0.0
+                        consec_growth = fund_row[5] or 0
                         has_result = 1
                     else:
                         event_type = "ABNORMAL_VOLUME"
