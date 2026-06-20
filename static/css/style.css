@@ -1151,6 +1151,7 @@ input:checked + .slider:before {
 }
 
 /* Force option elements to use solid colors so they are always readable */
+select option,
 .modal select option,
 .modal-select option {
     background: #1a2035;
@@ -1166,6 +1167,7 @@ body[data-theme="light"] .modal-select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
+body[data-theme="light"] select option,
 body[data-theme="light"] .modal select option,
 body[data-theme="light"] .modal-select option {
     background: #f8fafc;
@@ -7467,4 +7469,45 @@ body[data-theme="light"] .journal-action-btn:hover {
 .table-container::-webkit-scrollbar-thumb:hover {
     background: rgba(59, 130, 246, 0.5);
 }
+
+/* EP Screener Custom Layouts & Skeleton Loading */
+@keyframes skeleton-glow {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+.skeleton {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-glow 1.5s infinite linear;
+    border-radius: 4px;
+}
+.skeleton-row td {
+    padding: 12px 8px !important;
+}
+
+.ep-filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.ep-filters-bar .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.table-container {
+    overflow-x: auto;
+    width: 100%;
+    position: relative;
+    border-radius: 8px;
+}
+
 

@@ -111,6 +111,14 @@ def register_error_handlers(app):
 app = create_app()
 
 # Export compatibility functions at package level
+from app.services.ep_service import (
+    compute_neglect_score,
+    compute_catalyst_score,
+    compute_repricing_score,
+    compute_ep_score,
+    assign_ep_type,
+    assign_confidence
+)
 from app.api.v1.legacy_routes import (
     init_db,
     classify_setup,
@@ -119,12 +127,6 @@ from app.api.v1.legacy_routes import (
     refresh_ep_screener,
     analyze_single_stock,
     refresh_ipo_metrics,
-    compute_neglect_score,
-    compute_catalyst_score,
-    compute_repricing_score,
-    compute_ep_score,
-    assign_ep_type,
-    assign_confidence,
     seed_ipo_listings,
     merge_candlestick_fallback,
     send_telegram_alert,

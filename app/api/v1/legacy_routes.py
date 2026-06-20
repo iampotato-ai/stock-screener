@@ -292,144 +292,14 @@ def seed_ipo_listings():
 
 
 # ---------- Episodic Pivot (EP) Scoring Helpers ----------
-
-def compute_neglect_score(perf_3m, perf_6m, range_60d_pct, avg_vol_rank):
-    """
-    All inputs normalized/scaled between 0 and 1.
-    Higher score indicates greater neglect. Handles None inputs dynamically.
-    """
-    n_perf_3m = max(0.0, min(1.0, (0.0 - perf_3m) / 40.0 + 0.5)) if perf_3m is not None else None
-    n_perf_6m = max(0.0, min(1.0, (0.0 - perf_6m) / 60.0 + 0.5)) if perf_6m is not None else None
-    n_range = max(0.0, min(1.0, 1.0 - (range_60d_pct / 40.0))) if range_60d_pct is not None else None
-    n_vol_rank = max(0.0, min(1.0, 1.0 - avg_vol_rank)) if avg_vol_rank is not None else None
-
-    weights = []
-    vals = []
-    if n_perf_3m is not None:
-        weights.append(0.35)
-        vals.append(n_perf_3m)
-    if n_perf_6m is not None:
-        weights.append(0.25)
-        vals.append(n_perf_6m)
-    if n_range is not None:
-        weights.append(0.20)
-        vals.append(n_range)
-    if n_vol_rank is not None:
-        weights.append(0.20)
-        vals.append(n_vol_rank)
-
-    if not weights:
-        return 0.5
-
-    total_w = sum(weights)
-    neglect = sum(v * w for v, w in zip(vals, weights)) / total_w
-    return round(neglect, 3)
-
-
-EP_CATALYST_BASE = {
-    "BLOWOUT_EARNINGS":  0.90,   # Revenue + profit both 100%+ YoY
-    "STRONG_BEAT":       0.70,   # Revenue 40–100% YoY
-    "TURNAROUND":        0.80,   # Profit swings from loss to strong profit
-    "ORDER_WIN":         0.65,   # Major order announcement (>30% of mktcap)
-    "MGMT_CHANGE":       0.55,   # New CEO / promoter buyback
-    "THEME_CATALYST":    0.50,   # Government policy, PLI, sector tailwind
-    "CAPEX_EXPANSION":   0.45,
-    "ABNORMAL_VOLUME":   0.60,   # Volume EP / 9M equivalent (no news yet)
-    "BEAT":              0.50,
-    "MISS":             -0.30,
-    "GUIDANCE_CUT":     -0.80,   # Negative catalyst (Short EP)
-    "FRAUD_CONCERN":    -0.90,
-    "UNKNOWN":           0.20,
-}
-
-
-def compute_catalyst_score(event_type, revenue_growth, profit_growth,
-                           consecutive_quarters=0, market_cap_cr=None):
-    base = EP_CATALYST_BASE.get(event_type, 0.20)
-    if base < 0:  # Short EP — return negative value for separation
-        return round(base, 3)
-
-    bonus = 0.0
-    if revenue_growth and revenue_growth >= 100:
-        bonus += 0.10
-    elif revenue_growth and revenue_growth >= 50:
-        bonus += 0.05
-
-    if profit_growth and profit_growth >= 200:
-        bonus += 0.10
-    elif profit_growth and profit_growth >= 100:
-        bonus += 0.05
-
-    if consecutive_quarters and consecutive_quarters >= 2:
-        bonus += 0.05
-
-    if market_cap_cr and market_cap_cr < 5000:
-        bonus += 0.05
-
-    return round(min(1.0, base + bonus), 3)
-
-
-def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
-                            intraday_range_pct):
-    # Gap component: 5% gap -> 0.25; 20% gap -> 1.0
-    n_gap = max(0.0, min(1.0, gap_pct / 20.0))
-
-    # Volume confirmation: 3x normal -> 0.222; 10x -> 1.0
-    n_vol = max(0.0, min(1.0, (rel_volume - 1.0) / 9.0))
-
-    # Close location: closing near high is a bull signal
-    n_close = max(0.0, min(1.0, close_loc))
-
-    # Overall day strength: blend of close-to-close change (70%) and intraday range (30%)
-    n_strength = max(0.0, min(1.0, (price_change_pct * 0.7 + intraday_range_pct * 0.3) / 15.0))
-
-    repricing = (0.30 * n_gap +
-                 0.35 * n_vol +
-                 0.20 * n_close +
-                 0.15 * n_strength)
-    return round(repricing, 3)
-
-
-def compute_ep_score(neglect_score, catalyst_score, repricing_score,
-                     liquidity_ok=True, has_fundamentals=True):
-    raw = (0.25 * neglect_score +
-           0.35 * abs(catalyst_score) +
-           0.30 * repricing_score +
-           0.10 * (1.0 if has_fundamentals else 0.0))
-
-    # Small liquidity penalty if stock is too illiquid
-    liquidity_adj = 0.0 if liquidity_ok else -0.10
-
-    ep_score = round(max(0.0, min(1.0, raw + liquidity_adj)), 3)
-    return ep_score
-
-
-def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
-                   revenue_growth=0, profit_growth=0, day1_messy=False,
-                   is_negative_catalyst=False):
-    if is_negative_catalyst or catalyst_score < 0:
-        return "Short EP"
-    if event_type in ("ABNORMAL_VOLUME", "UNKNOWN"):
-        return "Volume EP"
-    if day1_messy:
-        return "Delayed EP"
-    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT") and revenue_growth >= 100:
-        return "Growth EP"
-    if event_type == "TURNAROUND":
-        return "Turnaround EP"
-    if event_type in ("THEME_CATALYST", "ORDER_WIN", "MGMT_CHANGE", "CAPEX_EXPANSION"):
-        return "Story EP"
-    if event_type in ("BLOWOUT_EARNINGS", "STRONG_BEAT", "BEAT", "MISS"):
-        return "Growth EP"
-    return "Growth EP"
-
-
-def assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score):
-    if ep_score >= 0.72 and catalyst_score >= 0.70 and repricing_score >= 0.60:
-        return "HIGH"
-    if ep_score >= 0.55:
-        return "MEDIUM"
-    return "LOW"
+from app.services.ep_service import (
+    compute_neglect_score,
+    compute_catalyst_score,
+    compute_repricing_score,
+    compute_ep_score,
+    assign_ep_type,
+    assign_confidence
+)
 
 
 init_db()
@@ -766,7 +636,13 @@ def fetch_screener_fundamentals(symbol):
                 
                 if parsed_quarters:
                     parsed_quarters.sort(key=lambda x: x["date_key"])
-                    return parsed_quarters
+                    try:
+                        latest_date_val = datetime.datetime.strptime(parsed_quarters[-1]["date_key"], "%Y-%m-%d")
+                        if (datetime.datetime.now() - latest_date_val).days < 180:
+                            return parsed_quarters
+                        print(f"[NSE Ingest] Latest quarter {parsed_quarters[-1]['quarter']} ({parsed_quarters[-1]['date_key']}) for {symbol} is stale. Falling back to Yahoo Finance.")
+                    except Exception:
+                        return parsed_quarters
     except Exception as e:
         print(f"[NSE Ingest] Failed to fetch corporate results from NSE for {symbol}: {e}")
 
@@ -1715,10 +1591,10 @@ def refresh_ep_screener():
                 consec_growth = fund[2] if fund[2] is not None else 0
                 surprise_type = fund[3] or "UNKNOWN"
                 # ATTACH FUNDAMENTALS DATA TO STOCK OBJECT
-                stock["revenue_growth"] = revenue_growth
-                stock["profit_growth"] = profit_growth
-                stock["consecutive_quarters_growth"] = consec_growth
-                stock["surprise_type"] = surprise_type
+                s["revenue_growth"] = revenue_growth
+                s["profit_growth"] = profit_growth
+                s["consecutive_quarters_growth"] = consec_growth
+                s["surprise_type"] = surprise_type
             else:
                 has_result = 0
                 revenue_growth = 0.0
@@ -1726,10 +1602,10 @@ def refresh_ep_screener():
                 consec_growth = 0
                 surprise_type = "UNKNOWN"
                 # ATTACH DEFAULTS WHEN NO FUNDAMENTALS DATA
-                stock["revenue_growth"] = 0.0
-                stock["profit_growth"] = 0.0
-                stock["consecutive_quarters_growth"] = 0
-                stock["surprise_type"] = "UNKNOWN"
+                s["revenue_growth"] = 0.0
+                s["profit_growth"] = 0.0
+                s["consecutive_quarters_growth"] = 0
+                s["surprise_type"] = "UNKNOWN"
                 
             # Retrieve latest event from last 7 days relative to feature_date
             feat_dt = datetime.strptime(feature_date, "%Y-%m-%d")
@@ -6769,39 +6645,8 @@ ipo_refresh_lock = threading.Lock()
 last_ipo_refresh_time = 0.0
 
 # ---------- Episodic Pivot (EP) API Endpoints ----------
+# (Migrated to app/api/v1/ep.py)
 
-ep_refresh_lock = threading.Lock()
-last_ep_refresh_time = 0.0
-
-@api_bp.route('/ep/refresh', methods=['POST'])
-def api_refresh_ep():
-    global last_ep_refresh_time
-    import time
-    
-    current_time = time.time()
-    if current_time - last_ep_refresh_time < 60:
-        remaining = int(60 - (current_time - last_ep_refresh_time))
-        return jsonify(error=f"Refresh cooldown active. Please wait {remaining} seconds."), 429
-        
-    def _bg_refresh():
-        global last_ep_refresh_time
-        with ep_refresh_lock:
-            try:
-                refresh_ep_screener()
-            except Exception as e:
-                print(f"Error in background EP refresh: {e}")
-                
-    t = threading.Thread(target=_bg_refresh)
-    t.start()
-    
-    last_ep_refresh_time = current_time
-    return jsonify(success=True, message="Background EP refresh started.")
-
-@api_bp.route('/ep/refresh/status', methods=['GET'])
-def api_refresh_ep_status():
-    global ep_refresh_lock
-    is_running = ep_refresh_lock.locked()
-    return jsonify(running=is_running)
 
 
 
@@ -7014,42 +6859,7 @@ def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="202
         with ep_backtest_prep_lock:
             ep_backtest_prep_status["running"] = False
 
-@api_bp.route('/ep/backtest/prepare', methods=['POST'])
-def api_prep_backtest():
-    global ep_backtest_prep_status
-    from flask import request
-    import threading
-    
-    with ep_backtest_prep_lock:
-        if ep_backtest_prep_status["running"]:
-            return jsonify(error="Preparation is already running."), 400
-            
-        start_date = request.json.get("start_date", "2019-01-01").strip()
-        end_date = request.json.get("end_date", "2025-12-31").strip()
-        symbols_param = request.json.get("symbols", "").strip()
-        
-        symbols = None
-        if symbols_param and symbols_param.lower() != "all" and symbols_param.lower() != "":
-            symbols = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
-            
-        ep_backtest_prep_status["running"] = True
-        ep_backtest_prep_status["error"] = None
-        ep_backtest_prep_status["processed"] = 0
-        ep_backtest_prep_status["total"] = 0
-        ep_backtest_prep_status["current_symbol"] = ""
-        
-    t = threading.Thread(target=run_historical_backfill, args=(symbols, start_date, end_date))
-    t.start()
-    
-    return jsonify(success=True, message="Background preparation started.")
-
-@api_bp.route('/ep/backtest/prep_status', methods=['GET'])
-def api_prep_backtest_status():
-    global ep_backtest_prep_status
-    with ep_backtest_prep_lock:
-        return jsonify(ep_backtest_prep_status)
-
-@api_bp.route('/ep/backtest', methods=['POST'])
+# @api_bp.route('/ep/backtest', methods=['POST'])
 def api_ep_backtest():
     from flask import request
     import sqlite3
@@ -7380,398 +7190,10 @@ def api_ep_backtest():
         "trades": trades[:200]
     })
 
-@api_bp.route('/ep/themes', methods=['GET'])
-def get_ep_themes():
-    import sqlite3
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db')
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        
-        c.execute("SELECT DISTINCT feature_date FROM ep_features ORDER BY feature_date DESC LIMIT 1")
-        latest_date_row = c.fetchone()
-        if not latest_date_row:
-            return jsonify(themes=[])
-        latest_date = latest_date_row[0]
-        
-        # By default, themes only surface Story EP and Volume EP (as they represent sector-narrative plays).
-        # Clients can pass ?types=all to include Growth EP and Turnaround EP, or pass a comma-separated list of types.
-        from flask import request
-        types_param = request.args.get("types", "").strip()
-        if types_param.lower() == "all":
-            allowed_types = ['Story EP', 'Volume EP', 'Growth EP', 'Turnaround EP']
-        elif types_param:
-            allowed_types = [t.strip() for t in types_param.split(',')]
-        else:
-            allowed_types = ['Story EP', 'Volume EP']
-            
-        placeholders = ",".join(["?"] * len(allowed_types))
-        query = f"""
-            SELECT symbol, ep_type, ep_score, confidence, market_cap_cr
-            FROM ep_features
-            WHERE feature_date = ? AND ep_type IN ({placeholders})
-        """
-        c.execute(query, [latest_date] + allowed_types)
-        rows = [dict(r) for r in c.fetchall()]
-        
-        themes_map = {}
-        for r in rows:
-            sym = r["symbol"]
-            c.execute("SELECT sector FROM ipo_listings WHERE ticker = ? LIMIT 1", (sym,))
-            sect_row = c.fetchone()
-            if sect_row and sect_row[0]:
-                sect = sect_row[0]
-            else:
-                sect = "General Markets"
-                
-            themes_map.setdefault(sect, []).append(r)
-            
-        themes = []
-        for sect, items in themes_map.items():
-            avg_score = sum(item["ep_score"] for item in items) / len(items)
-            themes.append({
-                "theme": sect,
-                "count": len(items),
-                "avg_score": round(avg_score, 2),
-                "symbols": [item["symbol"] for item in items]
-            })
-            
-        themes.sort(key=lambda x: x["count"], reverse=True)
-        return jsonify(themes=themes)
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
-@api_bp.route('/ep/sector-rotation', methods=['GET'])
-def get_ep_sector_rotation():
-    import sqlite3
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db')
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        
-        c.execute("""
-            SELECT w.symbol
-            FROM ep_watchlist w
-            WHERE w.status = 'ACTIVE'
-        """)
-        watchlist_symbols = [r[0] for r in c.fetchall()]
-        
-        c.execute("""
-            SELECT DISTINCT sector FROM rrg_history
-        """)
-        sectors = [r[0] for r in c.fetchall()]
-        
-        sector_rotation_list = []
-        for sector in sectors:
-            c.execute("""
-                SELECT jdk_rs, jdk_rs_momentum, score, quadrant, week
-                FROM rrg_history
-                WHERE sector = ?
-                ORDER BY snapped_at DESC
-                LIMIT 1
-            """, (sector,))
-            row = c.fetchone()
-            if not row:
-                continue
-                
-            sector_wl_count = 0
-            for sym in watchlist_symbols:
-                c.execute("SELECT sector FROM ipo_listings WHERE ticker = ? LIMIT 1", (sym,))
-                sect_row = c.fetchone()
-                if sect_row and sect_row[0] == sector:
-                    sector_wl_count += 1
-                      
-            jdk_rs = row["jdk_rs"]
-            jdk_rs_momentum = row["jdk_rs_momentum"]
-            score = row["score"]
-            quadrant = row["quadrant"]
-            week = row["week"]
-            
-            sector_rotation_list.append({
-                "sector": sector,
-                "quadrant": quadrant,
-                "score": score,
-                "jdk_rs": round(jdk_rs, 2),
-                "jdk_rs_momentum": round(jdk_rs_momentum, 2),
-                "active_ep_count": sector_wl_count,
-                "week": week
-            })
-            
-        sector_rotation_list.sort(key=lambda x: x["score"], reverse=True)
-        return jsonify(rotation=sector_rotation_list)
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
+# ---------- Episodic Pivot (EP) API Endpoints ----------
+# (All endpoints migrated to app/api/v1/ep.py)
 
-
-@api_bp.route('/ep/today', methods=['GET'])
-def get_ep_today():
-    from flask import request
-    conn = None
-    try:
-        ep_type = request.args.get('ep_type', 'all').strip()
-        confidence = request.args.get('confidence', 'all').strip()
-        min_score_raw = request.args.get('min_score', '').strip()
-        min_score = float(min_score_raw) if min_score_raw else 0.55
-        min_mktcap_raw = request.args.get('min_mktcap', '').strip()
-        min_mktcap = float(min_mktcap_raw) if min_mktcap_raw else 0.0
-        max_mktcap_raw = request.args.get('max_mktcap', '').strip()
-        max_mktcap = float(max_mktcap_raw) if max_mktcap_raw else 999999.0
-        exchange = request.args.get('exchange', 'all').strip()
-        
-        where_clauses = ["ep_score >= ?"]
-        params = [min_score]
-        
-        if ep_type != 'all':
-            where_clauses.append("ep_type = ?")
-            params.append(ep_type)
-            
-        if confidence != 'all':
-            where_clauses.append("confidence = ?")
-            params.append(confidence)
-            
-        if min_mktcap > 0.0:
-            where_clauses.append("market_cap_cr >= ?")
-            params.append(min_mktcap)
-            
-        if max_mktcap < 999999.0:
-            where_clauses.append("market_cap_cr <= ?")
-            params.append(max_mktcap)
-            
-        if exchange != 'all':
-            where_clauses.append("exchange = ?")
-            params.append(exchange)
-            
-        where_str = f" WHERE {' AND '.join(where_clauses)}"
-        
-        conn = sqlite3.connect('scan_history.db', timeout=30.0)
-        c = conn.cursor()
-        
-        c.execute(f"SELECT DISTINCT feature_date FROM ep_features ORDER BY feature_date DESC LIMIT 1")
-        latest_date_row = c.fetchone()
-        if latest_date_row:
-            latest_date = latest_date_row[0]
-            where_clauses.append("feature_date = ?")
-            params.append(latest_date)
-            where_str = f" WHERE {' AND '.join(where_clauses)}"
-        else:
-            conn.close()
-            return jsonify(listings=[], total=0, summary={"HIGH": 0, "MEDIUM": 0, "LOW": 0})
-            
-        c.execute(f"SELECT COUNT(*) FROM ep_features{where_str}", tuple(params))
-        total_count = c.fetchone()[0]
-        
-        query = f"""
-            SELECT symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
-                   neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
-                   event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
-                   ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days,
-                   COALESCE(price_change_pct, gap_pct) as price_change_pct
-            FROM ep_features
-            {where_str}
-            ORDER BY ep_score DESC
-        """
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
-        
-        c.execute(f"SELECT confidence, COUNT(*) FROM ep_features WHERE feature_date = ? GROUP BY confidence", (latest_date,))
-        summary_rows = c.fetchall()
-        summary = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
-        for conf, cnt in summary_rows:
-            if conf in summary:
-                summary[conf] = cnt
-                
-        conn.close()
-        conn = None
-        
-        cols = [
-            'symbol', 'exchange', 'feature_date', 'perf_3m', 'perf_6m', 'range_60d_pct', 'avg_vol_rank',
-            'neglect_score', 'has_result', 'revenue_growth', 'profit_growth', 'has_corp_event',
-            'event_type', 'catalyst_score', 'gap_pct', 'rel_volume', 'close_loc', 'repricing_score',
-            'ep_score', 'ep_type', 'confidence', 'market_cap_cr', 'avg_turnover_cr', 'float_days',
-            'price_change_pct'
-        ]
-        
-        listings = [dict(zip(cols, r)) for r in rows]
-        return jsonify(listings=listings, total=total_count, summary=summary, latest_date=latest_date)
-        
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
-
-
-
-
-@api_bp.route('/ep/sugar-babies', methods=['GET'])
-def get_ep_sugar_babies():
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db', timeout=30.0)
-        c = conn.cursor()
-        c.execute("""
-            SELECT id, symbol, exchange, added_date, avg_burst_pct, avg_burst_days, episode_count, notes, is_active
-            FROM sugar_babies
-            WHERE is_active = 1
-            ORDER BY symbol ASC
-        """)
-        rows = c.fetchall()
-        conn.close()
-        conn = None
-        
-        cols = ['id', 'symbol', 'exchange', 'added_date', 'avg_burst_pct', 'avg_burst_days', 'episode_count', 'notes', 'is_active']
-        sugar_babies = [dict(zip(cols, r)) for r in rows]
-        return jsonify(sugar_babies=sugar_babies)
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
-
-
-@api_bp.route('/ep/<symbol>/detail', methods=['GET'])
-def get_ep_detail(symbol):
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db', timeout=30.0)
-        c = conn.cursor()
-        
-        c.execute("""
-            SELECT symbol, exchange, feature_date, perf_3m, perf_6m, range_60d_pct, avg_vol_rank,
-                   neglect_score, has_result, revenue_growth, profit_growth, has_corp_event,
-                   event_type, catalyst_score, gap_pct, rel_volume, close_loc, repricing_score,
-                   ep_score, ep_type, confidence, market_cap_cr, avg_turnover_cr, float_days
-            FROM ep_features
-            WHERE symbol = ?
-            ORDER BY feature_date DESC LIMIT 1
-        """, (symbol.upper(),))
-        row = c.fetchone()
-        
-        if not row:
-            conn.close()
-            return jsonify(error=f"Symbol {symbol} features not found"), 404
-            
-        cols = [description[0] for description in c.description]
-        detail = dict(zip(cols, row))
-        
-        ticker = f"{symbol.upper()}.NS"
-        history = fetch_historical_prices(ticker, range_str="6mo")
-        detail["history"] = history or []
-        
-        c.execute("""
-            SELECT event_date, event_type, headline, sentiment, catalyst_score, source, raw_url,
-                   nlp_sentiment_score, nlp_category, summary, impact_magnitude
-            FROM corporate_events
-            WHERE symbol = ?
-            ORDER BY event_date DESC LIMIT 10
-        """, (symbol.upper(),))
-        events_rows = c.fetchall()
-        detail["corporate_events"] = [
-            dict(zip([
-                'event_date', 'event_type', 'headline', 'sentiment', 'catalyst_score', 'source', 'raw_url',
-                'nlp_sentiment_score', 'nlp_category', 'summary', 'impact_magnitude'
-            ], ev)) for ev in events_rows
-        ]
-        
-        c.execute("""
-            SELECT quarter, result_date, revenue, revenue_yoy_pct, net_profit, net_profit_yoy_pct, eps
-            FROM fundamentals
-            WHERE symbol = ?
-            ORDER BY result_date DESC LIMIT 8
-        """, (symbol.upper(),))
-        fund_rows = c.fetchall()
-        detail["fundamentals"] = [dict(zip(['quarter', 'result_date', 'revenue', 'revenue_yoy_pct', 'net_profit', 'net_profit_yoy_pct', 'eps'], f)) for f in fund_rows]
-        
-        # Get latest watchlist details
-        c.execute("""
-            SELECT status, stop_price, notes
-            FROM ep_watchlist
-            WHERE symbol = ?
-            ORDER BY id DESC LIMIT 1
-        """, (symbol.upper(),))
-        wl_row = c.fetchone()
-        if wl_row:
-            detail["watchlist_status"] = wl_row[0]
-            detail["watchlist_stop"] = wl_row[1]
-            detail["watchlist_notes"] = wl_row[2]
-        else:
-            detail["watchlist_status"] = None
-            detail["watchlist_stop"] = None
-            detail["watchlist_notes"] = None
-
-        # Check if is sugar baby
-        c.execute("""
-            SELECT is_active
-            FROM sugar_babies
-            WHERE symbol = ? AND is_active = 1
-            LIMIT 1
-        """, (symbol.upper(),))
-        sb_row = c.fetchone()
-        detail["is_sugar_baby"] = 1 if sb_row else 0
-        
-        conn.close()
-        conn = None
-        return jsonify(detail)
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
-
-
-@api_bp.route('/ep/sugar-babies', methods=['POST'])
-def add_to_sugar_babies():
-    data = request.get_json() or {}
-    symbol = data.get("symbol", "").upper().strip()
-    if not symbol:
-        return jsonify(error="Symbol is required"), 400
-    exchange = data.get("exchange", "NSE").upper().strip()
-    notes = data.get("notes", "")
-    is_active = data.get("is_active", 1)
-
-    conn = None
-    try:
-        conn = sqlite3.connect('scan_history.db', timeout=30.0)
-        c = conn.cursor()
-        
-        c.execute("SELECT id FROM sugar_babies WHERE symbol = ?", (symbol,))
-        existing = c.fetchone()
-        
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        
-        # TODO: update episode_count nightly
-        c.execute("SELECT COUNT(*) FROM ep_features WHERE symbol = ? AND ep_score >= 0.55", (symbol,))
-        episode_count = c.fetchone()[0]
-        
-        if existing:
-            c.execute("""
-                UPDATE sugar_babies
-                SET notes = ?, is_active = ?, exchange = ?, episode_count = ?
-                WHERE id = ?
-            """, (notes, is_active, exchange, episode_count, existing[0]))
-        else:
-            c.execute("""
-                INSERT INTO sugar_babies (
-                    symbol, exchange, added_date, avg_burst_pct, avg_burst_days, episode_count, notes, is_active
-                ) VALUES (?, ?, ?, 0.0, 0.0, ?, ?, ?)
-            """, (symbol, exchange, today_str, episode_count, notes, is_active))
-            
-        conn.commit()
-        status_text = "added to" if is_active else "removed from"
-        return jsonify(success=True, message=f"Symbol {status_text} Sugar Babies")
-    except Exception as e:
-        return jsonify(error=str(e)), 500
-    finally:
-        if conn:
-            conn.close()
 
 # NOTE: Initial IPO cache warm-up is handled by the background scheduler (see app/tasks/scheduler.py)
 # to avoid SQLite write-lock contention from double-execution in Werkzeug's dual-process debug mode.

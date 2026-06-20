@@ -1303,7 +1303,7 @@
 
             <!-- Panel: Today's EPs -->
             <div class="ep-panel" id="ep-panel-today">
-                <div class="ep-filters-bar glass-panel" style="position: relative; z-index: 100; padding: 1rem 1.2rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 1rem; background: rgba(10,14,26,0.6);">
+                <div class="ep-filters-bar glass-panel" style="position: relative; z-index: 100;">
                     <div style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center;">
 
                         <!-- EP Type Custom Dropdown -->
@@ -1420,31 +1420,40 @@
                             </tr>
                         </tbody>
                     </table>
+                    <div id="ep-load-more-container" style="text-align: center; margin-top: 1.5rem; display: none;">
+                        <button id="btn-ep-load-more" class="btn btn-secondary" style="padding: 0.5rem 2rem; font-weight: 600; font-size: 0.85rem;">Load More</button>
+                    </div>
                 </div>
             </div>
 
             <!-- Panel: Watchlist -->
             <div class="ep-panel" id="ep-panel-watchlist" style="display: none;">
+                <div class="ep-watchlist-toolbar" style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
+                    <span style="font-size: 0.82rem; color: var(--color-text-secondary); margin-right: auto;" id="ep-watchlist-selected-count">0 items selected</span>
+                    <button id="btn-ep-watchlist-bulk-delete" class="btn btn-xs" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--accent-red); padding: 4px 10px; font-weight: 600;">Bulk Remove</button>
+                    <button id="btn-ep-watchlist-export" class="btn btn-xs btn-outline" style="padding: 4px 10px; font-weight: 600;">Export CSV</button>
+                </div>
                 <div class="table-container">
                     <table class="screener-table" id="ep-watchlist-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th>
-                                <th>EP Type</th>
-                                <th>Catalyst Date</th>
-                                <th class="text-center">EP Score</th>
-                                <th class="text-right">Entry Price</th>
-                                <th class="text-right">Stop Price</th>
-                                <th class="text-center">Days on Watch</th>
-                                <th>Status</th>
-                                <th>Trigger Type</th>
+                                <th style="width: 40px; text-align: center;"><input type="checkbox" id="ep-watchlist-select-all" style="cursor: pointer; transform: scale(1.15);"></th>
+                                <th data-sort="symbol">Symbol</th>
+                                <th data-sort="ep_type">EP Type</th>
+                                <th data-sort="catalyst_date">Catalyst Date</th>
+                                <th class="text-center" data-sort="ep_score">EP Score</th>
+                                <th class="text-right" data-sort="entry_price">Entry Price</th>
+                                <th class="text-right" data-sort="stop_price">Stop Price</th>
+                                <th class="text-center" data-sort="days_on_watch">Days on Watch</th>
+                                <th data-sort="status">Status</th>
+                                <th data-sort="trigger_type">Trigger Type</th>
                                 <th>Notes</th>
                                 <th class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ep-watchlist-body">
                             <tr>
-                                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                <td colspan="12" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                                     No active watchlist candidates found.
                                 </td>
                             </tr>
@@ -1455,17 +1464,26 @@
 
             <!-- Panel: Sugar Babies -->
             <div class="ep-panel" id="ep-panel-sugar-babies" style="display: none;">
+                <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 0.85rem; margin-bottom: 1.2rem; display: flex; gap: 0.65rem; align-items: flex-start;">
+                    <span style="font-size: 1.2rem; line-height: 1;">⚠️</span>
+                    <div>
+                        <h5 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--accent-amber, #fbbf24); font-weight: 700;">High Risk Breakout Setups</h5>
+                        <p style="margin: 0; font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.4;">
+                            Sugar Babies are low-float, high-beta micro-cap stocks showing early momentum. These require strict stop-losses due to higher volatility and potentially lower liquidity. Always size positions appropriately.
+                        </p>
+                    </div>
+                </div>
                 <div class="table-container">
                     <table class="screener-table" id="ep-sugar-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th>
-                                <th>Exchange</th>
-                                <th>Added Date</th>
-                                <th class="text-right">Avg Burst %</th>
-                                <th class="text-right">Avg Burst Days</th>
-                                <th class="text-center">Episode Count</th>
-                                <th>Notes</th>
+                                <th data-sort="symbol">Symbol</th>
+                                <th data-sort="exchange">Exchange</th>
+                                <th data-sort="added_date">Added Date</th>
+                                <th class="text-right" data-sort="avg_burst_pct">Avg Burst %</th>
+                                <th class="text-right" data-sort="avg_burst_days">Avg Burst Days</th>
+                                <th class="text-center" data-sort="episode_count">Episode Count</th>
+                                <th data-sort="notes">Notes</th>
                             </tr>
                         </thead>
                         <tbody id="ep-sugar-body">
@@ -1877,6 +1895,14 @@
                 </button>
             </div>
             <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 60vh;">
+                <!-- Section: Price Chart -->
+                <div>
+                    <h4 style="margin: 0 0 0.8rem 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+                        <span>📈</span> Price History Chart
+                    </h4>
+                    <div id="ep-detail-chart" style="width: 100%; height: 260px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;"></div>
+                </div>
+
                 <!-- Section: Quarterly Financials -->
                 <div>
                     <h4 style="margin: 0 0 0.8rem 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">

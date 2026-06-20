@@ -11303,6 +11303,46 @@ document.addEventListener('click', function(e) {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+const EP_API = {
+    async request(url, options = {}) {
+        const defaultHeaders = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        };
+        options.headers = { ...defaultHeaders, ...options.headers };
+        try {
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                const text = await res.text();
+                let errMessage = `HTTP error ${res.status}`;
+                try {
+                    const errJson = JSON.parse(text);
+                    if (errJson && errJson.error) errMessage = errJson.error;
+                } catch(e) {}
+                throw new Error(errMessage);
+            }
+            return await res.json();
+        } catch (err) {
+            console.error(`EP_API Error requesting ${url}:`, err);
+            throw err;
+        }
+    },
+    get(url) {
+        return this.request(url, { method: 'GET' });
+    },
+    post(url, body) {
+        return this.request(url, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+    }
+};
+
+let epWatchlistSort = { field: 'catalyst_date', dir: 'desc' };
+let epSugarSort = { field: 'symbol', dir: 'asc' };
+let epPagination = { limit: 30, offset: 0, hasMore: true, loading: false };
+let epDetailChartInstance = null;
+
 function bindEPListeners() {
     if (epListenersBound) return;
     
@@ -11352,9 +11392,12 @@ function bindEPListeners() {
     const filterMinScore = document.getElementById('filter-ep-min-score');
     if (filterMinScore) {
         filterMinScore.addEventListener('change', () => {
-            epActiveFilters.min_score = parseFloat(filterMinScore.value) || 0.55;
+            epActiveFilters.min_score = parseFloat(filterMinScore.value) || 0.0;
+            updateMinScoreFilterVisual();
             fetchEPListings();
         });
+        // Initial style sync
+        updateMinScoreFilterVisual();
     }
 
     const filterMinMkt = document.getElementById('filter-ep-min-mktcap');
@@ -11379,6 +11422,14 @@ function bindEPListeners() {
         refreshBtn.addEventListener('click', triggerEPRefresh);
     }
 
+    // Pagination Load More
+    const loadMoreBtn = document.getElementById('btn-ep-load-more');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+            fetchEPListings(true);
+        });
+    }
+
     // Column header sorting for EP listings table
     document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
         th.style.cursor = 'pointer';
@@ -11389,22 +11440,85 @@ function bindEPListeners() {
                 epTableSort.dir = epTableSort.dir === 'asc' ? 'desc' : 'asc';
             } else {
                 epTableSort.field = field;
-                // Numeric fields default desc, text fields default asc
                 const textFields = ['symbol', 'ep_type', 'confidence'];
                 epTableSort.dir = textFields.includes(field) ? 'asc' : 'desc';
             }
-            // Update header arrow indicators
-            document.querySelectorAll('#ep-table thead th[data-sort]').forEach(h => {
-                const arrow = h.querySelector('.ep-sort-arrow');
-                if (arrow) arrow.textContent = '';
-                h.classList.remove('sort-asc', 'sort-desc');
-            });
-            th.classList.add(epTableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
             renderEPListingsTable();
         });
     });
 
+    // Column header sorting for EP Watchlist table
+    document.querySelectorAll('#ep-watchlist-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (epWatchlistSort.field === field) {
+                epWatchlistSort.dir = epWatchlistSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                epWatchlistSort.field = field;
+                const textFields = ['symbol', 'ep_type', 'status', 'trigger_type', 'notes', 'catalyst_date'];
+                epWatchlistSort.dir = textFields.includes(field) ? 'asc' : 'desc';
+            }
+            renderEPWatchlistTable();
+        });
+    });
+
+    // Column header sorting for Sugar Babies table
+    document.querySelectorAll('#ep-sugar-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (epSugarSort.field === field) {
+                epSugarSort.dir = epSugarSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                epSugarSort.field = field;
+                const textFields = ['symbol', 'exchange', 'added_date', 'notes'];
+                epSugarSort.dir = textFields.includes(field) ? 'asc' : 'desc';
+            }
+            renderEPSugarTable();
+        });
+    });
+
+    // Watchlist Multi-select Select All Checkbox
+    const selectAllCheckbox = document.getElementById('ep-watchlist-select-all');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', () => {
+            const isChecked = selectAllCheckbox.checked;
+            document.querySelectorAll('.ep-watchlist-row-select').forEach(cb => {
+                cb.checked = isChecked;
+            });
+            updateWatchlistSelectionCount();
+        });
+    }
+
+    // Watchlist Bulk Actions
+    const bulkDeleteBtn = document.getElementById('btn-ep-watchlist-bulk-delete');
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', bulkRemoveWatchlist);
+    }
+    const exportBtn = document.getElementById('btn-ep-watchlist-export');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportWatchlistToCSV);
+    }
+
     epListenersBound = true;
+}
+
+function updateMinScoreFilterVisual() {
+    const filterMinScore = document.getElementById('filter-ep-min-score');
+    if (!filterMinScore) return;
+    const scoreVal = parseFloat(filterMinScore.value) || 0.0;
+    if (scoreVal > 0.0) {
+        filterMinScore.style.borderColor = 'var(--accent-amber, #fbbf24)';
+        filterMinScore.style.borderWidth = '2px';
+        filterMinScore.style.boxShadow = '0 0 6px rgba(245,158,11,0.2)';
+    } else {
+        filterMinScore.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        filterMinScore.style.borderWidth = '1px';
+        filterMinScore.style.boxShadow = 'none';
+    }
 }
 
 function loadEPSubTab(sub) {
@@ -11421,36 +11535,67 @@ function loadEPSubTab(sub) {
     }
 }
 
-function fetchEPListings() {
+function fetchEPListings(loadMore = false) {
+    if (epPagination.loading) return;
+    
     const tbody = document.getElementById('ep-table-body');
-    if (tbody && epListingsData.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
-                    Loading EP listings...
-                </td>
-            </tr>
-        `;
+    const loadMoreBtn = document.getElementById('btn-ep-load-more');
+    const loadMoreContainer = document.getElementById('ep-load-more-container');
+    
+    if (!loadMore) {
+        epPagination.offset = 0;
+        epPagination.hasMore = true;
+        epListingsData = []; // Reset stale listings data
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                        Loading EP listings...
+                    </td>
+                </tr>
+            `;
+        }
     }
+    
+    epPagination.loading = true;
+    if (loadMoreBtn) loadMoreBtn.disabled = true;
     
     const params = new URLSearchParams({
         ep_type: epActiveFilters.ep_type,
         confidence: epActiveFilters.confidence,
         min_score: epActiveFilters.min_score,
         min_mktcap: epActiveFilters.min_mktcap,
-        max_mktcap: epActiveFilters.max_mktcap
+        max_mktcap: epActiveFilters.max_mktcap,
+        limit: epPagination.limit,
+        offset: epPagination.offset
     });
     
-    fetch(`/api/ep/today?${params.toString()}`)
-        .then(res => res.json())
+    EP_API.get(`/api/ep/today?${params.toString()}`)
         .then(data => {
+            epPagination.loading = false;
+            if (loadMoreBtn) loadMoreBtn.disabled = false;
+            
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
                 return;
             }
-            epListingsData = data.listings || [];
             
-            // Update badge in main nav tab if there are HIGH confidence EPs
+            const newListings = data.listings || [];
+            if (loadMore) {
+                epListingsData = [...epListingsData, ...newListings];
+            } else {
+                epListingsData = newListings;
+            }
+            
+            if (newListings.length < epPagination.limit) {
+                epPagination.hasMore = false;
+                if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+            } else {
+                epPagination.hasMore = true;
+                if (loadMoreContainer) loadMoreContainer.style.display = 'block';
+                epPagination.offset += epPagination.limit;
+            }
+            
             const highCount = data.summary ? (data.summary.HIGH || 0) : 0;
             const badge = document.getElementById('ep-high-count');
             if (badge) {
@@ -11461,6 +11606,8 @@ function fetchEPListings() {
             renderEPListingsTable();
         })
         .catch(err => {
+            epPagination.loading = false;
+            if (loadMoreBtn) loadMoreBtn.disabled = false;
             console.error('Error fetching EP listings:', err);
             if (typeof showToast === 'function') showToast('Failed to load EP listings', 'error');
         });
@@ -11470,12 +11617,16 @@ function openEPDetailModal(symbol) {
     const modal = document.getElementById('ep-detail-modal');
     if (!modal) return;
     
-    // Clear dynamic content first
     document.getElementById('ep-detail-title-ticker').textContent = symbol;
     document.getElementById('ep-detail-type').textContent = 'Loading...';
     document.getElementById('ep-detail-score').textContent = '...';
     document.getElementById('ep-detail-confidence').textContent = '...';
     document.getElementById('ep-detail-mktcap').textContent = '';
+    
+    const chartContainer = document.getElementById('ep-detail-chart');
+    if (chartContainer) {
+        chartContainer.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Loading chart...</div>';
+    }
     
     const fundTbody = document.getElementById('ep-detail-fundamentals-body');
     fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading financials...</td></tr>`;
@@ -11485,8 +11636,7 @@ function openEPDetailModal(symbol) {
     
     modal.classList.remove('hidden');
     
-    fetch(`/api/ep/${symbol}/detail`)
-        .then(res => res.json())
+    EP_API.get(`/api/ep/${symbol}/detail`)
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Failed to load details: ${data.error}`, 'error');
@@ -11494,7 +11644,6 @@ function openEPDetailModal(symbol) {
                 return;
             }
             
-            // Populate header details
             document.getElementById('ep-detail-title-ticker').textContent = data.symbol;
             document.getElementById('ep-detail-type').textContent = data.ep_type;
             document.getElementById('ep-detail-score').textContent = data.ep_score ? data.ep_score.toFixed(2) : '-';
@@ -11505,6 +11654,9 @@ function openEPDetailModal(symbol) {
             
             document.getElementById('ep-detail-mktcap').textContent = data.market_cap_cr ? `| Mkt Cap: ₹${data.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})} Cr` : '';
             
+            // Render Price Chart via Lightweight Charts
+            renderEPDetailChart(data.history || []);
+
             // Populate Quarterly Fundamentals
             if (!data.fundamentals || data.fundamentals.length === 0) {
                 fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No quarterly financial data available.</td></tr>`;
@@ -11514,10 +11666,16 @@ function openEPDetailModal(symbol) {
                     const revYoY = q.revenue_yoy_pct !== null ? `${q.revenue_yoy_pct > 0 ? '+' : ''}${q.revenue_yoy_pct.toFixed(1)}%` : '-';
                     const revYoYStyle = q.revenue_yoy_pct !== null ? (q.revenue_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
                     
+                    const revTrendColor = q.revenue_trend === '▲' ? 'color:#10b981;' : (q.revenue_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
+                    const revTrendBadge = `<span style="${revTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.revenue_trend || '—'}</span>`;
+
                     const prof = q.net_profit !== null ? q.net_profit.toFixed(1) : '-';
                     const profYoY = q.net_profit_yoy_pct !== null ? `${q.net_profit_yoy_pct > 0 ? '+' : ''}${q.net_profit_yoy_pct.toFixed(1)}%` : '-';
                     const profYoYStyle = q.net_profit_yoy_pct !== null ? (q.net_profit_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
                     
+                    const profTrendColor = q.profit_trend === '▲' ? 'color:#10b981;' : (q.profit_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
+                    const profTrendBadge = `<span style="${profTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.profit_trend || '—'}</span>`;
+
                     const eps = q.eps !== null ? q.eps.toFixed(2) : '-';
                     
                     return `
@@ -11525,9 +11683,9 @@ function openEPDetailModal(symbol) {
                             <td style="padding: 8px; font-weight:600;">${q.quarter || '-'}</td>
                             <td style="padding: 8px; color:var(--color-text-secondary);">${q.result_date || '-'}</td>
                             <td style="padding: 8px; text-align:right;">${rev}</td>
-                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}${revTrendBadge}</td>
                             <td style="padding: 8px; text-align:right;">${prof}</td>
-                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}${profTrendBadge}</td>
                             <td style="padding: 8px; text-align:right;">${eps}</td>
                         </tr>
                     `;
@@ -11565,160 +11723,146 @@ function openEPDetailModal(symbol) {
                 }).join('');
             }
             
-            // Populate Watchlist & Sugar Babies Controls
-            window.currentEPDetailSymbol = data.symbol || symbol;
-            
-            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
-            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
-            
+            // Watchlist & Sugar Babies Controls - Fix Stale Closures (Clone Buttons)
             const addWatchlistBtn = document.getElementById('btn-ep-detail-add-watchlist');
             const triggerWatchlistBtn = document.getElementById('btn-ep-detail-trigger-watchlist');
             const removeWatchlistBtn = document.getElementById('btn-ep-detail-remove-watchlist');
             const addSugarBtn = document.getElementById('btn-ep-detail-add-sugar');
+
+            let addWatchlistBtnCloned = null;
+            let triggerWatchlistBtnCloned = null;
+            let removeWatchlistBtnCloned = null;
+            let addSugarBtnCloned = null;
+
+            if (addWatchlistBtn) {
+                addWatchlistBtnCloned = addWatchlistBtn.cloneNode(true);
+                addWatchlistBtn.parentNode.replaceChild(addWatchlistBtnCloned, addWatchlistBtn);
+            }
+            if (triggerWatchlistBtn) {
+                triggerWatchlistBtnCloned = triggerWatchlistBtn.cloneNode(true);
+                triggerWatchlistBtn.parentNode.replaceChild(triggerWatchlistBtnCloned, triggerWatchlistBtn);
+            }
+            if (removeWatchlistBtn) {
+                removeWatchlistBtnCloned = removeWatchlistBtn.cloneNode(true);
+                removeWatchlistBtn.parentNode.replaceChild(removeWatchlistBtnCloned, removeWatchlistBtn);
+            }
+            if (addSugarBtn) {
+                addSugarBtnCloned = addSugarBtn.cloneNode(true);
+                addSugarBtn.parentNode.replaceChild(addSugarBtnCloned, addSugarBtn);
+            }
             
+            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
+            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
+
             if (data.watchlist_status === 'ACTIVE') {
-                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Update Watchlist';
-                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'inline-block';
-                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'inline-block';
+                if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Update Watchlist';
+                if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'inline-block';
+                if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'inline-block';
             } else {
-                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Add to Watchlist';
-                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'none';
-                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'none';
+                if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Add to Watchlist';
+                if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'none';
+                if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'none';
             }
             
             if (data.is_sugar_baby === 1) {
-                if (addSugarBtn) addSugarBtn.textContent = 'Remove Sugar Baby';
+                if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Remove Sugar Baby';
             } else {
-                if (addSugarBtn) addSugarBtn.textContent = 'Add to Sugar Babies';
+                if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Add to Sugar Babies';
             }
             
-            if (!window.epDetailListenersBound) {
-                window.epDetailListenersBound = true;
-                
-                if (addWatchlistBtn) {
-                    addWatchlistBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        const stopVal = document.getElementById('ep-detail-stop-input').value;
-                        const notesVal = document.getElementById('ep-detail-notes-input').value;
-                        
-                        fetch('/api/ep/watchlist', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                symbol: sym,
-                                stop_price: stopVal,
-                                notes: notesVal
-                            })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
-                                if (typeof fetchEPListings === 'function') fetchEPListings();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error adding/updating watchlist:', err);
-                            if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
-                        });
+            // Re-bind listeners on fresh cloned buttons (using symbol from lexical scope)
+            if (addWatchlistBtnCloned) {
+                addWatchlistBtnCloned.addEventListener('click', () => {
+                    const stopVal = document.getElementById('ep-detail-stop-input').value;
+                    const notesVal = document.getElementById('ep-detail-notes-input').value;
+                    
+                    EP_API.post('/api/ep/watchlist', {
+                        symbol: symbol,
+                        stop_price: stopVal,
+                        notes: notesVal
+                    })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPWatchlist();
+                            fetchEPListings();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error adding/updating watchlist:', err);
+                        if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
                     });
-                }
-                
-                if (removeWatchlistBtn) {
-                    removeWatchlistBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        
-                        fetch('/api/ep/watchlist/remove', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ symbol: sym })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
-                                if (typeof fetchEPListings === 'function') fetchEPListings();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error deleting watchlist:', err);
-                            if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
-                        });
+                });
+            }
+            
+            if (removeWatchlistBtnCloned) {
+                removeWatchlistBtnCloned.addEventListener('click', () => {
+                    EP_API.post('/api/ep/watchlist/remove', { symbol: symbol })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPWatchlist();
+                            fetchEPListings();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error deleting watchlist:', err);
+                        if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
                     });
-                }
-                
-                if (triggerWatchlistBtn) {
-                    triggerWatchlistBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        
-                        fetch('/api/ep/watchlist/trigger', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ symbol: sym })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
-                                if (typeof fetchEPListings === 'function') fetchEPListings();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error triggering watchlist:', err);
-                            if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
-                        });
+                });
+            }
+            
+            if (triggerWatchlistBtnCloned) {
+                triggerWatchlistBtnCloned.addEventListener('click', () => {
+                    EP_API.post('/api/ep/watchlist/trigger', { symbol: symbol })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPWatchlist();
+                            fetchEPListings();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error triggering watchlist:', err);
+                        if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
                     });
-                }
-                
-                if (addSugarBtn) {
-                    addSugarBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        
-                        const isCurrentlySugar = addSugarBtn.textContent.includes('Remove');
-                        const is_active = isCurrentlySugar ? 0 : 1;
-                        const notesVal = document.getElementById('ep-detail-notes-input').value;
-                        
-                        fetch('/api/ep/sugar-babies', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                symbol: sym,
-                                is_active: is_active,
-                                notes: notesVal
-                            })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPSugarBabies === 'function') fetchEPSugarBabies();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error updating Sugar Babies:', err);
-                            if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
-                        });
+                });
+            }
+            
+            if (addSugarBtnCloned) {
+                addSugarBtnCloned.addEventListener('click', () => {
+                    const isCurrentlySugar = addSugarBtnCloned.textContent.includes('Remove');
+                    const is_active = isCurrentlySugar ? 0 : 1;
+                    const notesVal = document.getElementById('ep-detail-notes-input').value;
+                    
+                    EP_API.post('/api/ep/sugar-babies', {
+                        symbol: symbol,
+                        is_active: is_active,
+                        notes: notesVal
+                    })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPSugarBabies();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error updating Sugar Babies:', err);
+                        if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
                     });
-                }
+                });
             }
         })
         .catch(err => {
@@ -11728,6 +11872,77 @@ function openEPDetailModal(symbol) {
         });
 }
 window.openEPDetailModal = openEPDetailModal;
+
+function renderEPDetailChart(history) {
+    const container = document.getElementById('ep-detail-chart');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (epDetailChartInstance) {
+        epDetailChartInstance = null;
+    }
+    
+    if (!history || history.length === 0) {
+        container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">No historical price data available</div>`;
+        return;
+    }
+    
+    try {
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth || 750,
+            height: 260,
+            layout: {
+                background: { type: 'solid', color: 'transparent' },
+                textColor: '#94a3b8',
+            },
+            grid: {
+                vertLines: { color: 'rgba(255, 255, 255, 0.02)' },
+                horzLines: { color: 'rgba(255, 255, 255, 0.02)' },
+            },
+            timeScale: {
+                borderColor: 'rgba(255, 255, 255, 0.08)',
+                timeVisible: false,
+                secondsVisible: false,
+            },
+            rightPriceScale: {
+                borderColor: 'rgba(255, 255, 255, 0.08)',
+            }
+        });
+        
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#10b981',
+            downColor: '#ef4444',
+            borderVisible: false,
+            wickUpColor: '#10b981',
+            wickDownColor: '#ef4444',
+        });
+        
+        const chartData = history.map(item => {
+            return {
+                time: item.date,
+                open: parseFloat(item.open),
+                high: parseFloat(item.high),
+                low: parseFloat(item.low),
+                close: parseFloat(item.close)
+            };
+        }).sort((a, b) => a.time.localeCompare(b.time));
+        
+        candlestickSeries.setData(chartData);
+        chart.timeScale().fitContent();
+        
+        const resizeObserver = new ResizeObserver(entries => {
+            if (entries.length === 0 || !entries[0].contentRect) return;
+            const { width, height } = entries[0].contentRect;
+            chart.resize(width, height);
+        });
+        resizeObserver.observe(container);
+        
+        epDetailChartInstance = chart;
+    } catch (e) {
+        console.error('Error rendering detail chart:', e);
+        container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Chart loading error</div>`;
+    }
+}
 
 function renderEPListingsTable() {
     const tbody = document.getElementById('ep-table-body');
@@ -11744,7 +11959,6 @@ function renderEPListingsTable() {
         return;
     }
 
-    // Sort the data
     const textFields = ['symbol', 'ep_type', 'confidence'];
     const sorted = [...epListingsData].sort((a, b) => {
         let va = a[epTableSort.field];
@@ -11760,7 +11974,6 @@ function renderEPListingsTable() {
         return epTableSort.dir === 'asc' ? cmp : -cmp;
     });
 
-    // Refresh sort arrow indicator on active header
     document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
         th.classList.remove('sort-asc', 'sort-desc');
         if (th.dataset.sort === epTableSort.field) {
@@ -11783,11 +11996,21 @@ function renderEPListingsTable() {
         else if (item.ep_score >= 0.55) scoreStyle += ' color: var(--accent-blue, #3b82f6);';
         else scoreStyle += ' color: var(--color-text-secondary);';
         
+        // Render EP trend delta badge
+        let trendBadge = '';
+        if (item.prev_ep_score != null) {
+            const diff = item.ep_score - item.prev_ep_score;
+            if (diff > 0.001) {
+                trendBadge = `<span style="font-size: 0.7rem; color: var(--color-success, #10b981); margin-left: 4px; font-weight: 600;">▲+${diff.toFixed(2)}</span>`;
+            } else if (diff < -0.001) {
+                trendBadge = `<span style="font-size: 0.7rem; color: var(--color-error, #ef4444); margin-left: 4px; font-weight: 600;">▼${diff.toFixed(2)}</span>`;
+            }
+        }
+
         const gapVal = item.gap_pct || 0.0;
         const changeText = gapVal >= 0 ? `+${gapVal.toFixed(2)}%` : `${gapVal.toFixed(2)}%`;
         const changeStyle = gapVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
 
-        // Day's Change %
         const dayChgVal = item.price_change_pct != null ? item.price_change_pct : gapVal;
         const dayChgText = dayChgVal >= 0 ? `+${dayChgVal.toFixed(2)}%` : `${dayChgVal.toFixed(2)}%`;
         const dayChgStyle = dayChgVal >= 0 ? 'color: var(--color-success, #10b981); font-weight: 600;' : 'color: var(--color-error, #ef4444); font-weight: 600;';
@@ -11803,7 +12026,7 @@ function renderEPListingsTable() {
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
                 <td style="font-weight: 500;">${item.ep_type}</td>
-                <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}</td>
+                <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}${trendBadge}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.neglect_score.toFixed(2)}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.catalyst_score.toFixed(2)}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.repricing_score.toFixed(2)}</td>
@@ -11822,18 +12045,12 @@ function renderEPListingsTable() {
         `;
     }).join('');
 }
+
 function removeFromEPWatchlist(symbol) {
     if (!confirm(`Are you sure you want to remove ${symbol} from the active watchlist?`)) {
         return;
     }
-    fetch('/api/ep/watchlist/remove', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ symbol: symbol })
-    })
-    .then(res => res.json())
+    EP_API.post('/api/ep/watchlist/remove', { symbol: symbol })
     .then(data => {
         if (data.success) {
             if (typeof showToast === 'function') showToast(`${symbol} removed from watchlist`, 'success');
@@ -11854,22 +12071,27 @@ function fetchEPWatchlist() {
     if (tbody && epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="12" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     Loading watchlist...
                 </td>
             </tr>
         `;
     }
     
-    fetch('/api/ep/watchlist')
-        .then(res => res.json())
+    EP_API.get('/api/ep/watchlist')
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
                 return;
             }
             epWatchlistData = data.watchlist || [];
+            
+            // Reset Select All checkbox
+            const sa = document.getElementById('ep-watchlist-select-all');
+            if (sa) sa.checked = false;
+            
             renderEPWatchlistTable();
+            updateWatchlistSelectionCount();
         })
         .catch(err => {
             console.error('Error fetching EP watchlist:', err);
@@ -11884,18 +12106,44 @@ function renderEPWatchlistTable() {
     if (epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="12" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     No active watchlist candidates found.
                 </td>
             </tr>
         `;
         return;
     }
+
+    // Sort Watchlist
+    const textFields = ['symbol', 'ep_type', 'status', 'trigger_type', 'notes', 'catalyst_date'];
+    const sorted = [...epWatchlistData].sort((a, b) => {
+        let va = a[epWatchlistSort.field];
+        let vb = b[epWatchlistSort.field];
+        if (va == null) va = textFields.includes(epWatchlistSort.field) ? '' : -Infinity;
+        if (vb == null) vb = textFields.includes(epWatchlistSort.field) ? '' : -Infinity;
+        let cmp;
+        if (textFields.includes(epWatchlistSort.field)) {
+            cmp = String(va).localeCompare(String(vb));
+        } else {
+            cmp = Number(va) - Number(vb);
+        }
+        return epWatchlistSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.querySelectorAll('#ep-watchlist-table thead th[data-sort]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === epWatchlistSort.field) {
+            th.classList.add(epWatchlistSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
     
-    tbody.innerHTML = epWatchlistData.map(item => {
+    tbody.innerHTML = sorted.map(item => {
         const scoreVal = item.ep_score || 0.0;
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('input') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
+                <td style="text-align: center;" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="ep-watchlist-row-select" data-symbol="${item.symbol}" style="cursor: pointer; transform: scale(1.15);" onchange="updateWatchlistSelectionCount()">
+                </td>
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
@@ -11907,7 +12155,7 @@ function renderEPWatchlistTable() {
                 <td class="text-center">${item.days_on_watch} / 20</td>
                 <td><span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">${item.status}</span></td>
                 <td>${item.trigger_type || 'None'}</td>
-                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
+                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
                 <td class="text-center" style="white-space: nowrap;">
                     <button class="btn btn-xs btn-outline" onclick="removeFromEPWatchlist('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05);">Delete</button>
                 </td>
@@ -11916,20 +12164,104 @@ function renderEPWatchlistTable() {
     }).join('');
 }
 
+function updateWatchlistSelectionCount() {
+    const selected = document.querySelectorAll('.ep-watchlist-row-select:checked').length;
+    const total = document.querySelectorAll('.ep-watchlist-row-select').length;
+    const countEl = document.getElementById('ep-watchlist-selected-count');
+    if (countEl) {
+        countEl.textContent = `${selected} of ${total} items selected`;
+    }
+    
+    // Sync Select All checkbox state
+    const sa = document.getElementById('ep-watchlist-select-all');
+    if (sa) {
+        sa.checked = (selected === total && total > 0);
+    }
+}
+
+function bulkRemoveWatchlist() {
+    const checked = document.querySelectorAll('.ep-watchlist-row-select:checked');
+    if (checked.length === 0) {
+        if (typeof showToast === 'function') showToast('Please select items to remove', 'error');
+        return;
+    }
+    
+    const symbols = Array.from(checked).map(cb => cb.dataset.symbol);
+    if (!confirm(`Are you sure you want to remove ${symbols.length} selected items from the watchlist?`)) {
+        return;
+    }
+    
+    EP_API.post('/api/ep/watchlist/remove', { symbols: symbols })
+    .then(data => {
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message, 'success');
+            fetchEPWatchlist();
+        } else {
+            if (typeof showToast === 'function') showToast(`Error: ${data.error || 'Bulk delete failed'}`, 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error bulk deleting from EP watchlist:', err);
+        if (typeof showToast === 'function') showToast('Network error during bulk delete', 'error');
+    });
+}
+
+function exportWatchlistToCSV() {
+    const checked = document.querySelectorAll('.ep-watchlist-row-select:checked');
+    let symbols = [];
+    if (checked.length > 0) {
+        symbols = Array.from(checked).map(cb => cb.dataset.symbol);
+    } else {
+        symbols = epWatchlistData.map(item => item.symbol);
+    }
+    
+    if (symbols.length === 0) {
+        if (typeof showToast === 'function') showToast('No watchlist items to export', 'error');
+        return;
+    }
+    
+    const exportList = epWatchlistData.filter(item => symbols.includes(item.symbol));
+    const headers = ['Symbol', 'EP Type', 'Catalyst Date', 'EP Score', 'Entry Price', 'Stop Price', 'Days on Watch', 'Status', 'Notes'];
+    
+    const csvContent = [
+        headers.join(','),
+        ...exportList.map(item => [
+            item.symbol,
+            item.ep_type,
+            item.catalyst_date,
+            item.ep_score || 0.0,
+            item.entry_price || '',
+            item.stop_price || '',
+            item.days_on_watch || 0,
+            item.status,
+            `"${(item.notes || '').replace(/"/g, '""')}"`
+        ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ep_watchlist_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    if (typeof showToast === 'function') showToast(`Exported ${exportList.length} items to CSV`, 'success');
+}
+
 function fetchEPSugarBabies() {
     const tbody = document.getElementById('ep-sugar-body');
-    if (tbody && epSugarData.length === 0) {
+    if (tbody) {
+        // Render Loading Skeletons
         tbody.innerHTML = `
-            <tr>
-                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
-                    Loading Sugar Babies...
-                </td>
-            </tr>
+            <tr class="skeleton-row"><td colspan="7"><div class="skeleton" style="height: 22px; width: 100%; margin: 6px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="7"><div class="skeleton" style="height: 22px; width: 100%; margin: 6px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="7"><div class="skeleton" style="height: 22px; width: 100%; margin: 6px 0;"></div></td></tr>
         `;
     }
     
-    fetch('/api/ep/sugar-babies')
-        .then(res => res.json())
+    EP_API.get('/api/ep/sugar-babies')
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
@@ -11958,10 +12290,33 @@ function renderEPSugarTable() {
         `;
         return;
     }
+
+    // Sort Sugar Babies
+    const textFields = ['symbol', 'exchange', 'added_date', 'notes'];
+    const sorted = [...epSugarData].sort((a, b) => {
+        let va = a[epSugarSort.field];
+        let vb = b[epSugarSort.field];
+        if (va == null) va = textFields.includes(epSugarSort.field) ? '' : -Infinity;
+        if (vb == null) vb = textFields.includes(epSugarSort.field) ? '' : -Infinity;
+        let cmp;
+        if (textFields.includes(epSugarSort.field)) {
+            cmp = String(va).localeCompare(String(vb));
+        } else {
+            cmp = Number(va) - Number(vb);
+        }
+        return epSugarSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.querySelectorAll('#ep-sugar-table thead th[data-sort]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === epSugarSort.field) {
+            th.classList.add(epSugarSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
     
-    tbody.innerHTML = epSugarData.map(item => {
+    tbody.innerHTML = sorted.map(item => {
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="openEPDetailModal('${item.symbol}')">
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
@@ -11989,8 +12344,7 @@ function triggerEPRefresh() {
     if (btnText) btnText.innerText = 'Scanning...';
     if (btnSvg) btnSvg.classList.add('spin-loader');
     
-    fetch('/api/ep/refresh', { method: 'POST' })
-        .then(res => res.json())
+    EP_API.post('/api/ep/refresh', {})
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Sync Error: ${data.error}`, 'error');
@@ -12002,13 +12356,11 @@ function triggerEPRefresh() {
             let pollCount = 0;
             const interval = setInterval(() => {
                 pollCount++;
-                fetch('/api/ep/refresh/status')
-                    .then(res => res.json())
+                EP_API.get('/api/ep/refresh/status')
                     .then(statusRes => {
                         if (!statusRes.running) {
                             clearInterval(interval);
-                            fetch('/api/ep/today')
-                                .then(res => res.json())
+                            EP_API.get('/api/ep/today')
                                 .then(todayRes => {
                                     epListingsData = todayRes.listings || [];
                                     
@@ -12057,19 +12409,23 @@ function loadEPThemesAndRotation() {
     const rotationBody = document.getElementById('ep-sector-rotation-body');
     
     if (themesContainer) {
-        themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading themes...</div>';
+        // Themes Card Skeleton Loader
+        themesContainer.innerHTML = `
+            <div class="skeleton" style="height: 100px; width: 100%; border-radius: 8px; margin-bottom: 0.75rem;"></div>
+            <div class="skeleton" style="height: 100px; width: 100%; border-radius: 8px; margin-bottom: 0.75rem;"></div>
+            <div class="skeleton" style="height: 100px; width: 100%; border-radius: 8px;"></div>
+        `;
     }
     if (rotationBody) {
-        rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading sector rotation...</td></tr>';
+        rotationBody.innerHTML = `
+            <tr class="skeleton-row"><td colspan="6"><div class="skeleton" style="height: 20px; width: 100%; margin: 4px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="6"><div class="skeleton" style="height: 20px; width: 100%; margin: 4px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="6"><div class="skeleton" style="height: 20px; width: 100%; margin: 4px 0;"></div></td></tr>
+        `;
     }
     
-    fetch('/api/ep/themes')
-        .then(res => res.json())
+    EP_API.get('/api/ep/themes')
         .then(data => {
-            if (data.error) {
-                if (typeof showToast === 'function') showToast(`Themes error: ${data.error}`, 'error');
-                return;
-            }
             const themes = data.themes || [];
             if (!themesContainer) return;
             
@@ -12108,13 +12464,8 @@ function loadEPThemesAndRotation() {
             }
         });
         
-    fetch('/api/ep/sector-rotation')
-        .then(res => res.json())
+    EP_API.get('/api/ep/sector-rotation')
         .then(data => {
-            if (data.error) {
-                if (typeof showToast === 'function') showToast(`Rotation error: ${data.error}`, 'error');
-                return;
-            }
             const rotation = data.rotation || [];
             if (!rotationBody) return;
             
@@ -12171,16 +12522,13 @@ function loadEPThemesAndRotation() {
 let backtestPrepInterval = null;
 
 function initEPBacktestDashboard() {
-    // Check initial prep status
-    fetch('/api/ep/backtest/prep_status')
-        .then(res => res.json())
+    EP_API.get('/api/ep/backtest/prep_status')
         .then(status => {
             if (status.running) {
                 showBacktestPrepProgress(status);
             }
         });
         
-    // Bind buttons
     const btnRun = document.getElementById('btn-run-ep-backtest');
     if (btnRun) {
         btnRun.onclick = runEPBacktest;
@@ -12199,16 +12547,11 @@ function prepBacktestData() {
     const startDate = document.getElementById('backtest-start-date').value;
     const endDate = document.getElementById('backtest-end-date').value;
     
-    fetch('/api/ep/backtest/prepare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            start_date: startDate,
-            end_date: endDate,
-            symbols: ''
-        })
+    EP_API.post('/api/ep/backtest/prepare', {
+        start_date: startDate,
+        end_date: endDate,
+        symbols: ''
     })
-    .then(res => res.json())
     .then(data => {
         if (data.error) {
             if (typeof showToast === 'function') showToast(`Prep failed: ${data.error}`, 'error');
@@ -12217,15 +12560,13 @@ function prepBacktestData() {
         }
         if (typeof showToast === 'function') showToast('Historical prep backfill started.', 'success');
         
-        // Start polling status
         if (backtestPrepInterval) clearInterval(backtestPrepInterval);
         
         const statusBar = document.getElementById('backtest-prep-status-bar');
         if (statusBar) statusBar.style.display = 'flex';
         
         backtestPrepInterval = setInterval(() => {
-            fetch('/api/ep/backtest/prep_status')
-                .then(res => res.json())
+            EP_API.get('/api/ep/backtest/prep_status')
                 .then(status => {
                     showBacktestPrepProgress(status);
                     if (!status.running) {
@@ -12285,12 +12626,7 @@ function runEPBacktest() {
         capital: 1000000.0
     };
     
-    fetch('/api/ep/backtest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-    })
-    .then(res => res.json())
+    EP_API.post('/api/ep/backtest', params)
     .then(data => {
         if (btnRun) {
             btnRun.disabled = false;
@@ -12302,11 +12638,9 @@ function runEPBacktest() {
             return;
         }
         
-        // Show dashboard panel
         const dashboard = document.getElementById('backtest-dashboard');
         if (dashboard) dashboard.style.display = 'grid';
         
-        // Populate stats
         const summary = data.summary || {};
         document.getElementById('backtest-stat-trades').textContent = summary.total_trades || 0;
         
@@ -12325,7 +12659,6 @@ function runEPBacktest() {
         
         document.getElementById('backtest-stat-drawdown').textContent = `${(summary.max_drawdown || 0).toFixed(1)}%`;
         
-        // Render Chart
         renderEquityChart(data.equity_curve || []);
         
         if (typeof showToast === 'function') showToast(`Backtest completed! ${summary.total_trades} trades simulated.`, 'success');
@@ -12356,7 +12689,6 @@ function renderEquityChart(equityCurve) {
     
     const chartCtx = ctx.getContext('2d');
     
-    // Create modern smooth blue gradient
     const gradient = chartCtx.createLinearGradient(0, 0, 0, 200);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.35)');
     gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');

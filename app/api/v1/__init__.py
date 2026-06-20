@@ -7,6 +7,7 @@ api_bp = Blueprint('api', __name__)
 from . import announcements  # noqa: F401
 from . import watchlist  # noqa: F401
 from . import ep_watchlist  # noqa: F401
+from . import ep  # noqa: F401
 from . import journal  # noqa: F401
 from . import market_breadth  # noqa: F401
 from . import alerts  # noqa: F401
