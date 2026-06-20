@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock
 
 # Setup the test DB mock first
 db_fd, db_path = tempfile.mkstemp()
-orig_connect = sqlite3.connect
+orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import app
@@ -17,11 +17,6 @@ from app import app as flask_app
 
 @pytest.fixture(autouse=True)
 def patch_sqlite(monkeypatch):
-    def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
-            return orig_connect(db_path, *args, **kwargs)
-        return orig_connect(database, *args, **kwargs)
-    monkeypatch.setattr(sqlite3, "connect", mock_connect)
     app.init_db()
 
 @pytest.fixture(scope="module", autouse=True)
@@ -35,6 +30,12 @@ def cleanup_temp_db():
 
 @pytest.fixture
 def client():
+    from app.extensions import db
+    try:
+        db.session.remove()
+        db.engine.dispose()
+    except Exception:
+        pass
     flask_app.config['TESTING'] = True
     with flask_app.test_client() as client:
         yield client

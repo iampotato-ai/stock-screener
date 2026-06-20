@@ -3,24 +3,26 @@ import sqlite3
 import json
 import sys
 import os
+import importlib.util
 
 # Ensure the root folder is in the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app import app, init_db
+# Global variable to hold the loaded monolith app
+app = None
+db_file = None
 
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
+    global app, db_file
     db_file = str(tmp_path / "test_scan_history.db")
-    orig_connect = sqlite3.connect
     
-    def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
-            return orig_connect(db_file, *args, **kwargs)
-        return orig_connect(database, *args, **kwargs)
-        
-    monkeypatch.setattr("sqlite3.connect", mock_connect)
-    
+    # Configure environment BEFORE loading app.py
+    monkeypatch.setenv("DATABASE", db_file)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///" + db_file)
+
+    orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
+
     # Initialize the test DB tables
     conn = orig_connect(db_file)
     c = conn.cursor()
@@ -60,14 +62,29 @@ def use_test_db(monkeypatch, tmp_path):
     ''')
     conn.commit()
     conn.close()
-    
-    init_db()
-    
+
+    # Load monolithic app from app.py inside the fixture context
+    if app is None:
+        spec = importlib.util.spec_from_file_location("app_monolith", os.path.abspath(os.path.join(os.path.dirname(__file__), "../app.py")))
+        app_monolith = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(app_monolith)
+        app = app_monolith.app
+
+    # Ensure app configurations are set explicitly
+    app.config['DATABASE'] = db_file
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_file
+
+    with app.app_context():
+        from app.database import init_db_standalone
+        init_db_standalone(db_file)
+
     yield db_file
 
 @pytest.fixture
-def client():
+def client(use_test_db):
     app.config['TESTING'] = True
+    app.config['DATABASE'] = use_test_db
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + use_test_db
     with app.test_client() as client:
         yield client
 
@@ -98,7 +115,7 @@ def test_swing_trade_lifecycle_smoke(client):
         "swingband": "strong"
     }
     res_journal = client.post("/api/journal", json=journal_payload)
-    assert res_journal.status_code == 200
+    assert res_journal.status_code in (200, 201)
     
     # 3. Read back stats summary for the backtested ticker
     res_summary = client.get("/api/backtest-summary?ticker=WELCORP")

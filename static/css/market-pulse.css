@@ -1,0 +1,89 @@
+/* static/css/market-pulse.css */
+.market-pulse {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  --color-accent-track: rgba(245, 158, 11, 0.15);
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.market-pulse:hover {
+  transform: scale(1.03);
+  filter: drop-shadow(0 0 12px var(--color-accent));
+}
+
+.market-pulse-svg {
+  width: 120px;
+  height: 120px;
+  display: block;
+}
+
+.market-pulse-info {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  width: 100%;
+}
+
+.market-pulse-label {
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 600;
+  color: var(--color-text-muted, #64748B);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: -2px;
+}
+
+.market-pulse-score {
+  font-family: var(--font-utility);
+  font-size: 2.1rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #F8FAFC);
+  line-height: 1;
+  margin: 1px 0;
+}
+
+.market-pulse-delta {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.market-pulse-delta.positive,
+.market-pulse-delta.up {
+  color: var(--color-success, #10B981);
+}
+
+.market-pulse-delta.negative,
+.market-pulse-delta.down {
+  color: var(--color-error, #EF4444);
+}
+
+.market-pulse-delta.flat {
+  color: var(--color-text-muted, #64748B);
+}
+
+.market-pulse-band {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-accent);
+  margin-top: 1px;
+}

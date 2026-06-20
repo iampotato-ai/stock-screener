@@ -9,17 +9,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app import app, init_db
 
+db_file = None
+
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
+    global db_file
     db_file = str(tmp_path / "test_scan_history.db")
-    orig_connect = sqlite3.connect
-    
-    def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
-            return orig_connect(db_file, *args, **kwargs)
-        return orig_connect(database, *args, **kwargs)
-        
-    monkeypatch.setattr("sqlite3.connect", mock_connect)
+    orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
     
     # Initialize the test DB tables
     conn = orig_connect(db_file)
@@ -91,6 +87,13 @@ def use_test_db(monkeypatch, tmp_path):
 
 @pytest.fixture
 def client():
+    from app.extensions import db
+    with app.app_context():
+        try:
+            db.session.remove()
+            db.engine.dispose()
+        except Exception as e:
+            print(f"[DEBUG] Failed to dispose engine: {e}")
     app.config['TESTING'] = True
     with app.test_client() as client:
         yield client
@@ -255,8 +258,8 @@ def test_ensemble_forecast_route(client, monkeypatch):
 
 def test_breadth_history_limit(client):
     # Insert multiple breadth history records
-    db_file = sqlite3.connect("scan_history.db")
-    c = db_file.cursor()
+    conn = sqlite3.connect(db_file)
+    c = conn.cursor()
     c.execute("DELETE FROM breadth_history")
     for i in range(15):
         date_str = f"2026-06-{i+1:02d}"
@@ -264,8 +267,8 @@ def test_breadth_history_limit(client):
             INSERT INTO breadth_history (date, time, advances, declines, unchanged, pct_sma21, pct_sma50, pct_52high, avg_recommend, regime_score, regime_band)
             VALUES (?, '15:30', 200, 100, 50, 0.65, 0.55, 0.45, 1.8, 8, 'Bullish')
         """, (date_str,))
-    db_file.commit()
-    db_file.close()
+    conn.commit()
+    conn.close()
 
     # Limit to 5
     res = client.get("/api/breadth-history?limit=5")

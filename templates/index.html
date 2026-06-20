@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+
     <!-- Cabinet Grotesk (headings) — Fontshare CDN -->
     <link rel="preconnect" href="https://api.fontshare.com">
     <link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
@@ -253,40 +254,13 @@
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
-              <div class="breadth-regime" id="breadth-regime-badge" data-regime="neutral">
-                <span class="regime-emoji" id="regime-emoji">⚖️</span>
-                <div class="regime-text">
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="regime-label">Market Regime</span>
-                    <button class="breadth-action-btn" id="open-regime-history" title="View historical snapshots">History</button>
-                  </div>
-                  <span class="regime-band" id="regime-band">Neutral</span>
-                </div>
-                <div class="regime-score-wrap">
-                  <div class="regime-gauge-wrap">
-                    <svg class="regime-arc" viewBox="0 0 60 34" width="60" height="34">
-                      <defs>
-                        <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stop-color="#ef4444" />
-                          <stop offset="20%" stop-color="#f97316" />
-                          <stop offset="50%" stop-color="#f59e0b" />
-                          <stop offset="75%" stop-color="#14b8a6" />
-                          <stop offset="100%" stop-color="#10b981" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M5,30 A25,25,0,0,1,55,30" fill="none" stroke="url(#gauge-grad)" stroke-width="5" opacity="0.15"/>
-                      <path id="regime-arc-fill" d="M5,30 A25,25,0,0,1,55,30" fill="none"
-                            stroke="url(#gauge-grad)" stroke-width="5" stroke-dasharray="78.5"
-                            stroke-dashoffset="78.5" stroke-linecap="round"/>
-                      <line id="regime-needle" x1="30" y1="30" x2="30" y2="8" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" style="transform-origin: 30px 30px; transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1); transform: rotate(-90deg);" />
-                      <circle cx="30" cy="30" r="3.5" fill="#ef4444"/>
-                      <circle cx="30" cy="30" r="1.5" fill="#ffffff"/>
-                    </svg>
-                    <div class="regime-score-val-wrap">
-                      <span class="regime-score-num" id="regime-score-num">--</span>
-                      <span class="regime-score-delta" id="regime-score-delta">--</span>
-                    </div>
-                  </div>
+              <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65" title="Click to view Regime History">
+                <svg class="market-pulse-svg" width="120" height="120"></svg>
+                <div class="market-pulse-info">
+                  <span class="market-pulse-label">Regime</span>
+                  <span class="market-pulse-score" id="regime-score-num">--</span>
+                  <span class="market-pulse-delta" id="regime-score-delta">--</span>
+                  <span class="market-pulse-band" id="regime-band">Loading...</span>
                 </div>
               </div>
     
@@ -850,7 +824,7 @@
                             </button>
                         </div>
                     </div>
-                    <div class="journal-stats" style="display: flex; gap: 2rem; margin-bottom: 1.5rem; background: var(--color-bg-secondary); padding: 1rem; border-radius: 8px; border: 1px solid var(--color-border);">
+                    <div class="journal-stats glass-panel" style="display: flex; gap: 2rem; margin-bottom: 1.5rem; background: rgba(30, 41, 59, 0.25); padding: 1.25rem; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
                         <div style="flex: 1;">
                             <div style="font-size: 0.85rem; color: var(--color-text-secondary);">Total Trades</div>
                             <div id="journal-total-trades" style="font-size: 1.25rem; font-weight: 700;">0</div>
@@ -869,23 +843,23 @@
                         </div>
                     </div>
                     <div class="table-container" style="overflow-x: auto; width: 100%;">
-                        <table class="screener-table">
+                        <table class="journal-table">
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Ticker</th>
-                                    <th>Current Price</th>
-                                    <th>Setup</th>
-                                    <th>Entry</th>
-                                    <th>Stop</th>
-                                    <th>Targets</th>
-                                    <th>Qty</th>
-                                    <th>₹Risk</th>
-                                    <th>Status</th>
-                                    <th>PnL</th>
-                                    <th>R-achieved</th>
-                                    <th>Notes</th>
-                                    <th>Action</th>
+                                    <th class="text-left">Date</th>
+                                    <th class="text-left">Ticker</th>
+                                    <th class="text-right">Current Price</th>
+                                    <th class="text-left">Setup</th>
+                                    <th class="text-right">Entry</th>
+                                    <th class="text-right">Stop</th>
+                                    <th class="text-left">Targets</th>
+                                    <th class="text-right">Qty</th>
+                                    <th class="text-right">₹Risk</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-right">PnL</th>
+                                    <th class="text-right">R-achieved</th>
+                                    <th class="text-left">Notes</th>
+                                    <th class="text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="journal-table-body">
@@ -1329,41 +1303,94 @@
 
             <!-- Panel: Today's EPs -->
             <div class="ep-panel" id="ep-panel-today">
-                <div class="ep-filters-bar glass-panel" style="padding: 1rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 1rem;">
-                    <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
+                <div class="ep-filters-bar glass-panel" style="position: relative; z-index: 100; padding: 1rem 1.2rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 1rem; background: rgba(10,14,26,0.6);">
+                    <div style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center;">
+
+                        <!-- EP Type Custom Dropdown -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">EP Type:</span>
-                            <select id="filter-ep-type" class="select-sm" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; outline: none; cursor: pointer;">
-                                <option value="all">All Types</option>
-                                <option value="Growth EP">Growth EP</option>
-                                <option value="Turnaround EP">Turnaround EP</option>
-                                <option value="Story EP">Story EP</option>
-                                <option value="Volume EP">Volume EP</option>
-                                <option value="Delayed EP">Delayed EP</option>
-                                <option value="Short EP">Short EP</option>
-                            </select>
+                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">EP Type</span>
+                            <div class="ep-custom-select" id="ep-type-select-wrap" style="position: relative;">
+                                <button class="ep-select-btn" id="ep-type-select-btn" onclick="window.toggleEpDropdown('ep-type-select')" style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:7px; padding:0.38rem 0.75rem; color:var(--color-text-primary); font-size:0.82rem; font-weight:600; cursor:pointer; font-family:inherit; min-width:130px; justify-content:space-between; transition:all 0.2s; white-space:nowrap;" onmouseover="this.style.borderColor='rgba(59,130,246,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'">
+                                    <span id="ep-type-label">All Types</span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </button>
+                                <div id="ep-type-select-menu" style="display:none; position:absolute; top:calc(100% + 4px); left:0; min-width:160px; background:rgba(10,14,28,0.98); border:1px solid rgba(59,130,246,0.2); border-radius:8px; box-shadow:0 16px 40px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04); z-index:9999; overflow:hidden; backdrop-filter:blur(16px);">
+                                    <div style="padding:0.3rem;">
+                                        <div class="ep-select-opt" data-val="all" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--color-text-primary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">All Types</div>
+                                        <div class="ep-select-opt" data-val="Growth EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                            <span style="width:6px;height:6px;border-radius:50%;background:#10b981;flex-shrink:0;"></span> Growth EP
+                                        </div>
+                                        <div class="ep-select-opt" data-val="Turnaround EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                            <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span> Turnaround EP
+                                        </div>
+                                        <div class="ep-select-opt" data-val="Story EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                            <span style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;flex-shrink:0;"></span> Story EP
+                                        </div>
+                                        <div class="ep-select-opt" data-val="Volume EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                            <span style="width:6px;height:6px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></span> Volume EP
+                                        </div>
+                                        <div class="ep-select-opt" data-val="Delayed EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                            <span style="width:6px;height:6px;border-radius:50%;background:#f97316;flex-shrink:0;"></span> Delayed EP
+                                        </div>
+                                        <div class="ep-select-opt" data-val="Short EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                            <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;"></span> Short EP
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Hidden native select for JS compatibility -->
+                                <select id="filter-ep-type" style="display:none;">
+                                    <option value="all">All Types</option>
+                                    <option value="Growth EP">Growth EP</option>
+                                    <option value="Turnaround EP">Turnaround EP</option>
+                                    <option value="Story EP">Story EP</option>
+                                    <option value="Volume EP">Volume EP</option>
+                                    <option value="Delayed EP">Delayed EP</option>
+                                    <option value="Short EP">Short EP</option>
+                                </select>
+                            </div>
                         </div>
+
+                        <!-- Confidence Custom Dropdown -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Confidence:</span>
-                            <select id="filter-ep-confidence" class="select-sm" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; outline: none; cursor: pointer;">
-                                <option value="all">All Levels</option>
-                                <option value="HIGH">HIGH</option>
-                                <option value="MEDIUM">MEDIUM</option>
-                                <option value="LOW">LOW</option>
-                            </select>
+                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Confidence</span>
+                            <div class="ep-custom-select" id="ep-conf-select-wrap" style="position: relative;">
+                                <button class="ep-select-btn" id="ep-conf-select-btn" onclick="window.toggleEpDropdown('ep-conf-select')" style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:7px; padding:0.38rem 0.75rem; color:var(--color-text-primary); font-size:0.82rem; font-weight:600; cursor:pointer; font-family:inherit; min-width:110px; justify-content:space-between; transition:all 0.2s; white-space:nowrap;" onmouseover="this.style.borderColor='rgba(59,130,246,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'">
+                                    <span id="ep-conf-label">All Levels</span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </button>
+                                <div id="ep-conf-select-menu" style="display:none; position:absolute; top:calc(100% + 4px); left:0; min-width:130px; background:rgba(10,14,28,0.98); border:1px solid rgba(59,130,246,0.2); border-radius:8px; box-shadow:0 16px 40px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04); z-index:9999; overflow:hidden; backdrop-filter:blur(16px);">
+                                    <div style="padding:0.3rem;">
+                                        <div class="ep-select-opt" data-val="all" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--color-text-primary); transition:background 0.15s;">All Levels</div>
+                                        <div class="ep-select-opt" data-val="HIGH" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:#10b981; font-weight:700; transition:background 0.15s;">HIGH</div>
+                                        <div class="ep-select-opt" data-val="MEDIUM" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:#f59e0b; font-weight:700; transition:background 0.15s;">MEDIUM</div>
+                                        <div class="ep-select-opt" data-val="LOW" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:#94a3b8; font-weight:700; transition:background 0.15s;">LOW</div>
+                                    </div>
+                                </div>
+                                <select id="filter-ep-confidence" style="display:none;">
+                                    <option value="all">All Levels</option>
+                                    <option value="HIGH">HIGH</option>
+                                    <option value="MEDIUM">MEDIUM</option>
+                                    <option value="LOW">LOW</option>
+                                </select>
+                            </div>
                         </div>
+
+                        <!-- Min Score -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Min Score:</span>
-                            <input type="number" id="filter-ep-min-score" step="0.05" min="0.0" max="1.0" value="0.55" style="width: 60px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px; font-size: 0.78rem; text-align: center;">
+                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Min Score</span>
+                            <input type="number" id="filter-ep-min-score" step="0.05" min="0.0" max="1.0" value="0.55" style="width: 64px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 7px; padding: 0.38rem 0.5rem; font-size: 0.82rem; font-weight: 600; text-align: center; outline: none; font-family: var(--font-utility); transition: border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                         </div>
+
+                        <!-- Mkt Cap -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Mkt Cap (Cr):</span>
-                            <input type="number" id="filter-ep-min-mktcap" placeholder="Min" style="width: 80px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px; font-size: 0.78rem; text-align: center;">
-                            <span style="color: var(--color-text-muted);">to</span>
-                            <input type="number" id="filter-ep-max-mktcap" placeholder="Max" style="width: 80px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-primary); border-radius: 6px; padding: 4px; font-size: 0.78rem; text-align: center;">
+                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Mkt Cap (Cr)</span>
+                            <input type="number" id="filter-ep-min-mktcap" placeholder="Min" style="width: 72px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 7px; padding: 0.38rem 0.5rem; font-size: 0.82rem; text-align: center; outline: none; font-family: var(--font-utility); transition: border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                            <span style="color: var(--color-text-muted); font-size: 0.78rem;">to</span>
+                            <input type="number" id="filter-ep-max-mktcap" placeholder="Max" style="width: 72px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 7px; padding: 0.38rem 0.5rem; font-size: 0.82rem; text-align: center; outline: none; font-family: var(--font-utility); transition: border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                         </div>
                     </div>
                 </div>
+
 
                 <div class="table-container" id="ep-table-container">
                     <table class="screener-table" id="ep-table">
@@ -1412,11 +1439,12 @@
                                 <th>Status</th>
                                 <th>Trigger Type</th>
                                 <th>Notes</th>
+                                <th class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ep-watchlist-body">
                             <tr>
-                                <td colspan="10" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                                     No active watchlist candidates found.
                                 </td>
                             </tr>
@@ -1982,55 +2010,108 @@
 
     <!-- Manual Trade Modal -->
     <div class="modal-overlay hidden" id="manual-trade-modal-overlay">
-        <div class="modal" id="manual-trade-modal" style="max-width: 450px; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: var(--radius-md);">
-            <div class="modal-header">
-                <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span>➕</span> Add Manual Trade
+        <div class="modal" id="manual-trade-modal" style="max-width: 480px; background: rgba(13,17,30,0.96); backdrop-filter: blur(24px) saturate(180%); border: 1px solid rgba(59,130,246,0.18); border-radius: 14px; box-shadow: 0 32px 80px -12px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04); overflow: hidden;">
+            <!-- Header -->
+            <div style="display:flex; align-items:center; justify-content:space-between; padding: 1.1rem 1.4rem; border-bottom: 1px solid rgba(255,255,255,0.06); background: linear-gradient(180deg, rgba(59,130,246,0.04) 0%, transparent 100%);">
+                <div style="display:flex; align-items:center; gap:0.7rem;">
+                    <span style="width:32px; height:32px; background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.08)); border: 1px solid rgba(245,158,11,0.25); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:15px;">📋</span>
+                    <div>
+                        <div style="font-size:0.95rem; font-weight:700; color:var(--color-text-primary); line-height:1.2;">Add Manual Trade</div>
+                        <div style="font-size:0.7rem; color:var(--color-text-muted);">Log a new trade to your journal</div>
+                    </div>
                 </div>
-                <button class="modal-close-btn" onclick="window.closeManualTradeModal()" data-modal-close title="Cancel">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <button onclick="window.closeManualTradeModal()" data-modal-close style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;cursor:pointer;color:var(--color-text-muted);transition:all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
-                <div style="display: flex; gap: 1rem;">
-                    <div style="flex: 1;">
-                        <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Ticker</label>
-                        <input type="text" id="manual-trade-ticker" class="search-input" placeholder="e.g. RELIANCE" style="width: 100%; padding: 0.6rem; text-transform: uppercase;">
+
+            <div style="padding: 1.3rem 1.4rem; display:flex; flex-direction:column; gap:0.85rem; max-height: 75vh; overflow-y: auto;">
+
+                <!-- Row 1: Ticker + Date -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                    <div>
+                        <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;">🏷️ Ticker</label>
+                        <input type="text" id="manual-trade-ticker" placeholder="e.g. RELIANCE" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.9rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; outline:none; transition:border-color 0.2s; font-family:inherit;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                     </div>
-                    <div style="flex: 1;">
-                        <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Date</label>
-                        <input type="date" id="manual-trade-date" class="search-input" style="width: 100%; padding: 0.6rem;">
+                    <div>
+                        <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;">📅 Date</label>
+                        <input type="date" id="manual-trade-date" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.88rem; outline:none; transition:border-color 0.2s; font-family:inherit;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                     </div>
                 </div>
+
+                <!-- Row 2: Setup Type -->
                 <div>
-                    <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Setup Type</label>
-                    <input type="text" id="manual-trade-setup" class="search-input" placeholder="e.g. Pullback to MA" style="width: 100%; padding: 0.6rem;">
+                    <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;">⚙️ Setup Type</label>
+                    <input type="text" id="manual-trade-setup" placeholder="e.g. Pullback to MA, Breakout Ready…" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.88rem; outline:none; transition:border-color 0.2s; font-family:inherit;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                 </div>
-                <div style="display: flex; gap: 1rem;">
-                    <div style="flex: 1;">
-                        <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Entry Price (₹)</label>
-                        <input type="number" id="manual-trade-entry" class="search-input" step="0.05" style="width: 100%; padding: 0.6rem;">
+
+                <!-- Row 3: Entry + Stop -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                    <div>
+                        <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;"><span style="color:#10b981">▲</span> Entry Price (₹)</label>
+                        <input type="number" id="manual-trade-entry" step="0.05" placeholder="0.00" oninput="window.updateManualTradeCalc()" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.9rem; font-family:var(--font-utility); outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='rgba(16,185,129,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                     </div>
-                    <div style="flex: 1;">
-                        <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Stop Loss (₹)</label>
-                        <input type="number" id="manual-trade-stop" class="search-input" step="0.05" style="width: 100%; padding: 0.6rem;">
+                    <div>
+                        <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;"><span style="color:#ef4444">▼</span> Stop Loss (₹)</label>
+                        <input type="number" id="manual-trade-stop" step="0.05" placeholder="0.00" oninput="window.updateManualTradeCalc()" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.9rem; font-family:var(--font-utility); outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='rgba(239,68,68,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
                     </div>
                 </div>
-                <div>
-                    <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Risk Amount (₹)</label>
-                    <input type="number" id="manual-trade-risk" class="search-input" value="5000" step="100" style="width: 100%; padding: 0.6rem;">
+
+                <!-- Row 4: Risk Amount + QTY -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+                    <div>
+                        <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;"><span style="color:var(--accent-orange)">⚡</span> Risk Amount (₹)</label>
+                        <input type="number" id="manual-trade-risk" value="5000" step="100" oninput="window.updateManualTradeCalc()" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.9rem; font-family:var(--font-utility); outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='rgba(245,158,11,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                    </div>
+                    <div>
+                        <label style="display:flex; align-items:center; justify-content:space-between; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;">
+                            <span>📦 Qty</span>
+                            <button id="manual-trade-qty-mode-btn" onclick="window.toggleManualQtyMode()" title="Click to switch between Auto and Manual quantity" style="font-size:0.6rem; font-weight:800; padding:2px 8px; border-radius:4px; border:1px solid rgba(59,130,246,0.5); background:rgba(59,130,246,0.12); color:var(--accent-blue); cursor:pointer; letter-spacing:0.8px; line-height:1.6; transition:all 0.2s; text-transform:uppercase;">AUTO</button>
+                        </label>
+                        <input type="number" id="manual-trade-qty" min="1" step="1" placeholder="Auto-calc" oninput="window.onManualQtyInput()" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.9rem; font-family:var(--font-utility); outline:none; transition:border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                    </div>
                 </div>
-                <div>
-                    <label style="display: block; font-size: 0.8rem; color: var(--color-text-secondary); margin-bottom: 0.3rem;">Notes / Checklist</label>
-                    <textarea id="manual-trade-notes" class="search-input" rows="3" placeholder="Why did you take this trade?" style="width: 100%; padding: 0.6rem; resize: vertical;"></textarea>
+
+                <!-- Live Calculation Preview -->
+                <div id="manual-trade-calc-preview" style="display:none; position:relative; overflow:hidden; border-radius:10px; background:linear-gradient(135deg, rgba(59,130,246,0.07), rgba(139,92,246,0.05)); border:1px solid rgba(59,130,246,0.2); padding:1rem 1.1rem;">
+                    <div style="position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg, var(--accent-blue), var(--accent-purple));"></div>
+                    <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--color-text-muted); margin-bottom:0.75rem;">📊 Position Preview</div>
+                    <div style="display:grid; grid-template-columns:1fr 1px 1fr 1px 1fr; gap:0; align-items:center;">
+                        <div style="text-align:center; padding:0 0.5rem;">
+                            <div style="font-size:0.65rem; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">Qty</div>
+                            <div id="preview-qty" style="font-size:1.4rem; font-weight:800; color:var(--color-text-primary); font-family:var(--font-utility); line-height:1;">—</div>
+                        </div>
+                        <div style="height:40px; background:rgba(255,255,255,0.07);"></div>
+                        <div style="text-align:center; padding:0 0.5rem;">
+                            <div style="font-size:0.65rem; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">Position ₹</div>
+                            <div id="preview-position" style="font-size:1.4rem; font-weight:800; color:var(--accent-blue); font-family:var(--font-utility); line-height:1;">—</div>
+                        </div>
+                        <div style="height:40px; background:rgba(255,255,255,0.07);"></div>
+                        <div style="text-align:center; padding:0 0.5rem;">
+                            <div style="font-size:0.65rem; color:var(--color-text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">Risk/Share</div>
+                            <div id="preview-risk-per-share" style="font-size:1.4rem; font-weight:800; color:var(--accent-orange); font-family:var(--font-utility); line-height:1;">—</div>
+                        </div>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="window.closeManualTradeModal()" data-modal-close>Cancel</button>
-                    <button class="btn btn-primary" onclick="window.saveManualTrade()">Add Trade</button>
+
+                <!-- Notes -->
+                <div>
+                    <label style="display:block; font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.6px; color:var(--color-text-muted); margin-bottom:0.35rem;">📝 Notes / Checklist</label>
+                    <textarea id="manual-trade-notes" rows="3" placeholder="Why did you take this trade? What setup criteria did you meet?" style="width:100%; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:0.6rem 0.75rem; color:var(--color-text-primary); font-size:0.88rem; font-family:inherit; outline:none; resize:vertical; min-height:76px; transition:border-color 0.2s; line-height:1.5;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'"></textarea>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display:flex; justify-content:flex-end; gap:0.6rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.05);">
+                    <button onclick="window.closeManualTradeModal()" data-modal-close style="padding:0.6rem 1.3rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--color-text-secondary); font-size:0.88rem; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">Cancel</button>
+                    <button onclick="window.saveManualTrade()" id="btn-add-manual-trade" style="padding:0.6rem 1.5rem; background:var(--color-accent); border:none; border-radius:8px; color:#0f172a; font-size:0.88rem; font-weight:800; cursor:pointer; font-family:inherit; transition:all 0.2s; display:flex; align-items:center; gap:0.4rem;" onmouseover="this.style.background='#d97706'" onmouseout="this.style.background='var(--color-accent)'">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        Add Trade
+                    </button>
                 </div>
             </div>
         </div>
     </div>
+
 
     <!-- Edit Trade Modal -->
     <div class="modal-overlay hidden" id="edit-trade-modal-overlay">
@@ -2336,8 +2417,32 @@
                     </div>
                 </div>
             </details>
+
+            <!-- 5. Valuation Deep Dive (shown when Valuation tab is active) -->
+            <details class="drawer-section valuation-deep-dive" id="drawer-valuation-deep-dive">
+                <summary>Valuation Deep Dive</summary>
+                <div class="drawer-section-content">
+                    <!-- Metrics will be populated by JavaScript -->
+                </div>
+            </details>
+
+            <!-- 6. Quality Trends Analysis (shown when Quality tab is active) -->
+            <details class="drawer-section quality-trends-analysis" id="drawer-quality-trends-analysis">
+                <summary>Quality Trends Analysis</summary>
+                <div class="drawer-section-content">
+                    <!-- Metrics will be populated by JavaScript -->
+                </div>
+            </details>
+
+            <!-- 7. Growth Momentum Signals (shown when Growth tab is active) -->
+            <details class="drawer-section growth-momentum-signals" id="drawer-growth-momentum-signals">
+                <summary>Growth Momentum Signals</summary>
+                <div class="drawer-section-content">
+                    <!-- Metrics will be populated by JavaScript -->
+                </div>
+            </details>
         </div>
-            
+
             <div class="drawer-actions-sticky">
                 <button class="btn btn-primary" id="btn-drawer-chart" style="flex: 1;">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
@@ -2354,6 +2459,7 @@
         </div>
 
     <!-- App Script -->
+    <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.58"></script>
 </body>

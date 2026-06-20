@@ -8,13 +8,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app import app, init_db, analyze_single_stock
 
+db_file = None
+
 @pytest.fixture(autouse=True)
 def use_test_db(monkeypatch, tmp_path):
+    global db_file
     db_file = str(tmp_path / "test_scan_history_vol.db")
-    orig_connect = sqlite3.connect
+    orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
     
     def mock_connect(database, *args, **kwargs):
-        if database == "scan_history.db":
+        if database and "scan_history.db" in database:
             return orig_connect(db_file, *args, **kwargs)
         return orig_connect(database, *args, **kwargs)
         
@@ -65,7 +68,7 @@ def test_volume_alert_calculations(monkeypatch):
     assert stock["max_down_vol_10"] == pytest.approx(80000.0)
     
     # Verify cached values match
-    conn = sqlite3.connect("scan_history.db")
+    conn = sqlite3.connect(db_file)
     c = conn.cursor()
     c.execute("SELECT max_down_vol_10, volume_sma_50 FROM pattern_cache WHERE ticker = 'MOCKVOL'")
     row = c.fetchone()
