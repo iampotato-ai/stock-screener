@@ -2590,6 +2590,65 @@ def compute_extra_fields(stock):
         stock["segment_growth"] = None
         stock["growth_data_source"] = "real"
 
+        # FUNDAMENTAL ANALYSIS METRICS FOR SWING TRADING
+        # Valuation Metrics
+        # PEG Ratio = P/E ratio divided by earnings growth rate
+        pe_ratio = stock.get("pe_ratio")
+        profit_growth = stock.get("profit_growth")  # Using profit growth as earnings growth proxy
+        if pe_ratio is not None and profit_growth is not None and profit_growth != 0:
+            # Convert profit_growth from percentage to decimal for PEG calculation
+            # PEG = P/E / (earnings_growth_as_decimal)
+            # So: PEG = pe_ratio / (profit_growth/100) = pe_ratio * 100 / profit_growth
+            stock["peg_ratio"] = round(pe_ratio * 100.0 / profit_growth, 2)
+        else:
+            stock["peg_ratio"] = None  # Handle division by zero or missing data
+
+        # EV/Revenue = Enterprise Value / Revenue
+        # Revenue = market_cap_basic / ps_ratio
+        # EV/Revenue = enterprise_value_fq / (market_cap_basic / ps_ratio) = (enterprise_value_fq * ps_ratio) / market_cap_basic
+        enterprise_value_fq = stock.get("enterprise_value_fq")
+        ps_ratio = stock.get("ps_ratio")
+        market_cap_basic = stock.get("market_cap_basic")
+        if enterprise_value_fq is not None and ps_ratio is not None and market_cap_basic is not None and market_cap_basic > 0:
+            stock["ev_revenue"] = round((enterprise_value_fq * ps_ratio) / market_cap_basic, 2)
+        else:
+            stock["ev_revenue"] = None
+
+        # Debt/EBITDA approximation using available data
+        # Debt/EBITDA = (Total Debt) / EBITDA
+        # Approximate Total Debt = debt_to_equity * market_cap_basic (assuming market cap ≈ equity)
+        # EBITDA = Revenue * (EBITDA Margin/100) = (market_cap_basic / ps_ratio) * (ebitda_margin/100)
+        # Debt/EBITDA = (debt_to_equity * market_cap_basic) / [(market_cap_basic / ps_ratio) * (ebitda_margin/100)]
+        #           = (debt_to_equity * ps_ratio * 100) / ebitda_margin
+        debt_to_equity = stock.get("debt_to_equity")
+        ps_ratio = stock.get("ps_ratio")
+        ebitda_margin = stock.get("ebitda_margin")
+        if debt_to_equity is not None and ps_ratio is not None and ebitda_margin is not None and ebitda_margin != 0:
+            stock["debt_ebitda"] = round((debt_to_equity * ps_ratio * 100.0) / ebitda_margin, 2)
+        else:
+            stock["debt_ebitda"] = None
+
+        # Quality Metrics (already have some from fundamentals and compute_extra_fields)
+        # Consecutive EPS Growth Quarters - already attached from fundamentals data
+        # FCF Conversion % = FCF/EBITDA ratio (we calculated this as fcf_ebitda above)
+        # Note: fcf_ebitda is already a percentage (multiplied by 100 in calculation)
+        # So we can use it directly or rename for clarity
+        fcf_ebitda = stock.get("fcf_ebitda")
+        if fcf_ebitda is not None:
+            stock["fcf_conversion_pct"] = fcf_ebitda  # Already calculated as percentage
+        else:
+            stock["fcf_conversion_pct"] = None
+
+        # ROE as quality proxy (Return on Equity - higher is generally better quality)
+        # Already available as stock["roe"] from fundamental derived fields
+        # No additional calculation needed
+
+        # Growth Metrics
+        # Revenue Growth YoY - already attached from fundamentals data
+        # Order Book Growth - already calculated in compute_extra_fields as order_growth
+        # Segment Growth Contribution - already calculated in compute_extra_fields as segment_growth
+        # No additional calculations needed for these
+
     # Inside Bar calculation
     h_val = float(stock["high"]) if stock.get("high") is not None else None
     l_val = float(stock["low"]) if stock.get("low") is not None else None
