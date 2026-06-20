@@ -7133,6 +7133,9 @@ function openTradeDrawer(ticker) {
                     destroyKronosChart();
                 }
 
+                // Show/hide fundamental analysis sections based on active tab (inside .then() block)
+                updateFundamentalSectionsVisibility();
+
                 // Fetch interactive Kronos details (sample_count = 10 for envelope calculation)
                 fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_FORECAST_HORIZON}&sample_count=10`)
                     .then(res => res.json())
@@ -7153,9 +7156,6 @@ function openTradeDrawer(ticker) {
                 document.getElementById('drawer-intel-pattern').textContent = 'Error';
                 document.getElementById('drawer-intel-desc').textContent = `Pattern scan failed: ${err}`;
             });
-
-            // Show/hide fundamental analysis sections based on active tab
-            updateFundamentalSectionsVisibility();
     }
 }
 
@@ -12790,102 +12790,83 @@ function updateFundamentalSectionsVisibility() {
     }
 }
 
-// Function to populate fundamental analysis sections with data
-function populateFundamentalSection(stock) {
-    // Populate Valuation Deep Dive section
-    const valuationSection = document.getElementById('drawer-valuation-deep-dive');
-    if (valuationSection) {
-        valuationSection.querySelector('.drawer-section-content').innerHTML = generateValuationMetricsHTML(stock);
-    }
-
-    // Populate Quality Trends Analysis section
-    const qualitySection = document.getElementById('drawer-quality-trends-analysis');
-    if (qualitySection) {
-        qualitySection.querySelector('.drawer-section-content').innerHTML = generateQualityMetricsHTML(stock);
-    }
-
-    // Populate Growth Momentum Signals section
-    const growthSection = document.getElementById('drawer-growth-momentum-signals');
-    if (growthSection) {
-        growthSection.querySelector('.drawer-section-content').innerHTML = generateGrowthMetricsHTML(stock);
-    }
-}
-
 // Generate HTML for Valuation Deep Dive metrics
 function generateValuationMetricsHTML(stock) {
-    // Calculate or get valuation metrics
-    // For now, using placeholder data or calculating from available stock data
+    if (!stock.pe_ratio && !stock.ev_ebitda && !stock.pb_ratio) {
+        return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
+            Valuation data unavailable for this stock.
+        </p>`;
+    }
+
     const peRatio = stock.pe_ratio || 0;
-    const epsGrowth = stock.eps_growth_qoq || 0;
+    const epsGrowth = stock.revenue_growth_qoq || 0; // Proxy for eps_growth_qoq
     const pegRatio = epsGrowth > 0 ? peRatio / epsGrowth : 0;
 
-    const evRevenue = stock.ev_revenue || 0;
-    const yieldSpreadVsSector = stock.yield_spread_vs_sector || 0;
-    const buybackYield = stock.buyback_yield_pct || 0;
-    const debtEbitda = stock.debt_ebitda || 0;
-    const forwardPe = stock.forward_pe || 0;
-    const pe5YAvg = stock.pe_5y_avg || 0;
-    const forwardPeVs5YAvg = pe5YAvg > 0 ? ((forwardPe - pe5YAvg) / pe5YAvg * 100) : 0;
+    const evEbitda = stock.ev_ebitda || 0; // Proxy for ev_revenue
+    const divYield = stock.div_yield || 0; // Shows yield context
+    const fcfYield = stock.fcf_yield || 0; // Proxy for buyback yield
+    const debtToEquity = stock.debt_to_equity || 0; // Proxy for debt_ebitda
+    const pbRatio = stock.pb_ratio || 0;
 
     return `
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">PEG Ratio</span>
-                <span class="metric-help" title="P/E divided by earnings growth rate. <1.0 suggests undervalued relative to growth">ⓘ</span>
+                <span class="metric-name">PEG Ratio (TTM/QoQ Proxy)</span>
+                <span class="metric-help" title="P/E divided by quarterly revenue growth. <1.0 suggests undervalued relative to growth">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${pegRatio < 1 ? 'metric-value-positive' : 'metric-value-negative'}">${pegRatio.toFixed(2)}</span>
-                <span class="metric-value-trend ${pegRatio < 1 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${pegRatio < 1 && pegRatio > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${pegRatio.toFixed(2)}</span>
+                <span class="metric-value-trend ${pegRatio < 1 && pegRatio > 0 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">EV/Revenue</span>
-                <span class="metric-help" title="Enterprise Value to Sales. Useful for comparing companies with different margins">ⓘ</span>
+                <span class="metric-name">EV/EBITDA</span>
+                <span class="metric-help" title="Enterprise Value to EBITDA. Lower is cheaper.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${evRevenue.toFixed(2)}</span>
-                <span class="metric-value-trend ${evRevenue < 4 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number">${evEbitda.toFixed(2)}</span>
+                <span class="metric-value-trend ${evEbitda < 15 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Yield Spread vs Sector</span>
-                <span class="metric-help" title="(Stock EV/EBITDA - Sector Median EV/EBITDA). Shows relative cheapness">ⓘ</span>
+                <span class="metric-name">Dividend Yield</span>
+                <span class="metric-help" title="Dividend per share divided by price per share.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${yieldSpreadVsSector < 0 ? 'metric-value-negative' : 'metric-value-positive'}">${yieldSpreadVsSector.toFixed(2)}</span>
-                <span class="metric-value-trend ${yieldSpreadVsSector < 0 ? 'trend-down' : 'trend-up'}"></span>
+                <span class="metric-value-number">${divYield.toFixed(2)}%</span>
+                <span class="metric-value-trend ${divYield > 1.5 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Buyback Yield %</span>
-                <span class="metric-help" title="Shares repurchased / Market Cap. Indicates shareholder commitment">ⓘ</span>
+                <span class="metric-name">FCF Yield (Buyback Proxy)</span>
+                <span class="metric-help" title="Free Cash Flow divided by Market Cap. Indicates cash generation.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${buybackYield > 3 ? 'metric-value-positive' : 'metric-value-neutral'}">${buybackYield.toFixed(2)}%</span>
-                <span class="metric-value-trend ${buybackYield > 3 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${fcfYield > 5 ? 'metric-value-positive' : 'metric-value-neutral'}">${fcfYield.toFixed(2)}%</span>
+                <span class="metric-value-trend ${fcfYield > 5 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Debt/EBITDA</span>
-                <span class="metric-help" title="Leverage ratio. Lower = more financial flexibility for growth">ⓘ</span>
+                <span class="metric-name">Debt/Equity</span>
+                <span class="metric-help" title="Total Debt to Shareholder Equity. Lower is safer.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${debtEbitda < 3 ? 'metric-value-positive' : 'metric-value-negative'}">${debtEbitda.toFixed(2)}</span>
-                <span class="metric-value-trend ${debtEbitda < 3 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${debtToEquity < 1.0 ? 'metric-value-positive' : 'metric-value-negative'}">${debtToEquity.toFixed(2)}</span>
+                <span class="metric-value-trend ${debtToEquity < 1.0 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Forward P/E vs 5Y Avg P/E</span>
-                <span class="metric-help" title="% difference shows if expectations are rising/falling">ⓘ</span>
+                <span class="metric-name">Price / Book (P/B)</span>
+                <span class="metric-help" title="Price per share divided by Book Value per share.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${forwardPeVs5YAvg < 0 ? 'metric-value-negative' : 'metric-value-positive'}">${forwardPeVs5YAvg.toFixed(1)}%</span>
-                <span class="metric-value-trend ${forwardPeVs5YAvg < 0 ? 'trend-down' : 'trend-up'}"></span>
+                <span class="metric-value-number ${pbRatio < 3.0 ? 'metric-value-positive' : 'metric-value-neutral'}">${pbRatio.toFixed(2)}</span>
+                <span class="metric-value-trend ${pbRatio < 3.0 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
     `;
@@ -12893,73 +12874,100 @@ function generateValuationMetricsHTML(stock) {
 
 // Generate HTML for Quality Trends Analysis metrics
 function generateQualityMetricsHTML(stock) {
-    // Calculate or get quality metrics
-    const consecutiveEPSGrowth = stock.consecutive_eps_growth_quarters || 0;
-    const grossMarginTrend = stock.gross_margin_trend || 0; // Positive = improving
-    const roicTrend = stock.roic_trend || 0; // Positive = improving
-    const fcfConversion = stock.fcf_conversion_pct || 0;
-    const workingCapitalTrend = stock.working_capital_trend || 0; // Negative = improving (lower is better)
-    const earningsSurprise = stock.earnings_surprise_history || ''; // e.g., "Beat/Beat/Miss/Beat"
+    if (!stock.roe && !stock.roce && !stock.gross_margin) {
+        return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
+            Quality data unavailable for this stock.
+        </p>`;
+    }
+
+    const roe = stock.roe || 0;
+    const roce = stock.roce || 0;
+    const roa = stock.roa || 0;
+    const grossMargin = stock.gross_margin || 0;
+    const ebitdaMargin = stock.ebitda_margin || 0;
+    const cfoEbitda = stock.cfo_ebitda || 0; // Proxy for fcf_conversion_pct
+    const cfoPat = stock.cfo_pat || 0; // Proxy for earnings quality / surprise
+    const wcIntensity = stock.wc_intensity || 0; // Proxy for working_capital_trend
 
     return `
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Consecutive EPS Growth Quarters</span>
-                <span class="metric-help" title="Shows consistency of execution (0-4+ quarters)">ⓘ</span>
+                <span class="metric-name">Return on Equity (ROE)</span>
+                <span class="metric-help" title="Net Income divided by Shareholder Equity. Measures profitability.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${consecutiveEPSGrowth >= 3 ? 'metric-value-positive' : consecutiveEPSGrowth >= 1 ? 'metric-value-neutral' : 'metric-value-negative'}">${consecutiveEPSGrowth}</span>
-                <span class="metric-value-trend ${consecutiveEPSGrowth >= 3 ? 'trend-up' : consecutiveEPSGrowth >= 1 ? 'trend-neutral' : 'trend-down'}"></span>
+                <span class="metric-value-number ${roe >= 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${roe.toFixed(1)}%</span>
+                <span class="metric-value-trend ${roe >= 15 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Gross Margin Trend</span>
-                <span class="metric-help" title="Last 4 quarters: ↑↑↑↑ (improving) to ↓↓↓↓ (declining)">ⓘ</span>
+                <span class="metric-name">Return on Capital (ROCE)</span>
+                <span class="metric-help" title="EBIT divided by Capital Employed. Measures capital efficiency.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${grossMarginTrend.toFixed(1)}%</span>
-                <span class="metric-value-trend ${grossMarginTrend > 0 ? 'trend-up' : grossMarginTrend < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${roce >= 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${roce.toFixed(1)}%</span>
+                <span class="metric-value-trend ${roce >= 15 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">ROIC Trend</span>
-                <span class="metric-help" title="Return on Invested Capital trend over last 4 quarters">ⓘ</span>
+                <span class="metric-name">Return on Assets (ROA)</span>
+                <span class="metric-help" title="Net Income divided by Total Assets.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${roicTrend.toFixed(1)}%</span>
-                <span class="metric-value-trend ${roicTrend > 0 ? 'trend-up' : roicTrend < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number">${roa.toFixed(1)}%</span>
+                <span class="metric-value-trend ${roa >= 6 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">FCF Conversion %</span>
-                <span class="metric-help" title="Free Cash Flow / EBITDA. >80% indicates high earnings quality">ⓘ</span>
+                <span class="metric-name">Gross Margin</span>
+                <span class="metric-help" title="Gross Profit divided by Revenue.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${fcfConversion >= 80 ? 'metric-value-positive' : fcfConversion >= 60 ? 'metric-value-neutral' : 'metric-value-negative'}">${fcfConversion.toFixed(1)}%</span>
-                <span class="metric-value-trend ${fcfConversion >= 80 ? 'trend-up' : fcfConversion >= 60 ? 'trend-neutral' : 'trend-down'}"></span>
+                <span class="metric-value-number">${grossMargin.toFixed(1)}%</span>
+                <span class="metric-value-trend ${grossMargin > 40 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Working Capital Trend</span>
-                <span class="metric-help" title="Days of working capital tied up (lower is better trend)">ⓘ</span>
+                <span class="metric-name">EBITDA Margin</span>
+                <span class="metric-help" title="EBITDA divided by Revenue.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${workingCapitalTrend.toFixed(1)} days</span>
-                <span class="metric-value-trend ${workingCapitalTrend < 0 ? 'trend-up' : workingCapitalTrend > 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number">${ebitdaMargin.toFixed(1)}%</span>
+                <span class="metric-value-trend ${ebitdaMargin > 20 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Earnings Surprise History</span>
-                <span class="metric-help" title="Last 4 quarters: Beat/Miss/Meet pattern">ⓘ</span>
+                <span class="metric-name">CFO / EBITDA (FCF Proxy)</span>
+                <span class="metric-help" title="Cash Flow from Operations divided by EBITDA. >80% is high quality.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${earningsSurprise}</span>
-                <span class="metric-value-trend ${earningsSurprise.includes('Beat') && !earningsSurprise.includes('Miss') ? 'trend-up' : earningsSurprise.includes('Miss') ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cfoEbitda >= 80 ? 'metric-value-positive' : 'metric-value-neutral'}">${cfoEbitda.toFixed(1)}%</span>
+                <span class="metric-value-trend ${cfoEbitda >= 80 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">CFO / PAT (Earnings Quality)</span>
+                <span class="metric-help" title="Cash Flow from Operations divided by Profit After Tax. Measures cash realization of earnings.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cfoPat >= 100 ? 'metric-value-positive' : 'metric-value-negative'}">${cfoPat.toFixed(1)}%</span>
+                <span class="metric-value-trend ${cfoPat >= 100 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Working Capital Intensity</span>
+                <span class="metric-help" title="Working Capital divided by Revenue. Lower is better.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${wcIntensity.toFixed(1)}%</span>
+                <span class="metric-value-trend ${wcIntensity < 15 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
     `;
@@ -12967,74 +12975,81 @@ function generateQualityMetricsHTML(stock) {
 
 // Generate HTML for Growth Momentum Signals metrics
 function generateGrowthMetricsHTML(stock) {
-    // Calculate or get growth metrics
-    const qoqGrowthAcceleration = stock.qoq_growth_acceleration || 0;
-    const yoyGrowthConsistency = stock.yoy_growth_consistency || 0; // Lower = more consistent
-    const analystRevisionTrend = stock.analyst_revision_trend || 0; // Positive = more upgrades
-    const inventoryTurnoverTrend = stock.inventory_turnover_trend || 0; // Positive = improving
-    const orderBookGrowth = stock.order_book_growth_pct || 0;
-    const segmentGrowthContribution = stock.segment_growth_contribution_pct || 0;
+    if (!stock.revenue_growth_qoq && !stock.revenue_growth_yoy && !stock.revenue_growth_3y) {
+        return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
+            Growth data unavailable for this stock.
+        </p>`;
+    }
+
+    const revQoQ = stock.revenue_growth_qoq || 0;
+    const revYoY = stock.revenue_growth_yoy || 0;
+    const rev3Y = stock.revenue_growth_3y || 0;
+    const epsCagr = stock.eps_cagr || 0;
+    const ebitdaCagr = stock.ebitda_cagr || 0;
+    const orderGrowth = stock.order_growth || 0; // Proxy for order_book_growth_pct
 
     return `
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">QoQ Growth Acceleration</span>
-                <span class="metric-help" title="Current quarter growth minus previous quarter growth">ⓘ</span>
+                <span class="metric-name">Revenue Growth (QoQ)</span>
+                <span class="metric-help" title="Quarter-over-Quarter revenue growth.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${qoqGrowthAcceleration.toFixed(2)}%</span>
-                <span class="metric-value-trend ${qoqGrowthAcceleration > 0 ? 'trend-up' : qoqGrowthAcceleration < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${revQoQ > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${revQoQ.toFixed(2)}%</span>
+                <span class="metric-value-trend ${revQoQ > 0 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">YoY Growth Consistency</span>
-                <span class="metric-help" title="Stability of growth over last 4 quarters (coefficient of variation)">ⓘ</span>
+                <span class="metric-name">Revenue Growth (YoY)</span>
+                <span class="metric-help" title="Year-over-Year revenue growth.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${yoyGrowthConsistency.toFixed(2)}</span>
-                <span class="metric-value-trend ${yoyGrowthConsistency < 0.3 ? 'trend-up' : yoyGrowthConsistency < 0.5 ? 'trend-neutral' : 'trend-down'}"></span>
+                <span class="metric-value-number ${revYoY > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${revYoY.toFixed(2)}%</span>
+                <span class="metric-value-trend ${revYoY > 0 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Analyst Revision Trend</span>
-                <span class="metric-help" title="Net up/down revisions over last 30 days (↑↑↑ to ↓↓↓)">ⓘ</span>
+                <span class="metric-name">Revenue Growth (3Y CAGR)</span>
+                <span class="metric-help" title="3-Year Compound Annual Growth Rate of Revenue.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${analystRevisionTrend}</span>
-                <span class="metric-value-trend ${analystRevisionTrend > 0 ? 'trend-up' : analystRevisionTrend < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${rev3Y > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${rev3Y.toFixed(2)}%</span>
+                <span class="metric-value-trend ${rev3Y > 15 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Inventory Turnover Trend</span>
-                <span class="metric-help" title="For product companies: rising = better demand">ⓘ</span>
+                <span class="metric-name">EBITDA CAGR (3Y)</span>
+                <span class="metric-help" title="3-Year Compound Annual Growth Rate of EBITDA.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${inventoryTurnoverTrend.toFixed(2)}</span>
-                <span class="metric-value-trend ${inventoryTurnoverTrend > 0 ? 'trend-up' : inventoryTurnoverTrend < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${ebitdaCagr > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${ebitdaCagr.toFixed(2)}%</span>
+                <span class="metric-value-trend ${ebitdaCagr > 15 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Order Book/Backlog Growth</span>
-                <span class="metric-help" title="Forward revenue visibility vs current revenue">ⓘ</span>
+                <span class="metric-name">EPS CAGR (3Y)</span>
+                <span class="metric-help" title="3-Year Compound Annual Growth Rate of Earnings Per Share.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${orderBookGrowth.toFixed(1)}%</span>
-                <span class="metric-value-trend ${orderBookGrowth > 0 ? 'trend-up' : orderBookGrowth < 0 ? 'trend-down' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${epsCagr > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${epsCagr.toFixed(2)}%</span>
+                <span class="metric-value-trend ${epsCagr > 15 ? 'trend-up' : 'trend-neutral'}"></span>
             </div>
         </div>
+        ${orderGrowth !== 0 ? `
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Segment Growth Contribution</span>
-                <span class="metric-help" title="% of total growth coming from fastest-growing segment">ⓘ</span>
+                <span class="metric-name">Order Book Growth (YoY)</span>
+                <span class="metric-help" title="Growth rate of order book backlog.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${segmentGrowthContribution.toFixed(1)}%</span>
-                <span class="metric-value-trend ${segmentGrowthContribution > 30 ? 'trend-up' : segmentGrowthContribution > 15 ? 'trend-neutral' : 'trend-down'}"></span>
+                <span class="metric-value-number ${orderGrowth > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${orderGrowth.toFixed(1)}%</span>
+                <span class="metric-value-trend ${orderGrowth > 0 ? 'trend-up' : 'trend-down'}"></span>
             </div>
         </div>
+        ` : ''}
     `;
 }
