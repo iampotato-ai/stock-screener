@@ -167,9 +167,7 @@ def compute_ep_score(neglect_score, catalyst_score, repricing_score,
         features.update(kwargs)
         
         # Ensure any boolean values are mapped to 1/0
-        for k, v in features.items():
-            if isinstance(v, bool):
-                features[k] = 1 if v else 0
+        features = {k: (1 if v else 0) if isinstance(v, bool) else v for k, v in features.items()}
                 
         return predict_ep_score(features)
     except Exception as e:
