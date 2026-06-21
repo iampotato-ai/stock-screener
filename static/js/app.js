@@ -2660,6 +2660,11 @@ window.applyStatFilter = function(filter) {
 
 // Render data inside table
 function renderTable() {
+    function simBadge(stock) {
+        return stock.growth_data_source === 'simulated'
+            ? '<span class="sim-disclaimer" title="Simulated value" style="color:var(--color-warning,#f59e0b);font-size:.85em;margin-right:2px;cursor:help;">~</span>'
+            : '';
+    }
     const visibleCount = columnsConfig.filter(c => c.isVisible).length;
     
     if (filteredStocks.length === 0) {
@@ -2924,17 +2929,28 @@ function renderTable() {
                     <td data-column="turnover_m" class="text-right">₹${turnover_m.toFixed(1)} Cr</td>
                 `;
             } else if (col.id === 'pe_ratio') {
-                html += `<td data-column="pe_ratio" class="text-right">${renderFundVal(stock.pe_ratio, 1)}</td>`;
+                const peClass = stock.pe_ratio != null
+                    ? (stock.pe_ratio < 15 ? 'val-up' : stock.pe_ratio > 40 ? 'val-down' : '')
+                    : '';
+                html += `<td data-column="pe_ratio" class="text-right ${peClass}" style="font-weight:600;">${renderFundVal(stock.pe_ratio, 1)}</td>`;
             } else if (col.id === 'ev_ebitda') {
-                html += `<td data-column="ev_ebitda" class="text-right">${renderFundVal(stock.ev_ebitda, 1)}</td>`;
+                const evClass = stock.ev_ebitda != null
+                    ? (stock.ev_ebitda < 10 ? 'val-up' : stock.ev_ebitda > 20 ? 'val-down' : '')
+                    : '';
+                html += `<td data-column="ev_ebitda" class="text-right ${evClass}">${renderFundVal(stock.ev_ebitda, 1)}</td>`;
             } else if (col.id === 'pb_ratio') {
-                html += `<td data-column="pb_ratio" class="text-right">${renderFundVal(stock.pb_ratio, 2)}</td>`;
+                const pbClass = stock.pb_ratio != null
+                    ? (stock.pb_ratio < 1.5 ? 'val-up' : stock.pb_ratio > 5 ? 'val-down' : '')
+                    : '';
+                html += `<td data-column="pb_ratio" class="text-right ${pbClass}">${renderFundVal(stock.pb_ratio, 2)}</td>`;
             } else if (col.id === 'ps_ratio') {
                 html += `<td data-column="ps_ratio" class="text-right">${renderFundVal(stock.ps_ratio, 2)}</td>`;
             } else if (col.id === 'div_yield') {
                 html += `<td data-column="div_yield" class="text-right">${renderFundVal(stock.div_yield, 2, '%')}</td>`;
             } else if (col.id === 'fcf_yield') {
-                const fcfClass = stock.fcf_yield != null ? (stock.fcf_yield >= 0 ? 'val-up' : 'val-down') : '';
+                const fcfClass = stock.fcf_yield != null
+                    ? (stock.fcf_yield >= 3 ? 'val-up' : stock.fcf_yield < 0 ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="fcf_yield" class="text-right ${fcfClass}">${renderFundVal(stock.fcf_yield, 2, '%')}</td>`;
             } else if (col.id === 'ev_cr') {
                 html += `<td data-column="ev_cr" class="text-right">${stock.ev_cr != null ? '₹' + stock.ev_cr.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' Cr' : '<span class=\"val-na\">—</span>'}</td>`;
@@ -2949,16 +2965,30 @@ function renderTable() {
             } else if (col.id === 'gross_margin') {
                 html += `<td data-column="gross_margin" class="text-right">${renderFundVal(stock.gross_margin, 1, '%')}</td>`;
             } else if (col.id === 'ebitda_margin') {
-                const emClass = stock.ebitda_margin != null ? (stock.ebitda_margin >= 20 ? 'val-up' : stock.ebitda_margin < 10 ? 'val-down' : '') : '';
+                const lowMarginSectors = ['Trading', 'Distribution', 'Retail', 'FMCG'];
+                const isLowMarginSector = lowMarginSectors.some(s => (stock.sector || '').includes(s));
+                const emGreenThreshold  = isLowMarginSector ? 8  : 20;
+                const emRedThreshold    = isLowMarginSector ? 3  : 10;
+                const emClass = stock.ebitda_margin != null
+                    ? (stock.ebitda_margin >= emGreenThreshold ? 'val-up' : stock.ebitda_margin < emRedThreshold ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="ebitda_margin" class="text-right ${emClass}">${renderFundVal(stock.ebitda_margin, 1, '%')}</td>`;
             } else if (col.id === 'debt_to_equity') {
-                const deClass = stock.debt_to_equity != null ? (stock.debt_to_equity <= 0.5 ? 'val-up' : stock.debt_to_equity > 1.5 ? 'val-down' : '') : '';
+                const financialSectors = ['Banking', 'Finance', 'NBFC', 'Insurance'];
+                const isFinancialSector = financialSectors.some(s => (stock.sector || '').includes(s));
+                const deGreenThreshold = isFinancialSector ? 5  : 0.5;
+                const deRedThreshold   = isFinancialSector ? 10 : 1.5;
+                const deClass = stock.debt_to_equity != null
+                    ? (stock.debt_to_equity <= deGreenThreshold ? 'val-up' : stock.debt_to_equity > deRedThreshold ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="debt_to_equity" class="text-right ${deClass}" style="font-weight:600;">${renderFundVal(stock.debt_to_equity, 2)}</td>`;
             } else if (col.id === 'interest_coverage') {
                 const icClass = stock.interest_coverage != null ? (stock.interest_coverage >= 3 ? 'val-up' : stock.interest_coverage < 1.5 ? 'val-down' : '') : '';
                 html += `<td data-column="interest_coverage" class="text-right ${icClass}">${renderFundVal(stock.interest_coverage, 1, 'x')}</td>`;
             } else if (col.id === 'cfo_pat') {
-                const cfoClass = stock.cfo_pat != null ? (stock.cfo_pat >= 80 ? 'val-up' : stock.cfo_pat < 50 ? 'val-down' : '') : '';
+                const cfoClass = stock.cfo_pat != null
+                    ? (stock.cfo_pat >= 80 ? 'val-up' : stock.cfo_pat < 40 ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="cfo_pat" class="text-right ${cfoClass}">${renderFundVal(stock.cfo_pat, 1, '%')}</td>`;
             } else if (col.id === 'net_income_cr') {
                 const niClass = stock.net_income_cr != null ? (stock.net_income_cr >= 0 ? 'val-up' : 'val-down') : '';
@@ -2973,26 +3003,24 @@ function renderTable() {
                 html += `<td data-column="cfo_ebitda" class="text-right ${cfoEbClass}">${renderFundVal(stock.cfo_ebitda, 1, '%')}</td>`;
             } else if (col.id === 'wc_intensity') {
                 const wcClass = stock.wc_intensity != null ? (stock.wc_intensity <= 15 ? 'val-up' : stock.wc_intensity > 30 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="wc_intensity" class="text-right ${wcClass}">${simBadge}${renderFundVal(stock.wc_intensity, 1, '%')}</td>`;
+                html += `<td data-column="wc_intensity" class="text-right ${wcClass}">${simBadge(stock)}${renderFundVal(stock.wc_intensity, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_qoq') {
-                const qoqClass = stock.revenue_growth_qoq != null ? (stock.revenue_growth_qoq >= 4 ? 'val-up' : stock.revenue_growth_qoq < 1.5 ? 'val-down' : '') : '';
+                const qoqClass = stock.revenue_growth_qoq != null
+                    ? (stock.revenue_growth_qoq >= 5 ? 'val-up' : stock.revenue_growth_qoq < 0 ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="revenue_growth_qoq" class="text-right ${qoqClass}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_qoq, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_yoy') {
                 const yoyClass = stock.revenue_growth_yoy != null ? (stock.revenue_growth_yoy >= 15 ? 'val-up' : stock.revenue_growth_yoy < 8 ? 'val-down' : '') : '';
                 html += `<td data-column="revenue_growth_yoy" class="text-right ${yoyClass}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_yoy, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_3y') {
                 const y3Class = stock.revenue_growth_3y != null ? (stock.revenue_growth_3y >= 15 ? 'val-up' : stock.revenue_growth_3y < 8 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="revenue_growth_3y" class="text-right ${y3Class}" style="font-weight:600;">${simBadge}${renderFundVal(stock.revenue_growth_3y, 1, '%')}</td>`;
+                html += `<td data-column="revenue_growth_3y" class="text-right ${y3Class}" style="font-weight:600;">${simBadge(stock)}${renderFundVal(stock.revenue_growth_3y, 1, '%')}</td>`;
             } else if (col.id === 'ebitda_cagr') {
                 const ecClass = stock.ebitda_cagr != null ? (stock.ebitda_cagr >= 15 ? 'val-up' : stock.ebitda_cagr < 8 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="ebitda_cagr" class="text-right ${ecClass}">${simBadge}${renderFundVal(stock.ebitda_cagr, 1, '%')}</td>`;
+                html += `<td data-column="ebitda_cagr" class="text-right ${ecClass}">${simBadge(stock)}${renderFundVal(stock.ebitda_cagr, 1, '%')}</td>`;
             } else if (col.id === 'eps_cagr') {
                 const epClass = stock.eps_cagr != null ? (stock.eps_cagr >= 15 ? 'val-up' : stock.eps_cagr < 8 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="eps_cagr" class="text-right ${epClass}" style="font-weight:600;">${simBadge}${renderFundVal(stock.eps_cagr, 1, '%')}</td>`;
+                html += `<td data-column="eps_cagr" class="text-right ${epClass}" style="font-weight:600;">${simBadge(stock)}${renderFundVal(stock.eps_cagr, 1, '%')}</td>`;
             } else if (col.id === 'bv_growth') {
                 const bvClass = stock.bv_growth != null ? (stock.bv_growth >= 12 ? 'val-up' : stock.bv_growth < 6 ? 'val-down' : '') : '';
                 html += `<td data-column="bv_growth" class="text-right ${bvClass}">${renderFundVal(stock.bv_growth, 1, '%')}</td>`;
