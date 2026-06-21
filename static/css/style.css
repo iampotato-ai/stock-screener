@@ -656,15 +656,17 @@ input:checked + .slider:before {
 
 /* Screener Tab Bar */
 .screener-tabs {
-    display: inline-flex;
-    gap: 0.25rem;
-    padding: 0.35rem;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: var(--radius-md);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    display: flex;
+    gap: 1.5rem;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     margin-bottom: 1.2rem;
     overflow-x: auto;
     scrollbar-width: none;
+    width: 100%;
 }
 
 .screener-tabs::-webkit-scrollbar {
@@ -676,11 +678,11 @@ input:checked + .slider:before {
     border: none;
     outline: none;
     font-family: inherit;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-text-muted);
-    padding: 0.55rem 1.2rem;
-    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.25rem;
+    border-radius: 0;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -688,18 +690,21 @@ input:checked + .slider:before {
     white-space: nowrap;
     transition: var(--transition-smooth);
     position: relative;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
 }
 
 .tab-btn:hover {
     color: var(--color-text-secondary);
-    background: rgba(255, 255, 255, 0.04);
+    background: transparent;
 }
 
 .tab-btn.active {
     color: var(--color-text-primary);
-    background: rgba(59, 130, 246, 0.12);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--accent-blue);
+    box-shadow: none;
 }
 
 .tab-btn.active svg {
@@ -2719,11 +2724,11 @@ body[data-theme="light"] .custom-select-wrapper .select-dropdown-item.active {
 
 /* Tab indicator highlight styling */
 body[data-theme="light"] .tab-btn.active {
-    background: rgba(59, 130, 246, 0.08);
+    background: transparent;
 }
 
 body[data-theme="light"] .tab-btn:not(.active):hover {
-    background: rgba(0, 0, 0, 0.02);
+    background: transparent;
 }
 
 /* Watchlist and announcements overlays */

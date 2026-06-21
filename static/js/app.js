@@ -6389,11 +6389,11 @@ function renderRRGTimeline(frames, frameIdx) {
         currentFrame.sectors.forEach(s => {
             const rs = s.jdk_rs;
             const mom = s.jdk_rs_momentum;
-            const dist = Math.sqrt((rs - 100) * (rs - 100) + (mom - 100) * (mom - 100));
-            const quadrant = (rs >= 100 && mom >= 100) ? 'Leading'
-                           : (rs < 100 && mom >= 100) ? 'Improving'
-                           : (rs < 100 && mom < 100) ? 'Lagging'
-                           : 'Weakening';
+            const dist = Math.sqrt((rs - 100) * (rs - 100) + mom * mom);
+            const quadrant = s.quadrant || ((rs >= 100 && mom >= 0) ? 'Leading'
+                           : (rs < 100 && mom >= 0) ? 'Improving'
+                           : (rs < 100 && mom < 0) ? 'Lagging'
+                           : 'Weakening');
             const item = {
                 name: s.sector,
                 quadrant: quadrant,

@@ -12,6 +12,50 @@ from typing import List, Dict, Any, Optional
 from app.extensions import db
 from app.models import EpFeature, EpWatchlist, SugarBaby, Fundamental, CorporateEvent, IpoListing, RrgHistory
 from app.utils.technical import fetch_historical_prices
+# --- EP model loading helpers ---
+from pathlib import Path
+from flask import current_app
+
+_MODEL = None
+_MANIFEST = None
+
+def _load_ep_model():
+    """Load the XGBoost model and its manifest lazily.
+
+    Returns a tuple (model, manifest). Raises FileNotFoundError if missing.
+    """
+    global _MODEL, _MANIFEST
+    if _MODEL is None or _MANIFEST is None:
+        model_path = current_app.config.get('EP_MODEL_PATH')
+        if not model_path:
+            raise FileNotFoundError('EP_MODEL_PATH not configured')
+        manifest_path = Path(model_path).with_name(Path(model_path).stem + '_manifest.json')
+        if not os.path.exists(model_path) or not os.path.exists(manifest_path):
+            raise FileNotFoundError(f"EP model or manifest not found at {model_path}")
+        import joblib, json
+        _MODEL = joblib.load(model_path)
+        with open(manifest_path, 'r') as f:
+            _MANIFEST = json.load(f)
+    return _MODEL, _MANIFEST
+
+def predict_ep_score(features: dict) -> float:
+    """Predict EP probability using the loaded model.
+
+    Features dict is ordered according to the manifest's ``feature_order``.
+    Returns the positive‑class probability rounded to three decimals.
+    """
+    try:
+        model, manifest = _load_ep_model()
+    except Exception as e:
+        # Log and fallback to original hand‑crafted score elsewhere
+        current_app.logger.warning(f"EP model load failed: {e}")
+        raise
+    import numpy as np
+    ordered = [features.get(col, 0.0) for col in manifest.get('feature_order', [])]
+    preds = model.predict_proba(np.array([ordered]))
+    preds = np.array(preds)
+    prob = preds[0, 1]
+    return round(float(prob), 3)
 
 # Define thresholds as named constants (Issue 5.2)
 EP_CONFIDENCE_HIGH = 0.72
@@ -110,14 +154,32 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
 
 def compute_ep_score(neglect_score, catalyst_score, repricing_score,
                      liquidity_ok=True, has_fundamentals=True):
-    raw = (0.25 * neglect_score +
-           0.35 * abs(catalyst_score) +
-           0.30 * repricing_score +
-           0.10 * (1.0 if has_fundamentals else 0.0))
-
-    liquidity_adj = 0.0 if liquidity_ok else -0.10
-    ep_score = round(max(0.0, min(1.0, raw + liquidity_adj)), 3)
-    return ep_score
+    """Compute EP score using ML model if available, otherwise fallback to hand‑crafted weighted sum."""
+    # Attempt model prediction
+    try:
+        features = {
+            "neglect_score": neglect_score,
+            "catalyst_score": catalyst_score,
+            "repricing_score": repricing_score,
+            "liquidity_ok": 1 if liquidity_ok else 0,
+            "has_fundamentals": 1 if has_fundamentals else 0,
+        }
+        return predict_ep_score(features)
+    except Exception as e:
+        # Log fallback if possible
+        try:
+            from flask import current_app
+            current_app.logger.warning(f"EP model prediction failed ({e}); using fallback scoring.")
+        except Exception:
+            pass
+        # Hand‑crafted fallback logic (original implementation)
+        raw = (0.25 * neglect_score +
+               0.35 * abs(catalyst_score) +
+               0.30 * repricing_score +
+               0.10 * (1.0 if has_fundamentals else 0.0))
+        liquidity_adj = 0.0 if liquidity_ok else -0.10
+        ep_score = round(max(0.0, min(1.0, raw + liquidity_adj)), 3)
+        return ep_score
 
 
 def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
