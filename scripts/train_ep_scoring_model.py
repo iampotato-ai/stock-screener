@@ -22,7 +22,7 @@ def main(dry_run: bool = False):
         print("[dry-run] Skipping EP model training.")
         return
     # TODO: Implement full training pipeline.
-    print("EP model training not yet implemented.")
+    raise NotImplementedError("EP model training not yet implemented.")
 
 if __name__ == "__main__":
     import argparse

@@ -24,9 +24,13 @@ def run_ep_model_training(app: Flask):
         with app.app_context():
             # Resolve the training script relative to the project root
             script_path = Path(__file__).resolve().parents[2] / "scripts" / "train_ep_scoring_model.py"
-            # Run the script in dry‑run mode to avoid heavy training during tests
+            dry_run = app.config.get('EP_MODEL_TRAINING_DRY_RUN', True)
+            args = [sys.executable, str(script_path)]
+            if dry_run:
+                args.append("--dry-run")
+            
             result = subprocess.run(
-                [sys.executable, str(script_path), "--dry-run"],
+                args,
                 check=True,
                 capture_output=True,
                 text=True,

@@ -33,6 +33,8 @@ class Config:
     EP_CONFIDENCE_MEDIUM = float(os.environ.get('EP_CONFIDENCE_MEDIUM', '0.55'))
     EP_MODEL_TRAIN_HOUR = int(os.environ.get('EP_MODEL_TRAIN_HOUR', '16'))
     EP_MODEL_TRAIN_MINUTE = int(os.environ.get('EP_MODEL_TRAIN_MINUTE', '0'))
+    EP_MODEL_TRAINING_ENABLED = os.environ.get('EP_MODEL_TRAINING_ENABLED', 'False').lower() == 'true'
+    EP_MODEL_TRAINING_DRY_RUN = os.environ.get('EP_MODEL_TRAINING_DRY_RUN', 'True').lower() == 'true'
 
     @staticmethod
     def init_app(app):

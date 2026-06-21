@@ -7,25 +7,9 @@ import atexit
 import logging
 import os
 from flask import Flask
+from app.services.model_training_service import run_ep_model_training
 
 logger = logging.getLogger(__name__)
-
-def run_ep_model_training(app: Flask):
-    """Run EP scoring model training using the training script.
-
-    Executed within the Flask app context so that configuration (e.g., database URL)
-    is available to the script.
-    """
-    logger = logging.getLogger(__name__)
-    try:
-        with app.app_context():
-            from scripts.train_ep_scoring_model import main as train_main
-            # Run training (dry_run=False ensures actual training)
-            train_main(dry_run=False)
-        logger.info("EP model training completed successfully")
-    except Exception as e:
-        logger.error(f"EP model training failed: {e}")
-        raise
 
 def init_scheduler(app: Flask):
     """Initialize the background scheduler."""
@@ -47,18 +31,39 @@ def init_scheduler(app: Flask):
 
     scheduler = BackgroundScheduler()
 
-    # Add EP model training job - runs daily at configured hour/minute
+    # Add EP refresh job - runs every 30 minutes
     scheduler.add_job(
-        func=run_ep_model_training,
-        trigger='cron',
-        hour=app.config.get('EP_MODEL_TRAIN_HOUR', 16),
-        minute=app.config.get('EP_MODEL_TRAIN_MINUTE', 0),
-        timezone='Asia/Kolkata',
-        id='ep_model_training',
-        name='Daily EP scoring model training',
+        func=refresh_ep_task,
+        trigger=IntervalTrigger(minutes=30),
+        id='ep_refresh_job',
+        name='Refresh EP screener data every 30 minutes',
         replace_existing=True,
-        args=[app]
+        args=[app]  # Pass app for context
     )
+
+    # Add IPO refresh job - runs every hour
+    scheduler.add_job(
+        func=refresh_ipo_task,
+        trigger=IntervalTrigger(hours=1),
+        id='ipo_refresh_job',
+        name='Refresh IPO data every hour',
+        replace_existing=True,
+        args=[app]  # Pass app for context
+    )
+
+    # Add EP model training job - runs daily at configured hour/minute (gated behind feature flag)
+    if app.config.get('EP_MODEL_TRAINING_ENABLED', False):
+        scheduler.add_job(
+            func=run_ep_model_training,
+            trigger='cron',
+            hour=app.config.get('EP_MODEL_TRAIN_HOUR', 16),
+            minute=app.config.get('EP_MODEL_TRAIN_MINUTE', 0),
+            timezone='Asia/Kolkata',
+            id='ep_model_training',
+            name='Daily EP scoring model training',
+            replace_existing=True,
+            args=[app]
+        )
 
     # One-shot startup warm-up: fill any missing IPO metrics cache entries
     # Fires 10 seconds after server start, in the background, without blocking requests.

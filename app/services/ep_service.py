@@ -153,7 +153,7 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
 
 
 def compute_ep_score(neglect_score, catalyst_score, repricing_score,
-                     liquidity_ok=True, has_fundamentals=True):
+                     liquidity_ok=True, has_fundamentals=True, **kwargs):
     """Compute EP score using ML model if available, otherwise fallback to hand‑crafted weighted sum."""
     # Attempt model prediction
     try:
@@ -164,6 +164,13 @@ def compute_ep_score(neglect_score, catalyst_score, repricing_score,
             "liquidity_ok": 1 if liquidity_ok else 0,
             "has_fundamentals": 1 if has_fundamentals else 0,
         }
+        features.update(kwargs)
+        
+        # Ensure any boolean values are mapped to 1/0
+        for k, v in features.items():
+            if isinstance(v, bool):
+                features[k] = 1 if v else 0
+                
         return predict_ep_score(features)
     except Exception as e:
         # Log fallback if possible

@@ -1727,8 +1727,14 @@ def refresh_ep_screener():
                 eod_turnover_cr >= 5.0        # minimum ₹5 Cr daily turnover
                 and mktcap_cr >= 200.0         # minimum ₹200 Cr market cap
             )
-            
-            ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, liquidity_ok, has_fundamentals=bool(has_result))
+            ep_score = compute_ep_score(
+                neglect_score, catalyst_score, repricing_score, liquidity_ok, has_fundamentals=bool(has_result),
+                perf_3m=perf_3m, perf_6m=perf_6m, range_60d_pct=range_60d_pct, avg_vol_rank=avg_vol_rank,
+                revenue_growth=s["revenue_growth"], profit_growth=s["profit_growth"],
+                event_type=resolved_event_type, gap_pct=gap_pct, rel_volume=dyn_rel_vol,
+                close_loc=close_loc, price_change_pct=price_change_pct, intraday_range_pct=intraday_range_pct,
+                market_cap_cr=mktcap_cr
+            )
             day1_messy = bool(gap_pct > 5.0 and close_loc < 0.40)
             ep_type = assign_ep_type(
                 catalyst_score=catalyst_score,
@@ -7113,8 +7119,14 @@ def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="202
                     # Repricing Score
                     repricing_score = compute_repricing_score(gap, rel_vol_20, close_loc, chg, intra_range)
                     
-                    # EP Score
-                    ep_score = compute_ep_score(neglect_score, catalyst_score, repricing_score, True, has_result == 1)
+                    ep_score = compute_ep_score(
+                        neglect_score, catalyst_score, repricing_score, True, has_result == 1,
+                        perf_3m=perf_3m, perf_6m=perf_6m, range_60d_pct=range_60d_pct, avg_vol_rank=avg_vol_rank,
+                        revenue_growth=revenue_growth, profit_growth=profit_growth,
+                        event_type=event_type, gap_pct=gap, rel_volume=rel_vol_20,
+                        close_loc=close_loc, price_change_pct=chg, intraday_range_pct=intra_range,
+                        market_cap_cr=mktcap_cr
+                    )
                     
                     # EP Type & Confidence
                     ep_type = assign_ep_type(catalyst_score, event_type, rel_vol_20, gap, revenue_growth, profit_growth)

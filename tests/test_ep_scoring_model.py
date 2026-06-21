@@ -5,8 +5,9 @@ import types
 import pytest
 
 # Import the service module after ensuring the project root is on sys.path.
+import pathlib
 import sys
-sys.path.append('C:/Users/91996/Documents/My Projects/stock-screener')
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from app.services import ep_service
 
