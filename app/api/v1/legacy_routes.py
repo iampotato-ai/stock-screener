@@ -809,12 +809,16 @@ def compute_yoy_metrics(quarters_data):
             del quarters_data[i]["_prev_q"]
         
     return quarters_data
-
+_sent_telegram_messages = set()
 def send_telegram_alert(message):
     """
     Sends a notification message to the configured Telegram chat/channel.
     Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from environment variables.
+    Duplicate messages are ignored.
     """
+    if message in _sent_telegram_messages:
+        return
+    _sent_telegram_messages.add(message)
     try:
         import app
         func = getattr(app, 'send_telegram_alert', None)
@@ -2502,10 +2506,7 @@ def compute_extra_fields(stock):
         pe_ratio = stock.get("pe_ratio")
         profit_growth = stock.get("profit_growth")  # Using profit growth as earnings growth proxy
         if pe_ratio is not None and profit_growth is not None and profit_growth != 0:
-            # Convert profit_growth from percentage to decimal for PEG calculation
-            # PEG = P/E / (earnings_growth_as_decimal)
-            # So: PEG = pe_ratio / (profit_growth/100) = pe_ratio * 100 / profit_growth
-            stock["peg_ratio"] = round(pe_ratio * 100.0 / profit_growth, 2)
+            stock["peg_ratio"] = round(pe_ratio / profit_growth, 2)
         else:
             stock["peg_ratio"] = None  # Handle division by zero or missing data
 
@@ -3322,8 +3323,10 @@ def _set_kronos_cache(ticker, bias, score, forecast_list, forecast_metrics):
             _kronos_cache.popitem(last=False)  # evict oldest
         _kronos_cache[ticker] = (_time.time(), bias, score, list(forecast_list), dict(forecast_metrics))
 
+_kronos_last_error = None
+
 def get_kronos_predictor():
-    global kronos_predictor
+    global kronos_predictor, _kronos_last_error
     import sys
     if "app" in sys.modules:
         app_mod = sys.modules["app"]
@@ -3343,8 +3346,12 @@ def get_kronos_predictor():
                     model = Kronos.from_pretrained("NeoQuasar/Kronos-small")
                     kronos_predictor = KronosPredictor(model, tokenizer, device="cpu", max_context=256)
                     print("Kronos-small loaded successfully on CPU.")
+                    _kronos_last_error = None
                 except Exception as e:
+                    import traceback
+                    _kronos_last_error = f"{type(e).__name__}: {str(e)}"
                     print(f"Error loading Kronos model: {e}")
+                    traceback.print_exc()
     return kronos_predictor
 
 # ── NSE Market Holidays (skip these in addition to weekends) ──
@@ -3423,7 +3430,7 @@ def generate_next_trading_days(last_date_str, num_days=10):
     return pd.Series(trading_days)
 
 def compute_forecast_metrics(forecast_list, last_close, history, extra_context=None):
-    from forecast_math import compute_forecast_metrics as _cfm
+    from app.utils.forecast_math import compute_forecast_metrics as _cfm
     return _cfm(forecast_list, last_close, history, extra_context=extra_context)
 
 @api_bp.route('/pattern-signals', methods=['GET'])
@@ -3486,6 +3493,9 @@ def get_setup_analysis():
     from flask import request
     import pandas as pd
     import numpy as np
+    import sqlite3
+    import json
+    from datetime import datetime
     ticker = request.args.get('ticker', '').strip().upper()
     if not ticker:
         return jsonify(error="Ticker is required"), 400
@@ -3614,76 +3624,134 @@ def get_setup_analysis():
         ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics = cached
         print(f"[Kronos] Cache HIT for {ticker}")
     else:
-        predictor = get_kronos_predictor()
-        if predictor and len(history) >= 10:
+        # Check DB cache first before running live model inference
+        conn = None
+        db_row = None
+        try:
+            conn = sqlite3.connect("scan_history.db")
+            c = conn.cursor()
+            c.execute(
+                "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = 10 AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
+                (ticker,)
+            )
+            db_row = c.fetchone()
+        except Exception as db_ex:
+            print(f"[Kronos DB Cache Check] Error checking DB cache: {db_ex}")
+        finally:
+            if conn:
+                conn.close()
+                
+        # If the database record is less than 4 hours old, use it
+        if db_row:
+            stored_forecast_json, last_close_cached, generated_at_str = db_row
             try:
-                # Use last 120 bars for richer context (Kronos-small was trained on long sequences)
-                df_input = pd.DataFrame([{
-                    "open": float(d["open"]),
-                    "high": float(d["high"]),
-                    "low": float(d["low"]),
-                    "close": float(d["close"]),
-                    "volume": float(d["volume"])
-                } for d in history[-120:]])
-                # Compute amount = volume * avg_price so the model's 6th feature is meaningful
-                df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
-
-                x_timestamps = pd.to_datetime([d["date"] for d in history[-120:]])
-                last_date_str_inner = history[-1]["date"]
-                y_timestamps = generate_next_trading_days(last_date_str_inner, 10)
-
-                # Compute 14-day ATR% to dynamically tune temperature for conservative vs volatile setups
-                atr_pct = compute_atr_pct(history)
-
-                # Keep temperature in 0.5-0.8 range - below 0.5 causes mode collapse toward bearish
-                T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
-
-                pred_df = predictor.predict(
-                    df=df_input,
-                    x_timestamp=pd.Series(x_timestamps),
-                    y_timestamp=y_timestamps,
-                    pred_len=10,
-                    T=T_val,
-                    top_p=0.8,
-                    sample_count=10,
-                    verbose=False
-                )
-
-                for idx, row in pred_df.iterrows():
-                    forecast_list.append({
-                        "date": idx.strftime("%Y-%m-%d"),
-                        "open": float(row["open"]),
-                        "high": float(row["high"]),
-                        "low": float(row["low"]),
-                        "close": float(row["close"]),
-                        "volume": float(row["volume"])
-                    })
-
-                if forecast_list:
+                gen_time = datetime.fromisoformat(generated_at_str)
+                if (datetime.now() - gen_time).total_seconds() < 4 * 3600:
+                    forecast_list = json.loads(stored_forecast_json)
                     p_bias = get_cached_pattern_bias(ticker)
                     ai_forecast_bias, ai_confidence_score, forecast_metrics = compute_forecast_metrics(
                         forecast_list, current_close, history, extra_context={"pattern_bias": p_bias}
                     )
                     _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics)
+                    print(f"[Kronos] DB cache HIT for {ticker}")
+            except Exception as cache_ex:
+                print(f"[Kronos DB Cache Load] Error: {cache_ex}")
 
-                    # Expose T_val and weighted_score in log
-                    print(
-                        f"[Kronos] {ticker} | T={T_val:.2f} | "
-                        f"ret={forecast_metrics['return_pct']:+.1f}% ({forecast_metrics['normalised_return']:+.1f}std) "
-                        f"split={forecast_metrics['momentum_split']:+.1f}% cons={forecast_metrics['consistency_pct']:.0f}% "
-                        f"brkout={forecast_metrics['breakout_signal']} dd={forecast_metrics['max_drawdown_pct']:.1f}% flat={forecast_metrics['is_flat_forecast']} "
-                        f"-> score={forecast_metrics['weighted_score']:+.3f} -> {ai_forecast_bias} | conf={ai_confidence_score}%"
-                    )
+        # If still no forecast_list, run live inference
+        if not forecast_list:
+            predictor = get_kronos_predictor()
+            if predictor and len(history) >= 10:
+                try:
+                    # Use last 120 bars for richer context (Kronos-small was trained on long sequences)
+                    df_input = pd.DataFrame([{
+                        "open": float(d["open"]),
+                        "high": float(d["high"]),
+                        "low": float(d["low"]),
+                        "close": float(d["close"]),
+                        "volume": float(d["volume"])
+                    } for d in history[-120:]])
+                    # Compute amount = volume * avg_price so the model's 6th feature is meaningful
+                    df_input["amount"] = df_input["volume"] * df_input[["open", "high", "low", "close"]].mean(axis=1)
 
-                    # Log raw forecast closes so path differences are visible per stock
-                    forecast_closes = [r["close"] for r in forecast_list]
-                    fc_str = " ".join(f"{c:.1f}" for c in forecast_closes)
-                    print(f"[Kronos] {ticker} closes: [{fc_str}]")
+                    x_timestamps = pd.to_datetime([d["date"] for d in history[-120:]])
+                    last_date_str_inner = history[-1]["date"]
+                    y_timestamps = generate_next_trading_days(last_date_str_inner, 10)
 
-            except Exception as ex:
-                print(f"Kronos prediction execution error for {ticker}: {ex}")
-                forecast_metrics = {}
-                # ai_forecast_bias stays None → frontend will show 'Unavailable'
+                    # Compute 14-day ATR% to dynamically tune temperature for conservative vs volatile setups
+                    atr_pct = compute_atr_pct(history)
+
+                    # Keep temperature in 0.5-0.8 range - below 0.5 causes mode collapse toward bearish
+                    T_val = max(0.5, min(0.8, 0.5 + atr_pct * 0.03))
+
+                    with kronos_inference_lock:
+                        raw_samples = predictor.predict(
+                            df=df_input,
+                            x_timestamp=pd.Series(x_timestamps),
+                            y_timestamp=y_timestamps,
+                            pred_len=10,
+                            T=T_val,
+                            top_p=0.8,
+                            sample_count=5, # Optimized: 5 samples instead of 10
+                            verbose=False,
+                            return_samples=True
+                        )
+
+                    # Compute mean prediction and confidence bounds
+                    mean_pred = raw_samples.mean(axis=0)
+                    p10 = np.percentile(raw_samples, 10, axis=0)
+                    p90 = np.percentile(raw_samples, 90, axis=0)
+
+                    dates = [d.strftime("%Y-%m-%d") for d in y_timestamps]
+                    for i in range(10):
+                        forecast_list.append({
+                            "date": dates[i],
+                            "open": round(float(mean_pred[i, 0]), 2),
+                            "high": round(float(mean_pred[i, 1]), 2),
+                            "low": round(float(mean_pred[i, 2]), 2),
+                            "close": round(float(mean_pred[i, 3]), 2),
+                            "volume": int(mean_pred[i, 4]),
+                            "p10_close": round(float(p10[i, 3]), 2),
+                            "p90_close": round(float(p90[i, 3]), 2)
+                        })
+
+                    if forecast_list:
+                        p_bias = get_cached_pattern_bias(ticker)
+                        ai_forecast_bias, ai_confidence_score, forecast_metrics = compute_forecast_metrics(
+                            forecast_list, current_close, history, extra_context={"pattern_bias": p_bias}
+                        )
+                        _set_kronos_cache(ticker, ai_forecast_bias, ai_confidence_score, forecast_list, forecast_metrics)
+
+                        # Persist to SQLite db cache
+                        try:
+                            conn = sqlite3.connect('scan_history.db')
+                            c = conn.cursor()
+                            c.execute(
+                                "INSERT INTO kronos_forecasts (ticker, generated_at, pred_len, forecast_json, last_close, model_type) VALUES (?, ?, 10, ?, ?, 'kronos')",
+                                (ticker, datetime.now().isoformat(), json.dumps(forecast_list), float(current_close))
+                            )
+                            conn.commit()
+                            conn.close()
+                        except Exception as db_ex:
+                            print(f"[Kronos DB Cache Write] Error writing cache for {ticker} in setup-analysis: {db_ex}")
+
+                        # Expose T_val and weighted_score in log
+                        print(
+                            f"[Kronos] {ticker} | T={T_val:.2f} | "
+                            f"ret={forecast_metrics['return_pct']:+.1f}% ({forecast_metrics['normalised_return']:+.1f}std) "
+                            f"split={forecast_metrics['momentum_split']:+.1f}% cons={forecast_metrics['consistency_pct']:.0f}% "
+                            f"brkout={forecast_metrics['breakout_signal']} dd={forecast_metrics['max_drawdown_pct']:.1f}% flat={forecast_metrics['is_flat_forecast']} "
+                            f"-> score={forecast_metrics['weighted_score']:+.3f} -> {ai_forecast_bias} | conf={ai_confidence_score}%"
+                        )
+
+                        # Log raw forecast closes so path differences are visible per stock
+                        forecast_closes = [r["close"] for r in forecast_list]
+                        fc_str = " ".join(f"{c:.1f}" for c in forecast_closes)
+                        print(f"[Kronos] {ticker} closes: [{fc_str}]")
+
+                except Exception as ex:
+                    print(f"Kronos prediction execution error for {ticker}: {ex}")
+                    forecast_metrics = {}
+                    # ai_forecast_bias stays None → frontend will show 'Unavailable'
 
     return jsonify(
         ticker=ticker,
@@ -4393,6 +4461,7 @@ def get_kronos_forecast():
     import numpy as np
     from datetime import datetime
     import json
+    import sqlite3
     
     ticker = request.args.get('ticker', '').strip().upper()
     if not ticker:
@@ -4405,7 +4474,7 @@ def get_kronos_forecast():
     if pred_len not in [3, 5, 10]:
         pred_len = 5
         
-    sample_count = int(request.args.get('sample_count', 10))
+    sample_count = int(request.args.get('sample_count', 5)) # Optimized default from 10 to 5
     
     # 1. Fetch historical prices (120 bars for calculation of ATR%)
     history = fetch_historical_prices(ticker, range_str="1y")
@@ -4414,37 +4483,68 @@ def get_kronos_forecast():
         
     last_date_str = history[-1]["date"]
     
-    # Check database to see if we already have it stored within the last 4 hours
+    # 2. Check in-memory cache first
+    cached = _get_kronos_cache(ticker)
+    if cached:
+        bias, score, cached_forecast, metrics = cached
+        if len(cached_forecast) >= pred_len:
+            print(f"[Kronos API] Memory cache HIT (sliced) for {ticker} (requested {pred_len}, cached {len(cached_forecast)})")
+            sliced_forecast = cached_forecast[:pred_len]
+            for item in sliced_forecast:
+                if "p10_close" not in item:
+                    item["p10_close"] = item["close"]
+                if "p90_close" not in item:
+                    item["p90_close"] = item["close"]
+            return jsonify(
+                ticker=ticker,
+                pred_len=pred_len,
+                forecast=sliced_forecast,
+                last_close=float(history[-1]["close"]),
+                generated_at=datetime.now().isoformat()
+            )
+            
+    # 3. Check database cache next
     conn = sqlite3.connect("scan_history.db")
     c = conn.cursor()
+    # Check if a forecast of length >= pred_len exists and is fresh
     c.execute(
-        "SELECT forecast_json, last_close, generated_at FROM kronos_forecasts WHERE ticker = ? AND pred_len = ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
+        "SELECT forecast_json, last_close, generated_at, pred_len FROM kronos_forecasts WHERE ticker = ? AND pred_len >= ? AND (model_type = 'kronos' OR model_type IS NULL) ORDER BY id DESC LIMIT 1",
         (ticker, pred_len)
     )
     db_row = c.fetchone()
     
-    # If the database record is less than 4 hours old, use it
+    # If the database record is less than 4 hours old, use it (and slice if necessary)
     if db_row:
-        stored_forecast_json, last_close, generated_at_str = db_row
+        stored_forecast_json, last_close_val, generated_at_str, db_pred_len = db_row
         try:
             gen_time = datetime.fromisoformat(generated_at_str)
             if (datetime.now() - gen_time).total_seconds() < 4 * 3600:
+                forecast_list = json.loads(stored_forecast_json)
+                sliced_forecast = forecast_list[:pred_len]
+                for item in sliced_forecast:
+                    if "p10_close" not in item:
+                        item["p10_close"] = item["close"]
+                    if "p90_close" not in item:
+                        item["p90_close"] = item["close"]
                 conn.close()
+                print(f"[Kronos API] DB cache HIT (sliced) for {ticker} (requested {pred_len}, cached {db_pred_len})")
                 return jsonify(
                     ticker=ticker,
                     pred_len=pred_len,
-                    forecast=json.loads(stored_forecast_json),
-                    last_close=last_close,
+                    forecast=sliced_forecast,
+                    last_close=last_close_val,
                     generated_at=generated_at_str
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Kronos DB Cache Slicing] Error parsing/slicing cached DB forecast: {e}")
             
-    # Load predictor
+    # Load predictor for live inference
+    global _kronos_last_error
     predictor = get_kronos_predictor()
     if not predictor:
         conn.close()
-        return jsonify(error="Kronos predictor not loaded"), 500
+        err_msg = f"Kronos predictor not loaded: {_kronos_last_error}" if _kronos_last_error else "Kronos predictor not loaded"
+        return jsonify(error=err_msg), 500
         
     try:
         # Prepare inputs using the last 60 bars for fast inference context
@@ -5718,13 +5818,65 @@ def scan_stocks():
         print(f"TradingView live scan failed ({e}) — attempting fallback to scan_result.txt...")
         try:
             if os.path.exists("scan_result.txt"):
+                db_opened_here = False
+                local_conn = conn
+                if not local_conn:
+                    local_conn = sqlite3.connect('scan_history.db')
+                    db_opened_here = True
+                local_c = local_conn.cursor()
+
                 for enc in ("utf-16", "utf-8"):
                     try:
                         with open("scan_result.txt", "r", encoding=enc) as f:
                             cached_data = json.load(f)
                             print("Successfully loaded scan fallback from scan_result.txt")
+                            
+                            # Enrich cached stocks
+                            for stock in cached_data.get("stocks", []):
+                                ticker_symbol = stock.get("ticker", "")
+                                ticker_clean = ticker_symbol.replace("NSE:", "").replace("BSE:", "")
+                                
+                                # Query fundamentals from database
+                                local_c.execute('''
+                                    SELECT revenue_yoy_pct, revenue_qoq_pct, net_profit_yoy_pct, consecutive_quarters_growth, surprise_type, net_profit
+                                    FROM fundamentals
+                                    WHERE symbol = ?
+                                    ORDER BY result_date DESC, id DESC
+                                    LIMIT 1
+                                ''', (ticker_clean,))
+                                fund = local_c.fetchone()
+
+                                if fund:
+                                    stock["revenue_growth"] = fund[0] if fund[0] is not None else 0.0
+                                    stock["revenue_growth_qoq"] = fund[1] if fund[1] is not None else 0.0
+                                    stock["profit_growth"] = fund[2] if fund[2] is not None else 0.0
+                                    stock["consecutive_quarters_growth"] = fund[3] if fund[3] is not None else 0
+                                    stock["surprise_type"] = fund[4] or "UNKNOWN"
+
+                                    # Align with frontend expectations
+                                    stock["eps_growth_qoq"] = stock["profit_growth"]
+                                    stock["consecutive_eps_growth_quarters"] = stock["consecutive_quarters_growth"]
+                                    stock["earnings_surprise_history"] = stock["surprise_type"]
+                                else:
+                                    stock["revenue_growth"] = 0.0
+                                    stock["revenue_growth_qoq"] = 0.0
+                                    stock["profit_growth"] = 0.0
+                                    stock["consecutive_quarters_growth"] = 0
+                                    stock["surprise_type"] = "UNKNOWN"
+
+                                    # Align with frontend expectations
+                                    stock["eps_growth_qoq"] = 0.0
+                                    stock["consecutive_eps_growth_quarters"] = 0
+                                    stock["earnings_surprise_history"] = "UNKNOWN"
+
+                                # Compute extra fundamental and growth metrics
+                                compute_extra_fields(stock)
+                                
+                            if db_opened_here:
+                                local_conn.close()
                             return jsonify(cached_data)
-                    except Exception:
+                    except Exception as parse_e:
+                        print(f"Error parsing fallback with encoding {enc}: {parse_e}")
                         continue
             print("Fallback file scan_result.txt not found or failed to parse.")
         except Exception as fallback_e:

@@ -264,7 +264,7 @@ class EPService:
             # Safe corporate events query (avoids SQLAlchemy date parse failure)
             try:
                 rows = db.session.execute(
-                    db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
+                    db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
                     {"s": symbol_upper}
                 ).fetchall()
                 detail["corporate_events"] = [dict(r._mapping) for r in rows]
@@ -292,7 +292,7 @@ class EPService:
         # on 'DD-Mon-YYYY' date strings that may exist in the event_date column.
         try:
             rows = db.session.execute(
-                db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
+                db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
                 {"s": symbol_upper}
             ).fetchall()
             detail["corporate_events"] = [dict(r._mapping) for r in rows]

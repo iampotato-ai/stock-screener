@@ -1,0 +1,49 @@
+Security Audit Report
+=====================
+
+Scope
+-----
+- Reviewed all Python source files under `app/services/` and `app/api/`.
+
+Findings
+--------
+1. **Credential Management**
+   - No hard‑coded secrets, API keys, passwords, or tokens were found in the codebase.
+   - Sensitive values (e.g., Telegram bot token, chat ID, Google News URL) are retrieved from Flask config or environment variables (`os.environ.get`). This follows best practices.
+
+2. **SQL Query Construction**
+   - The majority of database interactions use SQLite parameter substitution (`?` placeholders) with values passed via separate parameters – safe against SQL injection.
+   - A few `SELECT` statements are built using f‑strings that embed a *generated* `where_str` or `order_by_expr`. The `where_str` is constructed from a whitelist of allowed literals derived from request arguments, and `order_by_expr` is validated against an allow‑list (`allowed_sort_cols`). While currently safe, relying on string concatenation can become error‑prone if future code adds unchecked parameters.
+   - **Recommendation**: Convert all dynamic query parts to use parameterised placeholders where possible, or employ an ORM query builder to avoid manual string interpolation.
+
+3. **HTML/Message Formatting**
+   - `AlertService.send_telegram_alert` builds messages with HTML markup (`parse_mode="HTML"`). User‑controlled fields such as `symbol`, `exchange`, and numeric values are interpolated directly into the message.
+   - Although Telegram restricts HTML tags, an attacker could potentially inject malformed markup or special characters that break formatting.
+   - **Recommendation**: Escape or validate all user‑supplied values before inserting them into HTML‑parsed messages.
+
+4. **Logging of Sensitive Data**
+   - Several error handling blocks `print` or `logger.error` the raw data structures (e.g., IPO row data, exception messages). This may inadvertently expose confidential or personally identifiable information in logs.
+   - **Recommendation**: Review log statements and redact any PII or internal API keys before logging.
+
+5. **External Requests**
+   - The code performs HTTP requests to external services (e.g., NSE API, Google News, Telegram) without SSL verification overrides, which is appropriate. No insecure `http://` endpoints are used.
+
+6. **File System Access**
+   - No use of `eval`, `exec`, or OS command execution with untrusted input was observed.
+
+7. **Potential Denial‑of‑Service**
+   - The SQLite connection patch sets a timeout of 30 seconds to mitigate lock contention, which is a reasonable safeguard.
+
+Overall Assessment
+-------------------
+- The project follows good practices for secret management and most database interactions.
+- Minor improvements are suggested around SQL string interpolation, message sanitisation, and log hygiene to harden the application further.
+
+Action Items
+------------
+- Refactor dynamic SQL queries to use parameterised statements or ORM helpers.
+- Implement sanitisation/escaping for all values embedded in HTML‑parsed Telegram messages.
+- Audit log statements to ensure no sensitive data is written to logs.
+- Conduct a follow‑up review after any future changes that introduce new user‑controlled query fragments.
+
+*End of Report*

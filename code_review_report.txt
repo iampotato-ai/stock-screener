@@ -1,0 +1,161 @@
+# Code Review Report
+
+**Repository:** stock-screener
+**Generated on:** 2026-06-21
+
+This report summarizes linting and static‑analysis findings for all files that changed relative to the `main` branch. The analysis was performed with **flake8** (including pyflakes, pycodestyle, and mccabe). Issues are grouped by file and type, followed by concise suggestions.
+
+---
+
+## .claude/settings.json
+- `E501 line too long` on lines **96** (88 > 79 chars) and **97** (115 > 79 chars).
+- `W292 no newline at end of file` on line **100**.
+**Suggestion:** Wrap long strings or split configuration entries; ensure a final newline.
+
+---
+
+## .gitignore
+- `E999 SyntaxError: invalid syntax` on line **2**.
+**Suggestion:** `.gitignore` is not Python; exclude it from flake8 (e.g. via a config file) or ignore this warning.
+
+---
+
+## app/__init__.py
+- `F401` unused imports (multiple, e.g. `.extensions.db`, `app.services.ep_service.*`).
+- `E302/E305` missing blank lines before/after definitions.
+- `E402` imports not at top of file.
+- `W293` blank line contains whitespace.
+- `W292` missing newline at EOF.
+**Suggestion:** Remove unused imports, place all imports at the top, follow PEP 8 blank‑line spacing, trim trailing whitespace, add a final newline.
+
+---
+
+## app/api/v1/__init__.py
+- `E402` multiple module‑level imports not at top of file.
+- `W292` missing newline at EOF.
+**Suggestion:** Consolidate imports at the top, add a trailing newline.
+
+---
+
+## app/api/v1/ep.py
+- `E501` several lines exceed 79 characters (lines 14, 88, 136, 138, 165).
+- `W293` blank lines contain whitespace (lines 32, 35, 77).
+**Suggestion:** Break long statements, strip whitespace from empty lines.
+
+---
+
+## app/api/v1/ep_watchlist.py
+- `E501` multiple long lines (lines 17, 50, 54, 66, 82, 85).
+- `W292` missing newline at EOF.
+**Suggestion:** Refactor long lines, add a final newline.
+
+---
+
+## app/api/v1/legacy_routes.py *(~600+ lines)*
+### Major categories
+- **Unused imports** (`F401`): `flask.request`, `flask.current_app`, `flask.render_template`, `datetime.date`, `re`, `warnings`, `logging`, `app.extensions.db`, many others.
+- **Import order** (`E402`): imports placed after code.
+- **Line length** (`E501`): virtually every line >79 chars; many exceed 120‑200 chars.
+- **Blank‑line & whitespace** (`E302/E305/E306/E261/E272/E221`): missing blank lines, multiple spaces before operators/keywords, extra spaces before inline comments.
+- **Redefinitions** (`F811`): `datetime`, `request` re‑defined multiple times.
+- **Undefined names** (`F821`): `StreamHandler`, `logging`, `NEWS_CACHE`, `NEWS_CACHE_TIMEOUT`, `get_market_breadth`, etc.
+- **Trailing whitespace** (`W291`), **blank line at EOF** (`W292`), **blank line contains whitespace** (`W293`).
+- **Bare except** (`E722`): generic except blocks without specifying exception type.
+- **Ambiguous variable name** (`E741`): variable named `l`.
+- **Multiple statements on one line** (`E701`): e.g., at line 5911.
+- **Unused local variables** (`F841`): `mock_refresh`, `equity`.
+- **Global statements unused** (`F824`).
+**Suggestion:** This file needs a systematic cleanup:
+  * Remove all unused imports and rename any that are required.
+  * Move every import to the top of the file.
+  * Re‑wrap long statements (prefer 79‑char limit; consider breaking arguments onto separate lines).
+  * Insert required blank lines (2 before class/def, 1 after).
+  * Replace bare `except:` with specific exception types or `except Exception:`.
+  * Resolve undefined names – import the missing symbols or correct the references.
+  * Eliminate redefinitions by renaming or consolidating variables.
+  * Trim trailing whitespace and ensure a single newline at EOF.
+  * Run a formatter (e.g., `black`) to enforce consistent spacing.
+
+---
+
+## app/services/ep_service.py
+- `E501` many lines exceed 79 characters (e.g., lines 2, 13, 31‑33, 43‑46, 102, 132, 136, 143‑144, 152, 169‑173, 191‑194, 240‑243, 245‑254, 262‑267, 273‑280, 291‑298, 303‑311, 317‑325, 334‑349, 398).
+- `F401` unused imports: `os`, `sqlite3`, `bisect`, `datetime.timedelta`, `app.models.CorporateEvent`.
+- `E221` multiple spaces before operators (lines 31‑33, 331, etc.).
+- `W293` blank line contains whitespace (lines 212, 223, 212‑ etc.).
+**Suggestion:** Remove unused imports, reformat long lines (split arguments, use temporary variables), fix spacing, and strip trailing whitespace.
+
+---
+
+## app/tasks/scheduler.py
+*(no flake8 violations reported)* – appears to conform to style.
+
+---
+
+## app/utils/forecast_math.py
+*(no flake8 violations reported)* – appears clean.
+
+---
+
+## app/utils/pattern_detection.py
+- `E701` multiple statements on one line (lines 486‑487).
+- `E501` long lines (e.g., line 489).
+- `E221` multiple spaces before operator (line 494).
+**Suggestion:** Separate statements onto distinct lines, wrap long expressions, and correct spacing.
+
+---
+
+## config.py
+- `E302` missing blank lines (line 5).
+- `E501` long lines (lines 7, 14, 18, 20‑21, 24‑26, 59).
+- `E301` missing blank line (line 48).
+- `F821` undefined names `StreamHandler`, `logging` (lines 52‑53).
+- `W292` missing newline at EOF (line 79).
+**Suggestion:** Add required blank lines, import `logging` and `StreamHandler` if needed, split long lines, and ensure final newline.
+
+---
+
+## tests/test_ep_screener.py
+- `F401` unused import `json`.
+- `E501` many lines exceed 79 characters (e.g., lines 16, 55‑57, 74‑75, 77‑84, 94‑95, 98‑99, 108‑111, 113‑115, 125‑128, 138‑146, 154‑162, 169‑178, 185‑189, 191‑199, 203‑215, 218‑226, 228‑236, 242‑256, 258‑274, 277‑284, 292‑306, 308‑317, 320‑329, 334‑349, 357‑361, 370‑378, 398‑410, 423‑442, 454‑475, 478‑492, 497‑512, etc.).
+- `E302/E302` missing blank lines before class/function definitions.
+- `E261` at least two spaces before inline comment (multiple occurrences).
+- `W291/W293` trailing whitespace and blank lines with whitespace.
+- `F841` local variable `mock_refresh` assigned but never used.
+**Suggestion:** Clean up test files:
+  * Remove unused imports.
+  * Re‑wrap long lines (or use pytest's multi‑line fixtures).
+  * Ensure exactly two spaces before inline comments.
+  * Delete unused variables or mark them with `_` prefix.
+  * Trim trailing whitespace and maintain proper blank lines.
+
+---
+
+## tests/test_phase4_backtest.py
+- `F401` unused import `unittest.mock.MagicMock`.
+- `E501` many long lines (e.g., lines 14‑15, 44‑45, 57‑58, 76‑77, 79‑82, 85‑86, 128‑129, 138‑139, 155‑156, 214‑218, 222‑226, 242‑244, 248‑251, 267‑268, 275‑276).
+- `E302/E305/E303` missing/extra blank lines.
+- `W293` blank lines containing whitespace.
+- `E261` spaces before inline comments.
+- `W291` trailing whitespace.
+**Suggestion:** Apply the same clean‑up steps as for other test files—remove unused imports, split long statements, fix blank‑line spacing, remove trailing whitespace.
+
+---
+
+## Summary of Common Issues Across the Codebase
+1. **Line length violations (`E501`).** The majority of files have many lines exceeding the 79‑character limit. Consider running a formatter like `black` (which uses 88‑char limit) or manually refactoring.
+2. **Unused imports (`F401`).** Numerous modules import symbols that are never referenced. Removing them reduces import overhead and improves readability.
+3. **Import ordering (`E402`).** Imports should appear at the top of the file, before any other statements.
+4. **Blank‑line spacing (`E302`, `E305`, `E306`).** Follow PEP 8: two blank lines before top‑level class/function definitions, one blank line between methods.
+5. **Trailing whitespace / whitespace on blank lines (`W291`, `W293`).** These are cosmetic but cause lint failures; strip them.
+6. **Missing final newline (`W292`).** Ensure every file ends with a newline.
+7. **Undefined names (`F821`).** Add missing imports or correct misspellings.
+8. **Redefinition of variables (`F811`).** Avoid redefining imports or functions; rename local variables if needed.
+9. **Bare `except` clauses (`E722`).** Catch specific exceptions.
+10. **Ambiguous variable names (`E741`).** Use more descriptive identifiers.
+
+**Overall Recommendation:** Run `black .` (or another formatter) to address most spacing and line‑length issues, then manually clean up the remaining logical problems (unused imports, undefined names, redefinitions, bare excepts). After fixing, re‑run flake8 to verify the codebase meets the style standards.
+
+---
+
+*Report generated automatically by the `LaunchReviewAgents.CodeReviewer` agent.*

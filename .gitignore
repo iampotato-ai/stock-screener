@@ -22,3 +22,4 @@ scratch/
 .vscode/
 .DS_Store
 *.log
+.worktrees/

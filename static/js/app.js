@@ -12814,7 +12814,7 @@ function generateValuationMetricsHTML(stock) {
 
     const peRatio = stock.pe_ratio || 0;
     const epsGrowth = stock.revenue_growth_qoq || 0; // Proxy for eps_growth_qoq
-    const pegRatio = epsGrowth > 0 ? peRatio / epsGrowth : 0;
+    const pegRatio = (stock.peg_ratio !== undefined && stock.peg_ratio !== null) ? stock.peg_ratio : (epsGrowth > 0 ? peRatio / epsGrowth : 0);
 
     const evEbitda = stock.ev_ebitda || 0; // Proxy for ev_revenue
     const divYield = stock.div_yield || 0; // Shows yield context
@@ -12825,8 +12825,18 @@ function generateValuationMetricsHTML(stock) {
     return `
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">PEG Ratio (TTM/QoQ Proxy)</span>
-                <span class="metric-help" title="P/E divided by quarterly revenue growth. <1.0 suggests undervalued relative to growth">ⓘ</span>
+                <span class="metric-name">P/E Ratio</span>
+                <span class="metric-help" title="Price to Earnings ratio. Lower is cheaper.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${peRatio > 0 && peRatio < 25 ? 'metric-value-positive' : (peRatio >= 40 ? 'metric-value-negative' : 'metric-value-neutral')}">${peRatio > 0 ? peRatio.toFixed(2) : '—'}</span>
+                <span class="metric-value-trend ${peRatio > 0 && peRatio < 25 ? 'trend-up' : (peRatio >= 40 ? 'trend-down' : 'trend-neutral')}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">PEG Ratio</span>
+                <span class="metric-help" title="Price/Earnings to Growth ratio. &lt;1.0 suggests undervalued relative to growth.">ⓘ</span>
             </div>
             <div class="metric-value">
                 <span class="metric-value-number ${pegRatio < 1 && pegRatio > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${pegRatio.toFixed(2)}</span>

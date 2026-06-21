@@ -59,6 +59,7 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     DATABASE = os.environ.get('DATABASE') or ':memory:'
+    ENABLE_BACKGROUND_TASKS = False
 
 
 class PytestConfig(Config):
@@ -66,6 +67,7 @@ class PytestConfig(Config):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     DATABASE = ':memory:'
+    ENABLE_BACKGROUND_TASKS = False
 
 
 config = {
