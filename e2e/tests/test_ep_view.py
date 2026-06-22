@@ -4,7 +4,7 @@ Ensures the EP tab loads, the EP workspace becomes active, and key UI elements a
 """
 
 from playwright.sync_api import sync_playwright
-from e2e.tests.common import get_base_url, launch_browser
+from .common import get_base_url, launch_browser
 
 
 def test_ep_view():
@@ -17,6 +17,9 @@ def test_ep_view():
         # Click EP tab
         page.click("#tab-ep")
         # EP view should become visible
+        view = page.locator("#view-ep")
+        view.wait_for(state="visible")
+        assert view.is_visible(), "EP view not visible"
         # Wait for the EP badge element to be attached (it may stay hidden if count is zero)
         page.wait_for_selector("#ep-high-count", state="attached", timeout=5000)
         badge = page.locator("#ep-high-count")

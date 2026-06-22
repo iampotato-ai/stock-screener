@@ -18,11 +18,17 @@ def test_intraday_view():
         page.click('button[data-view="intraday"]')
         # Verify Intraday view is visible
         intra_view = page.locator("#view-intraday")
+        intra_view.wait_for(state="visible")
         assert intra_view.is_visible(), "Intraday view did not become visible"
         # Check that the widgets container exists
         grid = page.locator(".intraday-grid")
+        grid.wait_for(state="visible")
         assert grid.is_visible(), "Intraday grid missing"
         # Check count widgets exist
-        assert page.locator("#count-gap-go").is_visible(), "Gap & Go count missing"
-        assert page.locator("#count-vwap").is_visible(), "VWAP count missing"
+        gap_go = page.locator("#count-gap-go")
+        gap_go.wait_for(state="visible")
+        assert gap_go.is_visible(), "Gap & Go count missing"
+        vwap = page.locator("#count-vwap")
+        vwap.wait_for(state="visible")
+        assert vwap.is_visible(), "VWAP count missing"
         browser.close()

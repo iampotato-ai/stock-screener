@@ -111,15 +111,31 @@ class WatchlistService:
         for item in items:
             d = item.to_dict()
             
-            # Fetch latest close price from daily_bars
-            latest_bar = db.session.query(DailyBar.close).filter(DailyBar.symbol == item.symbol).order_by(DailyBar.trade_date.desc()).first()
-            current_price = latest_bar[0] if latest_bar else None
+            # Fetch latest price from Yahoo Finance
+            ticker_full = f"{item.symbol}.NS" if item.exchange == "NSE" else f"{item.symbol}.BO"
+            current_price = None
+            try:
+                from app.utils.technical import fetch_historical_prices
+                # Fetch recent historical prices (5d range) to get the latest close
+                history = fetch_historical_prices(ticker_full, range_str="5d")
+                if history:
+                    current_price = float(history[-1]["close"])
+            except Exception as e:
+                # Silent fallback to local database
+                pass
             
-            # Calculate gain % if entry price exists
+            # Fallback to local daily_bars if Yahoo Finance fetch fails
+            if current_price is None:
+                latest_bar = db.session.query(DailyBar.close).filter(DailyBar.symbol == item.symbol).order_by(DailyBar.trade_date.desc()).first()
+                current_price = latest_bar[0] if latest_bar else None
+            
+            # Calculate gain % if entry price or catalyst close exists
+            base_price = item.entry_price or item.catalyst_close
             gain_pct = None
-            if item.entry_price and item.entry_price > 0 and current_price is not None:
-                gain_pct = round(((current_price - item.entry_price) / item.entry_price) * 100, 2)
+            if base_price and base_price > 0 and current_price is not None:
+                gain_pct = round(((current_price - base_price) / base_price) * 100, 2)
             
+            d['entry_price'] = base_price
             d['current_price'] = current_price
             d['gain_pct'] = gain_pct
             
@@ -127,6 +143,7 @@ class WatchlistService:
             filtered_d = {k: d.get(k) for k in cols}
             result.append(filtered_d)
         return result
+
 
     def add_to_ep_watchlist(self, symbol: str, exchange: str, stop_price: Any, notes: str) -> bool:
         """

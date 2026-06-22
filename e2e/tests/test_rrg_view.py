@@ -3,7 +3,7 @@
 Ensures the RRG tab activates and core UI elements appear.
 """
 
-from e2e.tests.common import get_base_url, launch_browser
+from .common import get_base_url, launch_browser
 from playwright.sync_api import sync_playwright
 
 
@@ -16,7 +16,11 @@ def test_rrg_view():
         # Click the RRG tab via data-view attribute
         page.click('button[data-view="rrg"]')
         # Verify RRG view is visible
-        assert page.locator('#view-rrg').is_visible(), "RRG view not visible"
+        view = page.locator('#view-rrg')
+        view.wait_for(state="visible")
+        assert view.is_visible(), "RRG view not visible"
         # Verify a core RRG container exists
-        assert page.locator('.rrg-container').is_visible(), "RRG container missing"
+        container = page.locator('.rrg-container')
+        container.wait_for(state="visible")
+        assert container.is_visible(), "RRG container missing"
         browser.close()
