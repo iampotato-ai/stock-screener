@@ -11,5 +11,6 @@ einops
 sentencepiece
 prophet
 statsmodels
+playwright==1.44.0
 xgboost==2.0.3
 joblib==1.3.2

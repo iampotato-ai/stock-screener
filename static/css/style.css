@@ -237,41 +237,93 @@ td.col-numeric, td.text-right {
 .logo-area {
     display: flex;
     align-items: center;
-    gap: 0.8rem;
+    gap: 0.85rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.logo-area:hover .logo-icon {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+    border-color: rgba(99, 102, 241, 0.5);
+    background: rgba(99, 102, 241, 0.15);
 }
 
 .logo-icon {
-    width: 44px;
-    height: 44px;
-    background: linear-gradient(135deg, var(--accent-blue) 0%, hsl(263, 70%, 50%) 100%);
-    border-radius: var(--radius-md);
+    width: 42px;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.logo-icon svg {
+    filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.4));
+    transition: all 0.3s ease;
+}
+
+.logo-area:hover .logo-icon svg {
+    color: #fff;
+    filter: drop-shadow(0 0 8px #6366f1);
 }
 
 .logo-text h1 {
-    font-family: 'Outfit', sans-serif;
-    font-size: 1.8rem;
+    font-family: 'Cabinet Grotesk', 'Outfit', sans-serif;
+    font-size: 1.65rem;
     font-weight: 800;
     letter-spacing: -0.5px;
     line-height: 1.1;
+    color: #fff;
+    display: flex;
+    align-items: center;
 }
 
 .logo-text h1 span {
-    background: linear-gradient(90deg, var(--accent-blue) 0%, hsl(263, 80%, 65%) 100%);
+    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #a855f7 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
 .logo-text p {
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--color-text-muted);
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
+    margin-top: 2px;
+}
+
+.logo-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    padding: 2px 6px;
+    border-radius: 9999px;
+    vertical-align: middle;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+}
+
+.logo-badge::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    background-color: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
 }
 
 .system-status {

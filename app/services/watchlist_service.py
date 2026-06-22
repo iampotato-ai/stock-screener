@@ -97,17 +97,32 @@ class WatchlistService:
 
     # EP Watchlist methods - replicating original logic from app.py
     def get_active_ep_watchlist(self) -> List[Dict[str, Any]]:
-        """Get all active EP watchlist entries with original column set."""
+        """Get all active EP watchlist entries with original column set and current prices/gains."""
+        from app.models import DailyBar
         items = db.session.query(EpWatchlist).filter(EpWatchlist.status == 'ACTIVE').order_by(EpWatchlist.catalyst_date.desc()).all()
         # Ensure we return only the expected columns in the dict format
         cols = [
             'id', 'symbol', 'exchange', 'catalyst_date', 'ep_type', 'status', 'trigger_type',
-            'entry_price', 'stop_price', 'target_price', 'entry_date', 'days_on_watch', 'notes', 'ep_score'
+            'entry_price', 'stop_price', 'target_price', 'entry_date', 'days_on_watch', 'notes', 'ep_score',
+            'current_price', 'gain_pct'
         ]
         
         result = []
         for item in items:
             d = item.to_dict()
+            
+            # Fetch latest close price from daily_bars
+            latest_bar = db.session.query(DailyBar.close).filter(DailyBar.symbol == item.symbol).order_by(DailyBar.trade_date.desc()).first()
+            current_price = latest_bar[0] if latest_bar else None
+            
+            # Calculate gain % if entry price exists
+            gain_pct = None
+            if item.entry_price and item.entry_price > 0 and current_price is not None:
+                gain_pct = round(((current_price - item.entry_price) / item.entry_price) * 100, 2)
+            
+            d['current_price'] = current_price
+            d['gain_pct'] = gain_pct
+            
             # Filter dict keys to only include those in cols
             filtered_d = {k: d.get(k) for k in cols}
             result.append(filtered_d)

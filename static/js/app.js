@@ -12137,7 +12137,7 @@ function renderEPWatchlistTable() {
     if (epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="12" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     No active watchlist candidates found.
                 </td>
             </tr>
@@ -12170,6 +12170,18 @@ function renderEPWatchlistTable() {
     
     tbody.innerHTML = sorted.map(item => {
         const scoreVal = item.ep_score || 0.0;
+        
+        const cmpVal = item.current_price;
+        const cmpHtml = cmpVal != null ? `₹${cmpVal.toFixed(2)}` : '-';
+        
+        const gainVal = item.gain_pct;
+        let gainHtml = '-';
+        if (gainVal != null) {
+            const gainColor = gainVal >= 0 ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)';
+            const gainSign = gainVal > 0 ? '+' : '';
+            gainHtml = `<span style="color: ${gainColor}; font-weight: 600;">${gainSign}${gainVal.toFixed(2)}%</span>`;
+        }
+        
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('input') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
                 <td style="text-align: center;" onclick="event.stopPropagation()">
@@ -12182,6 +12194,8 @@ function renderEPWatchlistTable() {
                 <td>${item.catalyst_date}</td>
                 <td class="text-center" style="font-weight: 700; color: var(--accent-blue);">${scoreVal.toFixed(2)}</td>
                 <td class="text-right">₹${item.entry_price ? item.entry_price.toFixed(2) : '-'}</td>
+                <td class="text-right">${cmpHtml}</td>
+                <td class="text-right">${gainHtml}</td>
                 <td class="text-right" style="color: var(--accent-red);">₹${item.stop_price ? item.stop_price.toFixed(2) : '-'}</td>
                 <td class="text-center">${item.days_on_watch} / 20</td>
                 <td><span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">${item.status}</span></td>
@@ -12252,7 +12266,7 @@ function exportWatchlistToCSV() {
     }
     
     const exportList = epWatchlistData.filter(item => symbols.includes(item.symbol));
-    const headers = ['Symbol', 'EP Type', 'Catalyst Date', 'EP Score', 'Entry Price', 'Stop Price', 'Days on Watch', 'Status', 'Notes'];
+    const headers = ['Symbol', 'EP Type', 'Catalyst Date', 'EP Score', 'Entry Price', 'CMP', 'Gain %', 'Stop Price', 'Days on Watch', 'Status', 'Notes'];
     
     const csvContent = [
         headers.join(','),
@@ -12262,6 +12276,8 @@ function exportWatchlistToCSV() {
             item.catalyst_date,
             item.ep_score || 0.0,
             item.entry_price || '',
+            item.current_price || '',
+            item.gain_pct != null ? `${item.gain_pct}%` : '',
             item.stop_price || '',
             item.days_on_watch || 0,
             item.status,
