@@ -1,79 +1,105 @@
 # Repository Guidelines
 
 ## Project Overview
-MomentumScan is a Flask‑based stock screener for the NSE (India) that provides swing‑ and intraday‑momentum signals, live market‑breadth dashboards, ensemble model forecasts, and an AI‑augmented watchlist. The backend aggregates data from TradingView, Google News, Yahoo Finance, and proprietary NLP pipelines.
+MomentumScan is a Flask‑based stock screener for the NSE (India). It aggregates data from TradingView, Google News, Yahoo Finance, and proprietary NLP pipelines to provide swing‑ and intraday‑momentum signals, live market‑breadth dashboards, ensemble model forecasts, and an AI‑augmented watchlist.
 
 ## Architecture & Data Flow
-- **Flask app** (`app/__init__.py`) creates the application via the factory pattern and registers the API blueprint (`app/api/v1`).
-- **API layer** (`app/api/v1/*.py`) exposes REST endpoints (e.g. `/api/v1/breadth-latest`, `/api/v1/watchlist`). Requests are handled by service classes in `app/services/`.
-- **Service layer** (`app/services/*.py`) contains business logic, calls the SQLAlchemy models (`app/models.py`) and performs technical calculations in `app/utils/`.
-- **Persistence** uses SQLite (`scan_history.db`) via Flask‑SQLAlchemy (`app/extensions.py`).
-- **Background scheduler** (`app/tasks/scheduler.py`) runs periodic scans and model forecasts.
-- **Frontend** is a single‑page app served from `static/` and `templates/`, consuming the JSON API.
-- **Data flow**: client → API → service → model/DB → service → API → client. Forecast generation may invoke the `model/` package (Kronos, Prophet, ARIMA).
+- **Client (frontend)** → HTTP/JSON → Flask app
+- **Flask app** registers the versioned ``api/v1`` blueprint and delegates to the **service layer**.
+- **Service layer** (`app/services/*`) contains pure Python business logic; it queries **SQLAlchemy models** (`app/models.py`) or uses low‑level SQLite helpers for legacy paths.
+- **Background scheduler** (`app/tasks/scheduler.py`) runs periodic EP refreshes, IPO updates, model training, and warm‑up tasks via APScheduler.
+- Data flows back to the client as JSON responses.
 
 ## Key Directories
-- `app/` – core Flask package (factory, models, services, utils, API blueprints, tasks, extensions).
+- `app/` – core Flask package (factory, extensions, models, services, utils, API, tasks).
 - `app/api/v1/` – versioned REST endpoints.
-- `app/services/` – business‑logic modules (e.g. `ep_service.py`, `watchlist_service.py`).
-- `app/utils/` – technical helpers (technical indicators, pattern detection, forecasts).
-- `tests/` – pytest suite covering API, services, models, and utility functions.
-- `scripts/` – maintenance scripts (`verify_migration.py`, `run_performance_tests.py`).
-- `docs/` – design/spec/plan markdown files and feature listings.
-- `config.py` – configuration classes for development, production, testing.
-- `run.py` – canonical entry point (`create_app` → `app.run`).
+- `app/services/` – business‑logic modules (watchlist, EP, screener, IPO, NLP, alerts, etc.).
+- `app/utils/` – technical helpers (technical‑indicator calculations, forecasting, FX conversion, etc.).
+- `app/extensions.py` – Flask extensions (SQLAlchemy, etc.).
+- `app/tasks/` – APScheduler jobs.
+- `static/` – vanilla CSS/JS assets.
+- `templates/` – Jinja2 HTML templates (e.g. `index.html`).
+- `tests/` – pytest unit, integration and performance tests.
+- `e2e/` – Playwright end‑to‑end tests.
+- `scripts/` – maintenance utilities (`verify_migration.py`, `run_performance_tests.py`, `train_ep_scoring_model.py`).
+- `docs/` – design/specification documents and implementation plans.
 
 ## Development Commands
 ```bash
-# Install dependencies
-pip install -r requirements.txt   # (requirements.txt not present; use the README list)
+# Install runtime dependencies
+pip install -r requirements.txt
 
-# Run the development server
-python run.py   # or `py run.py`
+# Run the app locally (dev mode)
+python run.py
 
-# Run the test suite
-pytest               # discovers `tests/` per pytest.ini
+# Run unit / integration test suite
+pytest
 
-# Verify migration endpoints (scripts/verify_migration.py)
+# Run coverage (target ≥85 % for services, ≥90 % for EP inference)
+pytest --cov=app
+
+# Execute performance benchmarks
+python scripts/run_performance_tests.py
+
+# Verify migrated API endpoints (sanity check)
 python scripts/verify_migration.py
 
-# Run performance benchmark
-python scripts/run_performance_tests.py
-```
-*Linting/formatting*: not defined in repo – adopt `flake8`/`black` locally.
+# Train the EP scoring model (placeholder implementation)
+python scripts/train_ep_scoring_model.py [--dry-run]
+
+# Run Playwright end‑to‑end suite (headless by default)
+python -m pytest -q e2e/tests/*.py
+``` 
 
 ## Code Conventions & Common Patterns
-- **Naming**: snake_case for functions/variables, PascalCase for classes.
-- **Flask factory** in `app/__init__.py` with `create_app(config_name)`.
-- **SQLAlchemy models** inherit from `BaseModel` providing `to_dict`/serialization.
-- **Error handling** via `register_error_handlers` in `app/__init__.py`.
-- **Background tasks** scheduled with APScheduler (`app/tasks/scheduler.py`).
-- **Configuration** via environment variables with sensible defaults in `config.py`.
-- **Dependency injection** – extensions (`db`) are initialized in `init_extensions` and injected into the app.
-- **Async patterns**: long‑running forecasts executed in separate threads limited to 8 workers (`ep_service.py`).
-- **Logging**: production logging to stderr; rotating file handler in `app/__init__.py`.
+- **Application Factory** (`create_app`) enables multiple contexts (dev, testing, CI). 
+- **Blueprint versioning** (`api/v1`) keeps routes modular and extensible. 
+- **Service‑layer separation**: thin Flask view functions delegate to `app/services/*` classes that contain type‑annotated methods, explicit `db.session.commit()` handling, and raise `ValueError` for validation errors.
+- **SQLAlchemy ORM** is the primary persistence mechanism; raw SQLite helpers are only used for legacy routes. 
+- **Configuration** (`config.py`) provides four subclassed configs (`DevelopmentConfig`, `ProductionConfig`, `TestingConfig`, `PytestConfig`) with environment‑variable defaults for `SECRET_KEY`, `DATABASE_URL`, feature flags, and model paths.
+- **Feature flags** (`ENABLE_BACKGROUND_TASKS`, `ENABLE_TELEGRAM_ALERTS`, `ENABLE_NLP_ENRICHMENT`) are toggled via env vars without code changes. 
+- **Logging** uses Python's `logging` module with a rotating file handler; `LOG_TO_STDOUT` forces console output in dev. 
+- **Naming**: `snake_case` for functions/variables, `PascalCase` for classes. 
+- **Type hints & docstrings** are present on public APIs. 
+- **Thread‑safe background jobs** use `threading.Lock` (`refresh_lock`, `ep_refresh_lock`) to guard shared state.
+- **Async patterns** are limited to thread pools (e.g., forecasting workers) to avoid GIL‑related issues. 
+- **Dependency injection** is performed via Flask extensions (`db`) and explicit imports; services avoid holding Flask globals.
 
 ## Important Files
-- `README.md` – high‑level description and feature list.
-- `config.py` – config class hierarchy (`DevelopmentConfig`, `ProductionConfig`, `TestingConfig`).
-- `app/__init__.py` – factory, blueprint registration, error handlers.
-- `app/models.py` – core SQLAlchemy models (User, WatchlistItem, ScanHistory, Forecasts, etc.).
-- `app/extensions.py` – Flask extensions (SQLAlchemy).
-- `run.py` – entry point for `flask run`.
-- `pytest.ini` – pytest configuration (testpaths = tests).
-- `scripts/verify_migration.py` – sanity‑check for migrated API endpoints.
+- `run.py` – canonical entry point (`create_app` → `app.run`).
+- `app/__init__.py` – factory, error handlers, logging, blueprint registration.
+- `app/config.py` – central configuration module with env‑driven defaults.
+- `app/models.py` – SQLAlchemy model definitions (User, WatchlistItem, EpWatchlist, etc.).
+- `app/extensions.py` – `db = SQLAlchemy()` and init helper.
+- `app/services/watchlist_service.py`, `ep_service.py`, `screener_service.py`, … – core business logic.
+- `app/api/v1/*.py` – REST endpoint definitions.
+- `app/tasks/scheduler.py` – APScheduler setup and background jobs.
+- `requirements.txt` – pinned Python dependencies (Flask, Flask‑SQLAlchemy, APScheduler, pandas, torch, transformers, xgboost, playwright, etc.).
+- `pytest.ini` – pytest configuration (`testpaths = tests`).
+- `scripts/verify_migration.py`, `run_performance_tests.py`, `train_ep_scoring_model.py` – utility scripts.
+- `docs/` – specifications (`frontend_hero_spec.md`, `features/*`), design plans (`superpowers/*`), and ADRs.
+- `e2e/tests/` – Playwright test suite covering home page, dashboard, EP, Screener, Watchlist, IPO, RRG views.
 
 ## Runtime/Tooling Preferences
-- **Language**: Python 3.8+.
-- **Package manager**: `pip` (virtual environment recommended).
-- **Web server**: Flask development server for local work; production should use a WSGI server (e.g. gunicorn).
-- **Database**: SQLite (`scan_history.db`) – file‑based, no external DB required.
-- **ML libraries**: `torch`, `transformers`, `prophet`, `statsmodels` for ensemble forecasts.
-- **Static assets**: vanilla JavaScript/CSS under `static/` (no Node/Bun build step).
+- **Python 3.8+** runtime.
+- **Package manager**: `pip` with a `requirements.txt` lockfile.
+- **Database**: SQLite (`scan_history.db`) for development; can be swapped via `DATABASE_URL`.
+- **Background jobs**: APScheduler running in-process threads.
+- **Frontend**: vanilla HTML/CSS/JS; no bundler required.
+- **E2E testing**: Playwright (Python sync API). Install via `pip install playwright && playwright install`.
+- **Logging**: configurable to stdout or rotating file via `LOG_TO_STDOUT`.
 
 ## Testing & QA
-- **Framework**: `pytest` (discovering files matching `test_*.py` under `tests/`).
-- **Run all tests**: `pytest` from repository root.
-- **Key test modules**: `test_ep_screener.py`, `test_market_breadth.py`, `test_alert_service.py`, `test_database.py`, etc., covering API endpoints, service logic, and database interactions.
-- **Smoke test**: `smoke_test.py` provides a quick sanity check.
-- **Coverage**: not configured; add `--cov=app` to pytest command for coverage reporting if needed.
+- **Framework**: `pytest` (configured by `pytest.ini`).
+- **Unit / integration tests** live under `tests/`; fixtures in `tests/conftest.py` provide a temporary SQLite DB and a Flask app instance in `TESTING` mode.
+- **Coverage expectations**: ≥ 85 % for service APIs, ≥ 90 % for EP scoring inference code.
+- **Special utilities**: global `sqlite3.connect` mock redirects to per‑test DB; extensive use of `unittest.mock.patch` for external I/O (HTTP calls, data fetches).
+- **Performance tests** (`tests/unit/test_screener_service_performance.py`) assert acceptable latency for repeated service calls.
+- **Playwright E2E tests** (`e2e/tests/*.py`) verify that each workspace view loads, key UI elements (tabs, badges, tables) are visible, and navigation works.
+- **Running all checks**:
+  ```bash
+  pytest && python -m pytest -q e2e/tests/*.py
+  ```
+- **Accessibility**: `axe‑core` integration in Playwright specs (not shown here) ensures WCAG AA compliance.
+
+*The repository follows a classic Flask‑MVC‑like separation with clear service boundaries, environment‑driven configuration, and a solid automated test suite covering unit, integration, performance, and UI levels.*
