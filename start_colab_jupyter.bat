@@ -1,0 +1,6 @@
+@echo off
+:: Stock Screener - Local Jupyter Server for Google Colab
+echo Starting Jupyter Notebook Server on port 8888...
+echo Allowing Google Colab origin (https://colab.research.google.com)...
+"C:\Users\91996\AppData\Local\Programs\Python\Python312\python.exe" -m jupyter notebook --NotebookApp.allow_origin="https://colab.research.google.com" --port=8888 --NotebookApp.port_retries=0
+pause

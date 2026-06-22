@@ -237,41 +237,93 @@ td.col-numeric, td.text-right {
 .logo-area {
     display: flex;
     align-items: center;
-    gap: 0.8rem;
+    gap: 0.85rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.logo-area:hover .logo-icon {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+    border-color: rgba(99, 102, 241, 0.5);
+    background: rgba(99, 102, 241, 0.15);
 }
 
 .logo-icon {
-    width: 44px;
-    height: 44px;
-    background: linear-gradient(135deg, var(--accent-blue) 0%, hsl(263, 70%, 50%) 100%);
-    border-radius: var(--radius-md);
+    width: 42px;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.logo-icon svg {
+    filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.4));
+    transition: all 0.3s ease;
+}
+
+.logo-area:hover .logo-icon svg {
+    color: #fff;
+    filter: drop-shadow(0 0 8px #6366f1);
 }
 
 .logo-text h1 {
-    font-family: 'Outfit', sans-serif;
-    font-size: 1.8rem;
+    font-family: 'Cabinet Grotesk', 'Outfit', sans-serif;
+    font-size: 1.65rem;
     font-weight: 800;
     letter-spacing: -0.5px;
     line-height: 1.1;
+    color: #fff;
+    display: flex;
+    align-items: center;
 }
 
 .logo-text h1 span {
-    background: linear-gradient(90deg, var(--accent-blue) 0%, hsl(263, 80%, 65%) 100%);
+    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #a855f7 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
 .logo-text p {
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--color-text-muted);
-    font-weight: 500;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 2px;
+    margin-top: 2px;
+}
+
+.logo-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    padding: 2px 6px;
+    border-radius: 9999px;
+    vertical-align: middle;
+    margin-left: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+}
+
+.logo-badge::before {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    background-color: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #10b981;
 }
 
 .system-status {
@@ -507,7 +559,7 @@ input:checked + .slider:before {
     border-radius: var(--radius-md);
     border: 1px solid var(--panel-border);
     flex-grow: 1;
-    max-width: 450px;
+    max-width: 650px;
     transition: var(--transition-smooth);
 }
 
@@ -657,14 +709,16 @@ input:checked + .slider:before {
 /* Screener Tab Bar */
 .screener-tabs {
     display: flex;
-    gap: 0.25rem;
-    padding: 0.35rem;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: var(--radius-md);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    gap: 1.5rem;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     margin-bottom: 1.2rem;
     overflow-x: auto;
     scrollbar-width: none;
+    width: 100%;
 }
 
 .screener-tabs::-webkit-scrollbar {
@@ -676,11 +730,11 @@ input:checked + .slider:before {
     border: none;
     outline: none;
     font-family: inherit;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-text-muted);
-    padding: 0.55rem 1.2rem;
-    border-radius: var(--radius-sm);
+    padding: 0.6rem 0.25rem;
+    border-radius: 0;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -688,18 +742,21 @@ input:checked + .slider:before {
     white-space: nowrap;
     transition: var(--transition-smooth);
     position: relative;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
 }
 
 .tab-btn:hover {
     color: var(--color-text-secondary);
-    background: rgba(255, 255, 255, 0.04);
+    background: transparent;
 }
 
 .tab-btn.active {
     color: var(--color-text-primary);
-    background: rgba(59, 130, 246, 0.12);
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--accent-blue);
+    box-shadow: none;
 }
 
 .tab-btn.active svg {
@@ -1151,6 +1208,7 @@ input:checked + .slider:before {
 }
 
 /* Force option elements to use solid colors so they are always readable */
+select option,
 .modal select option,
 .modal-select option {
     background: #1a2035;
@@ -1166,6 +1224,7 @@ body[data-theme="light"] .modal-select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
+body[data-theme="light"] select option,
 body[data-theme="light"] .modal select option,
 body[data-theme="light"] .modal-select option {
     background: #f8fafc;
@@ -2717,11 +2776,11 @@ body[data-theme="light"] .custom-select-wrapper .select-dropdown-item.active {
 
 /* Tab indicator highlight styling */
 body[data-theme="light"] .tab-btn.active {
-    background: rgba(59, 130, 246, 0.08);
+    background: transparent;
 }
 
 body[data-theme="light"] .tab-btn:not(.active):hover {
-    background: rgba(0, 0, 0, 0.02);
+    background: transparent;
 }
 
 /* Watchlist and announcements overlays */
@@ -7467,4 +7526,45 @@ body[data-theme="light"] .journal-action-btn:hover {
 .table-container::-webkit-scrollbar-thumb:hover {
     background: rgba(59, 130, 246, 0.5);
 }
+
+/* EP Screener Custom Layouts & Skeleton Loading */
+@keyframes skeleton-glow {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+.skeleton {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-glow 1.5s infinite linear;
+    border-radius: 4px;
+}
+.skeleton-row td {
+    padding: 12px 8px !important;
+}
+
+.ep-filters-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.ep-filters-bar .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.table-container {
+    overflow-x: auto;
+    width: 100%;
+    position: relative;
+    border-radius: 8px;
+}
+
 

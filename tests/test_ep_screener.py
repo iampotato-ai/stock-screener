@@ -357,7 +357,7 @@ def test_api_endpoints(client):
     
     # Test GET /api/ep/<symbol>/detail
     # Since detail route calls fetch_historical_prices, we mock it to prevent external fetch
-    with patch("app.fetch_historical_prices") as mock_fetch:
+    with patch("app.services.ep_service.fetch_historical_prices") as mock_fetch:
         mock_fetch.return_value = [{"date": "2026-06-11", "open": 100, "high": 110, "low": 99, "close": 108, "volume": 10000}]
         res = client.get("/api/ep/EPSTOCK/detail")
         assert res.status_code == 200
@@ -387,8 +387,8 @@ def test_fetch_nse_fundamentals_api():
     mock_nse_json = {
         "resCmpData": [
             {
-                "re_to_dt": "31-DEC-2024",
-                "re_create_dt": "16-JAN-2025",
+                "re_to_dt": "31-MAR-2026",
+                "re_create_dt": "16-APR-2026",
                 "re_net_sale": "12826000",      # 128260.0 Cr
                 "re_net_profit": "872100",       # 8721.0 Cr
                 "re_basic_eps_for_cont_dic_opr": "6.44"
@@ -408,8 +408,8 @@ def test_fetch_nse_fundamentals_api():
     with patch("requests.Session", return_value=mock_session):
         res = app.fetch_screener_fundamentals("RELIANCE")
         assert len(res) == 1
-        assert res[0]["quarter"] == "Dec 2024"
-        assert res[0]["date_key"] == "2024-12-31"
+        assert res[0]["quarter"] == "Mar 2026"
+        assert res[0]["date_key"] == "2026-03-31"
         assert res[0]["revenue"] == 128260.0
         assert res[0]["net_profit"] == 8721.0
         assert res[0]["eps"] == 6.44

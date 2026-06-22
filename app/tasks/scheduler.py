@@ -7,11 +7,17 @@ import atexit
 import logging
 import os
 from flask import Flask
+from app.services.model_training_service import run_ep_model_training
 
 logger = logging.getLogger(__name__)
 
 def init_scheduler(app: Flask):
     """Initialize the background scheduler."""
+    # Check if we are running in testing environment
+    if app.config.get('TESTING', False) or os.environ.get('PYTEST_CURRENT_TEST'):
+        logger.info("Background tasks are disabled during testing")
+        return None
+
     # Check if background tasks are enabled via feature flag (read from Flask config)
     if not app.config.get('ENABLE_BACKGROUND_TASKS', True):
         logger.info("Background tasks are disabled via feature flag")
@@ -44,6 +50,20 @@ def init_scheduler(app: Flask):
         replace_existing=True,
         args=[app]  # Pass app for context
     )
+
+    # Add EP model training job - runs daily at configured hour/minute (gated behind feature flag)
+    if app.config.get('EP_MODEL_TRAINING_ENABLED', False):
+        scheduler.add_job(
+            func=run_ep_model_training,
+            trigger='cron',
+            hour=app.config.get('EP_MODEL_TRAIN_HOUR', 16),
+            minute=app.config.get('EP_MODEL_TRAIN_MINUTE', 0),
+            timezone='Asia/Kolkata',
+            id='ep_model_training',
+            name='Daily EP scoring model training',
+            replace_existing=True,
+            args=[app]
+        )
 
     # One-shot startup warm-up: fill any missing IPO metrics cache entries
     # Fires 10 seconds after server start, in the background, without blocking requests.

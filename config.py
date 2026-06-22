@@ -27,6 +27,14 @@ class Config:
 
     # Pagination
     ITEMS_PER_PAGE = int(os.environ.get('ITEMS_PER_PAGE', '50'))
+    # EP Scoring Model configuration
+    EP_MODEL_PATH = os.path.join(basedir, 'models', 'ep_scoring_model_latest.pkl')
+    EP_CONFIDENCE_HIGH = float(os.environ.get('EP_CONFIDENCE_HIGH', '0.72'))
+    EP_CONFIDENCE_MEDIUM = float(os.environ.get('EP_CONFIDENCE_MEDIUM', '0.55'))
+    EP_MODEL_TRAIN_HOUR = int(os.environ.get('EP_MODEL_TRAIN_HOUR', '16'))
+    EP_MODEL_TRAIN_MINUTE = int(os.environ.get('EP_MODEL_TRAIN_MINUTE', '0'))
+    EP_MODEL_TRAINING_ENABLED = os.environ.get('EP_MODEL_TRAINING_ENABLED', 'False').lower() == 'true'
+    EP_MODEL_TRAINING_DRY_RUN = os.environ.get('EP_MODEL_TRAINING_DRY_RUN', 'True').lower() == 'true'
 
     @staticmethod
     def init_app(app):
@@ -59,6 +67,7 @@ class TestingConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URL') or 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     DATABASE = os.environ.get('DATABASE') or ':memory:'
+    ENABLE_BACKGROUND_TASKS = False
 
 
 class PytestConfig(Config):
@@ -66,6 +75,7 @@ class PytestConfig(Config):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     WTF_CSRF_ENABLED = False
     DATABASE = ':memory:'
+    ENABLE_BACKGROUND_TASKS = False
 
 
 config = {

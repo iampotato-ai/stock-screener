@@ -165,7 +165,7 @@
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- CSS stylesheet -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.58">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.62">
 </head>
 <body>
     <!-- Premium background decoration elements -->
@@ -183,12 +183,12 @@
     <div class="app-container">
         <!-- Sidebar or Header -->
         <header class="main-header">
-            <div class="logo-area">
+            <div class="logo-area" style="cursor: pointer;" onclick="if(typeof switchWorkspace === 'function') switchWorkspace('dashboard')">
                 <div class="logo-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
                 </div>
                 <div class="logo-text">
-                    <h1>Momentum<span>Scan</span></h1>
+                    <h1>Momentum<span>Scan</span><span class="logo-badge">Live</span></h1>
                     <p>NSE India Screener</p>
                 </div>
             </div>
@@ -199,12 +199,6 @@
                     <span class="status-label">TV Live Data connected</span>
                     <span class="status-time" id="last-updated-time" style="margin-left: 8px; font-size: 0.7rem; color: var(--color-text-muted);">(Updated: --:--)</span>
                 </div>
-                <button class="btn-theme-toggle" id="btn-theme-toggle" title="Toggle Light/Dark Theme">
-                    <!-- Moon Icon (Dark Mode - visible in light theme) -->
-                    <svg class="icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-                    <!-- Sun Icon (Light Mode - visible in dark theme) -->
-                    <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.77" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                </button>
             </div>
         </header>
 
@@ -682,18 +676,6 @@
                     <button class="tab-btn active" data-tab="overview">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
                         Overview
-                    </button>
-                    <button class="tab-btn" data-tab="valuation">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                        Valuation
-                    </button>
-                    <button class="tab-btn" data-tab="quality">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-                        Quality
-                    </button>
-                    <button class="tab-btn" data-tab="growth">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
-                        Growth
                     </button>
                     <button class="tab-btn" data-tab="rr-setups">
                         ⚖️ R:R Setups
@@ -1303,7 +1285,7 @@
 
             <!-- Panel: Today's EPs -->
             <div class="ep-panel" id="ep-panel-today">
-                <div class="ep-filters-bar glass-panel" style="position: relative; z-index: 100; padding: 1rem 1.2rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.06); margin-bottom: 1rem; background: rgba(10,14,26,0.6);">
+                <div class="ep-filters-bar glass-panel" style="position: relative; z-index: 100;">
                     <div style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center;">
 
                         <!-- EP Type Custom Dropdown -->
@@ -1420,31 +1402,42 @@
                             </tr>
                         </tbody>
                     </table>
+                    <div id="ep-load-more-container" style="text-align: center; margin-top: 1.5rem; display: none;">
+                        <button id="btn-ep-load-more" class="btn btn-secondary" style="padding: 0.5rem 2rem; font-weight: 600; font-size: 0.85rem;">Load More</button>
+                    </div>
                 </div>
             </div>
 
             <!-- Panel: Watchlist -->
             <div class="ep-panel" id="ep-panel-watchlist" style="display: none;">
+                <div class="ep-watchlist-toolbar" style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
+                    <span style="font-size: 0.82rem; color: var(--color-text-secondary); margin-right: auto;" id="ep-watchlist-selected-count">0 items selected</span>
+                    <button id="btn-ep-watchlist-bulk-delete" class="btn btn-xs" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--accent-red); padding: 4px 10px; font-weight: 600;">Bulk Remove</button>
+                    <button id="btn-ep-watchlist-export" class="btn btn-xs btn-outline" style="padding: 4px 10px; font-weight: 600;">Export CSV</button>
+                </div>
                 <div class="table-container">
                     <table class="screener-table" id="ep-watchlist-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th>
-                                <th>EP Type</th>
-                                <th>Catalyst Date</th>
-                                <th class="text-center">EP Score</th>
-                                <th class="text-right">Entry Price</th>
-                                <th class="text-right">Stop Price</th>
-                                <th class="text-center">Days on Watch</th>
-                                <th>Status</th>
-                                <th>Trigger Type</th>
+                                <th style="width: 40px; text-align: center;"><input type="checkbox" id="ep-watchlist-select-all" style="cursor: pointer; transform: scale(1.15);"></th>
+                                <th data-sort="symbol">Symbol</th>
+                                <th data-sort="ep_type">EP Type</th>
+                                <th data-sort="catalyst_date">Catalyst Date</th>
+                                <th class="text-center" data-sort="ep_score">EP Score</th>
+                                <th class="text-right" data-sort="entry_price">Entry Price</th>
+                                <th class="text-right" data-sort="current_price">CMP</th>
+                                <th class="text-right" data-sort="gain_pct">Gain %</th>
+                                <th class="text-right" data-sort="stop_price">Stop Price</th>
+                                <th class="text-center" data-sort="days_on_watch">Days on Watch</th>
+                                <th data-sort="status">Status</th>
+                                <th data-sort="trigger_type">Trigger Type</th>
                                 <th>Notes</th>
                                 <th class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ep-watchlist-body">
                             <tr>
-                                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                                     No active watchlist candidates found.
                                 </td>
                             </tr>
@@ -1455,17 +1448,26 @@
 
             <!-- Panel: Sugar Babies -->
             <div class="ep-panel" id="ep-panel-sugar-babies" style="display: none;">
+                <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 0.85rem; margin-bottom: 1.2rem; display: flex; gap: 0.65rem; align-items: flex-start;">
+                    <span style="font-size: 1.2rem; line-height: 1;">⚠️</span>
+                    <div>
+                        <h5 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--accent-amber, #fbbf24); font-weight: 700;">High Risk Breakout Setups</h5>
+                        <p style="margin: 0; font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.4;">
+                            Sugar Babies are low-float, high-beta micro-cap stocks showing early momentum. These require strict stop-losses due to higher volatility and potentially lower liquidity. Always size positions appropriately.
+                        </p>
+                    </div>
+                </div>
                 <div class="table-container">
                     <table class="screener-table" id="ep-sugar-table">
                         <thead>
                             <tr>
-                                <th>Symbol</th>
-                                <th>Exchange</th>
-                                <th>Added Date</th>
-                                <th class="text-right">Avg Burst %</th>
-                                <th class="text-right">Avg Burst Days</th>
-                                <th class="text-center">Episode Count</th>
-                                <th>Notes</th>
+                                <th data-sort="symbol">Symbol</th>
+                                <th data-sort="exchange">Exchange</th>
+                                <th data-sort="added_date">Added Date</th>
+                                <th class="text-right" data-sort="avg_burst_pct">Avg Burst %</th>
+                                <th class="text-right" data-sort="avg_burst_days">Avg Burst Days</th>
+                                <th class="text-center" data-sort="episode_count">Episode Count</th>
+                                <th data-sort="notes">Notes</th>
                             </tr>
                         </thead>
                         <tbody id="ep-sugar-body">
@@ -1877,6 +1879,14 @@
                 </button>
             </div>
             <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 60vh;">
+                <!-- Section: Price Chart -->
+                <div>
+                    <h4 style="margin: 0 0 0.8rem 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
+                        <span>📈</span> Price History Chart
+                    </h4>
+                    <div id="ep-detail-chart" style="width: 100%; height: 260px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;"></div>
+                </div>
+
                 <!-- Section: Quarterly Financials -->
                 <div>
                     <h4 style="margin: 0 0 0.8rem 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 0.4rem;">
@@ -2461,6 +2471,6 @@
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.58"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.62"></script>
 </body>
 </html>

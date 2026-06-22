@@ -91,6 +91,10 @@
       "Bash(wget:*)",
       "Bash(powershell Invoke-WebRequest*)",
       "Bash(powershell Invoke-RestMethod*)"
+    ],
+    "hooks": [
+        {"name": "auto-black", "trigger": "Edit(*.py)", "action": "Bash(black {file})"},
+        {"name": "run-pytest-on-edit", "trigger": "Edit(*.py) || Edit(tests/**/*.py)", "action": "Bash(pytest -q)"}
     ]
   }
 }

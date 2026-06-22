@@ -7,6 +7,14 @@ try:
 except ImportError:
     TALIB_AVAILABLE = False
 
+# Configuration constants for pattern detection heuristics
+PATTERN_CONFIG = {
+    "DOUBLE_TOLERANCE": 0.01,            # tolerance for double top/bottom (1 %)
+    "VCP_MIN_CONTRACTIONS": 3,          # require at least 3 contractions for VCP
+    "ENGULFING_BODY_RATIO": 1.0,        # engulfing body must be at least equal to prior body
+    "HAMMER_SHADOW_RATIO": 2.0,         # lower shadow must be >= 2× real body
+    "DOJI_RANGE_MIN": 1e-5,            # ignore zero‑range candles for Doji detection
+}
 
 # ─────────────────────────────────────────────────────────────
 # SECTION 1: Candlestick Patterns (TA-Lib + pure-Python fallback)
@@ -109,22 +117,24 @@ def _detect_talib(opens, highs, lows, closes):
 
 def _detect_candlestick_fallback(opens, highs, lows, closes):
     """
-    Pure-Python fallback — extends v1 with new patterns.
+    Pure-Python fallback — extends v1 with new patterns and tighter heuristics.
     """
     results = {}
     n = len(closes)
     if n < 3:
         return results
 
+    # Latest three candles
     o0, h0, l0, c0 = opens[-1], highs[-1], lows[-1], closes[-1]
     o1, h1, l1, c1 = opens[-2], highs[-2], lows[-2], closes[-2]
     o2, h2, l2, c2 = opens[-3], highs[-3], lows[-3], closes[-3]
 
-    body0  = abs(c0 - o0)
-    body1  = abs(c1 - o1)
-    body2  = abs(c2 - o2)
+    body0 = abs(c0 - o0)
+    body1 = abs(c1 - o1)
+    body2 = abs(c2 - o2)
     range0 = h0 - l0
-    if range0 <= 1e-4:
+    # Guard against zero‑range candles
+    if range0 < PATTERN_CONFIG["DOJI_RANGE_MIN"]:
         return results
 
     # 1. Doji
@@ -134,45 +144,44 @@ def _detect_candlestick_fallback(opens, highs, lows, closes):
     # 2. Hammer
     lower_shadow = min(o0, c0) - l0
     upper_shadow = h0 - max(o0, c0)
-    if lower_shadow >= 2 * body0 and upper_shadow <= 0.1 * range0 and body0 > 0:
+    if lower_shadow >= PATTERN_CONFIG["HAMMER_SHADOW_RATIO"] * body0 and upper_shadow <= 0.1 * range0 and body0 > 0:
         if c1 < c2 and c0 <= c1:
             results["Hammer"] = 100
 
     # 3. Shooting Star
-    if (h0 - max(o0, c0)) >= 2 * body0 and (min(o0, c0) - l0) <= 0.1 * range0 and body0 > 0:
+    if upper_shadow >= PATTERN_CONFIG["HAMMER_SHADOW_RATIO"] * body0 and lower_shadow <= 0.1 * range0 and body0 > 0:
         if c1 > c2 and c0 >= c1:
             results["Shooting Star"] = -100
 
     # 4. Bullish Engulfing
-    if c1 < o1 and c0 > o0 and o0 <= c1 and c0 >= o1 and (c0 - o0) > abs(c1 - o1) and c1 < c2:
+    if c1 < o1 and c0 > o0 and o0 <= c1 and c0 >= o1 and (c0 - o0) >= PATTERN_CONFIG["ENGULFING_BODY_RATIO"] * abs(c1 - o1) and c1 < c2:
         results["Bullish Engulfing"] = 100
 
     # 5. Bearish Engulfing
-    if c1 > o1 and c0 < o0 and o0 >= c1 and c0 <= o1 and (o0 - c0) > abs(c1 - o1) and c1 > c2:
+    if c1 > o1 and c0 < o0 and o0 >= c1 and c0 <= o1 and (o0 - c0) >= PATTERN_CONFIG["ENGULFING_BODY_RATIO"] * abs(c1 - o1) and c1 > c2:
         results["Bearish Engulfing"] = -100
 
-    # 6. Morning Star (3-candle)
-    if (c2 < o2 and abs(c1-o1) <= 0.25*body2 and c0 > o0 and
-            c0 >= (c2 + 0.5*body2) and max(o1, c1) <= min(o2, c2) * 1.005):
+    # 6. Morning Star
+    if (c2 < o2 and abs(c1 - o1) <= 0.25 * body2 and c0 > o0 and
+            c0 >= (c2 + 0.5 * body2) and max(o1, c1) <= min(o2, c2) * 1.005):
         results["Morning Star"] = 100
 
-    # 7. Evening Star (3-candle)
-    if (c2 > o2 and abs(c1-o1) <= 0.25*body2 and c0 < o0 and
-            c0 <= (c2 - 0.5*body2) and min(o1, c1) >= max(o2, c2) * 0.995):
+    # 7. Evening Star
+    if (c2 > o2 and abs(c1 - o1) <= 0.25 * body2 and c0 < o0 and
+            c0 <= (c2 - 0.5 * body2) and min(o1, c1) >= max(o2, c2) * 0.995):
         results["Evening Star"] = -100
 
     # 8. Piercing Line
-    # Prior day bearish; today opens below prior low, closes above midpoint of prior body
     if n >= 2:
         prior_mid = (o1 + c1) / 2
         if c1 < o1 and o0 < l1 and c0 > prior_mid and c0 < o1:
             results["Piercing Line"] = 100
 
-    # 9. Three White Soldiers — simplified: 3 consecutive bullish closes, each > prev close
+    # 9. Three White Soldiers
     if n >= 3:
         if (c0 > c1 > c2 and
                 c0 > o0 and c1 > o1 and c2 > o2 and
-                abs(c0-o0) > 0.5*(h0-l0) and abs(c1-o1) > 0.5*(h1-l1)):
+                abs(c0 - o0) > 0.5 * (h0 - l0) and abs(c1 - o1) > 0.5 * (h1 - l1)):
             results["Three White Soldiers"] = 100
 
     # 10. Bullish Harami
@@ -229,7 +238,7 @@ def detect_chart_patterns(history, lookback=60):
 
 # ── Double Top ──────────────────────────────────────────────
 
-def _detect_double_top(highs, closes, n, tolerance=0.03):
+def _detect_double_top(highs, closes, n, tolerance=PATTERN_CONFIG["DOUBLE_TOLERANCE"]):
     """
     Two swing highs within `tolerance` of each other, followed by a close
     below the trough between them (neckline break).
@@ -267,7 +276,7 @@ def _detect_double_top(highs, closes, n, tolerance=0.03):
 
 # ── Double Bottom ────────────────────────────────────────────
 
-def _detect_double_bottom(lows, closes, n, tolerance=0.03):
+def _detect_double_bottom(lows, closes, n, tolerance=PATTERN_CONFIG["DOUBLE_TOLERANCE"]):
     """Mirror of Double Top — two swing lows within tolerance, neckline breakout."""
     results = []
     troughs = _find_swing_lows(lows, window=5)
@@ -300,7 +309,7 @@ def _detect_double_bottom(lows, closes, n, tolerance=0.03):
 
 # ── Volatility Contraction Pattern (VCP) ────────────────────
 
-def _detect_vcp(highs, lows, closes, vols, n, min_contractions=2):
+def _detect_vcp(highs, lows, closes, vols, n, min_contractions=PATTERN_CONFIG["VCP_MIN_CONTRACTIONS"]):
     """
     Simplified VCP: price range and volume each contract across at least
     `min_contractions` successive pivot swings within the last 30 bars.

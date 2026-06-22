@@ -2660,6 +2660,11 @@ window.applyStatFilter = function(filter) {
 
 // Render data inside table
 function renderTable() {
+    function simBadge(stock) {
+        return stock.growth_data_source === 'simulated'
+            ? '<span class="sim-disclaimer" title="Simulated value" style="color:var(--color-warning,#f59e0b);font-size:.85em;margin-right:2px;cursor:help;">~</span>'
+            : '';
+    }
     const visibleCount = columnsConfig.filter(c => c.isVisible).length;
     
     if (filteredStocks.length === 0) {
@@ -2924,17 +2929,28 @@ function renderTable() {
                     <td data-column="turnover_m" class="text-right">₹${turnover_m.toFixed(1)} Cr</td>
                 `;
             } else if (col.id === 'pe_ratio') {
-                html += `<td data-column="pe_ratio" class="text-right">${renderFundVal(stock.pe_ratio, 1)}</td>`;
+                const peClass = stock.pe_ratio != null
+                    ? (stock.pe_ratio < 15 ? 'val-up' : stock.pe_ratio > 40 ? 'val-down' : '')
+                    : '';
+                html += `<td data-column="pe_ratio" class="text-right ${peClass}" style="font-weight:600;">${renderFundVal(stock.pe_ratio, 1)}</td>`;
             } else if (col.id === 'ev_ebitda') {
-                html += `<td data-column="ev_ebitda" class="text-right">${renderFundVal(stock.ev_ebitda, 1)}</td>`;
+                const evClass = stock.ev_ebitda != null
+                    ? (stock.ev_ebitda < 10 ? 'val-up' : stock.ev_ebitda > 20 ? 'val-down' : '')
+                    : '';
+                html += `<td data-column="ev_ebitda" class="text-right ${evClass}">${renderFundVal(stock.ev_ebitda, 1)}</td>`;
             } else if (col.id === 'pb_ratio') {
-                html += `<td data-column="pb_ratio" class="text-right">${renderFundVal(stock.pb_ratio, 2)}</td>`;
+                const pbClass = stock.pb_ratio != null
+                    ? (stock.pb_ratio < 1.5 ? 'val-up' : stock.pb_ratio > 5 ? 'val-down' : '')
+                    : '';
+                html += `<td data-column="pb_ratio" class="text-right ${pbClass}">${renderFundVal(stock.pb_ratio, 2)}</td>`;
             } else if (col.id === 'ps_ratio') {
                 html += `<td data-column="ps_ratio" class="text-right">${renderFundVal(stock.ps_ratio, 2)}</td>`;
             } else if (col.id === 'div_yield') {
                 html += `<td data-column="div_yield" class="text-right">${renderFundVal(stock.div_yield, 2, '%')}</td>`;
             } else if (col.id === 'fcf_yield') {
-                const fcfClass = stock.fcf_yield != null ? (stock.fcf_yield >= 0 ? 'val-up' : 'val-down') : '';
+                const fcfClass = stock.fcf_yield != null
+                    ? (stock.fcf_yield >= 3 ? 'val-up' : stock.fcf_yield < 0 ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="fcf_yield" class="text-right ${fcfClass}">${renderFundVal(stock.fcf_yield, 2, '%')}</td>`;
             } else if (col.id === 'ev_cr') {
                 html += `<td data-column="ev_cr" class="text-right">${stock.ev_cr != null ? '₹' + stock.ev_cr.toLocaleString('en-IN', {maximumFractionDigits: 0}) + ' Cr' : '<span class=\"val-na\">—</span>'}</td>`;
@@ -2949,16 +2965,30 @@ function renderTable() {
             } else if (col.id === 'gross_margin') {
                 html += `<td data-column="gross_margin" class="text-right">${renderFundVal(stock.gross_margin, 1, '%')}</td>`;
             } else if (col.id === 'ebitda_margin') {
-                const emClass = stock.ebitda_margin != null ? (stock.ebitda_margin >= 20 ? 'val-up' : stock.ebitda_margin < 10 ? 'val-down' : '') : '';
+                const lowMarginSectors = ['Trading', 'Distribution', 'Retail', 'FMCG'];
+                const isLowMarginSector = lowMarginSectors.some(s => (stock.sector || '').includes(s));
+                const emGreenThreshold  = isLowMarginSector ? 8  : 20;
+                const emRedThreshold    = isLowMarginSector ? 3  : 10;
+                const emClass = stock.ebitda_margin != null
+                    ? (stock.ebitda_margin >= emGreenThreshold ? 'val-up' : stock.ebitda_margin < emRedThreshold ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="ebitda_margin" class="text-right ${emClass}">${renderFundVal(stock.ebitda_margin, 1, '%')}</td>`;
             } else if (col.id === 'debt_to_equity') {
-                const deClass = stock.debt_to_equity != null ? (stock.debt_to_equity <= 0.5 ? 'val-up' : stock.debt_to_equity > 1.5 ? 'val-down' : '') : '';
+                const financialSectors = ['Banking', 'Finance', 'NBFC', 'Insurance'];
+                const isFinancialSector = financialSectors.some(s => (stock.sector || '').includes(s));
+                const deGreenThreshold = isFinancialSector ? 5  : 0.5;
+                const deRedThreshold   = isFinancialSector ? 10 : 1.5;
+                const deClass = stock.debt_to_equity != null
+                    ? (stock.debt_to_equity <= deGreenThreshold ? 'val-up' : stock.debt_to_equity > deRedThreshold ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="debt_to_equity" class="text-right ${deClass}" style="font-weight:600;">${renderFundVal(stock.debt_to_equity, 2)}</td>`;
             } else if (col.id === 'interest_coverage') {
                 const icClass = stock.interest_coverage != null ? (stock.interest_coverage >= 3 ? 'val-up' : stock.interest_coverage < 1.5 ? 'val-down' : '') : '';
                 html += `<td data-column="interest_coverage" class="text-right ${icClass}">${renderFundVal(stock.interest_coverage, 1, 'x')}</td>`;
             } else if (col.id === 'cfo_pat') {
-                const cfoClass = stock.cfo_pat != null ? (stock.cfo_pat >= 80 ? 'val-up' : stock.cfo_pat < 50 ? 'val-down' : '') : '';
+                const cfoClass = stock.cfo_pat != null
+                    ? (stock.cfo_pat >= 80 ? 'val-up' : stock.cfo_pat < 40 ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="cfo_pat" class="text-right ${cfoClass}">${renderFundVal(stock.cfo_pat, 1, '%')}</td>`;
             } else if (col.id === 'net_income_cr') {
                 const niClass = stock.net_income_cr != null ? (stock.net_income_cr >= 0 ? 'val-up' : 'val-down') : '';
@@ -2973,26 +3003,24 @@ function renderTable() {
                 html += `<td data-column="cfo_ebitda" class="text-right ${cfoEbClass}">${renderFundVal(stock.cfo_ebitda, 1, '%')}</td>`;
             } else if (col.id === 'wc_intensity') {
                 const wcClass = stock.wc_intensity != null ? (stock.wc_intensity <= 15 ? 'val-up' : stock.wc_intensity > 30 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="wc_intensity" class="text-right ${wcClass}">${simBadge}${renderFundVal(stock.wc_intensity, 1, '%')}</td>`;
+                html += `<td data-column="wc_intensity" class="text-right ${wcClass}">${simBadge(stock)}${renderFundVal(stock.wc_intensity, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_qoq') {
-                const qoqClass = stock.revenue_growth_qoq != null ? (stock.revenue_growth_qoq >= 4 ? 'val-up' : stock.revenue_growth_qoq < 1.5 ? 'val-down' : '') : '';
+                const qoqClass = stock.revenue_growth_qoq != null
+                    ? (stock.revenue_growth_qoq >= 5 ? 'val-up' : stock.revenue_growth_qoq < 0 ? 'val-down' : '')
+                    : '';
                 html += `<td data-column="revenue_growth_qoq" class="text-right ${qoqClass}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_qoq, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_yoy') {
                 const yoyClass = stock.revenue_growth_yoy != null ? (stock.revenue_growth_yoy >= 15 ? 'val-up' : stock.revenue_growth_yoy < 8 ? 'val-down' : '') : '';
                 html += `<td data-column="revenue_growth_yoy" class="text-right ${yoyClass}" style="font-weight:600;">${renderFundVal(stock.revenue_growth_yoy, 1, '%')}</td>`;
             } else if (col.id === 'revenue_growth_3y') {
                 const y3Class = stock.revenue_growth_3y != null ? (stock.revenue_growth_3y >= 15 ? 'val-up' : stock.revenue_growth_3y < 8 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="revenue_growth_3y" class="text-right ${y3Class}" style="font-weight:600;">${simBadge}${renderFundVal(stock.revenue_growth_3y, 1, '%')}</td>`;
+                html += `<td data-column="revenue_growth_3y" class="text-right ${y3Class}" style="font-weight:600;">${simBadge(stock)}${renderFundVal(stock.revenue_growth_3y, 1, '%')}</td>`;
             } else if (col.id === 'ebitda_cagr') {
                 const ecClass = stock.ebitda_cagr != null ? (stock.ebitda_cagr >= 15 ? 'val-up' : stock.ebitda_cagr < 8 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="ebitda_cagr" class="text-right ${ecClass}">${simBadge}${renderFundVal(stock.ebitda_cagr, 1, '%')}</td>`;
+                html += `<td data-column="ebitda_cagr" class="text-right ${ecClass}">${simBadge(stock)}${renderFundVal(stock.ebitda_cagr, 1, '%')}</td>`;
             } else if (col.id === 'eps_cagr') {
                 const epClass = stock.eps_cagr != null ? (stock.eps_cagr >= 15 ? 'val-up' : stock.eps_cagr < 8 ? 'val-down' : '') : '';
-                const simBadge = stock.growth_data_source === "simulated" ? '<span class="sim-disclaimer" title="Simulated value" style="color: var(--color-warning, #f59e0b); font-size: 0.85em; margin-right: 2px; cursor: help;">~</span>' : '';
-                html += `<td data-column="eps_cagr" class="text-right ${epClass}" style="font-weight:600;">${simBadge}${renderFundVal(stock.eps_cagr, 1, '%')}</td>`;
+                html += `<td data-column="eps_cagr" class="text-right ${epClass}" style="font-weight:600;">${simBadge(stock)}${renderFundVal(stock.eps_cagr, 1, '%')}</td>`;
             } else if (col.id === 'bv_growth') {
                 const bvClass = stock.bv_growth != null ? (stock.bv_growth >= 12 ? 'val-up' : stock.bv_growth < 6 ? 'val-down' : '') : '';
                 html += `<td data-column="bv_growth" class="text-right ${bvClass}">${renderFundVal(stock.bv_growth, 1, '%')}</td>`;
@@ -6361,11 +6389,11 @@ function renderRRGTimeline(frames, frameIdx) {
         currentFrame.sectors.forEach(s => {
             const rs = s.jdk_rs;
             const mom = s.jdk_rs_momentum;
-            const dist = Math.sqrt((rs - 100) * (rs - 100) + (mom - 100) * (mom - 100));
-            const quadrant = (rs >= 100 && mom >= 100) ? 'Leading'
-                           : (rs < 100 && mom >= 100) ? 'Improving'
-                           : (rs < 100 && mom < 100) ? 'Lagging'
-                           : 'Weakening';
+            const dist = Math.sqrt((rs - 100) * (rs - 100) + mom * mom);
+            const quadrant = s.quadrant || ((rs >= 100 && mom >= 0) ? 'Leading'
+                           : (rs < 100 && mom >= 0) ? 'Improving'
+                           : (rs < 100 && mom < 0) ? 'Lagging'
+                           : 'Weakening');
             const item = {
                 name: s.sector,
                 quadrant: quadrant,
@@ -6882,6 +6910,9 @@ function openTradeDrawer(ticker) {
     
     initializeTradeParams();
     
+    // Update fundamental analysis sections visibility immediately on open
+    updateFundamentalSectionsVisibility();
+    
     // Fetch Scan History
     const historyContainer = document.getElementById('drawer-history-content');
     if (historyContainer) {
@@ -7133,6 +7164,9 @@ function openTradeDrawer(ticker) {
                     destroyKronosChart();
                 }
 
+                // Show/hide fundamental analysis sections based on active tab (inside .then() block)
+                updateFundamentalSectionsVisibility();
+
                 // Fetch interactive Kronos details (sample_count = 10 for envelope calculation)
                 fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_FORECAST_HORIZON}&sample_count=10`)
                     .then(res => res.json())
@@ -7153,9 +7187,6 @@ function openTradeDrawer(ticker) {
                 document.getElementById('drawer-intel-pattern').textContent = 'Error';
                 document.getElementById('drawer-intel-desc').textContent = `Pattern scan failed: ${err}`;
             });
-
-            // Show/hide fundamental analysis sections based on active tab
-            updateFundamentalSectionsVisibility();
     }
 }
 
@@ -11303,6 +11334,46 @@ document.addEventListener('click', function(e) {
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
+const EP_API = {
+    async request(url, options = {}) {
+        const defaultHeaders = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        };
+        options.headers = { ...defaultHeaders, ...options.headers };
+        try {
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                const text = await res.text();
+                let errMessage = `HTTP error ${res.status}`;
+                try {
+                    const errJson = JSON.parse(text);
+                    if (errJson && errJson.error) errMessage = errJson.error;
+                } catch(e) {}
+                throw new Error(errMessage);
+            }
+            return await res.json();
+        } catch (err) {
+            console.error(`EP_API Error requesting ${url}:`, err);
+            throw err;
+        }
+    },
+    get(url) {
+        return this.request(url, { method: 'GET' });
+    },
+    post(url, body) {
+        return this.request(url, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+    }
+};
+
+let epWatchlistSort = { field: 'catalyst_date', dir: 'desc' };
+let epSugarSort = { field: 'symbol', dir: 'asc' };
+let epPagination = { limit: 30, offset: 0, hasMore: true, loading: false };
+let epDetailChartInstance = null;
+
 function bindEPListeners() {
     if (epListenersBound) return;
     
@@ -11352,9 +11423,12 @@ function bindEPListeners() {
     const filterMinScore = document.getElementById('filter-ep-min-score');
     if (filterMinScore) {
         filterMinScore.addEventListener('change', () => {
-            epActiveFilters.min_score = parseFloat(filterMinScore.value) || 0.55;
+            epActiveFilters.min_score = parseFloat(filterMinScore.value) || 0.0;
+            updateMinScoreFilterVisual();
             fetchEPListings();
         });
+        // Initial style sync
+        updateMinScoreFilterVisual();
     }
 
     const filterMinMkt = document.getElementById('filter-ep-min-mktcap');
@@ -11379,6 +11453,14 @@ function bindEPListeners() {
         refreshBtn.addEventListener('click', triggerEPRefresh);
     }
 
+    // Pagination Load More
+    const loadMoreBtn = document.getElementById('btn-ep-load-more');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+            fetchEPListings(true);
+        });
+    }
+
     // Column header sorting for EP listings table
     document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
         th.style.cursor = 'pointer';
@@ -11389,22 +11471,85 @@ function bindEPListeners() {
                 epTableSort.dir = epTableSort.dir === 'asc' ? 'desc' : 'asc';
             } else {
                 epTableSort.field = field;
-                // Numeric fields default desc, text fields default asc
                 const textFields = ['symbol', 'ep_type', 'confidence'];
                 epTableSort.dir = textFields.includes(field) ? 'asc' : 'desc';
             }
-            // Update header arrow indicators
-            document.querySelectorAll('#ep-table thead th[data-sort]').forEach(h => {
-                const arrow = h.querySelector('.ep-sort-arrow');
-                if (arrow) arrow.textContent = '';
-                h.classList.remove('sort-asc', 'sort-desc');
-            });
-            th.classList.add(epTableSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
             renderEPListingsTable();
         });
     });
 
+    // Column header sorting for EP Watchlist table
+    document.querySelectorAll('#ep-watchlist-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (epWatchlistSort.field === field) {
+                epWatchlistSort.dir = epWatchlistSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                epWatchlistSort.field = field;
+                const textFields = ['symbol', 'ep_type', 'status', 'trigger_type', 'notes', 'catalyst_date'];
+                epWatchlistSort.dir = textFields.includes(field) ? 'asc' : 'desc';
+            }
+            renderEPWatchlistTable();
+        });
+    });
+
+    // Column header sorting for Sugar Babies table
+    document.querySelectorAll('#ep-sugar-table thead th[data-sort]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.addEventListener('click', () => {
+            const field = th.dataset.sort;
+            if (epSugarSort.field === field) {
+                epSugarSort.dir = epSugarSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                epSugarSort.field = field;
+                const textFields = ['symbol', 'exchange', 'added_date', 'notes'];
+                epSugarSort.dir = textFields.includes(field) ? 'asc' : 'desc';
+            }
+            renderEPSugarTable();
+        });
+    });
+
+    // Watchlist Multi-select Select All Checkbox
+    const selectAllCheckbox = document.getElementById('ep-watchlist-select-all');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', () => {
+            const isChecked = selectAllCheckbox.checked;
+            document.querySelectorAll('.ep-watchlist-row-select').forEach(cb => {
+                cb.checked = isChecked;
+            });
+            updateWatchlistSelectionCount();
+        });
+    }
+
+    // Watchlist Bulk Actions
+    const bulkDeleteBtn = document.getElementById('btn-ep-watchlist-bulk-delete');
+    if (bulkDeleteBtn) {
+        bulkDeleteBtn.addEventListener('click', bulkRemoveWatchlist);
+    }
+    const exportBtn = document.getElementById('btn-ep-watchlist-export');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportWatchlistToCSV);
+    }
+
     epListenersBound = true;
+}
+
+function updateMinScoreFilterVisual() {
+    const filterMinScore = document.getElementById('filter-ep-min-score');
+    if (!filterMinScore) return;
+    const scoreVal = parseFloat(filterMinScore.value) || 0.0;
+    if (scoreVal > 0.0) {
+        filterMinScore.style.borderColor = 'var(--accent-amber, #fbbf24)';
+        filterMinScore.style.borderWidth = '2px';
+        filterMinScore.style.boxShadow = '0 0 6px rgba(245,158,11,0.2)';
+    } else {
+        filterMinScore.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        filterMinScore.style.borderWidth = '1px';
+        filterMinScore.style.boxShadow = 'none';
+    }
 }
 
 function loadEPSubTab(sub) {
@@ -11421,36 +11566,67 @@ function loadEPSubTab(sub) {
     }
 }
 
-function fetchEPListings() {
+function fetchEPListings(loadMore = false) {
+    if (epPagination.loading) return;
+    
     const tbody = document.getElementById('ep-table-body');
-    if (tbody && epListingsData.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
-                    Loading EP listings...
-                </td>
-            </tr>
-        `;
+    const loadMoreBtn = document.getElementById('btn-ep-load-more');
+    const loadMoreContainer = document.getElementById('ep-load-more-container');
+    
+    if (!loadMore) {
+        epPagination.offset = 0;
+        epPagination.hasMore = true;
+        epListingsData = []; // Reset stale listings data
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                        Loading EP listings...
+                    </td>
+                </tr>
+            `;
+        }
     }
+    
+    epPagination.loading = true;
+    if (loadMoreBtn) loadMoreBtn.disabled = true;
     
     const params = new URLSearchParams({
         ep_type: epActiveFilters.ep_type,
         confidence: epActiveFilters.confidence,
         min_score: epActiveFilters.min_score,
         min_mktcap: epActiveFilters.min_mktcap,
-        max_mktcap: epActiveFilters.max_mktcap
+        max_mktcap: epActiveFilters.max_mktcap,
+        limit: epPagination.limit,
+        offset: epPagination.offset
     });
     
-    fetch(`/api/ep/today?${params.toString()}`)
-        .then(res => res.json())
+    EP_API.get(`/api/ep/today?${params.toString()}`)
         .then(data => {
+            epPagination.loading = false;
+            if (loadMoreBtn) loadMoreBtn.disabled = false;
+            
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
                 return;
             }
-            epListingsData = data.listings || [];
             
-            // Update badge in main nav tab if there are HIGH confidence EPs
+            const newListings = data.listings || [];
+            if (loadMore) {
+                epListingsData = [...epListingsData, ...newListings];
+            } else {
+                epListingsData = newListings;
+            }
+            
+            if (newListings.length < epPagination.limit) {
+                epPagination.hasMore = false;
+                if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+            } else {
+                epPagination.hasMore = true;
+                if (loadMoreContainer) loadMoreContainer.style.display = 'block';
+                epPagination.offset += epPagination.limit;
+            }
+            
             const highCount = data.summary ? (data.summary.HIGH || 0) : 0;
             const badge = document.getElementById('ep-high-count');
             if (badge) {
@@ -11461,6 +11637,8 @@ function fetchEPListings() {
             renderEPListingsTable();
         })
         .catch(err => {
+            epPagination.loading = false;
+            if (loadMoreBtn) loadMoreBtn.disabled = false;
             console.error('Error fetching EP listings:', err);
             if (typeof showToast === 'function') showToast('Failed to load EP listings', 'error');
         });
@@ -11470,12 +11648,16 @@ function openEPDetailModal(symbol) {
     const modal = document.getElementById('ep-detail-modal');
     if (!modal) return;
     
-    // Clear dynamic content first
     document.getElementById('ep-detail-title-ticker').textContent = symbol;
     document.getElementById('ep-detail-type').textContent = 'Loading...';
     document.getElementById('ep-detail-score').textContent = '...';
     document.getElementById('ep-detail-confidence').textContent = '...';
     document.getElementById('ep-detail-mktcap').textContent = '';
+    
+    const chartContainer = document.getElementById('ep-detail-chart');
+    if (chartContainer) {
+        chartContainer.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Loading chart...</div>';
+    }
     
     const fundTbody = document.getElementById('ep-detail-fundamentals-body');
     fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading financials...</td></tr>`;
@@ -11485,8 +11667,7 @@ function openEPDetailModal(symbol) {
     
     modal.classList.remove('hidden');
     
-    fetch(`/api/ep/${symbol}/detail`)
-        .then(res => res.json())
+    EP_API.get(`/api/ep/${symbol}/detail`)
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Failed to load details: ${data.error}`, 'error');
@@ -11494,7 +11675,6 @@ function openEPDetailModal(symbol) {
                 return;
             }
             
-            // Populate header details
             document.getElementById('ep-detail-title-ticker').textContent = data.symbol;
             document.getElementById('ep-detail-type').textContent = data.ep_type;
             document.getElementById('ep-detail-score').textContent = data.ep_score ? data.ep_score.toFixed(2) : '-';
@@ -11505,6 +11685,9 @@ function openEPDetailModal(symbol) {
             
             document.getElementById('ep-detail-mktcap').textContent = data.market_cap_cr ? `| Mkt Cap: ₹${data.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})} Cr` : '';
             
+            // Render Price Chart via Lightweight Charts
+            renderEPDetailChart(data.history || []);
+
             // Populate Quarterly Fundamentals
             if (!data.fundamentals || data.fundamentals.length === 0) {
                 fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No quarterly financial data available.</td></tr>`;
@@ -11514,10 +11697,16 @@ function openEPDetailModal(symbol) {
                     const revYoY = q.revenue_yoy_pct !== null ? `${q.revenue_yoy_pct > 0 ? '+' : ''}${q.revenue_yoy_pct.toFixed(1)}%` : '-';
                     const revYoYStyle = q.revenue_yoy_pct !== null ? (q.revenue_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
                     
+                    const revTrendColor = q.revenue_trend === '▲' ? 'color:#10b981;' : (q.revenue_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
+                    const revTrendBadge = `<span style="${revTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.revenue_trend || '—'}</span>`;
+
                     const prof = q.net_profit !== null ? q.net_profit.toFixed(1) : '-';
                     const profYoY = q.net_profit_yoy_pct !== null ? `${q.net_profit_yoy_pct > 0 ? '+' : ''}${q.net_profit_yoy_pct.toFixed(1)}%` : '-';
                     const profYoYStyle = q.net_profit_yoy_pct !== null ? (q.net_profit_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
                     
+                    const profTrendColor = q.profit_trend === '▲' ? 'color:#10b981;' : (q.profit_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
+                    const profTrendBadge = `<span style="${profTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.profit_trend || '—'}</span>`;
+
                     const eps = q.eps !== null ? q.eps.toFixed(2) : '-';
                     
                     return `
@@ -11525,9 +11714,9 @@ function openEPDetailModal(symbol) {
                             <td style="padding: 8px; font-weight:600;">${q.quarter || '-'}</td>
                             <td style="padding: 8px; color:var(--color-text-secondary);">${q.result_date || '-'}</td>
                             <td style="padding: 8px; text-align:right;">${rev}</td>
-                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}${revTrendBadge}</td>
                             <td style="padding: 8px; text-align:right;">${prof}</td>
-                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}</td>
+                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}${profTrendBadge}</td>
                             <td style="padding: 8px; text-align:right;">${eps}</td>
                         </tr>
                     `;
@@ -11565,160 +11754,146 @@ function openEPDetailModal(symbol) {
                 }).join('');
             }
             
-            // Populate Watchlist & Sugar Babies Controls
-            window.currentEPDetailSymbol = data.symbol || symbol;
-            
-            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
-            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
-            
+            // Watchlist & Sugar Babies Controls - Fix Stale Closures (Clone Buttons)
             const addWatchlistBtn = document.getElementById('btn-ep-detail-add-watchlist');
             const triggerWatchlistBtn = document.getElementById('btn-ep-detail-trigger-watchlist');
             const removeWatchlistBtn = document.getElementById('btn-ep-detail-remove-watchlist');
             const addSugarBtn = document.getElementById('btn-ep-detail-add-sugar');
+
+            let addWatchlistBtnCloned = null;
+            let triggerWatchlistBtnCloned = null;
+            let removeWatchlistBtnCloned = null;
+            let addSugarBtnCloned = null;
+
+            if (addWatchlistBtn) {
+                addWatchlistBtnCloned = addWatchlistBtn.cloneNode(true);
+                addWatchlistBtn.parentNode.replaceChild(addWatchlistBtnCloned, addWatchlistBtn);
+            }
+            if (triggerWatchlistBtn) {
+                triggerWatchlistBtnCloned = triggerWatchlistBtn.cloneNode(true);
+                triggerWatchlistBtn.parentNode.replaceChild(triggerWatchlistBtnCloned, triggerWatchlistBtn);
+            }
+            if (removeWatchlistBtn) {
+                removeWatchlistBtnCloned = removeWatchlistBtn.cloneNode(true);
+                removeWatchlistBtn.parentNode.replaceChild(removeWatchlistBtnCloned, removeWatchlistBtn);
+            }
+            if (addSugarBtn) {
+                addSugarBtnCloned = addSugarBtn.cloneNode(true);
+                addSugarBtn.parentNode.replaceChild(addSugarBtnCloned, addSugarBtn);
+            }
             
+            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
+            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
+
             if (data.watchlist_status === 'ACTIVE') {
-                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Update Watchlist';
-                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'inline-block';
-                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'inline-block';
+                if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Update Watchlist';
+                if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'inline-block';
+                if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'inline-block';
             } else {
-                if (addWatchlistBtn) addWatchlistBtn.textContent = 'Add to Watchlist';
-                if (triggerWatchlistBtn) triggerWatchlistBtn.style.display = 'none';
-                if (removeWatchlistBtn) removeWatchlistBtn.style.display = 'none';
+                if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Add to Watchlist';
+                if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'none';
+                if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'none';
             }
             
             if (data.is_sugar_baby === 1) {
-                if (addSugarBtn) addSugarBtn.textContent = 'Remove Sugar Baby';
+                if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Remove Sugar Baby';
             } else {
-                if (addSugarBtn) addSugarBtn.textContent = 'Add to Sugar Babies';
+                if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Add to Sugar Babies';
             }
             
-            if (!window.epDetailListenersBound) {
-                window.epDetailListenersBound = true;
-                
-                if (addWatchlistBtn) {
-                    addWatchlistBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        const stopVal = document.getElementById('ep-detail-stop-input').value;
-                        const notesVal = document.getElementById('ep-detail-notes-input').value;
-                        
-                        fetch('/api/ep/watchlist', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                symbol: sym,
-                                stop_price: stopVal,
-                                notes: notesVal
-                            })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
-                                if (typeof fetchEPListings === 'function') fetchEPListings();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error adding/updating watchlist:', err);
-                            if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
-                        });
+            // Re-bind listeners on fresh cloned buttons (using symbol from lexical scope)
+            if (addWatchlistBtnCloned) {
+                addWatchlistBtnCloned.addEventListener('click', () => {
+                    const stopVal = document.getElementById('ep-detail-stop-input').value;
+                    const notesVal = document.getElementById('ep-detail-notes-input').value;
+                    
+                    EP_API.post('/api/ep/watchlist', {
+                        symbol: symbol,
+                        stop_price: stopVal,
+                        notes: notesVal
+                    })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPWatchlist();
+                            fetchEPListings();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error adding/updating watchlist:', err);
+                        if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
                     });
-                }
-                
-                if (removeWatchlistBtn) {
-                    removeWatchlistBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        
-                        fetch('/api/ep/watchlist/remove', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ symbol: sym })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
-                                if (typeof fetchEPListings === 'function') fetchEPListings();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error deleting watchlist:', err);
-                            if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
-                        });
+                });
+            }
+            
+            if (removeWatchlistBtnCloned) {
+                removeWatchlistBtnCloned.addEventListener('click', () => {
+                    EP_API.post('/api/ep/watchlist/remove', { symbol: symbol })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPWatchlist();
+                            fetchEPListings();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error deleting watchlist:', err);
+                        if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
                     });
-                }
-                
-                if (triggerWatchlistBtn) {
-                    triggerWatchlistBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        
-                        fetch('/api/ep/watchlist/trigger', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ symbol: sym })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPWatchlist === 'function') fetchEPWatchlist();
-                                if (typeof fetchEPListings === 'function') fetchEPListings();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error triggering watchlist:', err);
-                            if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
-                        });
+                });
+            }
+            
+            if (triggerWatchlistBtnCloned) {
+                triggerWatchlistBtnCloned.addEventListener('click', () => {
+                    EP_API.post('/api/ep/watchlist/trigger', { symbol: symbol })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPWatchlist();
+                            fetchEPListings();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error triggering watchlist:', err);
+                        if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
                     });
-                }
-                
-                if (addSugarBtn) {
-                    addSugarBtn.addEventListener('click', () => {
-                        const sym = window.currentEPDetailSymbol;
-                        if (!sym) return;
-                        
-                        const isCurrentlySugar = addSugarBtn.textContent.includes('Remove');
-                        const is_active = isCurrentlySugar ? 0 : 1;
-                        const notesVal = document.getElementById('ep-detail-notes-input').value;
-                        
-                        fetch('/api/ep/sugar-babies', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                symbol: sym,
-                                is_active: is_active,
-                                notes: notesVal
-                            })
-                        })
-                        .then(res => res.json())
-                        .then(resData => {
-                            if (resData.success) {
-                                if (typeof showToast === 'function') showToast(resData.message, 'success');
-                                openEPDetailModal(sym);
-                                if (typeof fetchEPSugarBabies === 'function') fetchEPSugarBabies();
-                            } else {
-                                if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error updating Sugar Babies:', err);
-                            if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
-                        });
+                });
+            }
+            
+            if (addSugarBtnCloned) {
+                addSugarBtnCloned.addEventListener('click', () => {
+                    const isCurrentlySugar = addSugarBtnCloned.textContent.includes('Remove');
+                    const is_active = isCurrentlySugar ? 0 : 1;
+                    const notesVal = document.getElementById('ep-detail-notes-input').value;
+                    
+                    EP_API.post('/api/ep/sugar-babies', {
+                        symbol: symbol,
+                        is_active: is_active,
+                        notes: notesVal
+                    })
+                    .then(resData => {
+                        if (resData.success) {
+                            if (typeof showToast === 'function') showToast(resData.message, 'success');
+                            openEPDetailModal(symbol);
+                            fetchEPSugarBabies();
+                        } else {
+                            if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error updating Sugar Babies:', err);
+                        if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
                     });
-                }
+                });
             }
         })
         .catch(err => {
@@ -11728,6 +11903,77 @@ function openEPDetailModal(symbol) {
         });
 }
 window.openEPDetailModal = openEPDetailModal;
+
+function renderEPDetailChart(history) {
+    const container = document.getElementById('ep-detail-chart');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (epDetailChartInstance) {
+        epDetailChartInstance = null;
+    }
+    
+    if (!history || history.length === 0) {
+        container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">No historical price data available</div>`;
+        return;
+    }
+    
+    try {
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth || 750,
+            height: 260,
+            layout: {
+                background: { type: 'solid', color: 'transparent' },
+                textColor: '#94a3b8',
+            },
+            grid: {
+                vertLines: { color: 'rgba(255, 255, 255, 0.02)' },
+                horzLines: { color: 'rgba(255, 255, 255, 0.02)' },
+            },
+            timeScale: {
+                borderColor: 'rgba(255, 255, 255, 0.08)',
+                timeVisible: false,
+                secondsVisible: false,
+            },
+            rightPriceScale: {
+                borderColor: 'rgba(255, 255, 255, 0.08)',
+            }
+        });
+        
+        const candlestickSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: '#10b981',
+            downColor: '#ef4444',
+            borderVisible: false,
+            wickUpColor: '#10b981',
+            wickDownColor: '#ef4444',
+        });
+        
+        const chartData = history.map(item => {
+            return {
+                time: item.date,
+                open: parseFloat(item.open),
+                high: parseFloat(item.high),
+                low: parseFloat(item.low),
+                close: parseFloat(item.close)
+            };
+        }).sort((a, b) => a.time.localeCompare(b.time));
+        
+        candlestickSeries.setData(chartData);
+        chart.timeScale().fitContent();
+        
+        const resizeObserver = new ResizeObserver(entries => {
+            if (entries.length === 0 || !entries[0].contentRect) return;
+            const { width, height } = entries[0].contentRect;
+            chart.resize(width, height);
+        });
+        resizeObserver.observe(container);
+        
+        epDetailChartInstance = chart;
+    } catch (e) {
+        console.error('Error rendering detail chart:', e);
+        container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Chart loading error</div>`;
+    }
+}
 
 function renderEPListingsTable() {
     const tbody = document.getElementById('ep-table-body');
@@ -11744,7 +11990,6 @@ function renderEPListingsTable() {
         return;
     }
 
-    // Sort the data
     const textFields = ['symbol', 'ep_type', 'confidence'];
     const sorted = [...epListingsData].sort((a, b) => {
         let va = a[epTableSort.field];
@@ -11760,7 +12005,6 @@ function renderEPListingsTable() {
         return epTableSort.dir === 'asc' ? cmp : -cmp;
     });
 
-    // Refresh sort arrow indicator on active header
     document.querySelectorAll('#ep-table thead th[data-sort]').forEach(th => {
         th.classList.remove('sort-asc', 'sort-desc');
         if (th.dataset.sort === epTableSort.field) {
@@ -11783,11 +12027,21 @@ function renderEPListingsTable() {
         else if (item.ep_score >= 0.55) scoreStyle += ' color: var(--accent-blue, #3b82f6);';
         else scoreStyle += ' color: var(--color-text-secondary);';
         
+        // Render EP trend delta badge
+        let trendBadge = '';
+        if (item.prev_ep_score != null) {
+            const diff = item.ep_score - item.prev_ep_score;
+            if (diff > 0.001) {
+                trendBadge = `<span style="font-size: 0.7rem; color: var(--color-success, #10b981); margin-left: 4px; font-weight: 600;">▲+${diff.toFixed(2)}</span>`;
+            } else if (diff < -0.001) {
+                trendBadge = `<span style="font-size: 0.7rem; color: var(--color-error, #ef4444); margin-left: 4px; font-weight: 600;">▼${diff.toFixed(2)}</span>`;
+            }
+        }
+
         const gapVal = item.gap_pct || 0.0;
         const changeText = gapVal >= 0 ? `+${gapVal.toFixed(2)}%` : `${gapVal.toFixed(2)}%`;
         const changeStyle = gapVal >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);';
 
-        // Day's Change %
         const dayChgVal = item.price_change_pct != null ? item.price_change_pct : gapVal;
         const dayChgText = dayChgVal >= 0 ? `+${dayChgVal.toFixed(2)}%` : `${dayChgVal.toFixed(2)}%`;
         const dayChgStyle = dayChgVal >= 0 ? 'color: var(--color-success, #10b981); font-weight: 600;' : 'color: var(--color-error, #ef4444); font-weight: 600;';
@@ -11803,7 +12057,7 @@ function renderEPListingsTable() {
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
                 <td style="font-weight: 500;">${item.ep_type}</td>
-                <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}</td>
+                <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}${trendBadge}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.neglect_score.toFixed(2)}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.catalyst_score.toFixed(2)}</td>
                 <td class="text-center" style="color: var(--color-text-secondary);">${item.repricing_score.toFixed(2)}</td>
@@ -11822,18 +12076,12 @@ function renderEPListingsTable() {
         `;
     }).join('');
 }
+
 function removeFromEPWatchlist(symbol) {
     if (!confirm(`Are you sure you want to remove ${symbol} from the active watchlist?`)) {
         return;
     }
-    fetch('/api/ep/watchlist/remove', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ symbol: symbol })
-    })
-    .then(res => res.json())
+    EP_API.post('/api/ep/watchlist/remove', { symbol: symbol })
     .then(data => {
         if (data.success) {
             if (typeof showToast === 'function') showToast(`${symbol} removed from watchlist`, 'success');
@@ -11854,22 +12102,27 @@ function fetchEPWatchlist() {
     if (tbody && epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="12" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     Loading watchlist...
                 </td>
             </tr>
         `;
     }
     
-    fetch('/api/ep/watchlist')
-        .then(res => res.json())
+    EP_API.get('/api/ep/watchlist')
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
                 return;
             }
             epWatchlistData = data.watchlist || [];
+            
+            // Reset Select All checkbox
+            const sa = document.getElementById('ep-watchlist-select-all');
+            if (sa) sa.checked = false;
+            
             renderEPWatchlistTable();
+            updateWatchlistSelectionCount();
         })
         .catch(err => {
             console.error('Error fetching EP watchlist:', err);
@@ -11884,18 +12137,56 @@ function renderEPWatchlistTable() {
     if (epWatchlistData.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
+                <td colspan="14" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
                     No active watchlist candidates found.
                 </td>
             </tr>
         `;
         return;
     }
+
+    // Sort Watchlist
+    const textFields = ['symbol', 'ep_type', 'status', 'trigger_type', 'notes', 'catalyst_date'];
+    const sorted = [...epWatchlistData].sort((a, b) => {
+        let va = a[epWatchlistSort.field];
+        let vb = b[epWatchlistSort.field];
+        if (va == null) va = textFields.includes(epWatchlistSort.field) ? '' : -Infinity;
+        if (vb == null) vb = textFields.includes(epWatchlistSort.field) ? '' : -Infinity;
+        let cmp;
+        if (textFields.includes(epWatchlistSort.field)) {
+            cmp = String(va).localeCompare(String(vb));
+        } else {
+            cmp = Number(va) - Number(vb);
+        }
+        return epWatchlistSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.querySelectorAll('#ep-watchlist-table thead th[data-sort]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === epWatchlistSort.field) {
+            th.classList.add(epWatchlistSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
     
-    tbody.innerHTML = epWatchlistData.map(item => {
+    tbody.innerHTML = sorted.map(item => {
         const scoreVal = item.ep_score || 0.0;
+        
+        const cmpVal = item.current_price;
+        const cmpHtml = cmpVal != null ? `₹${cmpVal.toFixed(2)}` : '-';
+        
+        const gainVal = item.gain_pct;
+        let gainHtml = '-';
+        if (gainVal != null) {
+            const gainColor = gainVal >= 0 ? 'var(--color-success, #10b981)' : 'var(--color-error, #ef4444)';
+            const gainSign = gainVal > 0 ? '+' : '';
+            gainHtml = `<span style="color: ${gainColor}; font-weight: 600;">${gainSign}${gainVal.toFixed(2)}%</span>`;
+        }
+        
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(!event.target.closest('button') && !event.target.closest('input') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
+                <td style="text-align: center;" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="ep-watchlist-row-select" data-symbol="${item.symbol}" style="cursor: pointer; transform: scale(1.15);" onchange="updateWatchlistSelectionCount()">
+                </td>
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
@@ -11903,11 +12194,13 @@ function renderEPWatchlistTable() {
                 <td>${item.catalyst_date}</td>
                 <td class="text-center" style="font-weight: 700; color: var(--accent-blue);">${scoreVal.toFixed(2)}</td>
                 <td class="text-right">₹${item.entry_price ? item.entry_price.toFixed(2) : '-'}</td>
+                <td class="text-right">${cmpHtml}</td>
+                <td class="text-right">${gainHtml}</td>
                 <td class="text-right" style="color: var(--accent-red);">₹${item.stop_price ? item.stop_price.toFixed(2) : '-'}</td>
                 <td class="text-center">${item.days_on_watch} / 20</td>
                 <td><span class="badge" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">${item.status}</span></td>
                 <td>${item.trigger_type || 'None'}</td>
-                <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
+                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
                 <td class="text-center" style="white-space: nowrap;">
                     <button class="btn btn-xs btn-outline" onclick="removeFromEPWatchlist('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05);">Delete</button>
                 </td>
@@ -11916,20 +12209,106 @@ function renderEPWatchlistTable() {
     }).join('');
 }
 
+function updateWatchlistSelectionCount() {
+    const selected = document.querySelectorAll('.ep-watchlist-row-select:checked').length;
+    const total = document.querySelectorAll('.ep-watchlist-row-select').length;
+    const countEl = document.getElementById('ep-watchlist-selected-count');
+    if (countEl) {
+        countEl.textContent = `${selected} of ${total} items selected`;
+    }
+    
+    // Sync Select All checkbox state
+    const sa = document.getElementById('ep-watchlist-select-all');
+    if (sa) {
+        sa.checked = (selected === total && total > 0);
+    }
+}
+
+function bulkRemoveWatchlist() {
+    const checked = document.querySelectorAll('.ep-watchlist-row-select:checked');
+    if (checked.length === 0) {
+        if (typeof showToast === 'function') showToast('Please select items to remove', 'error');
+        return;
+    }
+    
+    const symbols = Array.from(checked).map(cb => cb.dataset.symbol);
+    if (!confirm(`Are you sure you want to remove ${symbols.length} selected items from the watchlist?`)) {
+        return;
+    }
+    
+    EP_API.post('/api/ep/watchlist/remove', { symbols: symbols })
+    .then(data => {
+        if (data.success) {
+            if (typeof showToast === 'function') showToast(data.message, 'success');
+            fetchEPWatchlist();
+        } else {
+            if (typeof showToast === 'function') showToast(`Error: ${data.error || 'Bulk delete failed'}`, 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error bulk deleting from EP watchlist:', err);
+        if (typeof showToast === 'function') showToast('Network error during bulk delete', 'error');
+    });
+}
+
+function exportWatchlistToCSV() {
+    const checked = document.querySelectorAll('.ep-watchlist-row-select:checked');
+    let symbols = [];
+    if (checked.length > 0) {
+        symbols = Array.from(checked).map(cb => cb.dataset.symbol);
+    } else {
+        symbols = epWatchlistData.map(item => item.symbol);
+    }
+    
+    if (symbols.length === 0) {
+        if (typeof showToast === 'function') showToast('No watchlist items to export', 'error');
+        return;
+    }
+    
+    const exportList = epWatchlistData.filter(item => symbols.includes(item.symbol));
+    const headers = ['Symbol', 'EP Type', 'Catalyst Date', 'EP Score', 'Entry Price', 'CMP', 'Gain %', 'Stop Price', 'Days on Watch', 'Status', 'Notes'];
+    
+    const csvContent = [
+        headers.join(','),
+        ...exportList.map(item => [
+            item.symbol,
+            item.ep_type,
+            item.catalyst_date,
+            item.ep_score || 0.0,
+            item.entry_price || '',
+            item.current_price || '',
+            item.gain_pct != null ? `${item.gain_pct}%` : '',
+            item.stop_price || '',
+            item.days_on_watch || 0,
+            item.status,
+            `"${(item.notes || '').replace(/"/g, '""')}"`
+        ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `ep_watchlist_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    if (typeof showToast === 'function') showToast(`Exported ${exportList.length} items to CSV`, 'success');
+}
+
 function fetchEPSugarBabies() {
     const tbody = document.getElementById('ep-sugar-body');
-    if (tbody && epSugarData.length === 0) {
+    if (tbody) {
+        // Render Loading Skeletons
         tbody.innerHTML = `
-            <tr>
-                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--color-text-secondary);">
-                    Loading Sugar Babies...
-                </td>
-            </tr>
+            <tr class="skeleton-row"><td colspan="7"><div class="skeleton" style="height: 22px; width: 100%; margin: 6px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="7"><div class="skeleton" style="height: 22px; width: 100%; margin: 6px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="7"><div class="skeleton" style="height: 22px; width: 100%; margin: 6px 0;"></div></td></tr>
         `;
     }
     
-    fetch('/api/ep/sugar-babies')
-        .then(res => res.json())
+    EP_API.get('/api/ep/sugar-babies')
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Error: ${data.error}`, 'error');
@@ -11958,10 +12337,33 @@ function renderEPSugarTable() {
         `;
         return;
     }
+
+    // Sort Sugar Babies
+    const textFields = ['symbol', 'exchange', 'added_date', 'notes'];
+    const sorted = [...epSugarData].sort((a, b) => {
+        let va = a[epSugarSort.field];
+        let vb = b[epSugarSort.field];
+        if (va == null) va = textFields.includes(epSugarSort.field) ? '' : -Infinity;
+        if (vb == null) vb = textFields.includes(epSugarSort.field) ? '' : -Infinity;
+        let cmp;
+        if (textFields.includes(epSugarSort.field)) {
+            cmp = String(va).localeCompare(String(vb));
+        } else {
+            cmp = Number(va) - Number(vb);
+        }
+        return epSugarSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    document.querySelectorAll('#ep-sugar-table thead th[data-sort]').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === epSugarSort.field) {
+            th.classList.add(epSugarSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
     
-    tbody.innerHTML = epSugarData.map(item => {
+    tbody.innerHTML = sorted.map(item => {
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="openEPDetailModal('${item.symbol}')">
                 <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
                     <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                 </td>
@@ -11989,8 +12391,7 @@ function triggerEPRefresh() {
     if (btnText) btnText.innerText = 'Scanning...';
     if (btnSvg) btnSvg.classList.add('spin-loader');
     
-    fetch('/api/ep/refresh', { method: 'POST' })
-        .then(res => res.json())
+    EP_API.post('/api/ep/refresh', {})
         .then(data => {
             if (data.error) {
                 if (typeof showToast === 'function') showToast(`Sync Error: ${data.error}`, 'error');
@@ -12002,13 +12403,11 @@ function triggerEPRefresh() {
             let pollCount = 0;
             const interval = setInterval(() => {
                 pollCount++;
-                fetch('/api/ep/refresh/status')
-                    .then(res => res.json())
+                EP_API.get('/api/ep/refresh/status')
                     .then(statusRes => {
                         if (!statusRes.running) {
                             clearInterval(interval);
-                            fetch('/api/ep/today')
-                                .then(res => res.json())
+                            EP_API.get('/api/ep/today')
                                 .then(todayRes => {
                                     epListingsData = todayRes.listings || [];
                                     
@@ -12057,19 +12456,23 @@ function loadEPThemesAndRotation() {
     const rotationBody = document.getElementById('ep-sector-rotation-body');
     
     if (themesContainer) {
-        themesContainer.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading themes...</div>';
+        // Themes Card Skeleton Loader
+        themesContainer.innerHTML = `
+            <div class="skeleton" style="height: 100px; width: 100%; border-radius: 8px; margin-bottom: 0.75rem;"></div>
+            <div class="skeleton" style="height: 100px; width: 100%; border-radius: 8px; margin-bottom: 0.75rem;"></div>
+            <div class="skeleton" style="height: 100px; width: 100%; border-radius: 8px;"></div>
+        `;
     }
     if (rotationBody) {
-        rotationBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">Loading sector rotation...</td></tr>';
+        rotationBody.innerHTML = `
+            <tr class="skeleton-row"><td colspan="6"><div class="skeleton" style="height: 20px; width: 100%; margin: 4px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="6"><div class="skeleton" style="height: 20px; width: 100%; margin: 4px 0;"></div></td></tr>
+            <tr class="skeleton-row"><td colspan="6"><div class="skeleton" style="height: 20px; width: 100%; margin: 4px 0;"></div></td></tr>
+        `;
     }
     
-    fetch('/api/ep/themes')
-        .then(res => res.json())
+    EP_API.get('/api/ep/themes')
         .then(data => {
-            if (data.error) {
-                if (typeof showToast === 'function') showToast(`Themes error: ${data.error}`, 'error');
-                return;
-            }
             const themes = data.themes || [];
             if (!themesContainer) return;
             
@@ -12108,13 +12511,8 @@ function loadEPThemesAndRotation() {
             }
         });
         
-    fetch('/api/ep/sector-rotation')
-        .then(res => res.json())
+    EP_API.get('/api/ep/sector-rotation')
         .then(data => {
-            if (data.error) {
-                if (typeof showToast === 'function') showToast(`Rotation error: ${data.error}`, 'error');
-                return;
-            }
             const rotation = data.rotation || [];
             if (!rotationBody) return;
             
@@ -12171,16 +12569,13 @@ function loadEPThemesAndRotation() {
 let backtestPrepInterval = null;
 
 function initEPBacktestDashboard() {
-    // Check initial prep status
-    fetch('/api/ep/backtest/prep_status')
-        .then(res => res.json())
+    EP_API.get('/api/ep/backtest/prep_status')
         .then(status => {
             if (status.running) {
                 showBacktestPrepProgress(status);
             }
         });
         
-    // Bind buttons
     const btnRun = document.getElementById('btn-run-ep-backtest');
     if (btnRun) {
         btnRun.onclick = runEPBacktest;
@@ -12199,16 +12594,11 @@ function prepBacktestData() {
     const startDate = document.getElementById('backtest-start-date').value;
     const endDate = document.getElementById('backtest-end-date').value;
     
-    fetch('/api/ep/backtest/prepare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            start_date: startDate,
-            end_date: endDate,
-            symbols: ''
-        })
+    EP_API.post('/api/ep/backtest/prepare', {
+        start_date: startDate,
+        end_date: endDate,
+        symbols: ''
     })
-    .then(res => res.json())
     .then(data => {
         if (data.error) {
             if (typeof showToast === 'function') showToast(`Prep failed: ${data.error}`, 'error');
@@ -12217,15 +12607,13 @@ function prepBacktestData() {
         }
         if (typeof showToast === 'function') showToast('Historical prep backfill started.', 'success');
         
-        // Start polling status
         if (backtestPrepInterval) clearInterval(backtestPrepInterval);
         
         const statusBar = document.getElementById('backtest-prep-status-bar');
         if (statusBar) statusBar.style.display = 'flex';
         
         backtestPrepInterval = setInterval(() => {
-            fetch('/api/ep/backtest/prep_status')
-                .then(res => res.json())
+            EP_API.get('/api/ep/backtest/prep_status')
                 .then(status => {
                     showBacktestPrepProgress(status);
                     if (!status.running) {
@@ -12285,12 +12673,7 @@ function runEPBacktest() {
         capital: 1000000.0
     };
     
-    fetch('/api/ep/backtest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-    })
-    .then(res => res.json())
+    EP_API.post('/api/ep/backtest', params)
     .then(data => {
         if (btnRun) {
             btnRun.disabled = false;
@@ -12302,11 +12685,9 @@ function runEPBacktest() {
             return;
         }
         
-        // Show dashboard panel
         const dashboard = document.getElementById('backtest-dashboard');
         if (dashboard) dashboard.style.display = 'grid';
         
-        // Populate stats
         const summary = data.summary || {};
         document.getElementById('backtest-stat-trades').textContent = summary.total_trades || 0;
         
@@ -12325,7 +12706,6 @@ function runEPBacktest() {
         
         document.getElementById('backtest-stat-drawdown').textContent = `${(summary.max_drawdown || 0).toFixed(1)}%`;
         
-        // Render Chart
         renderEquityChart(data.equity_curve || []);
         
         if (typeof showToast === 'function') showToast(`Backtest completed! ${summary.total_trades} trades simulated.`, 'success');
@@ -12356,7 +12736,6 @@ function renderEquityChart(equityCurve) {
     
     const chartCtx = ctx.getContext('2d');
     
-    // Create modern smooth blue gradient
     const gradient = chartCtx.createLinearGradient(0, 0, 0, 200);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.35)');
     gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
@@ -12424,3 +12803,329 @@ function renderEquityChart(equityCurve) {
     });
 }
 
+// Function to show/hide fundamental analysis sections based on active tab
+function updateFundamentalSectionsVisibility() {
+    const valuationSection = document.getElementById('drawer-valuation-deep-dive');
+    const qualitySection = document.getElementById('drawer-quality-trends-analysis');
+    const growthSection = document.getElementById('drawer-growth-momentum-signals');
+
+    if (!valuationSection || !qualitySection || !growthSection) return;
+
+    // Populate all three sections with data if stock is available
+    if (window.currentTradeStock) {
+        const valContent = valuationSection.querySelector('.drawer-section-content');
+        if (valContent) {
+            valContent.innerHTML = generateValuationMetricsHTML(window.currentTradeStock);
+        }
+        const qualContent = qualitySection.querySelector('.drawer-section-content');
+        if (qualContent) {
+            qualContent.innerHTML = generateQualityMetricsHTML(window.currentTradeStock);
+        }
+        const growthContent = growthSection.querySelector('.drawer-section-content');
+        if (growthContent) {
+            growthContent.innerHTML = generateGrowthMetricsHTML(window.currentTradeStock);
+        }
+    }
+
+    // Show section based on active tab
+    if (currentTab === 'valuation') {
+        valuationSection.setAttribute('open', '');
+        qualitySection.removeAttribute('open');
+        growthSection.removeAttribute('open');
+    } else if (currentTab === 'quality') {
+        qualitySection.setAttribute('open', '');
+        valuationSection.removeAttribute('open');
+        growthSection.removeAttribute('open');
+    } else if (currentTab === 'growth') {
+        growthSection.setAttribute('open', '');
+        valuationSection.removeAttribute('open');
+        qualitySection.removeAttribute('open');
+    } else {
+        // If on overview or any other tab, open all three by default so they are visible and populated
+        valuationSection.setAttribute('open', '');
+        qualitySection.setAttribute('open', '');
+        growthSection.setAttribute('open', '');
+    }
+}
+
+// Generate HTML for Valuation Deep Dive metrics
+function generateValuationMetricsHTML(stock) {
+    if (!stock.pe_ratio && !stock.ev_ebitda && !stock.pb_ratio) {
+        return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
+            Valuation data unavailable for this stock.
+        </p>`;
+    }
+
+    const peRatio = stock.pe_ratio || 0;
+    const epsGrowth = stock.revenue_growth_qoq || 0; // Proxy for eps_growth_qoq
+    const pegRatio = (stock.peg_ratio !== undefined && stock.peg_ratio !== null) ? stock.peg_ratio : (epsGrowth > 0 ? peRatio / epsGrowth : 0);
+
+    const evEbitda = stock.ev_ebitda || 0; // Proxy for ev_revenue
+    const divYield = stock.div_yield || 0; // Shows yield context
+    const fcfYield = stock.fcf_yield || 0; // Proxy for buyback yield
+    const debtToEquity = stock.debt_to_equity || 0; // Proxy for debt_ebitda
+    const pbRatio = stock.pb_ratio || 0;
+
+    return `
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">P/E Ratio</span>
+                <span class="metric-help" title="Price to Earnings ratio. Lower is cheaper.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${peRatio > 0 && peRatio < 25 ? 'metric-value-positive' : (peRatio >= 40 ? 'metric-value-negative' : 'metric-value-neutral')}">${peRatio > 0 ? peRatio.toFixed(2) : '—'}</span>
+                <span class="metric-value-trend ${peRatio > 0 && peRatio < 25 ? 'trend-up' : (peRatio >= 40 ? 'trend-down' : 'trend-neutral')}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">PEG Ratio</span>
+                <span class="metric-help" title="Price/Earnings to Growth ratio. &lt;1.0 suggests undervalued relative to growth.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${pegRatio < 1 && pegRatio > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${pegRatio.toFixed(2)}</span>
+                <span class="metric-value-trend ${pegRatio < 1 && pegRatio > 0 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">EV/EBITDA</span>
+                <span class="metric-help" title="Enterprise Value to EBITDA. Lower is cheaper.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${evEbitda.toFixed(2)}</span>
+                <span class="metric-value-trend ${evEbitda < 15 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Dividend Yield</span>
+                <span class="metric-help" title="Dividend per share divided by price per share.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${divYield.toFixed(2)}%</span>
+                <span class="metric-value-trend ${divYield > 1.5 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">FCF Yield (Buyback Proxy)</span>
+                <span class="metric-help" title="Free Cash Flow divided by Market Cap. Indicates cash generation.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${fcfYield > 5 ? 'metric-value-positive' : 'metric-value-neutral'}">${fcfYield.toFixed(2)}%</span>
+                <span class="metric-value-trend ${fcfYield > 5 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Debt/Equity</span>
+                <span class="metric-help" title="Total Debt to Shareholder Equity. Lower is safer.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${debtToEquity < 1.0 ? 'metric-value-positive' : 'metric-value-negative'}">${debtToEquity.toFixed(2)}</span>
+                <span class="metric-value-trend ${debtToEquity < 1.0 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Price / Book (P/B)</span>
+                <span class="metric-help" title="Price per share divided by Book Value per share.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${pbRatio < 3.0 ? 'metric-value-positive' : 'metric-value-neutral'}">${pbRatio.toFixed(2)}</span>
+                <span class="metric-value-trend ${pbRatio < 3.0 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+    `;
+}
+
+// Generate HTML for Quality Trends Analysis metrics
+function generateQualityMetricsHTML(stock) {
+    if (!stock.roe && !stock.roce && !stock.gross_margin) {
+        return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
+            Quality data unavailable for this stock.
+        </p>`;
+    }
+
+    const roe = stock.roe || 0;
+    const roce = stock.roce || 0;
+    const roa = stock.roa || 0;
+    const grossMargin = stock.gross_margin || 0;
+    const ebitdaMargin = stock.ebitda_margin || 0;
+    const cfoEbitda = stock.cfo_ebitda || 0; // Proxy for fcf_conversion_pct
+    const cfoPat = stock.cfo_pat || 0; // Proxy for earnings quality / surprise
+    const wcIntensity = stock.wc_intensity || 0; // Proxy for working_capital_trend
+
+    return `
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Return on Equity (ROE)</span>
+                <span class="metric-help" title="Net Income divided by Shareholder Equity. Measures profitability.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${roe >= 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${roe.toFixed(1)}%</span>
+                <span class="metric-value-trend ${roe >= 15 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Return on Capital (ROCE)</span>
+                <span class="metric-help" title="EBIT divided by Capital Employed. Measures capital efficiency.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${roce >= 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${roce.toFixed(1)}%</span>
+                <span class="metric-value-trend ${roce >= 15 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Return on Assets (ROA)</span>
+                <span class="metric-help" title="Net Income divided by Total Assets.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${roa.toFixed(1)}%</span>
+                <span class="metric-value-trend ${roa >= 6 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Gross Margin</span>
+                <span class="metric-help" title="Gross Profit divided by Revenue.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${grossMargin.toFixed(1)}%</span>
+                <span class="metric-value-trend ${grossMargin > 40 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">EBITDA Margin</span>
+                <span class="metric-help" title="EBITDA divided by Revenue.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${ebitdaMargin.toFixed(1)}%</span>
+                <span class="metric-value-trend ${ebitdaMargin > 20 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">CFO / EBITDA (FCF Proxy)</span>
+                <span class="metric-help" title="Cash Flow from Operations divided by EBITDA. >80% is high quality.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cfoEbitda >= 80 ? 'metric-value-positive' : 'metric-value-neutral'}">${cfoEbitda.toFixed(1)}%</span>
+                <span class="metric-value-trend ${cfoEbitda >= 80 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">CFO / PAT (Earnings Quality)</span>
+                <span class="metric-help" title="Cash Flow from Operations divided by Profit After Tax. Measures cash realization of earnings.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cfoPat >= 100 ? 'metric-value-positive' : 'metric-value-negative'}">${cfoPat.toFixed(1)}%</span>
+                <span class="metric-value-trend ${cfoPat >= 100 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Working Capital Intensity</span>
+                <span class="metric-help" title="Working Capital divided by Revenue. Lower is better.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number">${wcIntensity.toFixed(1)}%</span>
+                <span class="metric-value-trend ${wcIntensity < 15 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+    `;
+}
+
+// Generate HTML for Growth Momentum Signals metrics
+function generateGrowthMetricsHTML(stock) {
+    // Fallback mappings if database fields are available but standard properties are missing
+    if (!stock.revenue_growth_yoy && stock.revenue_growth != null) {
+        stock.revenue_growth_yoy = stock.revenue_growth;
+    }
+    if (!stock.revenue_growth_qoq && stock.profit_growth != null) {
+        stock.revenue_growth_qoq = stock.profit_growth;
+    }
+
+    if (!stock.revenue_growth_qoq && !stock.revenue_growth_yoy && !stock.revenue_growth_3y) {
+        return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
+            Growth data unavailable for this stock.
+        </p>`;
+    }
+
+    const revQoQ = stock.revenue_growth_qoq || 0;
+    const revYoY = stock.revenue_growth_yoy || 0;
+    const rev3Y = stock.revenue_growth_3y || 0;
+    const epsCagr = stock.eps_cagr || 0;
+    const ebitdaCagr = stock.ebitda_cagr || 0;
+    const orderGrowth = stock.order_growth || 0; // Proxy for order_book_growth_pct
+
+    return `
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Revenue Growth (QoQ)</span>
+                <span class="metric-help" title="Quarter-over-Quarter revenue growth.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${revQoQ > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${revQoQ.toFixed(2)}%</span>
+                <span class="metric-value-trend ${revQoQ > 0 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Revenue Growth (YoY)</span>
+                <span class="metric-help" title="Year-over-Year revenue growth.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${revYoY > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${revYoY.toFixed(2)}%</span>
+                <span class="metric-value-trend ${revYoY > 0 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Revenue Growth (3Y CAGR)</span>
+                <span class="metric-help" title="3-Year Compound Annual Growth Rate of Revenue.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${rev3Y > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${rev3Y.toFixed(2)}%</span>
+                <span class="metric-value-trend ${rev3Y > 15 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">EBITDA CAGR (3Y)</span>
+                <span class="metric-help" title="3-Year Compound Annual Growth Rate of EBITDA.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${ebitdaCagr > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${ebitdaCagr.toFixed(2)}%</span>
+                <span class="metric-value-trend ${ebitdaCagr > 15 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">EPS CAGR (3Y)</span>
+                <span class="metric-help" title="3-Year Compound Annual Growth Rate of Earnings Per Share.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${epsCagr > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${epsCagr.toFixed(2)}%</span>
+                <span class="metric-value-trend ${epsCagr > 15 ? 'trend-up' : 'trend-neutral'}"></span>
+            </div>
+        </div>
+        ${orderGrowth !== 0 ? `
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Order Book Growth (YoY)</span>
+                <span class="metric-help" title="Growth rate of order book backlog.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${orderGrowth > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${orderGrowth.toFixed(1)}%</span>
+                <span class="metric-value-trend ${orderGrowth > 0 ? 'trend-up' : 'trend-down'}"></span>
+            </div>
+        </div>
+        ` : ''}
+    `;
+}

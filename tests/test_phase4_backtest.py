@@ -31,11 +31,12 @@ def cleanup_temp_db():
 @pytest.fixture
 def client():
     from app.extensions import db
-    try:
-        db.session.remove()
-        db.engine.dispose()
-    except Exception:
-        pass
+    with flask_app.app_context():
+        try:
+            db.session.remove()
+            db.engine.dispose()
+        except Exception:
+            pass
     flask_app.config['TESTING'] = True
     with flask_app.test_client() as client:
         yield client

@@ -62,21 +62,27 @@ def add_to_ep_watchlist():
 @api_bp.route('/ep/watchlist/remove', methods=['POST'])
 def remove_from_ep_watchlist():
     """
-    Remove a symbol from the active EP watchlist.
-    Expected JSON: { "symbol": "<stock_symbol>" }
+    Remove a symbol or list of symbols from the active EP watchlist.
+    Expected JSON: { "symbol": "<stock_symbol>" } OR { "symbols": ["<stock_symbol_1>", ...] }
     """
     if not request.is_json:
         return jsonify(error="Content-Type must be application/json"), 400
 
     data = request.get_json() or {}
     symbol = data.get("symbol")
+    symbols = data.get("symbols")
 
-    if not symbol:
-        return jsonify(error="Symbol is required"), 400
+    if not symbol and not symbols:
+        return jsonify(error="Symbol or symbols is required"), 400
 
     try:
-        watchlist_service.remove_from_ep_watchlist(symbol)
-        return jsonify(success=True, message="Removed symbol from active watchlist")
+        if symbols:
+            for sym in symbols:
+                watchlist_service.remove_from_ep_watchlist(sym)
+            return jsonify(success=True, message=f"Removed {len(symbols)} symbols from active watchlist")
+        else:
+            watchlist_service.remove_from_ep_watchlist(symbol)
+            return jsonify(success=True, message="Removed symbol from active watchlist")
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except Exception as e:
