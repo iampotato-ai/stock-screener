@@ -18,8 +18,10 @@ def test_watchlist_view():
         page.click('button[data-view="watchlist"]')
         # Verify Watchlist view is visible
         watch_view = page.locator("#view-watchlist")
+        watch_view.wait_for(state="visible")
         assert watch_view.is_visible(), "Watchlist view did not become visible"
         # Check that the watchlist workspace grid exists
         grid = page.locator(".watchlist-workspace-grid")
+        grid.wait_for(state="visible")
         assert grid.is_visible(), "Watchlist workspace grid missing"
         browser.close()

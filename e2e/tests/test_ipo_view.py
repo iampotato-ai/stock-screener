@@ -16,7 +16,11 @@ def test_ipo_view():
         # Click IPO tab (identified by #tab-ipo)
         page.click('#tab-ipo')
         # Verify IPO view becomes visible
-        assert page.locator('#view-ipo').is_visible(), "IPO view not visible"
+        view = page.locator('#view-ipo')
+        view.wait_for(state="visible")
+        assert view.is_visible(), "IPO view not visible"
         # Verify a key IPO workspace wrapper exists
-        assert page.locator('.ipo-workspace-wrapper').is_visible(), "IPO workspace wrapper missing"
+        wrapper = page.locator('.ipo-workspace-wrapper')
+        wrapper.wait_for(state="visible")
+        assert wrapper.is_visible(), "IPO workspace wrapper missing"
         browser.close()

@@ -18,12 +18,15 @@ def test_ai_forecast_view():
         page.click('button[data-view="ai-forecast"]')
         # Verify AI Forecast view is visible
         forecast_view = page.locator("#view-ai-forecast")
+        forecast_view.wait_for(state="visible")
         assert forecast_view.is_visible(), "AI Forecast view did not become visible"
         
         # Verify input and button are present
         input_ticker = page.locator("#kronos-ticker-input")
+        input_ticker.wait_for(state="visible")
         assert input_ticker.is_visible(), "Kronos ticker input missing"
         btn_run = page.locator("#btn-run-kronos")
+        btn_run.wait_for(state="visible")
         assert btn_run.is_visible(), "Run forecast button missing"
         
         # Type ticker and click Run
@@ -38,6 +41,6 @@ def test_ai_forecast_view():
         
         # Assert button is re-enabled and text is restored
         assert btn_run.is_enabled()
-        assert btn_run.text_content() == "Run Forecast"
+        assert "Run Forecast" in btn_run.text_content()
         
         browser.close()

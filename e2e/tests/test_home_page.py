@@ -3,7 +3,7 @@
 Ensures the home page loads, title contains the project name, and navigation tabs are present.
 """
 
-from e2e.tests.common import get_base_url, launch_browser
+from .common import get_base_url, launch_browser
 from playwright.sync_api import sync_playwright
 
 
