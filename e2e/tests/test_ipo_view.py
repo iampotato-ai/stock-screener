@@ -3,13 +3,13 @@
 Ensures the IPO tab activates and core UI components appear.
 """
 
-from .common import get_base_url
+from .common import get_base_url, launch_browser
 from playwright.sync_api import sync_playwright
 
 
 def test_ipo_view():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
         page.goto(get_base_url())

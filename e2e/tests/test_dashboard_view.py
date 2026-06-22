@@ -3,13 +3,13 @@
 Ensures the Dashboard tab (default) is visible and key UI components appear.
 """
 
-from e2e.tests.common import get_base_url
+from e2e.tests.common import get_base_url, launch_browser
 from playwright.sync_api import sync_playwright
 
 
 def test_dashboard_view():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
         # Load home page (dashboard is active by default)

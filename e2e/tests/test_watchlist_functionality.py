@@ -4,12 +4,12 @@ Ensures that we can add a stock manually to the watchlist and verify its presenc
 """
 
 from playwright.sync_api import sync_playwright
-from .common import get_base_url
+from .common import get_base_url, launch_browser
 
 
 def test_watchlist_functionality():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
         

@@ -4,12 +4,12 @@ Ensures the EP tab loads, the EP workspace becomes active, and key UI elements a
 """
 
 from playwright.sync_api import sync_playwright
-from e2e.tests.common import get_base_url
+from e2e.tests.common import get_base_url, launch_browser
 
 
 def test_ep_view():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
         # Load home page (baseURL from config)

@@ -4,13 +4,13 @@ Ensures the Screener tab activates and core UI elements appear.
 """
 
 from playwright.sync_api import sync_playwright
-from e2e.tests.common import get_base_url
+from e2e.tests.common import get_base_url, launch_browser
 
 
 def test_screener_view():
     with sync_playwright() as p:
         # Launch Chromium (headless by default as per config)
-        browser = p.chromium.launch()
+        browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
         # Home page loads
