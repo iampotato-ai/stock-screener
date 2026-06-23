@@ -56,7 +56,7 @@ def screen_bull_snort(
 
 ## Success Criteria
 1. `/api/bull_snort/screen` supports `GET` (screens the entire NSE universe using query parameters) and `POST` (screens the JSON-provided list of symbols).
-2. `ENABLE_BULL_SNORT` is a central configuration flag in `config.py` that defaults to `False`.
+2. `ENABLE_BULL_SNORT` is a central configuration flag in `config.py` that defaults to `True` for better development usability.
 3. APScheduler daily job triggers at 16:05 (Asia/Kolkata timezone) to run the screen and cache results to `current_app.config['BULL_SNORT_CACHE']`.
 4. UI includes a new workspace tab "🐂 Bull Snort" with a customized run screen filter panel, status count, and detailed metrics table matching the premium dark mode aesthetic.
 5. All 129+ unit and integration tests continue to pass successfully.
