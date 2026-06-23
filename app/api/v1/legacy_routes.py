@@ -2335,7 +2335,7 @@ def classify_setup(stock, sector_meta=None):
     is_top_3 = sector in sector_meta.get("top_3", [])
     is_leader = is_top_3 and perf_w > 0 and price > sma21
     # Momentum Continuation (Using days_in_scan >= 1 since history DB is fresh, will naturally scale to 2+)
-    is_cont = ims_band == "strong" and swingband in ["strong", "elite"] and days_in_scan >= 1
+    is_cont = ims_band in ["strong", "moderate"] and swingband in ["strong", "elite"] and days_in_scan >= 1
     
     if is_breakout: tags.append("Breakout Ready")
     if is_pullback: tags.append("Pullback to MA")
@@ -2914,7 +2914,7 @@ def classify_technical_pattern(history):
             if is_green and has_vol_spike and has_range_spike:
                 inst_days_count += 1
                 
-        if stage1_gain >= 50.0 and flag_range_pct <= 15.0 and inst_days_count >= 2:
+        if stage1_gain >= 20.0 and flag_range_pct <= 15.0 and inst_days_count >= 1:
             # Volatility Contraction: last 3 days daily range < 14-day ATR%
             day_ranges_pct = [((highs[i] - lows[i]) / closes[i] * 100) for i in [-1, -2, -3]]
             avg_recent_range = sum(day_ranges_pct) / 3
@@ -2931,14 +2931,14 @@ def classify_technical_pattern(history):
             atr_pct_14 = (atr_14 / current_close) * 100 if current_close > 0 else 5.0
             
             avg_contraction_pass = avg_recent_range < atr_pct_14
-            all_under_ceiling = all(r < 2.0 for r in day_ranges_pct)
+            all_under_ceiling = all(r < 2.5 for r in day_ranges_pct)
             is_vol_contract = avg_contraction_pass and all_under_ceiling
             
-            # Volume Contraction: average volume of last 3 days < 60% of 20-day average volume
+            # Volume Contraction: average volume of last 3 days < 75% of 20-day average volume
             avg_vol_3d = sum(volumes[-3:]) / 3
             avg_vol_20d = sum(volumes[-20:]) / 20
-            avg_dryup_pass = avg_vol_3d < avg_vol_20d * 0.60
-            single_dryup_pass = any(volumes[i] < avg_vol_20d * 0.50 for i in [-1, -2, -3])
+            avg_dryup_pass = avg_vol_3d < avg_vol_20d * 0.75
+            single_dryup_pass = any(volumes[i] < avg_vol_20d * 0.60 for i in [-1, -2, -3])
             is_vol_dryup = avg_dryup_pass and single_dryup_pass
             
             # EMA10 and EMA20 calculations
@@ -2952,15 +2952,15 @@ def classify_technical_pattern(history):
             for val in closes[1:]:
                 ema20 = val * alpha20 + ema20 * (1 - alpha20)
                 
-            is_ema10_close = abs(current_close - ema10) / ema10 * 100 <= 1.5
-            is_ema20_close = abs(current_close - ema20) / ema20 * 100 <= 1.5
+            is_ema10_close = abs(current_close - ema10) / ema10 * 100 <= 2.5
+            is_ema20_close = abs(current_close - ema20) / ema20 * 100 <= 2.5
             is_ema_close = is_ema10_close or is_ema20_close
             
             # Higher Low (HL) check: last 4 days low is higher than preceding 4-12 days low
             hl_pass = min(lows[-4:]) > min(lows[-12:-4])
             
             # Higher High (HH) / Accumulation check: recent highs holding close to flag peak
-            hh_pass = max(highs[-4:]) >= flag_high * 0.98
+            hh_pass = max(highs[-4:]) >= flag_high * 0.97
             
             if is_vol_contract and is_vol_dryup and is_ema_close and hl_pass and hh_pass:
                 return {
