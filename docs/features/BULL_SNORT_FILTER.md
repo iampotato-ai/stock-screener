@@ -1,87 +1,131 @@
 # Bull Snort Filter — Design & Implementation Guide
 
-The **Bull Snort** is a two-layer signal:
-
-- **Layer 1 — 200 DMA Context**: The 200 DMA slope was previously declining and is now flattening or curling upward. This filters the universe to stocks where the long-term trend is recovering.
-- **Layer 2 — Bull Snort Candle Trigger**: On that same day, a single candle meets all three conditions simultaneously — confirming institutional buying at the exact moment the trend turns.
-
-> The DMA layer finds the **setup**. The candle layer confirms the **trigger**.
+The **Bull Snort** is a 4-phase institutional accumulation + breakout signal.
+It identifies stocks that have been in a long downtrend, formed a base with
+hidden volume accumulation, and are now attempting a breakout toward the 200 DMA
+with a high-conviction candle.
 
 ---
 
-## Full Signal Conditions (ALL must be true)
+## The 4-Phase Signal Structure
 
-| # | Layer | Condition | Rule |
-|---|---|---|---|
-| 1 | DMA Context | 200 DMA was declining | Slope N days ago was negative |
-| 2 | DMA Context | 200 DMA is now flattening/curling up | Current slope ≥ flattening threshold |
-| 3 | Candle Trigger | Volume Surge | Volume ≥ 3× the 10/20/50-day avg |
-| 4 | Candle Trigger | Positive Price Move | Close > previous day's close |
-| 5 | Candle Trigger | Strong Close | Close in top 35% of day's candle range |
+```
+PHASE 1 — Prolonged Downtrend
+  ├─ Price was significantly below 200 DMA (gap > 10%) at some point in last 6 months
+  └─ 200 DMA slope is still negative (still declining)
+
+PHASE 2 — Base Formation
+  ├─ Price has NOT made a new 20-day low in the last 10 sessions (stopped falling)
+  └─ Price is now within 5% of the 200 DMA (gap has closed significantly)
+
+PHASE 3 — Base Volume Accumulation Score (0–100 bonus)
+  ├─ Count of Volume Pivots during the base period (last 6 months below DMA)
+  └─ Count of Volume Surges during the base period
+  └─ Higher score = more institutional accumulation during base
+
+PHASE 4 — Bull Snort Candle (Trigger)
+  ├─ Volume ≥ 3× 20-day average
+  ├─ Close > previous day's close
+  └─ Close in top 35% of the day's candle range
+
+ALL of Phase 1, 2, 4 must pass. Phase 3 adds to the score.
+```
+
+> The 200 DMA does **not** need to be curling up. It is typically still declining.
+> What matters is that **price** closes the gap from below with a conviction candle.
 
 ---
 
-## Table of Contents
-- [Signal Math](#signal-math)
-- [Codebase Structure](#codebase-structure)
-- [bull_snort_service.py](#bull_snort_servicepy)
-- [API Endpoint](#api-endpoint-bull_snortpy)
-- [Scheduler Integration](#scheduler-integration)
-- [Scoring Model](#scoring-model)
-- [UI Plan](#ui-plan)
-- [Build Order & Test Cases](#build-order--test-cases)
+## Full Signal Math
 
----
+### Phase 1 — Prolonged Downtrend
 
-## Signal Math
+```python
+# Max gap in the last 6 months: was price ever 10%+ below 200 DMA?
+gap_series      = (dma200 - close) / close * 100        # positive = price below DMA
+max_gap_6mo     = gap_series.iloc[-126:].max()           # 126 trading days ≈ 6 months
+was_deep_below  = max_gap_6mo >= 10.0                    # at least 10% below at some point
 
-### Layer 1 — 200 DMA Slope Transition
-
-The slope is measured as a normalised percentage per day so it works across all price ranges.
-
-```
-# Current slope (short lookback — is it flattening NOW?)
-current_slope = (DMA_200[today] - DMA_200[5 days ago]) / 5
-norm_current_slope = (current_slope / DMA_200[today]) * 100   # % per day
-
-# Prior slope (longer lookback — was it declining BEFORE?)
-prior_slope = (DMA_200[20 days ago] - DMA_200[40 days ago]) / 20
-norm_prior_slope = (prior_slope / DMA_200[20 days ago]) * 100   # % per day
-
-# Conditions
-was_declining    = norm_prior_slope < -0.01    # was falling at least 0.01%/day
-is_flattening    = norm_current_slope >= -0.005  # now flat or turning up
-
-dma_context_pass = was_declining AND is_flattening
+# 200 DMA is still declining
+dma_slope_20d   = (dma200.iloc[-1] - dma200.iloc[-21]) / 20
+norm_dma_slope  = (dma_slope_20d / dma200.iloc[-1]) * 100
+dma_still_down  = norm_dma_slope < 0.0                   # still negative slope
 ```
 
-**Tunable thresholds:**
-- `prior_slope_max = -0.01` — how steep the prior decline must have been
-- `current_slope_min = -0.005` — how flat counts as "flattening" (use 0.0 for strict curl-up only)
+### Phase 2 — Base Formation
 
-### Layer 2 — Bull Snort Candle
+```python
+# Price has stopped making new lows (base forming)
+recent_low_10d  = close.iloc[-11:-1].min()               # lowest close in last 10 sessions
+current_low     = close.iloc[-1]
+is_not_new_low  = current_low >= recent_low_10d          # not making new 20-day lows
 
+# Price has closed the gap — now within 5% of 200 DMA
+current_gap_pct = (dma200.iloc[-1] - close.iloc[-1]) / close.iloc[-1] * 100
+is_near_dma     = 0.0 <= current_gap_pct <= 5.0          # within 5% below (or touching)
 ```
-# Condition 3: Volume Surge
-avg_vol       = rolling mean of Volume over last N days (excl. today)
-vol_ratio     = today_volume / avg_vol
-is_vol_surge  = vol_ratio >= 3.0
 
-# Condition 4: Positive Price Move
-is_positive   = today_close > prev_close
-pct_change    = (today_close - prev_close) / prev_close * 100
+### Phase 3 — Base Volume Accumulation Score
 
-# Condition 5: Strong Close (top 35% of candle range)
-candle_range    = today_high - today_low
-close_position  = (today_close - today_low) / candle_range  # 0.0=bottom, 1.0=top
+Look back through the **base period** (last 6 months while price was below 200 DMA)
+and count Volume Pivots and Volume Surges. More = higher institutional conviction.
+
+```python
+# --- Volume Pivot: local volume peak (higher than 2 neighbours on each side) ---
+def detect_volume_pivots(volume_series, lookback=2):
+    pivots = []
+    for i in range(lookback, len(volume_series) - lookback):
+        window = volume_series.iloc[i - lookback: i + lookback + 1]
+        if volume_series.iloc[i] == window.max():
+            pivots.append(i)
+    return pivots
+
+# --- Volume Surge: volume >= 2x its own 20-day rolling average ---
+def detect_volume_surges(volume_series, avg_period=20, surge_multiplier=2.0):
+    avg_vol = volume_series.rolling(avg_period).mean()
+    surges  = (volume_series >= avg_vol * surge_multiplier)
+    return surges[surges].index.tolist()
+
+# --- Score the base period ---
+base_window     = 126    # last 6 months
+base_volume     = df['Volume'].iloc[-base_window:]
+base_close      = close.iloc[-base_window:]
+base_dma        = dma200.iloc[-base_window:]
+
+# Only count pivots/surges while price was BELOW the 200 DMA
+below_dma_mask  = base_close < base_dma
+base_vol_masked = base_volume[below_dma_mask]
+
+n_pivots        = len(detect_volume_pivots(base_vol_masked))
+n_surges        = len(detect_volume_surges(base_vol_masked))
+
+# Accumulation score: 0–100
+# 5+ pivots = max pivot score, 3+ surges = max surge score
+pivot_score     = min(n_pivots / 5.0, 1.0) * 100
+surge_score     = min(n_surges / 3.0, 1.0) * 100
+accumulation_score = (pivot_score * 0.5) + (surge_score * 0.5)
+```
+
+### Phase 4 — Bull Snort Candle
+
+```python
+# Volume Surge: >= 3x 20-day avg (excluding today)
+avg_vol_20d     = volume.iloc[-21:-1].mean()
+vol_ratio       = volume.iloc[-1] / avg_vol_20d
+is_vol_surge    = vol_ratio >= 3.0
+
+# Positive close
+today_close     = close.iloc[-1]
+prev_close      = close.iloc[-2]
+is_positive     = today_close > prev_close
+pct_change      = (today_close - prev_close) / prev_close * 100
+
+# Strong close: top 35% of candle range
+candle_range    = df['High'].iloc[-1] - df['Low'].iloc[-1]
+close_position  = (today_close - df['Low'].iloc[-1]) / candle_range
 is_strong_close = close_position >= 0.65
 
-bull_snort_candle = is_vol_surge AND is_positive AND is_strong_close
-```
-
-### Full Signal
-```
-bull_snort_signal = dma_context_pass AND bull_snort_candle
+bull_snort_candle = is_vol_surge and is_positive and is_strong_close
 ```
 
 ---
@@ -91,15 +135,15 @@ bull_snort_signal = dma_context_pass AND bull_snort_candle
 ```
 app/
 ├── services/
-│   └── bull_snort_service.py       ← Core screening + scoring logic
+│   └── bull_snort_service.py       ← All 4 phases + scoring
 ├── api/v1/
-│   └── bull_snort.py               ← REST API endpoints
+│   └── bull_snort.py               ← REST endpoints
 ├── tasks/
-│   └── scheduler.py                ← Add refresh job here
+│   └── scheduler.py                ← Daily refresh job
 templates/
-└── index.html                      ← Add Bull Snort tab
+└── index.html                      ← Bull Snort tab
 static/js/
-└── app.js                          ← Add UI handler
+└── app.js                          ← UI handler
 ```
 
 ---
@@ -116,157 +160,170 @@ from app.utils.technical import fetch_historical_prices
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Constants — tune per backtesting
+# Thresholds — tune via backtesting
 # ---------------------------------------------------------------------------
-DEFAULT_VOL_AVG_PERIOD      = 20      # rolling avg period for volume: 10, 20, or 50
-DEFAULT_VOL_SURGE_MIN        = 3.0    # 3x average volume minimum
-DEFAULT_CLOSE_POSITION_MIN   = 0.65   # close must be in top 35% of candle range
-DEFAULT_PRIOR_SLOPE_MAX      = -0.01  # prior 200 DMA slope must be this negative (% per day)
-DEFAULT_CURRENT_SLOPE_MIN    = -0.005 # current 200 DMA slope must be >= this (flattening)
-PRIOR_LOOKBACK_START         = 40     # days ago where prior slope measurement starts
-PRIOR_LOOKBACK_END           = 20     # days ago where prior slope measurement ends
-CURRENT_SLOPE_LOOKBACK       = 5      # days over which current slope is measured
+DEFAULT_VOL_AVG_PERIOD       = 20     # rolling avg period for Bull Snort candle volume
+DEFAULT_VOL_SURGE_MIN         = 3.0   # Bull Snort candle: min vol ratio
+DEFAULT_CLOSE_POSITION_MIN    = 0.65  # Bull Snort candle: min close position (top 35%)
+DEFAULT_MIN_GAP_HISTORY       = 10.0  # Phase 1: price must have been 10%+ below DMA
+DEFAULT_MAX_CURRENT_GAP       = 5.0   # Phase 2: price must be within 5% of DMA now
+BASE_LOOKBACK_DAYS             = 126   # 6 months of trading days
+BASE_NO_NEW_LOW_WINDOW         = 10    # Phase 2: no new low in last N sessions
 
 
 def compute_bull_snort(
     symbol: str,
-    vol_avg_period: int           = DEFAULT_VOL_AVG_PERIOD,
-    vol_surge_min: float          = DEFAULT_VOL_SURGE_MIN,
-    close_position_min: float     = DEFAULT_CLOSE_POSITION_MIN,
-    prior_slope_max: float        = DEFAULT_PRIOR_SLOPE_MAX,
-    current_slope_min: float      = DEFAULT_CURRENT_SLOPE_MIN,
+    vol_avg_period: int        = DEFAULT_VOL_AVG_PERIOD,
+    vol_surge_min: float       = DEFAULT_VOL_SURGE_MIN,
+    close_position_min: float  = DEFAULT_CLOSE_POSITION_MIN,
+    min_gap_history: float     = DEFAULT_MIN_GAP_HISTORY,
+    max_current_gap: float     = DEFAULT_MAX_CURRENT_GAP,
 ) -> dict | None:
     """
-    Evaluate Bull Snort signal for a single symbol.
+    Full 4-phase Bull Snort evaluation for a single symbol.
 
-    Two-layer check:
-      Layer 1: 200 DMA slope was declining and is now flattening/curling up.
-      Layer 2: Today's candle is a Bull Snort (3x vol + positive close + strong close).
+    Phase 1: Prolonged downtrend (was deeply below 200 DMA, DMA still declining)
+    Phase 2: Base formed (not making new lows, price approaching 200 DMA)
+    Phase 3: Volume accumulation during base (scoring bonus)
+    Phase 4: Bull Snort candle fires today
 
-    Returns result dict if all conditions pass, else None.
+    Returns result dict or None if any required phase fails.
     """
     try:
         # ----------------------------------------------------------------
-        # 1. Fetch data — need 220+ days for 200 DMA + prior slope window
+        # Fetch data — need 220+ days for 200 DMA + 6-month base lookback
         # ----------------------------------------------------------------
-        df = fetch_historical_prices(symbol, period='1y')
-        if df is None or len(df) < 220:
-            logger.warning(f"{symbol}: insufficient data ({len(df) if df is not None else 0} rows)")
+        df = fetch_historical_prices(symbol, period='2y')
+        if df is None or len(df) < 230:
+            logger.warning(f"{symbol}: insufficient data")
             return None
 
-        df = df.sort_index()
+        df     = df.sort_index()
         close  = df['Close']
         volume = df['Volume']
+        high   = df['High']
+        low    = df['Low']
 
-        # ----------------------------------------------------------------
-        # 2. Compute 200 DMA
-        # ----------------------------------------------------------------
         dma200 = close.rolling(200).mean()
-
-        dma_today    = dma200.iloc[-1]
-        dma_5ago     = dma200.iloc[-(CURRENT_SLOPE_LOOKBACK + 1)]
-        dma_20ago    = dma200.iloc[-(PRIOR_LOOKBACK_END + 1)]
-        dma_40ago    = dma200.iloc[-(PRIOR_LOOKBACK_START + 1)]
-
-        if any(np.isnan(x) for x in [dma_today, dma_5ago, dma_20ago, dma_40ago]):
+        if np.isnan(dma200.iloc[-1]):
             return None
 
-        # ----------------------------------------------------------------
-        # 3. Layer 1a: Was the 200 DMA declining? (prior slope)
-        # ----------------------------------------------------------------
-        prior_raw_slope  = (dma_20ago - dma_40ago) / 20
-        norm_prior_slope = (prior_raw_slope / dma_20ago) * 100   # % per day
-        was_declining    = norm_prior_slope < prior_slope_max
+        # ============================================================
+        # PHASE 1 — Prolonged Downtrend
+        # ============================================================
 
-        if not was_declining:
+        # Was price ever 10%+ below DMA in last 6 months?
+        gap_series   = (dma200 - close) / close * 100   # positive = below DMA
+        max_gap_6mo  = gap_series.iloc[-BASE_LOOKBACK_DAYS:].max()
+        was_deep     = max_gap_6mo >= min_gap_history
+
+        if not was_deep:
             return None
 
-        # ----------------------------------------------------------------
-        # 4. Layer 1b: Is the 200 DMA now flattening/curling up? (current slope)
-        # ----------------------------------------------------------------
-        current_raw_slope  = (dma_today - dma_5ago) / CURRENT_SLOPE_LOOKBACK
-        norm_current_slope = (current_raw_slope / dma_today) * 100   # % per day
-        is_flattening      = norm_current_slope >= current_slope_min
+        # Is 200 DMA still declining?
+        dma_slope    = (dma200.iloc[-1] - dma200.iloc[-21]) / 20
+        norm_slope   = (dma_slope / dma200.iloc[-1]) * 100
+        dma_declining = norm_slope < 0.0
 
-        if not is_flattening:
+        if not dma_declining:
             return None
 
-        # ----------------------------------------------------------------
-        # 5. Layer 2a: Volume Surge (>= 3x rolling avg, excl. today)
-        # ----------------------------------------------------------------
-        avg_vol      = volume.iloc[-(vol_avg_period + 1):-1].mean()
-        today_vol    = volume.iloc[-1]
-        vol_ratio    = today_vol / avg_vol if avg_vol > 0 else 0
-        is_vol_surge = vol_ratio >= vol_surge_min
+        # ============================================================
+        # PHASE 2 — Base Formation
+        # ============================================================
 
-        if not is_vol_surge:
+        # Price not making new lows (base is forming)
+        recent_lows    = close.iloc[-(BASE_NO_NEW_LOW_WINDOW + 1):-1]
+        is_not_new_low = close.iloc[-1] >= recent_lows.min()
+
+        if not is_not_new_low:
             return None
 
-        # ----------------------------------------------------------------
-        # 6. Layer 2b: Positive Price Move
-        # ----------------------------------------------------------------
+        # Price now within max_current_gap% of 200 DMA (gap closing)
+        current_gap    = (dma200.iloc[-1] - close.iloc[-1]) / close.iloc[-1] * 100
+        is_near_dma    = 0.0 <= current_gap <= max_current_gap
+
+        if not is_near_dma:
+            return None
+
+        # ============================================================
+        # PHASE 3 — Base Volume Accumulation Score
+        # ============================================================
+        accum_result = _score_base_accumulation(
+            close, volume, dma200, BASE_LOOKBACK_DAYS
+        )
+
+        # ============================================================
+        # PHASE 4 — Bull Snort Candle
+        # ============================================================
         today_close = close.iloc[-1]
         prev_close  = close.iloc[-2]
-        today_high  = df['High'].iloc[-1]
-        today_low   = df['Low'].iloc[-1]
+        today_high  = high.iloc[-1]
+        today_low   = low.iloc[-1]
         today_open  = df['Open'].iloc[-1]
+        today_vol   = volume.iloc[-1]
 
-        is_positive = today_close > prev_close
-        pct_change  = ((today_close - prev_close) / prev_close) * 100
+        avg_vol     = volume.iloc[-(vol_avg_period + 1):-1].mean()
+        vol_ratio   = today_vol / avg_vol if avg_vol > 0 else 0
 
-        if not is_positive:
-            return None
+        is_vol_surge    = vol_ratio >= vol_surge_min
+        is_positive     = today_close > prev_close
+        pct_change      = (today_close - prev_close) / prev_close * 100
 
-        # ----------------------------------------------------------------
-        # 7. Layer 2c: Strong Close — top 35% of candle range
-        # ----------------------------------------------------------------
-        candle_range   = today_high - today_low
+        candle_range    = today_high - today_low
         if candle_range == 0:
-            return None   # doji — skip
+            return None
         close_position  = (today_close - today_low) / candle_range
         is_strong_close = close_position >= close_position_min
 
-        if not is_strong_close:
+        if not (is_vol_surge and is_positive and is_strong_close):
             return None
 
-        # ----------------------------------------------------------------
-        # 8. All conditions passed — compute score
-        # ----------------------------------------------------------------
-        score = _compute_score(
-            vol_ratio, vol_surge_min,
-            pct_change,
-            close_position,
-            norm_current_slope,
-            norm_prior_slope
+        # ============================================================
+        # Final Score
+        # ============================================================
+        final_score = _compute_final_score(
+            vol_ratio      = vol_ratio,
+            vol_surge_min  = vol_surge_min,
+            pct_change     = pct_change,
+            close_position = close_position,
+            accum_score    = accum_result['accumulation_score'],
+            current_gap    = current_gap,
+            max_gap_6mo    = max_gap_6mo,
         )
 
         return {
-            'symbol'             : symbol,
-            'date'               : str(df.index[-1].date()),
-            # Candle data
-            'open'               : round(today_open, 2),
-            'high'               : round(today_high, 2),
-            'low'                : round(today_low, 2),
-            'close'              : round(today_close, 2),
-            'prev_close'         : round(prev_close, 2),
-            'pct_change'         : round(pct_change, 2),
+            'symbol'              : symbol,
+            'date'                : str(df.index[-1].date()),
+            # Candle
+            'open'                : round(today_open, 2),
+            'high'                : round(today_high, 2),
+            'low'                 : round(today_low, 2),
+            'close'               : round(today_close, 2),
+            'prev_close'          : round(prev_close, 2),
+            'pct_change'          : round(pct_change, 2),
             # Volume
-            'volume'             : int(today_vol),
-            'avg_volume'         : int(avg_vol),
-            'vol_ratio'          : round(vol_ratio, 2),
+            'volume'              : int(today_vol),
+            'avg_volume'          : int(avg_vol),
+            'vol_ratio'           : round(vol_ratio, 2),
             # Candle strength
-            'candle_range'       : round(candle_range, 2),
-            'close_position'     : round(close_position, 3),
-            # 200 DMA context
-            'dma200'             : round(dma_today, 2),
-            'norm_prior_slope'   : round(norm_prior_slope, 4),   # was this negative?
-            'norm_current_slope' : round(norm_current_slope, 4), # is this flattening?
-            # Score
-            'score'              : round(score, 1),
+            'close_position'      : round(close_position, 3),
+            'candle_range'        : round(candle_range, 2),
+            # DMA context
+            'dma200'              : round(dma200.iloc[-1], 2),
+            'current_gap_pct'     : round(current_gap, 2),
+            'max_gap_6mo_pct'     : round(max_gap_6mo, 2),
+            'dma_slope_norm'      : round(norm_slope, 4),
+            # Base accumulation
+            'n_vol_pivots'        : accum_result['n_pivots'],
+            'n_vol_surges'        : accum_result['n_surges'],
+            'accumulation_score'  : round(accum_result['accumulation_score'], 1),
+            # Final score
+            'score'               : round(final_score, 1),
         }
 
     except Exception as e:
-        logger.error(f"compute_bull_snort error for {symbol}: {e}")
+        logger.error(f"compute_bull_snort error [{symbol}]: {e}")
         return None
 
 
@@ -275,75 +332,141 @@ def screen_bull_snort(
     vol_avg_period: int       = DEFAULT_VOL_AVG_PERIOD,
     vol_surge_min: float      = DEFAULT_VOL_SURGE_MIN,
     close_position_min: float = DEFAULT_CLOSE_POSITION_MIN,
-    prior_slope_max: float    = DEFAULT_PRIOR_SLOPE_MAX,
-    current_slope_min: float  = DEFAULT_CURRENT_SLOPE_MIN,
+    min_gap_history: float    = DEFAULT_MIN_GAP_HISTORY,
+    max_current_gap: float    = DEFAULT_MAX_CURRENT_GAP,
 ) -> list[dict]:
     """
-    Run Bull Snort screen across all symbols.
-    Returns qualifying stocks sorted by score descending.
+    Screen all symbols for Bull Snort signal.
+    Returns list sorted by final score descending.
     """
     results = []
     for symbol in symbols:
         result = compute_bull_snort(
             symbol,
-            vol_avg_period=vol_avg_period,
-            vol_surge_min=vol_surge_min,
-            close_position_min=close_position_min,
-            prior_slope_max=prior_slope_max,
-            current_slope_min=current_slope_min,
+            vol_avg_period     = vol_avg_period,
+            vol_surge_min      = vol_surge_min,
+            close_position_min = close_position_min,
+            min_gap_history    = min_gap_history,
+            max_current_gap    = max_current_gap,
         )
         if result:
             results.append(result)
 
     results.sort(key=lambda x: x['score'], reverse=True)
-    logger.info(f"Bull Snort: {len(results)} signals from {len(symbols)} symbols")
+    logger.info(f"Bull Snort screen: {len(results)} signals from {len(symbols)} symbols")
     return results
 
 
 # ---------------------------------------------------------------------------
-# Internal: Scoring
+# Phase 3: Base Volume Accumulation
 # ---------------------------------------------------------------------------
 
-def _compute_score(
+def _detect_volume_pivots(volume_series, neighbours=2) -> int:
+    """
+    Count local volume peaks: higher than 'neighbours' bars on each side.
+    These represent discrete institutional buying bursts during the base.
+    """
+    count = 0
+    vals  = volume_series.values
+    for i in range(neighbours, len(vals) - neighbours):
+        window = vals[i - neighbours: i + neighbours + 1]
+        if vals[i] == window.max() and vals[i] > window.mean() * 1.5:
+            count += 1
+    return count
+
+
+def _detect_volume_surges(volume_series, avg_period=20, multiplier=2.0) -> int:
+    """
+    Count days where volume >= multiplier * its rolling average.
+    These are institutional accumulation days during the base.
+    """
+    avg = volume_series.rolling(avg_period, min_periods=5).mean()
+    return int((volume_series >= avg * multiplier).sum())
+
+
+def _score_base_accumulation(close, volume, dma200, lookback) -> dict:
+    """
+    Score institutional volume accumulation during the base period.
+    Only counts volume events while price was BELOW the 200 DMA.
+    """
+    base_close  = close.iloc[-lookback:]
+    base_vol    = volume.iloc[-lookback:]
+    base_dma    = dma200.iloc[-lookback:]
+
+    # Only look at days where price was below 200 DMA
+    below_mask  = base_close < base_dma
+    vol_below   = base_vol[below_mask]
+
+    if len(vol_below) < 10:
+        return {'n_pivots': 0, 'n_surges': 0, 'accumulation_score': 0}
+
+    n_pivots = _detect_volume_pivots(vol_below)
+    n_surges = _detect_volume_surges(vol_below)
+
+    # 5+ pivots OR 3+ surges = full score on each component
+    pivot_score = min(n_pivots / 5.0, 1.0) * 100
+    surge_score = min(n_surges / 3.0, 1.0) * 100
+    accum_score = (pivot_score * 0.5) + (surge_score * 0.5)
+
+    return {
+        'n_pivots'           : n_pivots,
+        'n_surges'           : n_surges,
+        'pivot_score'        : round(pivot_score, 1),
+        'surge_score'        : round(surge_score, 1),
+        'accumulation_score' : round(accum_score, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Final Scoring
+# ---------------------------------------------------------------------------
+
+def _compute_final_score(
     vol_ratio: float,
     vol_surge_min: float,
     pct_change: float,
     close_position: float,
-    norm_current_slope: float,
-    norm_prior_slope: float,
+    accum_score: float,
+    current_gap: float,
+    max_gap_6mo: float,
 ) -> float:
     """
-    Blend four component scores into a final 0–100 Bull Snort score.
+    Blend 5 components into a final 0–100 Bull Snort score.
 
     Weights:
-      Volume surge       : 35%  — institutional buying confirmation
-      Close position     : 30%  — conviction into close
-      DMA slope recovery : 25%  — how cleanly the DMA is turning
-      Price change %     : 10%  — magnitude of the move
+      Accumulation score (Phase 3)  : 30%  — institutional base building
+      Volume surge (Phase 4)        : 25%  — conviction of the breakout candle
+      Close position (Phase 4)      : 20%  — buying held into close
+      Depth of recovery             : 15%  — how far price climbed from the base
+      Price change % today          : 10%  — magnitude of the move
     """
-    # Volume score: 3x = 0pts baseline, 6x = 100pts
-    vol_score   = min((vol_ratio - vol_surge_min) / vol_surge_min, 1.0) * 100
-    vol_score   = max(vol_score, 0)
+    # Accumulation: already 0–100
+    accum_component = accum_score
 
-    # Close position score: 0.65 = 0pts, 1.0 = 100pts
-    close_score = min((close_position - 0.65) / 0.35, 1.0) * 100
-    close_score = max(close_score, 0)
+    # Volume surge: 3x = 0pts baseline, 6x = 100pts
+    vol_component   = min((vol_ratio - vol_surge_min) / vol_surge_min, 1.0) * 100
+    vol_component   = max(vol_component, 0)
 
-    # DMA slope recovery score
-    # prior was negative, current is >= -0.005. Score how much it recovered.
-    slope_recovery = norm_current_slope - norm_prior_slope   # positive = recovered
-    slope_score    = min(slope_recovery / 0.05, 1.0) * 100   # 0.05% recovery = full score
-    slope_score    = max(slope_score, 0)
+    # Close position: 0.65 = 0pts, 1.0 = 100pts
+    close_component = min((close_position - 0.65) / 0.35, 1.0) * 100
+    close_component = max(close_component, 0)
 
-    # Price change score: 0% = 0pts, 3%+ = 100pts
-    price_score = min(pct_change / 3.0, 1.0) * 100
-    price_score = max(price_score, 0)
+    # Depth of recovery: was 10%+ below, now within 5%
+    # Score how much of the gap has been closed: (max_gap - current_gap) / max_gap
+    gap_closed      = max_gap_6mo - current_gap
+    depth_component = min(gap_closed / max_gap_6mo, 1.0) * 100
+    depth_component = max(depth_component, 0)
+
+    # Price change: 0% = 0pts, 3%+ = 100pts
+    price_component = min(pct_change / 3.0, 1.0) * 100
+    price_component = max(price_component, 0)
 
     return (
-        vol_score   * 0.35 +
-        close_score * 0.30 +
-        slope_score * 0.25 +
-        price_score * 0.10
+        accum_component * 0.30 +
+        vol_component   * 0.25 +
+        close_component * 0.20 +
+        depth_component * 0.15 +
+        price_component * 0.10
     )
 ```
 
@@ -366,30 +489,23 @@ def bull_snort_screen():
     """
     GET /api/bull-snort/screen
 
-    Query params (all optional, defaults shown):
-      vol_avg_period      : int   — 10 / 20 / 50  (default: 20)
-      vol_surge_min       : float — min vol ratio  (default: 3.0)
-      close_position_min  : float — 0.0–1.0        (default: 0.65)
-      prior_slope_max     : float — prior DMA slope threshold (default: -0.01)
-      current_slope_min   : float — current DMA slope threshold (default: -0.005)
+    Query params (all optional):
+      vol_avg_period     : int   (default: 20)
+      vol_surge_min      : float (default: 3.0)
+      close_position_min : float (default: 0.65)
+      min_gap_history    : float (default: 10.0  — must have been 10% below DMA)
+      max_current_gap    : float (default: 5.0   — now within 5% of DMA)
     """
     try:
-        vol_avg_period     = int(request.args.get('vol_avg_period', 20))
-        vol_surge_min      = float(request.args.get('vol_surge_min', 3.0))
-        close_position_min = float(request.args.get('close_position_min', 0.65))
-        prior_slope_max    = float(request.args.get('prior_slope_max', -0.01))
-        current_slope_min  = float(request.args.get('current_slope_min', -0.005))
-
+        params = {
+            'vol_avg_period'     : int(request.args.get('vol_avg_period', 20)),
+            'vol_surge_min'      : float(request.args.get('vol_surge_min', 3.0)),
+            'close_position_min' : float(request.args.get('close_position_min', 0.65)),
+            'min_gap_history'    : float(request.args.get('min_gap_history', 10.0)),
+            'max_current_gap'    : float(request.args.get('max_current_gap', 5.0)),
+        }
         symbols = get_nse_symbols()
-        results = screen_bull_snort(
-            symbols,
-            vol_avg_period=vol_avg_period,
-            vol_surge_min=vol_surge_min,
-            close_position_min=close_position_min,
-            prior_slope_max=prior_slope_max,
-            current_slope_min=current_slope_min,
-        )
-
+        results = screen_bull_snort(symbols, **params)
         return jsonify({'status': 'ok', 'count': len(results), 'data': results})
 
     except Exception as e:
@@ -405,7 +521,6 @@ def bull_snort_single():
     symbol = request.args.get('symbol')
     if not symbol:
         return jsonify({'status': 'error', 'message': 'symbol param required'}), 400
-
     result = compute_bull_snort(symbol)
     if result is None:
         return jsonify({'status': 'ok', 'signal': False, 'symbol': symbol})
@@ -422,37 +537,27 @@ app.register_blueprint(bull_snort_bp, url_prefix='/api')
 
 ## Scheduler Integration
 
-In `app/tasks/scheduler.py`:
-
 ```python
 def refresh_bull_snort(app):
-    """Scheduled job — refresh Bull Snort signals after market close."""
     with app.app_context():
         try:
             from app.database import get_nse_symbols
             from app.services.bull_snort_service import screen_bull_snort
             import pandas as pd
-
             symbols = get_nse_symbols()
             results = screen_bull_snort(symbols)
             app.config['BULL_SNORT_CACHE'] = {
-                'data'      : results,
-                'count'     : len(results),
-                'refreshed' : pd.Timestamp.now().isoformat()
+                'data': results, 'count': len(results),
+                'refreshed': pd.Timestamp.now().isoformat()
             }
-            logger.info(f"Bull Snort refresh: {len(results)} signals")
+            logger.info(f"Bull Snort: {len(results)} signals")
         except Exception as e:
             logger.error(f"Bull Snort scheduler error: {e}")
 
-# Runs daily at 4:05 PM IST (after NSE close)
 scheduler.add_job(
-    func=refresh_bull_snort,
-    args=[app],
-    trigger='cron',
-    hour=16,
-    minute=5,
-    id='bull_snort_refresh',
-    replace_existing=True
+    func=refresh_bull_snort, args=[app],
+    trigger='cron', hour=16, minute=5,
+    id='bull_snort_refresh', replace_existing=True
 )
 ```
 
@@ -460,19 +565,27 @@ scheduler.add_job(
 
 ## Scoring Model
 
-All five conditions must pass before scoring. Score is 0–100.
+### Phase 3 — Base Accumulation Score (0–100)
 
-| Component | Weight | Baseline (0 pts) | Max (100 pts) |
+| Component | Weight | 0 pts | 100 pts |
 |---|---|---|---|
-| **Volume surge** | 35% | 3x avg (minimum to qualify) | 6x avg |
-| **Close position** | 30% | 0.65 (top 35%) | 1.0 (at the high) |
-| **DMA slope recovery** | 25% | No recovery | 0.05%/day recovery |
-| **Price change %** | 10% | 0% | 3%+ |
+| Volume Pivots (below DMA) | 50% | 0 pivots | 5+ pivots |
+| Volume Surges (below DMA) | 50% | 0 surges | 3+ surges |
+
+### Final Score (0–100)
+
+| Component | Weight | 0 pts | 100 pts |
+|---|---|---|---|
+| **Base Accumulation** (Phase 3) | 30% | No vol events | 5 pivots + 3 surges |
+| **Bull Snort Vol Ratio** (Phase 4) | 25% | 3x (minimum) | 6x avg |
+| **Close Position** (Phase 4) | 20% | 0.65 (top 35%) | 1.0 (at the high) |
+| **Gap Recovery Depth** | 15% | No gap closed | Full gap closed |
+| **Price Change %** | 10% | 0% | 3%+ |
 
 **Score bands:**
-- 75–100 → 🟢 Strong Bull Snort — DMA turning + big institutional candle
-- 50–74  → 🟡 Moderate — valid but lower conviction
-- Below 50 → 🔴 Weak — barely qualifies, needs confirmation
+- 75–100 → 🟢 **High Conviction** — strong base + explosive breakout candle
+- 50–74  → 🟡 **Moderate** — valid signal, lower institutional conviction
+- Below 50 → 🔴 **Weak** — barely qualifies, needs additional confirmation
 
 ---
 
@@ -491,16 +604,13 @@ All five conditions must pass before scoring. Score is 0–100.
         <option value="50">50-day</option>
       </select>
     </label>
-    <label>Min Vol Surge:
-      <input type="number" id="bs-vol-surge" value="3" step="0.5" min="1.5">
-    </label>
-    <label>Min Close Position:
-      <input type="number" id="bs-close-pos" value="0.65" step="0.05" min="0.5" max="1.0">
-    </label>
+    <label>Min Vol Surge: <input type="number" id="bs-vol-surge" value="3" step="0.5" min="1.5"></label>
+    <label>Min Gap History %: <input type="number" id="bs-min-gap" value="10" step="1" min="5"></label>
+    <label>Max Current Gap %: <input type="number" id="bs-max-gap" value="5" step="1" min="0"></label>
     <button id="btn-run-bull-snort">🔍 Run Screen</button>
   </div>
 
-  <div id="bs-results-count" style="margin:8px 0;"></div>
+  <div id="bs-results-count" style="margin:8px 0; font-weight:bold;"></div>
 
   <table id="bull-snort-table">
     <thead>
@@ -511,9 +621,12 @@ All five conditions must pass before scoring. Score is 0–100.
         <th>Vol Ratio</th>
         <th>Close Pos</th>
         <th>200 DMA</th>
-        <th>Prior Slope</th>
-        <th>Curr Slope</th>
-        <th>Score</th>
+        <th>Gap Now</th>
+        <th>Max Gap 6mo</th>
+        <th>Vol Pivots</th>
+        <th>Vol Surges</th>
+        <th>Accum Score</th>
+        <th>Final Score</th>
       </tr>
     </thead>
     <tbody id="bull-snort-tbody"></tbody>
@@ -524,23 +637,27 @@ All five conditions must pass before scoring. Score is 0–100.
 ### JavaScript in `app.js`
 ```javascript
 document.getElementById('btn-run-bull-snort').addEventListener('click', async () => {
-  const volPeriod = document.getElementById('bs-vol-period').value;
-  const volSurge  = document.getElementById('bs-vol-surge').value;
-  const closePos  = document.getElementById('bs-close-pos').value;
+  const params = new URLSearchParams({
+    vol_avg_period  : document.getElementById('bs-vol-period').value,
+    vol_surge_min   : document.getElementById('bs-vol-surge').value,
+    min_gap_history : document.getElementById('bs-min-gap').value,
+    max_current_gap : document.getElementById('bs-max-gap').value,
+  });
 
-  const url  = `/api/bull-snort/screen?vol_avg_period=${volPeriod}&vol_surge_min=${volSurge}&close_position_min=${closePos}`;
-  const res  = await fetch(url);
+  const res  = await fetch(`/api/bull-snort/screen?${params}`);
   const json = await res.json();
 
-  document.getElementById('bs-results-count').textContent = `${json.count} Bull Snort signals found`;
+  document.getElementById('bs-results-count').textContent =
+    `🐂 ${json.count} Bull Snort signals found`;
 
   const tbody = document.getElementById('bull-snort-tbody');
   tbody.innerHTML = '';
 
   json.data.forEach(row => {
     const scoreColor  = row.score >= 75 ? '#22c55e' : row.score >= 50 ? '#f59e0b' : '#ef4444';
+    const accumColor  = row.accumulation_score >= 70 ? '#22c55e'
+                      : row.accumulation_score >= 40 ? '#f59e0b' : '#94a3b8';
     const changeColor = row.pct_change >= 0 ? '#22c55e' : '#ef4444';
-    const slopeColor  = row.norm_current_slope >= 0 ? '#22c55e' : '#f59e0b';
 
     tbody.innerHTML += `
       <tr>
@@ -550,9 +667,12 @@ document.getElementById('btn-run-bull-snort').addEventListener('click', async ()
         <td>${row.vol_ratio}x</td>
         <td>${(row.close_position * 100).toFixed(1)}%</td>
         <td>${row.dma200}</td>
-        <td>${row.norm_prior_slope}%</td>
-        <td style="color:${slopeColor}">${row.norm_current_slope}%</td>
-        <td><strong style="color:${scoreColor}">${row.score}</strong></td>
+        <td>${row.current_gap_pct}%</td>
+        <td>${row.max_gap_6mo_pct}%</td>
+        <td>${row.n_vol_pivots}</td>
+        <td>${row.n_vol_surges}</td>
+        <td style="color:${accumColor}"><strong>${row.accumulation_score}</strong></td>
+        <td style="color:${scoreColor}"><strong>${row.score}</strong></td>
       </tr>`;
   });
 });
@@ -560,58 +680,64 @@ document.getElementById('btn-run-bull-snort').addEventListener('click', async ()
 
 ---
 
-## Build Order & Test Cases
+## Build Order
 
-### Suggested Build Order
-1. Write `bull_snort_service.py` — test standalone on 5–10 NSE tickers
-2. Add `bull_snort.py` endpoint — test via curl or browser
-3. Register blueprint in `app/__init__.py`
-4. Add scheduler job in `scheduler.py`
-5. Add UI tab + JS
-6. Backtest: check past dates where signal fired vs next-day/week returns
+1. Write `bull_snort_service.py` — test with `compute_bull_snort('RELIANCE.NS')`
+2. Test `_score_base_accumulation` standalone on a few known basing stocks
+3. Add `bull_snort.py` endpoint — test via browser
+4. Register blueprint in `app/__init__.py`
+5. Add scheduler job
+6. Add UI tab + JS
+7. **Backtest**: replay the filter on past dates where you identified these patterns
 
-### Test Cases
+---
+
+## Test Cases
 
 ```python
 # tests/test_bull_snort.py
 
-def test_no_signal_when_dma_not_previously_declining():
-    # prior slope is positive → Layer 1a fails → None
+def test_phase1_fails_if_never_deep_below_dma():
+    # max_gap_6mo < 10% → None
     ...
 
-def test_no_signal_when_dma_still_declining():
-    # current slope still very negative → Layer 1b fails → None
+def test_phase1_fails_if_dma_rising():
+    # norm_dma_slope > 0 → None
     ...
 
-def test_no_signal_when_volume_below_3x():
-    # vol_ratio = 2.5 → Layer 2a fails → None
+def test_phase2_fails_if_making_new_lows():
+    # today_close < recent_10d_min → None
     ...
 
-def test_no_signal_when_close_negative():
-    # today_close < prev_close → Layer 2b fails → None
+def test_phase2_fails_if_still_far_from_dma():
+    # current_gap > 5% → None
     ...
 
-def test_no_signal_when_close_in_lower_half():
-    # close_position = 0.4 → Layer 2c fails → None
+def test_phase3_accumulation_score_zero_with_no_vol_events():
+    # flat volume base → accumulation_score == 0
     ...
 
-def test_signal_fires_when_all_five_pass():
-    # All conditions met → returns dict with score > 0
+def test_phase3_more_pivots_gives_higher_accumulation():
+    # 5 pivots > 2 pivots in score
     ...
 
-def test_steeper_dma_recovery_scores_higher():
-    # norm_current_slope=0.03 should score higher than 0.0
+def test_phase4_fails_if_volume_below_3x():
+    # vol_ratio = 2.5 → None
     ...
 
-def test_higher_volume_scores_higher():
-    # vol_ratio=5x vs 3x → former scores higher
+def test_phase4_fails_if_negative_close():
+    # today_close < prev_close → None
     ...
 
-def test_doji_candle_returns_none():
-    # high == low → safe None return
+def test_phase4_fails_if_close_in_lower_half():
+    # close_position = 0.4 → None
     ...
 
-def test_screen_sorted_by_score_descending():
+def test_higher_accumulation_scores_higher_overall():
+    # same candle, more vol pivots during base → higher final score
+    ...
+
+def test_screen_returns_sorted_descending():
     # results[0].score >= results[-1].score
     ...
 ```
