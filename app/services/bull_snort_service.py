@@ -75,6 +75,8 @@ def _score_base_accumulation(close, volume, dma200, lookback) -> Dict[str, Any]:
     accumulation_score = (pivot_score * 0.5) + (surge_score * 0.5)
 
     return {
+        "n_pivots": n_pivots,
+        "n_surges": n_surges,
         "pivot_score": pivot_score,
         "surge_score": surge_score,
         "accumulation_score": accumulation_score,
@@ -202,15 +204,30 @@ def compute_bull_snort(
         return {
             "symbol": symbol,
             "date": str(df.index[-1].date()),
+            # Candle
             "open": round(df["Open"].iloc[-1], 2),
             "high": round(today_high, 2),
             "low": round(today_low, 2),
             "close": round(today_close, 2),
-            "volume": int(today_vol),
-            "vol_ratio": round(vol_ratio, 3),
+            "prev_close": round(prev_close, 2),
             "pct_change": round((today_close - prev_close) / prev_close * 100, 2),
+            # Volume
+            "volume": int(today_vol),
+            "avg_volume": int(avg_vol),
+            "vol_ratio": round(vol_ratio, 3),
+            # Candle strength
             "close_position": round(close_position, 3),
+            "candle_range": round(candle_range, 2),
+            # DMA context
+            "dma200": round(dma200.iloc[-1], 2),
+            "current_gap_pct": round(current_gap, 2),
+            "max_gap_6mo_pct": round(max_gap_6mo, 2),
+            "dma_slope_norm": round(norm_slope, 4),
+            # Base accumulation
+            "n_vol_pivots": accum_result["n_pivots"],
+            "n_vol_surges": accum_result["n_surges"],
             "accumulation_score": round(accum_result["accumulation_score"], 2),
+            # Final score
             "final_score": final_score,
         }
     except Exception as exc:
@@ -220,14 +237,30 @@ def compute_bull_snort(
 # ---------------------------------------------------------------------------
 # Public API: screen a list of symbols
 # ---------------------------------------------------------------------------
-def screen_bull_snort(symbols: List[str]) -> List[Dict[str, Any]]:
+def screen_bull_snort(
+    symbols: List[str],
+    vol_avg_period: int = DEFAULT_VOL_AVG_PERIOD,
+    vol_surge_min: float = DEFAULT_VOL_SURGE_MIN,
+    close_position_min: float = DEFAULT_CLOSE_POSITION_MIN,
+    min_gap_history: float = DEFAULT_MIN_GAP_HISTORY,
+    max_current_gap: float = DEFAULT_MAX_CURRENT_GAP,
+) -> List[Dict[str, Any]]:
     """Run ``compute_bull_snort`` for each symbol in *symbols* and return successful results.
     """
     results = []
     for sym in symbols:
-        res = compute_bull_snort(sym)
+        res = compute_bull_snort(
+            sym,
+            vol_avg_period=vol_avg_period,
+            vol_surge_min=vol_surge_min,
+            close_position_min=close_position_min,
+            min_gap_history=min_gap_history,
+            max_current_gap=max_current_gap,
+        )
         if res:
             results.append(res)
+    # Sort results by final score descending
+    results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
     return results
 __all__ = [
     "compute_bull_snort",

@@ -993,3 +993,43 @@ def get_table_info(table_name):
     """Get table schema information."""
     query = f'PRAGMA table_info({table_name})'
     return fetch_all(query)
+
+
+def get_nse_symbols() -> list[str]:
+    """Retrieve all unique NSE stock ticker symbols from the database.
+    If the database is empty, returns a curated list of top NSE tickers as fallback.
+    """
+    symbols = set()
+    try:
+        # 1. Query scan_price_log
+        if table_exists('scan_price_log'):
+            rows = fetch_all("SELECT DISTINCT ticker FROM scan_price_log")
+            for r in rows:
+                if r['ticker']:
+                    symbols.add(r['ticker'].split(':')[-1].upper())
+        
+        # 2. Query watchlist_items
+        if table_exists('watchlist_items'):
+            rows = fetch_all("SELECT DISTINCT ticker FROM watchlist_items")
+            for r in rows:
+                if r['ticker']:
+                    symbols.add(r['ticker'].split(':')[-1].upper())
+                    
+        # 3. Query ipo_listings
+        if table_exists('ipo_listings'):
+            rows = fetch_all("SELECT DISTINCT ticker FROM ipo_listings")
+            for r in rows:
+                if r['ticker']:
+                    symbols.add(r['ticker'].split(':')[-1].upper())
+    except Exception as e:
+        logger.error(f"Error fetching NSE symbols: {e}")
+
+    # Fallback to major NSE stock symbols if none found
+    if not symbols:
+        return [
+            "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", 
+            "SBIN", "BHARTIARTL", "ITC", "LT", "WELCORP",
+            "MARUTI", "KOTAKBANK", "AXISBANK", "ULTRACEMCO", "SUNPHARMA"
+        ]
+        
+    return sorted(list(symbols))

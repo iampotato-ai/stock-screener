@@ -78,6 +78,20 @@ def init_scheduler(app: Flask):
         args=[app]
     )
 
+    # Add Bull Snort refresh job - runs daily at 16:05 (gated behind feature flag)
+    if app.config.get('ENABLE_BULL_SNORT', False):
+        scheduler.add_job(
+            func=refresh_bull_snort,
+            trigger='cron',
+            hour=16,
+            minute=5,
+            timezone='Asia/Kolkata',
+            id='bull_snort_refresh',
+            name='Daily Bull Snort screener refresh',
+            replace_existing=True,
+            args=[app]
+        )
+
     # Start the scheduler
     scheduler.start()
     logger.info("Background scheduler started")
@@ -138,6 +152,25 @@ def startup_ipo_cache_warmup(app: Flask):
                 logger.info("Startup IPO cache warm-up complete.")
     except Exception as e:
         logger.error(f"Error in startup IPO cache warm-up: {e}")
+
+
+def refresh_bull_snort(app: Flask):
+    """Background task to run Bull Snort screening and cache results."""
+    try:
+        with app.app_context():
+            from app.database import get_nse_symbols
+            from app.services.bull_snort_service import screen_bull_snort
+            import pandas as pd
+            symbols = get_nse_symbols()
+            results = screen_bull_snort(symbols)
+            app.config['BULL_SNORT_CACHE'] = {
+                'data': results,
+                'count': len(results),
+                'refreshed': pd.Timestamp.now().isoformat()
+            }
+            logger.info(f"Bull Snort background screen completed: {len(results)} signals found")
+    except Exception as e:
+        logger.error(f"Error in background Bull Snort refresh task: {e}")
 
 
 # For direct execution (testing)

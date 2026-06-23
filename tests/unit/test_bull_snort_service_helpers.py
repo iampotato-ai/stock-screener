@@ -19,7 +19,7 @@ def test_score_base_accumulation_basic():
 
     result = _score_base_accumulation(close, volume, dma200, lookback=10)
     # Expected keys
-    assert set(result.keys()) == {"pivot_score", "surge_score", "accumulation_score"}
+    assert set(result.keys()) == {"pivot_score", "surge_score", "accumulation_score", "n_pivots", "n_surges"}
     # Scores should be within 0..100 range
     for key, value in result.items():
         assert 0.0 <= value <= 100.0

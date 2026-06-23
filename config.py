@@ -24,6 +24,7 @@ class Config:
     ENABLE_BACKGROUND_TASKS = os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() == 'true'
     ENABLE_TELEGRAM_ALERTS = os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() == 'true'
     ENABLE_NLP_ENRICHMENT = os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() == 'true'
+    ENABLE_BULL_SNORT = os.environ.get('ENABLE_BULL_SNORT', 'False').lower() == 'true'
 
     # Pagination
     ITEMS_PER_PAGE = int(os.environ.get('ITEMS_PER_PAGE', '50'))

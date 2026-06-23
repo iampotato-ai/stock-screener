@@ -403,6 +403,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof renderIPOWorkspace === 'function') renderIPOWorkspace();
         } else if (viewName === 'ep') {
             if (typeof renderEPWorkspace === 'function') renderEPWorkspace();
+        } else if (viewName === 'bull-snort') {
+            if (typeof renderBullSnortWorkspace === 'function') renderBullSnortWorkspace();
         } else if (viewName === 'screener') {
             // Redirect from sub-tabs promoted to top-level views
             if (currentTab === 'journal') {
@@ -13129,3 +13131,119 @@ function generateGrowthMetricsHTML(stock) {
         ` : ''}
     `;
 }
+
+
+// ===========================================================================
+// Bull Snort Workspace UI Handler
+// ===========================================================================
+window.renderBullSnortWorkspace = function() {
+    // Initialization code if any on entering tab.
+};
+
+// Listen to the Run Screen button
+document.addEventListener('DOMContentLoaded', () => {
+    const btnRunBullSnort = document.getElementById('btn-run-bull-snort');
+    if (btnRunBullSnort) {
+        btnRunBullSnort.addEventListener('click', async () => {
+            const spinner = document.getElementById('bs-scan-spinner');
+            const btnText = btnRunBullSnort.querySelector('.btn-text');
+            const tbody = document.getElementById('bull-snort-tbody');
+            const countLabel = document.getElementById('bs-results-count');
+
+            if (spinner) spinner.classList.remove('hidden');
+            if (btnText) btnText.textContent = 'Screening...';
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="12" style="padding: 3rem; text-align: center; color: var(--color-text-muted);">
+                        <span class="btn-spinner" style="display: inline-block; margin-right: 8px;"></span>
+                        Scanning NSE universe for Bull Snort breakout setups...
+                    </td>
+                </tr>
+            `;
+
+            try {
+                const vol_avg_period = document.getElementById('bs-vol-period').value;
+                const vol_surge_min = document.getElementById('bs-vol-surge').value;
+                const min_gap_history = document.getElementById('bs-min-gap').value;
+                const max_current_gap = document.getElementById('bs-max-gap').value;
+
+                const params = new URLSearchParams({
+                    vol_avg_period,
+                    vol_surge_min,
+                    min_gap_history,
+                    max_current_gap
+                });
+
+                const res = await fetch(`/api/bull_snort/screen?${params}`);
+                if (!res.ok) {
+                    throw new Error(`API returned status ${res.status}`);
+                }
+                const json = await res.json();
+                const data = json.data || [];
+
+                countLabel.textContent = `🐂 ${data.length} Bull Snort signals found`;
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="12" style="padding: 2rem; text-align: center; color: var(--color-text-muted); font-style: italic;">
+                                No stocks qualified for Bull Snort breakout today.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                data.forEach(row => {
+                    const scoreColor = row.final_score >= 75 ? '#22c55e' : row.final_score >= 50 ? '#f59e0b' : '#ef4444';
+                    const accumColor = row.accumulation_score >= 70 ? '#22c55e'
+                                     : row.accumulation_score >= 40 ? '#f59e0b' : '#94a3b8';
+                    const changeColor = row.pct_change >= 0 ? '#22c55e' : '#ef4444';
+
+                    // Formatting values
+                    const closeVal = row.close !== undefined ? `₹${row.close.toFixed(2)}` : 'N/A';
+                    const changeVal = row.pct_change !== undefined ? `${row.pct_change > 0 ? '+' : ''}${row.pct_change.toFixed(2)}%` : 'N/A';
+                    const volRatioVal = row.vol_ratio !== undefined ? `${row.vol_ratio.toFixed(2)}x` : 'N/A';
+                    const closePosVal = row.close_position !== undefined ? `${(row.close_position * 100).toFixed(1)}%` : 'N/A';
+                    const dmaVal = row.dma200 !== undefined ? `₹${row.dma200.toFixed(2)}` : 'N/A';
+                    const gapNowVal = row.current_gap_pct !== undefined ? `${row.current_gap_pct.toFixed(2)}%` : 'N/A';
+                    const gapMaxVal = row.max_gap_6mo_pct !== undefined ? `${row.max_gap_6mo_pct.toFixed(2)}%` : 'N/A';
+                    const pivotsVal = row.n_vol_pivots !== undefined ? row.n_vol_pivots : 'N/A';
+                    const surgesVal = row.n_vol_surges !== undefined ? row.n_vol_surges : 'N/A';
+                    const accumScoreVal = row.accumulation_score !== undefined ? row.accumulation_score.toFixed(1) : 'N/A';
+                    const finalScoreVal = row.final_score !== undefined ? row.final_score.toFixed(1) : 'N/A';
+
+                    tbody.innerHTML += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(typeof openDrawer === 'function') openDrawer('${row.symbol}')">
+                            <td style="padding: 10px 12px;"><strong>${row.symbol}</strong></td>
+                            <td style="padding: 10px 12px; text-align: right;">${closeVal}</td>
+                            <td style="padding: 10px 12px; text-align: right; color: ${changeColor}; font-weight: 500;">${changeVal}</td>
+                            <td style="padding: 10px 12px; text-align: right;">${volRatioVal}</td>
+                            <td style="padding: 10px 12px; text-align: right;">${closePosVal}</td>
+                            <td style="padding: 10px 12px; text-align: right; color: var(--color-text-secondary);">${dmaVal}</td>
+                            <td style="padding: 10px 12px; text-align: right; color: var(--color-text-secondary);">${gapNowVal}</td>
+                            <td style="padding: 10px 12px; text-align: right; color: var(--color-text-secondary);">${gapMaxVal}</td>
+                            <td style="padding: 10px 12px; text-align: center;">${pivotsVal}</td>
+                            <td style="padding: 10px 12px; text-align: center;">${surgesVal}</td>
+                            <td style="padding: 10px 12px; text-align: right; color: ${accumColor}; font-weight: 600;">${accumScoreVal}</td>
+                            <td style="padding: 10px 12px; text-align: right; color: ${scoreColor}; font-weight: 700;">${finalScoreVal}</td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="12" style="padding: 2rem; text-align: center; color: #ef4444; font-weight: 500;">
+                            ⚠️ Error running Bull Snort screen: ${err.message}
+                        </td>
+                    </tr>
+                `;
+            } finally {
+                if (spinner) spinner.classList.add('hidden');
+                if (btnText) btnText.textContent = 'Run Screen';
+            }
+        });
+    }
+});
