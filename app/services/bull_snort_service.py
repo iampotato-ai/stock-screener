@@ -137,12 +137,34 @@ def compute_bull_snort(
     Returns a dict with the computed score and candle details, or ``None`` if any required phase fails.
     """
     try:
-        df = fetch_historical_prices(symbol, range_str="2y")
-        if df is None or len(df) < 230:
-            logger.warning("%s: insufficient data", symbol)
+        history = fetch_historical_prices(symbol, range_str="2y")
+        if not history or len(history) < 230:
+            logger.info("%s: insufficient data", symbol)
             return None
 
+        import pandas as pd
+        if isinstance(history, pd.DataFrame):
+            df = history.copy()
+        else:
+            df = pd.DataFrame(history)
+
+        if "date" in df.columns:
+            df["Date"] = pd.to_datetime(df["date"])
+            df.set_index("Date", inplace=True)
+        elif not isinstance(df.index, pd.DatetimeIndex):
+            # If date is not in columns but index is not datetime, try to convert index
+            df.index = pd.to_datetime(df.index)
+
         df = df.sort_index()
+
+        # Rename lowercase columns to capitalized if present
+        rename_map = {}
+        for col in ["open", "high", "low", "close", "volume"]:
+            if col in df.columns:
+                rename_map[col] = col.capitalize()
+        if rename_map:
+            df.rename(columns=rename_map, inplace=True)
+
         close = df["Close"]
         volume = df["Volume"]
         high = df["High"]

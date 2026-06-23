@@ -13136,8 +13136,21 @@ function generateGrowthMetricsHTML(stock) {
 // ===========================================================================
 // Bull Snort Workspace UI Handler
 // ===========================================================================
+let bullSnortScanTriggered = false;
 window.renderBullSnortWorkspace = function() {
-    // Initialization code if any on entering tab.
+    // Show the panel (make sure it's active)
+    const view = document.getElementById('view-bull-snort');
+    if (view) {
+        view.classList.add('active');
+    }
+    // Auto-trigger screen on first tab entry
+    if (!bullSnortScanTriggered) {
+        bullSnortScanTriggered = true;
+        const btnRun = document.getElementById('btn-run-bull-snort');
+        if (btnRun) {
+            btnRun.click();
+        }
+    }
 };
 
 // Listen to the Run Screen button
@@ -13166,12 +13179,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const vol_surge_min = document.getElementById('bs-vol-surge').value;
                 const min_gap_history = document.getElementById('bs-min-gap').value;
                 const max_current_gap = document.getElementById('bs-max-gap').value;
+                const close_position_min = document.getElementById('bs-close-pos').value;
 
                 const params = new URLSearchParams({
                     vol_avg_period,
                     vol_surge_min,
                     min_gap_history,
-                    max_current_gap
+                    max_current_gap,
+                    close_position_min
                 });
 
                 const res = await fetch(`/api/bull_snort/screen?${params}`);

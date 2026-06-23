@@ -162,7 +162,14 @@ def refresh_bull_snort(app: Flask):
             from app.services.bull_snort_service import screen_bull_snort
             import pandas as pd
             symbols = get_nse_symbols()
-            results = screen_bull_snort(symbols)
+            results = screen_bull_snort(
+                symbols,
+                vol_avg_period=app.config.get('BULL_SNORT_VOL_AVG_PERIOD', 20),
+                vol_surge_min=app.config.get('BULL_SNORT_VOL_SURGE_MIN', 3.0),
+                close_position_min=app.config.get('BULL_SNORT_CLOSE_POSITION_MIN', 0.65),
+                min_gap_history=app.config.get('BULL_SNORT_MIN_GAP_HISTORY', 10.0),
+                max_current_gap=app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0)
+            )
             app.config['BULL_SNORT_CACHE'] = {
                 'data': results,
                 'count': len(results),

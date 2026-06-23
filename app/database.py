@@ -995,41 +995,52 @@ def get_table_info(table_name):
     return fetch_all(query)
 
 
+FALLBACK_NSE_SYMBOLS = (
+    "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", 
+    "SBIN", "BHARTIARTL", "ITC", "LT", "WELCORP",
+    "MARUTI", "KOTAKBANK", "AXISBANK", "ULTRACEMCO", "SUNPHARMA"
+)
+
+
 def get_nse_symbols() -> list[str]:
     """Retrieve all unique NSE stock ticker symbols from the database.
     If the database is empty, returns a curated list of top NSE tickers as fallback.
     """
     symbols = set()
     try:
-        # 1. Query scan_price_log
+        # Helper to clean and add ticker
+        def add_clean_ticker(raw_ticker):
+            if raw_ticker:
+                # Strip exchange prefix (e.g. NSE:RELIANCE -> RELIANCE) and suffixes (.NS, .BO)
+                clean = raw_ticker.split(':')[-1].upper().replace('.NS', '').replace('.BO', '')
+                if clean:
+                    symbols.add(clean)
+
+        # Retrieve all IPO tickers to exclude them (newly listed / upcoming IPOs)
+        ipo_tickers = set()
+        if table_exists('ipo_listings'):
+            ipo_rows = fetch_all("SELECT DISTINCT ticker FROM ipo_listings")
+            for ir in ipo_rows:
+                if ir['ticker']:
+                    clean_ipo = ir['ticker'].split(':')[-1].upper().replace('.NS', '').replace('.BO', '')
+                    if clean_ipo:
+                        ipo_tickers.add(clean_ipo)
+
+        # 1. Query scan_price_log (stocks that have been run under the momentum scanner)
         if table_exists('scan_price_log'):
             rows = fetch_all("SELECT DISTINCT ticker FROM scan_price_log")
             for r in rows:
                 if r['ticker']:
-                    symbols.add(r['ticker'].split(':')[-1].upper())
-        
-        # 2. Query watchlist_items
-        if table_exists('watchlist_items'):
-            rows = fetch_all("SELECT DISTINCT ticker FROM watchlist_items")
-            for r in rows:
-                if r['ticker']:
-                    symbols.add(r['ticker'].split(':')[-1].upper())
-                    
-        # 3. Query ipo_listings
-        if table_exists('ipo_listings'):
-            rows = fetch_all("SELECT DISTINCT ticker FROM ipo_listings")
-            for r in rows:
-                if r['ticker']:
-                    symbols.add(r['ticker'].split(':')[-1].upper())
+                    clean = r['ticker'].split(':')[-1].upper().replace('.NS', '').replace('.BO', '')
+                    # Skip if it is an IPO listing (newly listed / upcoming)
+                    if clean in ipo_tickers:
+                        continue
+                    add_clean_ticker(r['ticker'])
     except Exception as e:
         logger.error(f"Error fetching NSE symbols: {e}")
 
     # Fallback to major NSE stock symbols if none found
     if not symbols:
-        return [
-            "RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", 
-            "SBIN", "BHARTIARTL", "ITC", "LT", "WELCORP",
-            "MARUTI", "KOTAKBANK", "AXISBANK", "ULTRACEMCO", "SUNPHARMA"
-        ]
+        return list(FALLBACK_NSE_SYMBOLS)
         
     return sorted(list(symbols))

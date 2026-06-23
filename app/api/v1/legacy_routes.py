@@ -106,6 +106,17 @@ _IPO_MOCK_FALLBACK = [
     ("EXICOM.NS",     "Exicom Tele-Systems Ltd",             "2025-09-20", 142.0,  265.0,  259.0,  "NSE", "Telecommunication",  429.0, 100, 110.0),
     ("UNIPARTS.NS",   "Uniparts India Ltd",                  "2025-10-10", 577.0,  575.0,  540.0,  "NSE", "Capital Goods",     835.0,  25, -20.0),
     ("BSE.NS",        "BSE Limited",                         "2025-06-01", 400.0,  420.0,  450.0,  "BSE", "Financial Services", 5000.0,  30,  20.0),
+    # Additional recently listed IPOs and short-history symbols
+    ("ADVAIT.NS",     "Advait Infratech Ltd",                "2026-01-20", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
+    ("AEQUS.NS",      "Aequus Ltd",                          "2025-12-10", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
+    ("AMAGI.NS",      "Amagi Media Labs Ltd",                "2026-01-21", 0.0,    0.0,    0.0,    "NSE", "Services",            0.0,    0,   0.0),
+    ("ATLANTAELE.NS", "Atlanta Electricals Ltd",             "2025-09-29", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
+    ("AYE.NS",        "Aye Finance Ltd",                     "2026-02-16", 0.0,    0.0,    0.0,    "NSE", "Financial Services", 0.0,    0,   0.0),
+    ("CLEANMAX.NS",   "Cleanmax Enviro Group",               "2026-03-02", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
+    ("CMPDI.NS",      "Central Mine Planning & Design Inst", "2026-03-30", 0.0,    0.0,    0.0,    "NSE", "Services",            0.0,    0,   0.0),
+    ("CPPLUS.NS",     "CP Plus Ltd",                         "2025-08-05", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
+    ("EBGNG.NS",      "EBGNG Limited",                       "2025-07-30", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
+    ("EMMVEE.NS",     "Emmvee Photovoltaic Power",           "2025-11-18", 0.0,    0.0,    0.0,    "NSE", "Capital Goods",       0.0,    0,   0.0),
 ]
 
 
@@ -271,22 +282,24 @@ def seed_ipo_listings():
         conn.commit()
         print(f"[IPO Seed] Inserted {live_inserted} mainboard IPOs (last 18 months) from NSE live feed.")
 
-    # --- Fallback: use mock data if live fetch returned nothing ---
+    # --- Ensure curated mock/fallback IPO listings are always populated ---
+    print("[IPO Seed] Populating curated recent IPO listings...")
+    for row in _IPO_MOCK_FALLBACK:
+        c.execute(
+            '''
+            INSERT OR IGNORE INTO ipo_listings (
+                ticker, company_name, listing_date, issue_price,
+                listing_open, listing_close, exchange, sector,
+                issue_size_cr, lot_size, gmp_at_listing
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            row
+        )
+    conn.commit()
+    print(f"[IPO Seed] Curated list check complete: verified {len(_IPO_MOCK_FALLBACK)} mock/fallback rows.")
+
     if not raw:
-        print("[IPO Seed] Live NSE fetch returned no data — using mock fallback.")
-        for row in _IPO_MOCK_FALLBACK:
-            c.execute(
-                '''
-                INSERT OR IGNORE INTO ipo_listings (
-                    ticker, company_name, listing_date, issue_price,
-                    listing_open, listing_close, exchange, sector,
-                    issue_size_cr, lot_size, gmp_at_listing
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''',
-                row
-            )
-        conn.commit()
-        print(f"[IPO Seed] Fallback: inserted {len(_IPO_MOCK_FALLBACK)} mock rows.")
+        print("[IPO Seed] Note: Live NSE fetch returned no data. Curated mock fallback was used.")
 
     conn.close()
 
