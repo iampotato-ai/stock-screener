@@ -741,3 +741,21 @@ def test_screen_returns_sorted_descending():
     # results[0].score >= results[-1].score
     ...
 ```
+## Feature flag
+
+The Bull Snort filter is gated behind the ``ENABLE_BULL_SNORT`` environment variable.
+Set the variable to ``True`` (or any case‑insensitive truthy value) to enable the
+filter; default is ``False`` which disables the endpoints and background jobs.
+
+Example (Linux/macOS)::
+
+    export ENABLE_BULL_SNORT=True
+
+Example (Windows Command Prompt)::
+
+    set ENABLE_BULL_SNORT=True
+
+The flag is read in ``config.py`` and respected throughout the codebase – the
+service functions early‑return ``None`` and the API blueprint checks the flag
+before registering routes. This allows safe rollout and quick rollback without
+code changes.
