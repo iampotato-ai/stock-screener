@@ -19,9 +19,6 @@ from app.utils.technical import fetch_historical_prices
 
 logger = logging.getLogger(__name__)
 
-# Debug counters for counting rejections per phase (used when debugging)
-_debug_counts = {'p1_gap': 0, 'p1_slope': 0, 'p2_gap': 0, 'p4_candle': 0}
-
 # ---------------------------------------------------------------------------
 # Thresholds — tune via backtesting
 # ---------------------------------------------------------------------------

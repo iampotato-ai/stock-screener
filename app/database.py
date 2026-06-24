@@ -1020,8 +1020,20 @@ FALLBACK_NSE_SYMBOLS = (
 
 def get_nse_symbols() -> list[str]:
     """Retrieve all unique NSE stock ticker symbols from the database.
-    If the `nse_symbols` table is empty, falls back to the hard‑coded list.
+    First tries to read from the market_cap_cache (which is refreshed daily).
+    If the cache is empty, falls back to reading from the nse_symbols table,
+    then scanning scan_price_log, and finally to the hard‑coded list.
     """
+    # Try to get symbols from the market cache first
+    try:
+        rows = fetch_all("SELECT DISTINCT ticker FROM market_cap_cache")
+        if rows:
+            return [row["ticker"] for row in rows]
+    except Exception as e:
+        logger.warning(f"Failed to read from market_cap_cache: {e}")
+        # Fall back to the original logic below
+
+    # If the cache is empty or unreadable, fall back to the original logic
     try:
         # Directly read from the nse_symbols table (populated by our bulk‑load script)
         rows = fetch_all("SELECT ticker FROM nse_symbols")

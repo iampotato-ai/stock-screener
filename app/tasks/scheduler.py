@@ -218,8 +218,8 @@ def refresh_market_cap_cache(app: Flask):
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         data = json.loads(resp.read())
                     mkt_cap_raw = data['quoteSummary']['result'][0]['summaryDetail'].get('marketCap', {}).get('raw', 0)
-                    # Convert USD to INR using the constant from populate_nse_symbols.py (83.0)
-                    INR_PER_USD = 83.0
+                    # Convert USD to INR using configurable rate (default 83.0)
+                    INR_PER_USD = app.config.get('INR_PER_USD', 83.0)
                     market_cap_inr = int(mkt_cap_raw * INR_PER_USD)
                     # Insert into cache
                     execute_query(

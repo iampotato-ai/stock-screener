@@ -52,6 +52,7 @@ def bull_snort_screen():
       close_position_min : float (default: 0.65)
       min_gap_history    : float (default: 10.0)
       max_current_gap    : float (default: 5.0)
+      min_marketcap_cr   : float (default: None) - if provided, filters symbols by market cap >= value in Crores INR
     """
     if not _feature_enabled():
         return jsonify({"error": "Bull Snort feature disabled"}), 404
@@ -65,10 +66,6 @@ def bull_snort_screen():
         symbols = payload.get('symbols')
         if not isinstance(symbols, list):
             return jsonify({"error": "'symbols' must be a list"}), 400
-    else:
-        # GET request: screen all database NSE symbols
-        from app.database import get_nse_symbols_by_marketcap
-        symbols = get_nse_symbols_by_marketcap()
 
     # Extract threshold parameters (same for GET and POST)
     try:
@@ -88,16 +85,31 @@ def bull_snort_screen():
         close_position_min = get_param('close_position_min', 'BULL_SNORT_CLOSE_POSITION_MIN', 0.65, float)
         min_gap_history = get_param('min_gap_history', 'BULL_SNORT_MIN_GAP_HISTORY', 10.0, float)
         max_current_gap = get_param('max_current_gap', 'BULL_SNORT_MAX_CURRENT_GAP', 5.0, float)
+        # min_marketcap_cr is optional - None means no market cap filter
+        min_marketcap_cr = get_param('min_marketcap_cr', 'MIN_MARKETCAP_CR', None, float)
     except (ValueError, TypeError) as e:
         return jsonify({"error": f"Invalid parameter value: {e}"}), 400
 
-    # Cache optimization: If GET request and all parameters match defaults, return cache if available
+    # For GET requests, determine symbols based on market cap filter if provided
+    if request.method == 'GET':
+        from app.database import get_nse_symbols_by_marketcap
+        if min_marketcap_cr is not None:
+            # Convert CR to INR: 1 CR = 10,000,000 INR
+            min_marketcap_inr = int(min_marketcap_cr * 10_000_000)
+            symbols = get_nse_symbols_by_marketcap(min_marketcap_inr=min_marketcap_inr)
+        else:
+            # Use default (10B INR) - no additional filtering beyond cache default
+            symbols = get_nse_symbols_by_marketcap()
+
+    # Cache optimization: If GET request and all parameters match defaults (excluding min_marketcap_cr which is optional), return cache if available
     is_default = (
         vol_avg_period == current_app.config.get('BULL_SNORT_VOL_AVG_PERIOD', 20) and
         vol_surge_min == current_app.config.get('BULL_SNORT_VOL_SURGE_MIN', 3.0) and
         close_position_min == current_app.config.get('BULL_SNORT_CLOSE_POSITION_MIN', 0.65) and
         min_gap_history == current_app.config.get('BULL_SNORT_MIN_GAP_HISTORY', 10.0) and
-        max_current_gap == current_app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0)
+        max_current_gap == current_app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0) and
+        # min_marketcap_cr is not part of default check since None means "use default cache behavior"
+        True
     )
 
     if request.method == 'GET' and is_default:
@@ -115,7 +127,8 @@ def bull_snort_screen():
     )
 
     # Populate cache if default GET request yielded results and cache was empty
-    if request.method == 'GET' and is_default:
+    # Note: We only cache when min_marketcap_cr is None (using default cache behavior)
+    if request.method == 'GET' and is_default and min_marketcap_cr is None:
         import pandas as pd
         current_app.config['BULL_SNORT_CACHE'] = {
             'data': results,
