@@ -306,10 +306,11 @@ def screen_bull_snort(
     # Update diagnostic cache if any symbols were skipped and we're in Flask context
     if skipped:
         try:
-            if current_app:
-                current_app.config.setdefault('BULL_SNORT_SKIPPED', set()).update(skipped)
-        except:
-            # Silently ignore if outside Flask context
+            # current_app is available only within an application context.
+            # Accessing config outside context raises RuntimeError.
+            current_app.config.setdefault('BULL_SNORT_SKIPPED', set()).update(skipped)
+        except RuntimeError:
+            # Outside Flask application context - diagnostic cache unavailable, safe to skip
             pass
 
     # Sort results by final score descending
