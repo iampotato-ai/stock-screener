@@ -11,6 +11,7 @@ Feature gated via ENABLE_BULL_SNORT flag.
 
 import logging
 import numpy as np
+import pandas as pd
 from typing import List, Dict, Any
 from flask import current_app
 
@@ -35,6 +36,7 @@ def _has_sufficient_history(symbol: str) -> bool:
     """Return True iff the symbol has at least MIN_ROWS_REQUIRED rows of history."""
     hist = fetch_historical_prices(symbol, range_str="2y")
     return hist is not None and len(hist) >= MIN_ROWS_REQUIRED
+
 
 # ---------------------------------------------------------------------------
 # Helper: base volume accumulation scoring
@@ -90,6 +92,7 @@ def _score_base_accumulation(close, volume, dma200, lookback) -> Dict[str, Any]:
         "accumulation_score": accumulation_score,
     }
 
+
 # ---------------------------------------------------------------------------
 # Helper: final score composition
 # ---------------------------------------------------------------------------
@@ -129,6 +132,7 @@ def _compute_final_score(
     )
     return round(score * 100, 2)
 
+
 # ---------------------------------------------------------------------------
 # Public API: compute a single symbol
 # ---------------------------------------------------------------------------
@@ -145,16 +149,21 @@ def compute_bull_snort(
     Returns a dict with the computed score and candle details, or ``None`` if any required phase fails.
     """
     try:
-        df = fetch_historical_prices(symbol, range_str="2y")
-        if df is None or len(df) < 230:
+        data = fetch_historical_prices(symbol, range_str="2y")
+        if data is None or len(data) < 230:
             logger.warning("%s: insufficient data", symbol)
             return None
 
-        df = df.sort_index()
-        close = df["Close"]
-        volume = df["Volume"]
-        high = df["High"]
-        low = df["Low"]
+        # Convert list of dicts to pandas DataFrame
+        df = pd.DataFrame(data)
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.set_index('date')
+        df = df.sort_index()  # Ensure chronological order
+
+        close = df["close"]
+        volume = df["volume"]
+        high = df["high"]
+        low = df["low"]
         dma200 = close.rolling(200).mean()
         if np.isnan(dma200.iloc[-1]):
             return None
@@ -213,7 +222,7 @@ def compute_bull_snort(
             "symbol": symbol,
             "date": str(df.index[-1].date()),
             # Candle
-            "open": round(df["Open"].iloc[-1], 2),
+            "open": round(df["open"].iloc[-1], 2),
             "high": round(today_high, 2),
             "low": round(today_low, 2),
             "close": round(today_close, 2),
@@ -241,6 +250,7 @@ def compute_bull_snort(
     except Exception as exc:
         logger.exception("Error computing Bull Snort for %s", symbol)
         return None
+
 
 # ---------------------------------------------------------------------------
 # Public API: screen a list of symbols
@@ -279,9 +289,3 @@ def screen_bull_snort(
     # Sort results by final score descending
     results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
     return results
-__all__ = [
-    "compute_bull_snort",
-    "screen_bull_snort",
-    "_score_base_accumulation",
-    "_compute_final_score",
-]
