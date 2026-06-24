@@ -2,6 +2,23 @@ import os
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+# Load .env file manually if it exists in the root directory
+env_path = os.path.join(basedir, '.env')
+if os.path.exists(env_path):
+    try:
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, val = line.split('=', 1)
+                    val_str = val.strip()
+                    if len(val_str) >= 2 and val_str[0] == val_str[-1] and val_str[0] in ('"', "'"):
+                        val_str = val_str[1:-1]
+                    os.environ[key.strip()] = val_str
+    except Exception as e:
+        print(f"Warning: could not parse .env file: {e}")
+
+
 class Config:
     """Base configuration."""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-please-change-in-production'
@@ -24,6 +41,14 @@ class Config:
     ENABLE_BACKGROUND_TASKS = os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() == 'true'
     ENABLE_TELEGRAM_ALERTS = os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() == 'true'
     ENABLE_NLP_ENRICHMENT = os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() == 'true'
+    ENABLE_BULL_SNORT = os.environ.get('ENABLE_BULL_SNORT', 'False').lower() == 'true'
+
+    # Bull Snort Configuration defaults
+    BULL_SNORT_VOL_AVG_PERIOD = int(os.environ.get('BULL_SNORT_VOL_AVG_PERIOD', '20'))
+    BULL_SNORT_VOL_SURGE_MIN = float(os.environ.get('BULL_SNORT_VOL_SURGE_MIN', '3.0'))
+    BULL_SNORT_CLOSE_POSITION_MIN = float(os.environ.get('BULL_SNORT_CLOSE_POSITION_MIN', '0.65'))
+    BULL_SNORT_MIN_GAP_HISTORY = float(os.environ.get('BULL_SNORT_MIN_GAP_HISTORY', '10.0'))
+    BULL_SNORT_MAX_CURRENT_GAP = float(os.environ.get('BULL_SNORT_MAX_CURRENT_GAP', '5.0'))
 
     # Pagination
     ITEMS_PER_PAGE = int(os.environ.get('ITEMS_PER_PAGE', '50'))

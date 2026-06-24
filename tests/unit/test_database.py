@@ -17,6 +17,7 @@ from app.database import (
     execute_query,
     fetch_one,
     init_db_app,
+    get_nse_symbols,
 )
 from flask import Flask, g
 
@@ -173,3 +174,41 @@ def test_get_connection_uses_flask_context(flask_app):
         conn, should_close = _get_connection()
         assert should_close is False
         assert conn is db1
+
+
+def test_get_nse_symbols_cleaning_and_fallback(initialized_db):
+    """Test that get_nse_symbols strips prefixes and suffixes, deduplicates, and falls back correctly."""
+    # 1. Test fallback when no symbols are present in DB
+    # The fixture initializes DB. It might contain some tickers if fixture inserted them, but it should return a list.
+    symbols = get_nse_symbols()
+    assert isinstance(symbols, list)
+    assert len(symbols) > 0
+
+    # 2. Test suffix stripping and deduplication
+    import sqlite3
+    from app.database import _get_connection, table_exists
+    conn, should_close = _get_connection()
+    try:
+        cursor = conn.cursor()
+        # Insert dirty tickers into scan_price_log
+        if table_exists('scan_price_log') and table_exists('ipo_listings'):
+            cursor.execute("INSERT INTO scan_price_log (ticker, date, close) VALUES ('NSE:TCS.NS', '2024-01-01', 3000.0)")
+            cursor.execute("INSERT INTO scan_price_log (ticker, date, close) VALUES ('TCS', '2024-01-02', 3010.0)")
+            cursor.execute("INSERT INTO scan_price_log (ticker, date, close) VALUES ('RELIANCE.BO', '2024-01-01', 2500.0)")
+            cursor.execute("INSERT INTO scan_price_log (ticker, date, close) VALUES ('MOCKIPO', '2024-01-01', 100.0)")
+            cursor.execute("INSERT INTO ipo_listings (ticker, company_name, listing_date) VALUES ('NSE:MOCKIPO.NS', 'Mock Company', '2024-01-01')")
+            conn.commit()
+            
+            # Retrieve
+            symbols_res = get_nse_symbols()
+            assert "TCS" in symbols_res
+            assert "RELIANCE" in symbols_res
+            assert "MOCKIPO" not in symbols_res  # Should be excluded because it is an IPO
+            # Ensure "TCS.NS" or "NSE:TCS.NS" is NOT in symbols
+            assert "TCS.NS" not in symbols_res
+            assert "NSE:TCS.NS" not in symbols_res
+            # Ensure deduplicated
+            assert symbols_res.count("TCS") == 1
+    finally:
+        if should_close:
+            conn.close()

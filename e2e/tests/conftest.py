@@ -14,6 +14,7 @@ def run_server():
     env = os.environ.copy()
     env["FLASK_DEBUG"] = "False"
     env["ENABLE_BACKGROUND_TASKS"] = "False"
+    env["ENABLE_BULL_SNORT"] = "True"
     
     proc = Popen([sys.executable, "run.py"], env=env, cwd=Path.cwd())
     

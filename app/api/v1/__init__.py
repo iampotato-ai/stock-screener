@@ -12,6 +12,7 @@ from . import journal  # noqa: F401
 from . import market_breadth  # noqa: F401
 from . import alerts  # noqa: F401
 from . import ipo  # noqa: F401
+from . import bull_snort  # noqa: F401
 from . import news  # noqa: F401
 # Add other modules as they are created
 from . import screener  # noqa: F401

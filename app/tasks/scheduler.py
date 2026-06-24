@@ -6,6 +6,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 import atexit
 import logging
 import os
+import urllib.request
+import json
+import time
 from flask import Flask
 from app.services.model_training_service import run_ep_model_training
 
@@ -78,6 +81,34 @@ def init_scheduler(app: Flask):
         args=[app]
     )
 
+    # Add Bull Snort refresh job - runs daily at 16:05 (gated behind feature flag)
+    if app.config.get('ENABLE_BULL_SNORT', False):
+        scheduler.add_job(
+            func=refresh_bull_snort,
+            trigger='cron',
+            hour=16,
+            minute=5,
+            timezone='Asia/Kolkata',
+            id='bull_snort_refresh',
+            name='Daily Bull Snort screener refresh',
+            replace_existing=True,
+            args=[app]
+        )
+
+    # Add market cap refresh job - runs daily at configured hour (gated behind feature flag)
+    if app.config.get('ENABLE_MARKET_CAP_CACHE', True):
+        scheduler.add_job(
+            func=refresh_market_cap_cache,
+            trigger='cron',
+            hour=app.config.get('MARKET_CAP_REFRESH_HOUR', 3),
+            minute=0,
+            timezone='Asia/Kolkata',
+            id='market_cap_refresh',
+            name='Daily market cap cache refresh',
+            replace_existing=True,
+            args=[app]
+        )
+
     # Start the scheduler
     scheduler.start()
     logger.info("Background scheduler started")
@@ -90,6 +121,7 @@ def init_scheduler(app: Flask):
 
     return scheduler
 
+
 def refresh_ep_task(app: Flask):
     """Background task to refresh EP screener data."""
     try:
@@ -100,6 +132,7 @@ def refresh_ep_task(app: Flask):
             logger.info("EP refresh task completed successfully")
     except Exception as e:
         logger.error(f"Error in background EP refresh task: {e}")
+
 
 def refresh_ipo_task(app: Flask):
     """Background task to refresh IPO data."""
@@ -138,6 +171,71 @@ def startup_ipo_cache_warmup(app: Flask):
                 logger.info("Startup IPO cache warm-up complete.")
     except Exception as e:
         logger.error(f"Error in startup IPO cache warm-up: {e}")
+
+
+def refresh_bull_snort(app: Flask):
+    """Background task to run Bull Snort screening and cache results."""
+    try:
+        with app.app_context():
+            from app.database import get_nse_symbols
+            from app.services.bull_snort_service import screen_bull_snort
+            import pandas as pd
+            symbols = get_nse_symbols()
+            results = screen_bull_snort(
+                symbols,
+                vol_avg_period=app.config.get('BULL_SNORT_VOL_AVG_PERIOD', 20),
+                vol_surge_min=app.config.get('BULL_SNORT_VOL_SURGE_MIN', 3.0),
+                close_position_min=app.config.get('BULL_SNORT_CLOSE_POSITION_MIN', 0.65),
+                min_gap_history=app.config.get('BULL_SNORT_MIN_GAP_HISTORY', 10.0),
+                max_current_gap=app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0)
+            )
+            app.config['BULL_SNORT_CACHE'] = {
+                'data': results,
+                'count': len(results),
+                'refreshed': pd.Timestamp.now().isoformat()
+            }
+            logger.info(f"Bull Snort background screen completed: {len(results)} signals found")
+    except Exception as e:
+        logger.error(f"Error in background Bull Snort refresh task: {e}")
+
+
+def refresh_market_cap_cache(app: Flask):
+    """Background task to refresh market cap cache for NSE symbols."""
+    try:
+        with app.app_context():
+            from app.database import get_nse_symbols, execute_query
+            logger.info("Starting market cap cache refresh...")
+            # Clear the cache table
+            execute_query("DELETE FROM market_cap_cache", commit=True)
+            # Get all NSE symbols
+            symbols = get_nse_symbols()
+            logger.info(f"Fetching market cap for {len(symbols)} symbols")
+            inserted = 0
+            for sym in symbols:
+                try:
+                    url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{sym}.NS?modules=summaryDetail"
+                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = json.loads(resp.read())
+                    mkt_cap_raw = data['quoteSummary']['result'][0]['summaryDetail'].get('marketCap', {}).get('raw', 0)
+                    # Convert USD to INR using configurable rate (default 83.0)
+                    INR_PER_USD = app.config.get('INR_PER_USD', 83.0)
+                    market_cap_inr = int(mkt_cap_raw * INR_PER_USD)
+                    # Insert into cache
+                    execute_query(
+                        "INSERT OR REPLACE INTO market_cap_cache (ticker, market_cap_inr, fetched_at) VALUES (?, ?, datetime('now'))",
+                        (sym, market_cap_inr),
+                        commit=True
+                    )
+                    inserted += 1
+                    # Gentle rate limit
+                    time.sleep(0.05)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch market cap for {sym}: {e}")
+                    continue
+            logger.info(f"Market cap cache refresh completed. Inserted/updated {inserted} symbols.")
+    except Exception as e:
+        logger.error(f"Error in background market cap refresh task: {e}")
 
 
 # For direct execution (testing)
