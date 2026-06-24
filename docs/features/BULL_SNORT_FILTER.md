@@ -222,7 +222,7 @@ def compute_bull_snort(
 
         # Is 200 DMA still declining?
         dma_slope    = (dma200.iloc[-1] - dma200.iloc[-21]) / 20
-        norm_slope   = (dma_slope / dma200.iloc[-1]) * 100
+        norm_slope   = (dma200 / dma200.iloc[-1]) * 100
         dma_declining = norm_slope < 0.0
 
         if not dma_declining:
@@ -525,12 +525,13 @@ def bull_snort_single():
     if result is None:
         return jsonify({'status': 'ok', 'signal': False, 'symbol': symbol})
     return jsonify({'status': 'ok', 'signal': True, 'data': result})
-```
+
 
 ### Register in `app/__init__.py`
 ```python
 from .api.v1.bull_snort import bull_snort_bp
 app.register_blueprint(bull_snort_bp, url_prefix='/api')
+```
 ```
 
 ---
@@ -595,7 +596,7 @@ scheduler.add_job(
 ```html
 <button class="tab-btn" data-view="bull-snort">🐂 Bull Snort</button>
 
-<div id="view-bull-snort" class="view-section" style="display:none;">
+<div id="view-bull-snort" class="view-section" style="view-section" style="display:none;">
   <div class="filter-bar">
     <label>Vol Avg Period:
       <select id="bs-vol-period">
@@ -741,17 +742,18 @@ def test_screen_returns_sorted_descending():
     # results[0].score >= results[-1].score
     ...
 ```
+
 ## Feature flag
 
 The Bull Snort filter is gated behind the ``ENABLE_BULL_SNORT`` environment variable.
 Set the variable to ``True`` (or any case‑insensitive truthy value) to enable the
 filter; default is ``False`` which disables the endpoints and background jobs.
 
-Example (Linux/macOS)::
+Example (Linux/macOS):
 
     export ENABLE_BULL_SNORT=True
 
-Example (Windows Command Prompt)::
+Example (Windows Command Prompt):
 
     set ENABLE_BULL_SNORT=True
 
@@ -759,3 +761,10 @@ The flag is read in ``config.py`` and respected throughout the codebase – the
 service functions early‑return ``None`` and the API blueprint checks the flag
 before registering routes. This allows safe rollout and quick rollback without
 code changes.
+
+---
+
+### Pre‑filter
+The `/bull_snort/screen` endpoint now includes a pre‑filter that silently skips any symbol whose price‑history DataFrame contains fewer than 230 rows (approximately two years of daily data). This avoids unnecessary computation for symbols with insufficient data while preserving the existing guard inside `compute_bull_snort`. The pre‑filter does not alter the API contract: the endpoint still returns HTTP 200 and a JSON list under the `"data"` key.
+
+An optional diagnostic cache `BULL_SNORT_SKIPPED` (a set of tickers) is maintained in the Flask application context for internal debugging.

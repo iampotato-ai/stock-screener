@@ -12,6 +12,7 @@ Feature gated via ENABLE_BULL_SNORT flag.
 import logging
 import numpy as np
 from typing import List, Dict, Any
+from flask import current_app
 
 from app.utils.technical import fetch_historical_prices
 
@@ -27,6 +28,13 @@ DEFAULT_MIN_GAP_HISTORY = 10.0  # Phase 1: price must have been 10%+ below DMA
 DEFAULT_MAX_CURRENT_GAP = 5.0  # Phase 2: price must be within 5% of DMA now
 BASE_LOOKBACK_DAYS = 126  # 6 months of trading days
 BASE_NO_NEW_LOW_WINDOW = 10  # Phase 2: no new low in last N sessions
+MIN_ROWS_REQUIRED = 230  # Minimum rows of historical data required for Bull Snort calculation
+
+
+def _has_sufficient_history(symbol: str) -> bool:
+    """Return True iff the symbol has at least MIN_ROWS_REQUIRED rows of history."""
+    hist = fetch_historical_prices(symbol, range_str="2y")
+    return hist is not None and len(hist) >= MIN_ROWS_REQUIRED
 
 # ---------------------------------------------------------------------------
 # Helper: base volume accumulation scoring
@@ -137,34 +145,12 @@ def compute_bull_snort(
     Returns a dict with the computed score and candle details, or ``None`` if any required phase fails.
     """
     try:
-        history = fetch_historical_prices(symbol, range_str="2y")
-        if not history or len(history) < 230:
-            logger.info("%s: insufficient data", symbol)
+        df = fetch_historical_prices(symbol, range_str="2y")
+        if df is None or len(df) < 230:
+            logger.warning("%s: insufficient data", symbol)
             return None
 
-        import pandas as pd
-        if isinstance(history, pd.DataFrame):
-            df = history.copy()
-        else:
-            df = pd.DataFrame(history)
-
-        if "date" in df.columns:
-            df["Date"] = pd.to_datetime(df["date"])
-            df.set_index("Date", inplace=True)
-        elif not isinstance(df.index, pd.DatetimeIndex):
-            # If date is not in columns but index is not datetime, try to convert index
-            df.index = pd.to_datetime(df.index)
-
         df = df.sort_index()
-
-        # Rename lowercase columns to capitalized if present
-        rename_map = {}
-        for col in ["open", "high", "low", "close", "volume"]:
-            if col in df.columns:
-                rename_map[col] = col.capitalize()
-        if rename_map:
-            df.rename(columns=rename_map, inplace=True)
-
         close = df["Close"]
         volume = df["Volume"]
         high = df["High"]
@@ -270,7 +256,11 @@ def screen_bull_snort(
     """Run ``compute_bull_snort`` for each symbol in *symbols* and return successful results.
     """
     results = []
+    skipped = []  # for optional diagnostic cache
     for sym in symbols:
+        if not _has_sufficient_history(sym):
+            skipped.append(sym)
+            continue  # silent skip
         res = compute_bull_snort(
             sym,
             vol_avg_period=vol_avg_period,
@@ -281,6 +271,11 @@ def screen_bull_snort(
         )
         if res:
             results.append(res)
+
+    # Update diagnostic cache if any symbols were skipped
+    if skipped:
+        current_app.config.setdefault('BULL_SNORT_SKIPPED', set()).update(skipped)
+
     # Sort results by final score descending
     results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
     return results
