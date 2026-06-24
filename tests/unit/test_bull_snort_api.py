@@ -9,20 +9,24 @@ from unittest.mock import patch
 
 
 def make_df(num_rows: int, close_price: float = 100.0, volume: int = 1000):
-    """Create a minimal DataFrame compatible with ``fetch_historical_prices``.
-    Columns: Open, High, Low, Close, Volume.
+    """Create a list of dicts compatible with ``fetch_historical_prices``.
+    Each dict has keys: date, open, high, low, close, volume.
     All numeric columns are filled with constant values.
     """
-    data = {
-        "Open": [close_price] * num_rows,
-        "High": [close_price + 1] * num_rows,
-        "Low": [close_price - 1] * num_rows,
-        "Close": [close_price] * num_rows,
-        "Volume": [volume] * num_rows,
-    }
-    # Use a simple date range index
-    index = pd.date_range(end=pd.Timestamp("2024-01-01"), periods=num_rows, freq="B")
-    return pd.DataFrame(data, index=index)
+    data = []
+    # Use a simple date range starting from 2022-01-01
+    start_date = pd.Timestamp("2022-01-01")
+    for i in range(num_rows):
+        date = start_date + pd.Timedelta(days=i)
+        data.append({
+            "date": date.strftime('%Y-%m-%d'),
+            "open": float(close_price),
+            "high": float(close_price + 1),
+            "low": float(close_price - 1),
+            "close": float(close_price),
+            "volume": int(volume),
+        })
+    return data
 
 
 @pytest.fixture
@@ -69,6 +73,7 @@ def test_screen_success(client, monkeypatch):
     data = resp.get_json()
     assert data["data"] == dummy_results
 
+
 def test_screen_invalid_payload(client):
     client.application.config['ENABLE_BULL_SNORT'] = True
     # Not JSON
@@ -80,6 +85,7 @@ def test_screen_invalid_payload(client):
     # Symbols not list
     resp = client.post("/api/bull_snort/screen", json={"symbols": "notalist"})
     assert resp.status_code == 400
+
 
 def test_screen_feature_disabled(client):
     client.application.config['ENABLE_BULL_SNORT'] = False
@@ -94,7 +100,7 @@ def test_screen_get_success(client):
     # Clear cache to force a fresh run
     client.application.config['BULL_SNORT_CACHE'] = None
     dummy_results = [{"symbol": "C", "final_score": 77}]
-    
+
     with patch("app.database.get_nse_symbols", return_value=["C"]):
         with patch("app.services.bull_snort_service.screen_bull_snort", return_value=dummy_results) as mock_screen:
             resp = client.get("/api/bull_snort/screen?vol_avg_period=20&vol_surge_min=3.0")
@@ -119,7 +125,7 @@ def test_screen_get_cached(client):
         'count': 1,
         'refreshed': '2026-06-23T12:00:00'
     }
-    
+
     # Under default parameters, it should return the cache directly without calling the service
     with patch("app.services.bull_snort_service.screen_bull_snort") as mock_screen:
         resp = client.get("/api/bull_snort/screen")
@@ -132,7 +138,7 @@ def test_screen_get_cached(client):
 def test_screen_post_body_parameters(client):
     client.application.config['ENABLE_BULL_SNORT'] = True
     dummy_results = [{"symbol": "D", "final_score": 88}]
-    
+
     with patch("app.services.bull_snort_service.screen_bull_snort", return_value=dummy_results) as mock_screen:
         # Pass parameters inside the JSON body rather than query parameters
         resp = client.post(
@@ -164,30 +170,28 @@ def test_screen_invalid_parameter_types(client):
     assert "error" in resp.get_json()
 
 
-
 def test_screen_pre_filter_skips_short_history(client, monkeypatch):
     """Test that /bull_snort/screen endpoint skips symbols with insufficient history."""
     client.application.config['ENABLE_BULL_SNORT'] = True
-    
+
     # Mock _has_sufficient_history to return False for "SKIP" and True for "PASS"
     def mock_has_sufficient_history(symbol):
         return symbol != "SKIP"  # Only "SKIP" returns False (insufficient history)
-    
+
     with patch("app.services.bull_snort_service._has_sufficient_history", side_effect=mock_has_sufficient_history):
         # Mock screen_bull_snort to return the expected filtered list
-        # In reality, it would only process "PASS" since "SKIP" is filtered out
         mock_results = [{"symbol": "PASS", "final_score": 85}]
         with patch("app.services.bull_snort_service.screen_bull_snort", return_value=mock_results) as mock_screen:
             resp = client.post("/api/bull_snort/screen", json={"symbols": ["SKIP", "PASS"]})
             assert resp.status_code == 200
             data = resp.get_json()
             assert data["data"] == mock_results
-            
+
             # Verify that screen_bull_snort was called with only the symbols that passed the pre-filter
             # Note: Due to our mock, it will still receive both symbols, but our mock_has_sufficient_history
             # ensures the internal logic works correctly
             mock_screen.assert_called_once()
-            
+
             # Also test that we can verify the internal behavior by checking what gets passed to screen_bull_snort
             # The actual symbols list passed should be ["SKIP", "PASS"] but internally it should skip "SKIP"
 
@@ -202,9 +206,9 @@ def test_screen_pre_filter_integration(client):
     # Mock fetch_historical_prices to return short data for "SKIP" and long data for "PASS"
     def mock_fetch(symbol, range_str="2y"):
         if symbol == "SKIP":
-            return make_df(100)  # insufficient data (< 230 rows)
+            return make_df(100)  # insufficient data
         elif symbol == "PASS":
-            return make_df(300)  # sufficient data (>= 230 rows)
+            return make_df(300)  # sufficient data
         else:
             return make_df(250)  # default sufficient data
 
@@ -221,7 +225,7 @@ def test_screen_pre_filter_integration(client):
             data = resp.get_json()
             assert data["data"] == [{"symbol": "PASS", "final_score": 85}]
 
-            # Verify compute_bull_snort was only called for "PASS" (not for "SKIP")
+            # Verify compute_bull_snort was only called for "PASS"
             mock_compute.assert_called_once()
             call_args = mock_compute.call_args[0][0]  # First positional argument (symbol)
             assert call_args == "PASS"

@@ -32,8 +32,19 @@ BASE_NO_NEW_LOW_WINDOW = 10  # Phase 2: no new low in last N sessions
 MIN_ROWS_REQUIRED = 230  # Minimum rows of historical data required for Bull Snort calculation
 
 
-def _has_sufficient_history(symbol: str) -> bool:
-    """Return True iff the symbol has at least MIN_ROWS_REQUIRED rows of history."""
+def _has_sufficient_history(symbol: str, data=None) -> bool:
+    """Return True iff the symbol has at least MIN_ROWS_REQUIRED rows of history.
+
+    Args:
+        symbol: Stock symbol to check
+        data: Optional pre-fetched historical data to avoid double fetch
+
+    Returns:
+        bool: True if sufficient history exists
+    """
+    if data is not None:
+        return len(data) >= MIN_ROWS_REQUIRED
+
     hist = fetch_historical_prices(symbol, range_str="2y")
     return hist is not None and len(hist) >= MIN_ROWS_REQUIRED
 
@@ -143,13 +154,15 @@ def compute_bull_snort(
     close_position_min: float = DEFAULT_CLOSE_POSITION_MIN,
     min_gap_history: float = DEFAULT_MIN_GAP_HISTORY,
     max_current_gap: float = DEFAULT_MAX_CURRENT_GAP,
+    data=None,
 ) -> Dict[str, Any] | None:
     """Run the full 4‑phase Bull Snort evaluation for *symbol*.
 
     Returns a dict with the computed score and candle details, or ``None`` if any required phase fails.
     """
     try:
-        data = fetch_historical_prices(symbol, range_str="2y")
+        if data is None:
+            data = fetch_historical_prices(symbol, range_str="2y")
         if data is None or len(data) < 230:
             logger.warning("%s: insufficient data", symbol)
             return None
@@ -267,10 +280,17 @@ def screen_bull_snort(
     """
     results = []
     skipped = []  # for optional diagnostic cache
+
     for sym in symbols:
-        if not _has_sufficient_history(sym):
+        # Fetch data once per symbol
+        data = fetch_historical_prices(sym, range_str="2y")
+
+        # Check if we have sufficient history (pre-filter)
+        if not _has_sufficient_history(sym, data):
             skipped.append(sym)
             continue  # silent skip
+
+        # Compute Bull Snort using the already fetched data
         res = compute_bull_snort(
             sym,
             vol_avg_period=vol_avg_period,
@@ -278,13 +298,19 @@ def screen_bull_snort(
             close_position_min=close_position_min,
             min_gap_history=min_gap_history,
             max_current_gap=max_current_gap,
+            data=data,
         )
         if res:
             results.append(res)
 
-    # Update diagnostic cache if any symbols were skipped
+    # Update diagnostic cache if any symbols were skipped and we're in Flask context
     if skipped:
-        current_app.config.setdefault('BULL_SNORT_SKIPPED', set()).update(skipped)
+        try:
+            if current_app:
+                current_app.config.setdefault('BULL_SNORT_SKIPPED', set()).update(skipped)
+        except:
+            # Silently ignore if outside Flask context
+            pass
 
     # Sort results by final score descending
     results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
