@@ -1020,9 +1020,11 @@ FALLBACK_NSE_SYMBOLS = (
 
 def get_nse_symbols() -> list[str]:
     """Retrieve all unique NSE stock ticker symbols from the database.
-    First tries to read from the market_cap_cache (which is refreshed daily).
-    If the cache is empty, falls back to reading from the nse_symbols table,
-    then scanning scan_price_log, and finally to the hard‑coded list.
+    The fallback order is:
+    1. market_cap_cache (updated daily by the scheduler)
+    2. nse_symbols (populated by the populate_nse_symbols.py script)
+    3. scan_price_log (historical scan data)
+    4. hard‑coded list of fallback symbols
     """
     # Try to get symbols from the market cache first
     try:

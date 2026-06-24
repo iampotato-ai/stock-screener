@@ -109,7 +109,7 @@ def bull_snort_screen():
         min_gap_history == current_app.config.get('BULL_SNORT_MIN_GAP_HISTORY', 10.0) and
         max_current_gap == current_app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0) and
         # min_marketcap_cr is not part of default check since None means "use default cache behavior"
-        True
+        min_marketcap_cr is None
     )
 
     if request.method == 'GET' and is_default:
