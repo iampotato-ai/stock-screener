@@ -165,6 +165,22 @@ def _create_tables(conn):
             name TEXT NOT NULL
         )
     ''')
+    # Table for large‑cap NSE symbols (populated by a bulk script)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS nse_symbols (
+            ticker TEXT PRIMARY KEY,
+            market_cap_inr INTEGER NOT NULL,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS market_cap_cache (
+            ticker TEXT PRIMARY KEY,
+            market_cap_inr INTEGER NOT NULL,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    ''')
     try:
         c.execute("ALTER TABLE watchlist_sections ADD COLUMN position INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
@@ -1004,43 +1020,68 @@ FALLBACK_NSE_SYMBOLS = (
 
 def get_nse_symbols() -> list[str]:
     """Retrieve all unique NSE stock ticker symbols from the database.
-    If the database is empty, returns a curated list of top NSE tickers as fallback.
+    If the `nse_symbols` table is empty, falls back to the hard‑coded list.
     """
+    try:
+        # Directly read from the nse_symbols table (populated by our bulk‑load script)
+        rows = fetch_all("SELECT ticker FROM nse_symbols")
+        if rows:
+            return [row["ticker"] for row in rows]
+    except Exception as e:
+        logger.error(f"Error reading nse_symbols: {e}")
+
+    # If the table is empty or missing, fall back to the original logic (still useful for dev)
     symbols = set()
     try:
-        # Helper to clean and add ticker
         def add_clean_ticker(raw_ticker):
             if raw_ticker:
-                # Strip exchange prefix (e.g. NSE:RELIANCE -> RELIANCE) and suffixes (.NS, .BO)
                 clean = raw_ticker.split(':')[-1].upper().replace('.NS', '').replace('.BO', '')
                 if clean:
                     symbols.add(clean)
 
-        # Retrieve all IPO tickers to exclude them (newly listed / upcoming IPOs)
+        # Exclude IPO listings
         ipo_tickers = set()
         if table_exists('ipo_listings'):
-            ipo_rows = fetch_all("SELECT DISTINCT ticker FROM ipo_listings")
-            for ir in ipo_rows:
+            for ir in fetch_all("SELECT DISTINCT ticker FROM ipo_listings"):
                 if ir['ticker']:
                     clean_ipo = ir['ticker'].split(':')[-1].upper().replace('.NS', '').replace('.BO', '')
                     if clean_ipo:
                         ipo_tickers.add(clean_ipo)
 
-        # 1. Query scan_price_log (stocks that have been run under the momentum scanner)
         if table_exists('scan_price_log'):
-            rows = fetch_all("SELECT DISTINCT ticker FROM scan_price_log")
-            for r in rows:
+            for r in fetch_all("SELECT DISTINCT ticker FROM scan_price_log"):
                 if r['ticker']:
                     clean = r['ticker'].split(':')[-1].upper().replace('.NS', '').replace('.BO', '')
-                    # Skip if it is an IPO listing (newly listed / upcoming)
                     if clean in ipo_tickers:
                         continue
                     add_clean_ticker(r['ticker'])
     except Exception as e:
-        logger.error(f"Error fetching NSE symbols: {e}")
+        logger.error(f"Error fetching NSE symbols via fallback: {e}")
 
-    # Fallback to major NSE stock symbols if none found
     if not symbols:
         return list(FALLBACK_NSE_SYMBOLS)
-        
     return sorted(list(symbols))
+
+
+def get_nse_symbols_by_marketcap(min_marketcap_inr: int = 10_000_000_000) -> list[str]:
+    """
+    Returns NSE symbols filtered by market cap (in INR).
+    Default: > ₹10,000 Cr (10B INR = 10,000,000,000).
+    Reads from the `market_cap_cache` table. If the cache is empty,
+    falls back to `get_nse_symbols()`.
+    """
+    try:
+        rows = fetch_all(
+            "SELECT ticker FROM market_cap_cache WHERE market_cap_inr >= ?",
+            (min_marketcap_inr,)
+        )
+        if rows:
+            return [row["ticker"] for row in rows]
+        else:
+            # Cache empty – fallback to full list
+            logger.warning("market_cap_cache is empty, falling back to get_nse_symbols")
+            return get_nse_symbols()
+    except Exception as e:
+        logger.error(f"Error reading market_cap_cache: {e}")
+        # On error, fallback to full list
+        return get_nse_symbols()

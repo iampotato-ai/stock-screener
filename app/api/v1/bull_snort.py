@@ -67,8 +67,8 @@ def bull_snort_screen():
             return jsonify({"error": "'symbols' must be a list"}), 400
     else:
         # GET request: screen all database NSE symbols
-        from app.database import get_nse_symbols
-        symbols = get_nse_symbols()
+        from app.database import get_nse_symbols_by_marketcap
+        symbols = get_nse_symbols_by_marketcap()
 
     # Extract threshold parameters (same for GET and POST)
     try:

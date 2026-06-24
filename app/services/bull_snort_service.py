@@ -19,6 +19,9 @@ from app.utils.technical import fetch_historical_prices
 
 logger = logging.getLogger(__name__)
 
+# Debug counters for counting rejections per phase (used when debugging)
+_debug_counts = {'p1_gap': 0, 'p1_slope': 0, 'p2_gap': 0, 'p4_candle': 0}
+
 # ---------------------------------------------------------------------------
 # Thresholds — tune via backtesting
 # ---------------------------------------------------------------------------
@@ -155,10 +158,12 @@ def compute_bull_snort(
     min_gap_history: float = DEFAULT_MIN_GAP_HISTORY,
     max_current_gap: float = DEFAULT_MAX_CURRENT_GAP,
     data=None,
+    debug_counter=None,
 ) -> Dict[str, Any] | None:
     """Run the full 4‑phase Bull Snort evaluation for *symbol*.
 
     Returns a dict with the computed score and candle details, or ``None`` if any required phase fails.
+    If debug_counter is provided, it will be updated with counts of rejections per phase.
     """
     try:
         if data is None:
@@ -169,6 +174,9 @@ def compute_bull_snort(
 
         # Convert list of dicts to pandas DataFrame
         df = pd.DataFrame(data)
+        # Normalize column names to lowercase to handle case inconsistencies in data source
+        df.columns = df.columns.str.lower()
+        # Now we expect columns: date, open, high, low, close, volume
         df['date'] = pd.to_datetime(df['date'])
         df = df.set_index('date')
         df = df.sort_index()  # Ensure chronological order
@@ -179,24 +187,35 @@ def compute_bull_snort(
         low = df["low"]
         dma200 = close.rolling(200).mean()
         if np.isnan(dma200.iloc[-1]):
+            if debug_counter is not None:
+                # Not one of the four phases; could count as 'dma_nan' but we skip.
+                pass
             return None
 
         # Phase 1 – deep downtrend & DMA still declining
         gap_series = (dma200 - close) / close * 100
         max_gap_6mo = gap_series.iloc[-BASE_LOOKBACK_DAYS :].max()
         if max_gap_6mo < min_gap_history:
+            if debug_counter is not None:
+                debug_counter['p1_gap'] = debug_counter.get('p1_gap', 0) + 1
             return None
         dma_slope = (dma200.iloc[-1] - dma200.iloc[-21]) / 20
         norm_slope = (dma_slope / dma200.iloc[-1]) * 100
         if norm_slope >= 0:
+            if debug_counter is not None:
+                debug_counter['p1_slope'] = debug_counter.get('p1_slope', 0) + 1
             return None
 
         # Phase 2 – base formation
         recent_lows = close.iloc[-(BASE_NO_NEW_LOW_WINDOW + 1) : -1]
         if close.iloc[-1] < recent_lows.min():
+            if debug_counter is not None:
+                debug_counter['p2_gap'] = debug_counter.get('p2_gap', 0) + 1
             return None
         current_gap = (dma200.iloc[-1] - close.iloc[-1]) / close.iloc[-1] * 100
         if not (0 <= current_gap <= max_current_gap):
+            if debug_counter is not None:
+                debug_counter['p2_gap'] = debug_counter.get('p2_gap', 0) + 1
             return None
 
         # Phase 3 – accumulation score
@@ -214,10 +233,14 @@ def compute_bull_snort(
         is_positive = today_close > prev_close
         candle_range = today_high - today_low
         if candle_range == 0:
+            if debug_counter is not None:
+                debug_counter['p4_candle'] = debug_counter.get('p4_candle', 0) + 1
             return None
         close_position = (today_close - today_low) / candle_range
         is_strong_close = close_position >= close_position_min
         if not (is_vol_surge and is_positive and is_strong_close):
+            if debug_counter is not None:
+                debug_counter['p4_candle'] = debug_counter.get('p4_candle', 0) + 1
             return None
 
         # Final score composition
@@ -280,6 +303,7 @@ def screen_bull_snort(
     """
     results = []
     skipped = []  # for optional diagnostic cache
+    phase_kills = {'p1_gap': 0, 'p1_slope': 0, 'p2_gap': 0, 'p4_candle': 0}
 
     for sym in symbols:
         # Fetch data once per symbol
@@ -299,6 +323,7 @@ def screen_bull_snort(
             min_gap_history=min_gap_history,
             max_current_gap=max_current_gap,
             data=data,
+            debug_counter=phase_kills,
         )
         if res:
             results.append(res)
@@ -312,6 +337,10 @@ def screen_bull_snort(
         except RuntimeError:
             # Outside Flask application context - diagnostic cache unavailable, safe to skip
             pass
+
+    # Log the phase counts for debugging
+    if any(phase_kills.values()):
+        logger.info(f"Bull Snort phase rejection counts: {phase_kills}")
 
     # Sort results by final score descending
     results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
