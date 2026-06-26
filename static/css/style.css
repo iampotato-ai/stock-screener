@@ -115,7 +115,7 @@ body {
     font-family: var(--font-body);
     font-size: var(--text-base);
     color: var(--color-text-primary, #F8FAFC);
-    background-color: var(--color-background);
+    background-color: var(--color-canvas);
     min-height: 100vh;
     padding: var(--space-8) var(--space-6);
     overflow-x: hidden;
@@ -621,7 +621,7 @@ input:checked + .slider:before {
 .btn-primary {
     background-color: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--color-background);
+    color: var(--color-canvas);
     --btn-hover-bg: #d97706;
     --btn-hover-border: #b45309;
 }
@@ -4080,7 +4080,7 @@ body[data-theme="light"] .day-range-marker {
 
 .sector-chip.active {
     background: var(--color-accent);
-    color: var(--color-background);
+    color: var(--color-canvas);
     border-color: var(--color-accent);
 }
 .filter-chip.active {
@@ -6893,7 +6893,7 @@ body[data-theme="light"] .drawer-risk-banner {
 .btn-primary {
     background-color: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--color-background);
+    color: var(--color-canvas);
     --btn-hover-bg: #d97706;
     --btn-hover-border: #b45309;
 }
