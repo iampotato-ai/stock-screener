@@ -1,12 +1,13 @@
 /* Root variables defining our premium color system */
 @import './design-tokens.css';
 @import './polish-overrides.css';
+@import './tokens-extended.css';
 :root {
 
     /* Type scale */
-    --text-xs:   0.75rem;
-    --text-sm:   0.8rem;
-    --text-base: 0.9rem;
+    --text-xs:   0.75rem; /* rare badge */
+    --text-sm:   0.875rem; /* floor 14px for compact data */
+    --text-base: 1rem;   /* 16px body */
     --text-lg:   1.125rem;
 
     /* Spacing scale */
@@ -5273,7 +5274,7 @@ body[data-theme="light"] .intraday-item:hover {
 .sector-pill--mixed .sector-pill-progress-bar { background: var(--accent-amber, #f59e0b); }
 .sector-pill--mixed .sector-pill-pct { color: var(--accent-amber, #f59e0b); }
 
-.sector-pill--weak { border-left: 3px solid var(--accent-orange, #f97316); }
+.sector-pill--weak { background: rgba(249, 115, 22, 0.1); border-left: none; }
 .sector-pill--weak .sector-pill-progress-bar { background: var(--accent-orange, #f97316); }
 .sector-pill--weak .sector-pill-pct { color: var(--accent-orange, #f97316); }
 

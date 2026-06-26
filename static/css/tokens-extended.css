@@ -1,0 +1,10 @@
+/* Extended design tokens for MomentumScan */
+
+/* Surface elevations */
+--color-surface-elevated: #262626; /* Dark elevated surfaces */
+
+/* Border subtleties */
+--color-border-subtle: rgba(255, 255, 255, 0.05); /* Consistent subtle borders */
+
+/* Text muted (already defined in design-tokens but aliased for clarity) */
+--color-text-muted: #7e7e7e;

@@ -506,8 +506,9 @@
                             <span class="btn-label">Snapshot</span>
                         </button>
                     </div>
-                </div>
-        </section>
+</div>
+    <div class="input-error" id="target-missing-error" style="color: var(--accent-red); font-size:0.75rem; display:none;">Target 1 price missing – cannot calculate targets.</div>
+</section>
 
         <!-- Range Filters Panel -->
         <section class="range-filters-panel glass-panel">
@@ -862,14 +863,14 @@
                         <span id="kronos-last-sorted" style="font-size: 0.65rem; color: var(--color-text-muted); display: none;"></span>
                     </div>
                     <div class="watchlist-actions" style="display: flex; gap: 0.4rem; align-items: center;">
-                        <button class="btn-icon" id="btn-kronos-column-toggle" title="Toggle AI Forecast Columns" style="color: var(--color-text-secondary);">
+                        <button class="btn-icon" id="btn-kronos-column-toggle" title="Toggle AI Forecast Columns" aria-label="Toggle AI Forecast Columns" style="color: var(--color-text-secondary);">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                         </button>
-                        <button class="btn-icon" id="btn-kronos-batch-sort" title="Kronos AI Momentum Sort" style="color: #f59e0b;" disabled>
+                        <button class="btn-icon" id="btn-kronos-batch-sort" title="Kronos AI Momentum Sort" aria-label="Kronos AI Momentum Sort" style="color: #f59e0b;" disabled>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
                         </button>
                         <span id="kronos-sort-error-badge" style="display:none; font-size:0.72rem; color:#ef4444; margin-left:0.5rem;"></span>
-                        <button class="btn-icon" id="btn-add-watchlist-manual" title="Add Ticker Manually">
+                        <button class="btn-icon" id="btn-add-watchlist-manual" title="Add Ticker Manually" aria-label="Add Ticker Manually">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         </button>
                     </div>
@@ -1028,13 +1029,13 @@
                 <!-- RRG Timeline Bar -->
                 <div id="rrg-timeline-bar" class="rrg-timeline-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md, 8px); margin-bottom: var(--space-4); flex-wrap: wrap;">
                     <div class="rrg-timeline-controls" style="display: flex; gap: var(--space-2);">
-                        <button id="btn-rrg-play" class="btn-icon" title="Play animation" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                        <button id="btn-rrg-play" class="btn-icon" title="Play animation" aria-label="Play animation" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                         </button>
-                        <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                        <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" aria-label="Pause" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
                         </button>
-                        <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                        <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" aria-label="Reset to start" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
                         </button>
                     </div>
@@ -2283,7 +2284,7 @@
                     <h2 class="drawer-title" id="drawer-ticker">TICKER</h2>
                     <div class="drawer-subtitle" id="drawer-name">Company Name</div>
                 </div>
-                <button class="btn-icon" id="btn-close-drawer" title="Close">
+                <button class="btn-icon" id="btn-close-drawer" title="Close" aria-label="Close drawer">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -2312,6 +2313,7 @@
                         <div class="param-value-wrapper">
                             <span class="currency-symbol">₹</span>
                             <input type="number" id="drawer-entry-input" class="param-input" value="0.00" step="0.05">
+                            <div class="input-error" id="entry-error" style="color: var(--accent-red); font-size:0.75rem; display:none;">Entry must be greater than Stop Loss</div>
                         </div>
                         <div class="param-type" id="drawer-entry-type">Breakout</div>
                     </div>
@@ -2320,6 +2322,7 @@
                         <div class="param-value-wrapper">
                             <span class="currency-symbol">₹</span>
                             <input type="number" id="drawer-stop-input" class="param-input" value="0.00" step="0.05">
+                            <div class="input-error" id="stop-error" style="color: var(--accent-red); font-size:0.75rem; display:none;">Stop must be less than Entry</div>
                         </div>
                         <div class="param-type" id="drawer-stop-type">ATR (1.5)</div>
                     </div>

@@ -6769,7 +6769,16 @@ function loadPatternSignals(ticker) {
     containerEl.innerHTML = '';
 
     fetch(`/api/pattern-signals?ticker=${encodeURIComponent(ticker)}&days=7`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error('Invalid content type');
+            }
+            return res.json();
+        })
         .then(signals => {
             if (!signals || signals.length === 0) {
                 sectionEl.style.display = 'none';
@@ -7033,7 +7042,16 @@ function openTradeDrawer(ticker) {
         loadPatternSignals(stock.clean_ticker);
         
         fetch(`/api/setup-analysis?ticker=${encodeURIComponent(stock.clean_ticker)}`)
-            .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error('Invalid content type');
+            }
+            return res.json();
+        })
             .then(data => {
                 if (data.error) {
                     document.getElementById('drawer-intel-pattern').textContent = 'Analysis Unavailable';
@@ -7170,8 +7188,17 @@ function openTradeDrawer(ticker) {
                 updateFundamentalSectionsVisibility();
 
                 // Fetch interactive Kronos details (sample_count = 10 for envelope calculation)
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_FORECAST_HORIZON}&sample_count=10`)
-                    .then(res => res.json())
+fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(stock.clean_ticker)}&pred_len=${KRONOS_FORECAST_HORIZON}&sample_count=10`)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error('Invalid content type');
+            }
+            return res.json();
+        })
                     .then(kdata => {
                         if (kdata.error) {
                             console.error("Kronos forecast API error:", kdata.error);
@@ -7247,7 +7274,14 @@ function initializeTradeParams() {
     
     entryEl.value = savedParams && savedParams.entry ? savedParams.entry : Number(defaultEntry).toFixed(2);
     stopEl.value = savedParams && savedParams.stop ? savedParams.stop : Number(defaultStop).toFixed(2);
-    
+
+    const targetMissingError = document.getElementById('target-missing-error');
+    if (!stock.target1_price) {
+        if (targetMissingError) targetMissingError.style.display = 'block';
+    } else {
+        if (targetMissingError) targetMissingError.style.display = 'none';
+    }
+
     if (savedParams && savedParams.risk) {
         riskEl.value = savedParams.risk;
     } else if (!riskEl.value) {
@@ -7289,6 +7323,11 @@ function updateTradeParams() {
         document.getElementById('drawer-t3').textContent = '₹0.00';
         const rrEl = document.getElementById('tt-rr-multiple');
         if (rrEl) rrEl.textContent = '--';
+        // Show inline errors
+        const entryError = document.getElementById('entry-error');
+        const stopError = document.getElementById('stop-error');
+        if (entryError) entryError.style.display = entry <= 0 ? 'block' : 'none';
+        if (stopError) stopError.style.display = stop >= entry ? 'block' : 'none';
     } else {
         const riskPerShare = entry - stop;
         riskPct = (riskPerShare / entry) * 100;
@@ -7312,6 +7351,11 @@ function updateTradeParams() {
         const rrEl = document.getElementById('tt-rr-multiple');
         if (rrEl) rrEl.textContent = rr ? rr.toFixed(2) + 'R' : '--';
     }
+    // Hide inline validation errors when inputs are valid
+    const entryError = document.getElementById('entry-error');
+    const stopError = document.getElementById('stop-error');
+    if (entryError) entryError.style.display = 'none';
+    if (stopError) stopError.style.display = 'none';
     
     // Risk Warning Banner logic
     const bannerEl = document.getElementById('drawer-risk-banner');
@@ -7443,8 +7487,17 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
             const len = parseInt(btn.dataset.len);
             if (window.currentTradeStock) {
-                fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=10`)
-                    .then(res => res.json())
+fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock.clean_ticker)}&pred_len=${len}&sample_count=10`)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error('Invalid content type');
+            }
+            return res.json();
+        })
                     .then(kdata => {
                         if (!kdata.error) {
                             renderKronosForecastPanel(kdata);
@@ -9780,8 +9833,17 @@ function renderAIForecastWorkspace(ticker) {
         runBtn.textContent = 'Running...';
     }
 
-    fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=10`)
-        .then(res => res.json())
+fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=10`)
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error('Invalid content type');
+            }
+            return res.json();
+        })
         .then(data => {
             if (runBtn) {
                 runBtn.disabled = false;
