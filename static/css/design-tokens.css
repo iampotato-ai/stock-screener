@@ -7,8 +7,8 @@
   --color-background: #0F172A;
   --color-surface: rgba(15, 23, 42, 0.7);
 
-  --font-display: 'IBM Plex Sans', sans-serif;
-  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-display: 'Cabinet Grotesk', 'Outfit', sans-serif;
+  --font-body: 'Geist', 'IBM Plex Sans', sans-serif;
   --font-utility: 'IBM Plex Mono', monospace;
 
   --text-xs: 0.75rem;

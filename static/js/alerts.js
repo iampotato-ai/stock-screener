@@ -81,14 +81,16 @@ const AlertEngine = (() => {
     const date = new Date(firedAt);
     const timeStr = date.toTimeString().split(' ')[0];
 
-    const entry = document.createElement('div');
+    const entry = document.createElement('article');
     entry.className = `alert-log-entry alert-log-entry--${type}`;
+    entry.setAttribute('role', 'article');
+    entry.setAttribute('aria-live', 'polite');
     entry.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px;">
         <span class="alert-log-title" style="font-weight: 600; font-size: 0.82rem; color: #fff;">${title}</span>
-        <span class="alert-log-time" style="font-size: 0.72rem; color: var(--color-text-muted); font-family: monospace;">${timeStr}</span>
+        <time class="alert-log-time" datetime="${date.toISOString()}" style="font-size: 0.72rem; color: var(--color-text-muted); font-family: monospace;">${timeStr}</time>
       </div>
-      <span class="alert-log-body" style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.35; display: block;">${body}</span>
+      <div class="alert-log-body" style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.35;">${body}</div>
     `;
 
     logBody.insertBefore(entry, logBody.firstChild);
