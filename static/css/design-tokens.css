@@ -1,29 +1,50 @@
 :root {
-  --color-primary: #1E293B;
-  --color-accent: #F59E0B;
-  --color-secondary: #64748B;
-  --color-success: #10B981;
-  --color-error: #EF4444;
-  --color-background: #0F172A;
-  --color-surface: rgba(15, 23, 42, 0.7);
+  /* Canvas & surface */
+  --color-canvas: #000000;            /* pure black */
+  --color-surface-card: #1a1a1a;
+  --color-surface-elevated: #262626;
+  --color-surface-soft: #0d0d0d;
 
-  --font-display: 'Cabinet Grotesk', 'Outfit', sans-serif;
-  --font-body: 'Geist', 'IBM Plex Sans', sans-serif;
-  --font-utility: 'IBM Plex Mono', monospace;
+  /* Text */
+  --color-on-canvas: #ffffff;
+  --color-on-dark: #ffffff;
+  --color-body: #bbbbbb;
+  --color-muted: #7e7e7e;
 
-  --text-xs: 0.75rem;
-  --text-sm: 0.8rem;
-  --text-base: 0.9rem;
-  --text-md: 1rem;
-  --text-lg: 1.25rem;
-  --text-xl: 1.5rem;
-  --text-2xl: 2rem;
+  /* M‑tricolor */
+  --color-m-blue-light: #0066b1;
+  --color-m-blue-dark:  #1c69d4;
+  --color-m-red:        #e22718;
 
-  --space-1: 0.25rem; /* 4px */
-  --space-2: 0.5rem;   /* 8px */
-  --space-3: 0.75rem;  /* 12px */
-  --space-4: 1rem;     /* 16px */
-  --space-5: 1.25rem;  /* 20px */
-  --space-6: 1.5rem;   /* 24px */
-  --space-8: 2rem;     /* 32px */
+  /* Spacing — 4px base unit */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-xxl: 64px;
+  --spacing-section: 96px;
+
+  /* Rounded */
+  --radius-none: 0px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-heading: 'Inter', sans-serif;
+  --font-body:    'Inter', sans-serif;
+
+  /* Token shortcuts for typography */
+  --typography-display-xl:   var(--font-heading) 80px 700 1 0;
+  --typography-display-lg:   var(--font-heading) 56px 700 1.05 0;
+  --typography-display-md:   var(--font-heading) 40px 700 1.1 0;
+  --typography-display-sm:   var(--font-heading) 32px 700 1.15 0;
+  --typography-title-lg:     var(--font-heading) 24px 700 1.3 0;
+  --typography-title-md:     var(--font-heading) 20px 400 1.4 0;
+  --typography-title-sm:     var(--font-heading) 18px 400 1.4 0;
+  --typography-label-uppercase: var(--font-heading) 14px 700 1.3 1.5px;
+  --typography-body-md:      var(--font-body)    16px 300 1.5 0;
+  --typography-body-sm:      var(--font-body)    14px 300 1.5 0;
+  --typography-button:       var(--font-heading) 14px 700 1 1.5px;
+  --typography-nav-link:     var(--font-heading) 14px 400 1.4 0.5px;
 }
