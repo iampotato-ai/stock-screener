@@ -155,7 +155,7 @@ input[type="number"] {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.18);
     border-radius: var(--radius-none);
     transition: var(--transition-smooth);
 }
@@ -182,7 +182,7 @@ h1, h2, h3, h4,
 .scan-header-title {
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0em;
 }
 
 /* Ticker symbols — bump weight for terminal feel */
@@ -216,9 +216,9 @@ td.col-numeric, td.text-right {
 
 .logo-area:hover .logo-icon {
     transform: translateY(-2px) scale(1.03);
-    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
-    border-color: rgba(99, 102, 241, 0.5);
-    background: rgba(99, 102, 241, 0.15);
+    box-shadow: 0 8px 24px rgba(28, 105, 212, 0.35);
+    border-color: rgba(28, 105, 212, 0.6);
+    background: rgba(28, 105, 212, 0.12);
 }
 
 .logo-icon {
@@ -242,7 +242,7 @@ td.col-numeric, td.text-right {
 
 .logo-area:hover .logo-icon svg {
     color: #fff;
-    filter: drop-shadow(0 0 8px #6366f1);
+    filter: drop-shadow(0 0 8px var(--color-m-blue-dark));
 }
 
 .logo-text h1 {
@@ -257,7 +257,7 @@ td.col-numeric, td.text-right {
 }
 
 .logo-text h1 span {
-    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #a855f7 100%);
+    background: linear-gradient(135deg, var(--color-m-blue-light) 0%, var(--color-m-blue-dark) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -406,38 +406,38 @@ input:checked + .slider:before {
 }
 
 .stat-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-2px);
     border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 20px -2px var(--glow-primary);
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.7);
 }
 
-/* Specific state card accents */
+/* Specific state card accents — BMW M: flat 3-px top border, no glow */
 .stat-card--elite::before {
-    background: linear-gradient(90deg, var(--accent-purple), hsl(290, 80%, 65%));
+    background: var(--color-m-red);
 }
 .stat-card--elite:hover {
-    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px var(--glow-purple);
+    border-color: rgba(226, 39, 24, 0.4);
 }
 
 .stat-card--strong::before {
-    background: linear-gradient(90deg, var(--accent-blue), hsl(190, 80%, 60%));
+    background: var(--color-m-blue-dark);
 }
 .stat-card--strong:hover {
-    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px var(--glow-primary);
+    border-color: rgba(28, 105, 212, 0.4);
 }
 
 .stat-card--leader::before {
-    background: linear-gradient(90deg, var(--accent-green), hsl(160, 80%, 55%));
+    background: var(--color-m-blue-light);
 }
 .stat-card--leader:hover {
-    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px rgba(16, 185, 129, 0.18);
+    border-color: rgba(0, 102, 177, 0.4);
 }
 
 .stat-card--breakout::before {
-    background: linear-gradient(90deg, var(--accent-orange), hsl(15, 80%, 60%));
+    background: var(--color-m-red);
 }
 .stat-card--breakout:hover {
-    box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.6), 0 0 25px -2px rgba(249, 115, 22, 0.18);
+    border-color: rgba(226, 39, 24, 0.3);
 }
 
 .stat-card-value {

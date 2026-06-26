@@ -47,4 +47,8 @@
   --typography-body-sm:      var(--font-body)    14px 300 1.5 0;
   --typography-button:       var(--font-heading) 14px 700 1 1.5px;
   --typography-nav-link:     var(--font-heading) 14px 400 1.4 0.5px;
+
+  /* Convenience aliases — keep components DRY */
+  --color-accent:  var(--color-m-blue-dark);          /* primary interactive accent */
+  --font-display:  'Cabinet Grotesk', 'Outfit', sans-serif; /* display / heading font */
 }
