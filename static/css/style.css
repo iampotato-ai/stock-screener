@@ -7530,7 +7530,7 @@ body[data-theme="light"] .journal-action-btn:hover {
   transition: var(--transition-smooth);
 }
 
-/* M-Tricolor stripe和图片Banner渐变线分割 utility */
+/* M-Tricolor stripe divider utility */
 .m-stripe-divider {
     height: 4px;
     background: linear-gradient(to right, var(--color-m-blue-light), var(--color-m-blue-dark), var(--color-m-red));
