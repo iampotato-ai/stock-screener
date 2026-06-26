@@ -3,7 +3,7 @@ class MarketPulse {
   constructor(containerId, options = {}) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
-    
+
     this.svg = this.container.querySelector('.market-pulse-svg');
     this.scoreEl = this.container.querySelector('.market-pulse-score');
     this.deltaEl = this.container.querySelector('.market-pulse-delta');
@@ -13,10 +13,36 @@ class MarketPulse {
     this.score = options.initialScore || 50;
     this.animationFrameId = null;
 
+    // Set initial ARIA attributes
+    this.updateARIAAttributes();
+
+    // Add keyboard event listeners for accessibility
+    this.container.setAttribute('tabindex', '0');
+    this.container.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        // Trigger click action
+        this.container.click();
+      }
+    });
+
     window.marketPulse = this;
 
     this.init();
     this.animate();
+  }
+
+  updateARIAAttributes() {
+    // Update ARIA values based on current score
+    this.container.setAttribute('aria-valuenow', this.score);
+
+    // Update aria-label with current state
+    const label = this.container.querySelector('.market-pulse-label')?.textContent || 'Market Regime';
+    const scoreText = this.scoreEl ? this.scoreEl.textContent : '--';
+    const bandEl = document.getElementById('regime-band');
+    const bandText = bandEl ? bandEl.textContent : '';
+
+    this.container.setAttribute('aria-label', `${label}: ${scoreText}, ${bandText}`);
   }
 
   init() {
@@ -65,7 +91,7 @@ class MarketPulse {
   updateScore(score, delta) {
     this.score = Math.max(0, Math.min(100, score));
     if (this.scoreEl) this.scoreEl.textContent = this.score;
-    
+
     // Set dynamic accent color based on regime score
     let accentColor = '#F59E0B'; // default Neutral (amber)
     if (this.score >= 75) accentColor = '#10B981';      // Bull Run (green)
@@ -96,6 +122,9 @@ class MarketPulse {
     });
 
     this.render();
+
+    // Update ARIA attributes when score changes
+    this.updateARIAAttributes();
 
     // Dispatch custom event for external listeners
     if (this.container) {

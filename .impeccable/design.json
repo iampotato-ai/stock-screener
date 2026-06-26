@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-25T18:30:00.000Z",
+  "title": "Design System: MomentumScan",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Deep Navy",
+        "canonical": "hsl(217, 95%, 22%)",
+        "tonalRamp": [
+          "hsl(217, 95%, 8%)",
+          "hsl(217, 95%, 12%)",
+          "hsl(217, 95%, 18%)",
+          "hsl(217, 95%, 22%)",
+          "hsl(217, 95%, 26%)",
+          "hsl(217, 95%, 30%)",
+          "hsl(217, 95%, 35%)",
+          "hsl(217, 95%, 40%)"
+        ]
+      },
+      "accent": {
+        "role": "accent",
+        "displayName": "Amber Gold",
+        "canonical": "hsl(48, 91%, 53%)",
+        "tonalRamp": [
+          "hsl(48, 91%, 20%)",
+          "hsl(48, 91%, 28%)",
+          "hsl(48, 91%, 38%)",
+          "hsl(48, 91%, 53%)",
+          "hsl(48, 91%, 63%)",
+          "hsl(48, 91%, 70%)",
+          "hsl(48, 91%, 78%)",
+          "hsl(48, 91%, 85%)"
+        ]
+      },
+      "text-primary": {
+        "role": "text",
+        "displayName": "Almost White",
+        "canonical": "hsl(210, 40%, 98%)",
+        "tonalRamp": [
+          "hsl(210, 40%, 80%)",
+          "hsl(210, 40%, 84%)",
+          "hsl(210, 40%, 88%)",
+          "hsl(210, 40%, 92%)",
+          "hsl(210, 40%, 94%)",
+          "hsl(210, 40%, 96%)",
+          "hsl(210, 40%, 97%)",
+          "hsl(210, 40%, 98%)"
+        ]
+      },
+      "text-secondary": {
+        "role": "text",
+        "displayName": "Cool Gray",
+        "canonical": "hsl(210, 22%, 72%)",
+        "tonalRamp": [
+          "hsl(210, 22%, 45%)",
+          "hsl(210, 22%, 52%)",
+          "hsl(210, 22%, 60%)",
+          "hsl(210, 22%, 72%)",
+          "hsl(210, 22%, 78%)",
+          "hsl(210, 22%, 82%)",
+          "hsl(210, 22%, 86%)",
+          "hsl(210, 22%, 90%)"
+        ]
+      },
+      "success": {
+        "role": "success",
+        "displayName": "Emerald Success",
+        "canonical": "hsl(142, 76%, 45%)",
+        "tonalRamp": [
+          "hsl(142, 76%, 18%)",
+          "hsl(142, 76%, 25%)",
+          "hsl(142, 76%, 32%)",
+          "hsl(142, 76%, 45%)",
+          "hsl(142, 76%, 52%)",
+          "hsl(142, 76%, 58%)",
+          "hsl(142, 76%, 65%)",
+          "hsl(142, 76%, 72%)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Logos, section headers, and prominent numerical displays"
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section titles and important labels"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Subsection headers, button texts, and meaningful labels"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Table cell content, tooltip bodies, and explanatory text"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels, table headers, and instructional text"
+      },
+      "mono": {
+        "displayName": "Monospace",
+        "purpose": "Technical displays like timestamps, codes, and data identifiers"
+      }
+    },
+    "shadows": [
+      {
+        "name": "subtle-overlay",
+        "value": "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
+        "purpose": "Default state for interactive elements like buttons and chips"
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 2px rgba(59, 130, 246, 0.2)",
+        "purpose": "Interactive element focus states for accessibility"
+      },
+      {
+        "name": "elevated-button",
+        "value": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+        ",
+
+elevated buttons and active states")}
+      },
+      {
+        "name": "premium-panel",
+        "value": "0 16px 48px -12px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.05)",
+        "purpose": "Glass panels and modals for pronounced depth"
+      },
+      {
+        "name": "hover-lift",
+        "value": "0 20px 40px -12px rgba(0, 0, 0, 0.65)",
+        "purpose": "Interactive elements on hover to communicate lift and interactivity"
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Default easing for state transitions"
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0, 0, 0.2, 1)",
+        "purpose": "Exit animations and collapses"
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.4, 0, 1, 1)",
+        "purpose": "Entrance animations and expansions"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary action button for main workflows like scanning and adding trades",
+      "html": "<button class=\"ds-btn-primary\">SCAN NOW</button>",
+      "css": ".ds-btn-primary { background-color: var(--color-primary); color: var(--color-text-primary); border-radius: var(--radius-md); padding: var(--spacing-lg) var(--spacing-xl); font-weight: 600; border: none; cursor: user-select: none; -webkit-tap-highlight-color: transparent; transition: background-color 0.2s ease; } .ds-btn-primary:hover { background-color: var(--color-accent); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-accent-blue); outline-offset: 2px; } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary action button for supplementary actions like exporting and filtering",
+      "html": "<button class=\"ds-btn-secondary\">EXPORT EXCEL</button>",
+      "css": ".ds-btn-secondary { background-color: var(--color-secondary); color: var(--color-text-primary); border-radius: var(--radius-md); padding: var(--spacing-md) var(--spacing-lg); font-weight: 500; border: none; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: background-color 0.2s ease; } .ds-btn-secondary:hover { background-color: var(--color-accent); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-accent-blue); outline-offset: 2px; } .ds-btn-secondary:active { transform: translateY(1px); } .ds-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Form input for text entry like stock search and manual watchlist addition",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Enter NSE ticker...\" />",
+      "css": ".ds-input { background-color: var(--color-surface); color: var(--color-text-primary); border: 1px solid var(--color-panel-border); border-radius: var(--radius-md); padding: var(--spacing-md); font-family: var(--font-body); font-size: var(--text-base); } .ds-input:focus { outline: none; border-color: var(--color-accent-blue); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); } .ds-input:invalid { border-color: var(--color-error); } .ds-input::placeholder { color: var(--color-text-muted); opacity: 0.7; }"
+    },
+    {
+      "name": "Glass Panel",
+      "kind": "card",
+      "refersTo": "glass-panel",
+      "description": "Container component used for cards, modals, and panels requiring premium depth",
+      "html": "<div class=\"ds-glass-panel\"><p class=\"ds-body\">Panel content goes here</p></div>",
+      "css": ".ds-glass-panel { background-color: var(--panel-bg); backdrop-filter: var(--blur-fx); -webkit-backdrop-filter: var(--blur-fx); border: 1px solid var(--panel-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-premium); transition: var(--transition-smooth); position: relative; } .ds-glass-panel:hover { border-color: rgba(255,255,255,0.15); box-shadow: 0 20px 40px -12px rgba(0,0,0,0.65), 0 0 30px -5px var(--glow-purple), inset 0 0 0 1px rgba(255,255,255,0.08); } .ds-glass-panel .ds-body { color: var(--color-text-primary); font-size: var(--text-base); line-height: 1.5; }"
+    },
+    {
+      "name": "Conviction Badge",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Badge component for displaying prediction confidence levels in AI analytics",
+      "html": "<span class=\"ds-chip ds-chip-high\">HIGH</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; } .ds-chip-high { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); } .ds-chip-moderate { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); } .ds-chip-low { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); } .ds-chip-loading { background: rgba(255, 255, 255, 0.05); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-outline",
+      "description": "Toggle chip for filter selection in range filters and category selectors",
+      "html": "<span class=\"ds-chip ds-chip-outline ds-chip-outline-active\">ACTIVE</span>",
+      "css": ".ds-chip-outline { background-color: transparent; border: 1px solid var(--color-panel-border); color: var(--color-text-secondary); } .ds-chip-outline-active { background-color: var(--color-accent); color: var(--color-text-primary); border-color: var(--color-accent); } .ds-chip-outline:hover { background-color: rgba(255,255,255,0.05); } .ds-chip-outline-active:hover { background-color: var(--color-accent); opacity: 0.9; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Institutional Trading Terminal",
+    "overview": "MomentumScan's design system embodies the precision and reliability of institutional trading terminals while maintaining accessibility for active traders. The interface prioritizes data density and actionable insights through a dark, premium aesthetic that reduces visual fatigue during extended trading sessions. Every element serves a functional purpose - from the conviction badges that communicate prediction confidence to the glass panels that provide depth without distraction.",
+    "keyCharacteristics": [
+      "Dark premium foundation with strategic accent highlights for visual hierarchy",
+      "Data-first approach where information density serves decision-making speed",
+      "Institutional-grade precision in typography, spacing, and interactive states,",
+      "Progressive disclosure patterns to interactive states",
+      "Progressive disclosure patterns to manage complexity without sacrificing depth",
+      "Consistent interaction language across all modules and workflows"
+    ],
+    "rules": [
+      {
+        "name": "The Accent Restraint Rule",
+        "body": "The primary accent is used on ≤15% of any given screen. Its rarity is the point.",
+        "section": "colors"
+      },
+      {
+        "name": "The Data Legibility Rule",
+        "body": "Body text must maintain 4.5:1 contrast ratio against backgrounds for extended readability during market hours.",
+        "section": "typography"
+      },
+      {
+        "name": "The Glass Panel Rule",
+        "body": "All containers use glassmorphism with backdrop-filter and subtle shadows for premium depth without breaking the dark aesthetic.",
+        "section": "components"
+      },
+      {
+        "name": "The Conviction Clarity Rule",
+        "body": "Prediction confidence must always be communicated through the standardized conviction badge system with explicit color mapping.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do use the dark navy primary background (#1E293B) for all main surfaces to maintain visual consistency and reduce eye strain",
+      "Do apply the amber accent (#F59E0B) sparingly (≤15% of any screen) for key interactive elements and important data highlights",
+      "Do maintain 4.5:1 contrast ratio for all text against backgrounds, using almost white (#F8FAFC) for primary text on dark surfaces",
+      "Do implement glassmorphism with backdrop-filter and subtle shadows for premium container depth",
+      "Do use conviction badges with explicit color mapping to communicate prediction confidence levels",
+      "Do follow the 8px/16px/24px spacing scale for consistent rhythm",
+      "Do apply 6px/10px/16px radius scale for consistent corner treatment",
+      "Do use Geist for body/table data and Cabinet Grotesk for display elements to maintain typographic hierarchy",
+      "Do implement explicit hover, focus, active, and disabled states for all interactive components",
+      "Do use semantic colors consistently: success (#10B981), error (#EF4444), info (#3B82F6), warning (#8B5CF6), attention (#F97316)"
+    ],
+    "donts": [
+      "Don't use light or warm-toned backgrounds that increase eye strain during extended trading sessions",
+      "Don't use amber accent (>15% of screen) as it diminishes its effectiveness as a highlighting tool",
+      "Don't violate contrast ratios - never use muted text on dark backgrounds without ensuring 4.5:1 minimum contrast",
+      "Don't use flat containers without depth indicators - always apply glassmorphism or shadow treatments",
+      "Don't use ambiguous confidence indicators - always employ the conviction badge system with explicit color mapping",
+      "Don't use inconsistent spacing - adhere to the 8px/16px/24px scale for vertical and horizontal spacing",
+      "Don't use inconsistent border radii - adhere to the 6px/10px/16px scale for all rounded corners",
+      "Don't use decorative fonts for body or data text - stick to Geist for readability at small sizes",
+      "Don't ship interactive components without explicit state definitions (hover, focus, active, disabled)",
+      "Don't use semantic colors inconsistently - maintain strict mapping of meaning to color across the interface"
+    ]
+  }
+}
