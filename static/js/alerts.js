@@ -94,6 +94,11 @@ const AlertEngine = (() => {
     `;
 
     logBody.insertBefore(entry, logBody.firstChild);
+
+    // Expand the panel from its collapsed-when-empty state
+    const panel = document.getElementById('alert-log-panel');
+    if (panel) panel.classList.add('has-alerts');
+
     filterAlertLogVisibility();
   }
 
@@ -199,6 +204,9 @@ const AlertEngine = (() => {
     if (countBadge) {
       countBadge.textContent = '0';
     }
+    // Collapse panel back to header-only state
+    const panel = document.getElementById('alert-log-panel');
+    if (panel) panel.classList.remove('has-alerts');
   }
 
   function init() {

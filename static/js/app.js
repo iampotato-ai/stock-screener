@@ -219,9 +219,9 @@ const masterColumnsConfig = {
         { id: 'perf_3m', name: '3M Perf (%)', sortField: 'perf_3m', isVisible: false, align: 'right', canToggle: true },
         { id: 'mkt_cap_cr', name: 'Mkt Cap (Cr)', sortField: 'mkt_cap_cr', isVisible: false, align: 'right', canToggle: true },
         { id: 'atr_pct', name: 'ATR (%)', sortField: 'atr_pct', isVisible: true, align: 'right', canToggle: true },
-        { id: 'relative_volume', name: 'RVOL (10d)', sortField: 'relative_volume', isVisible: false, align: 'right', canToggle: true },
-        { id: 'intraday_score', name: 'IMS', sortField: 'intraday_score', isVisible: true, align: 'center', canToggle: true },
-        { id: 'swingscore', name: 'Swing', sortField: 'swingscore', isVisible: true, align: 'center', canToggle: true },
+        { id: 'relative_volume', name: 'RVOL (10d)', sortField: 'relative_volume', isVisible: false, align: 'right', canToggle: true, tooltip: 'Relative Volume (10d): Compares today\'s volume to the 10-day average. >1.5 indicates unusual volume activity.' },
+        { id: 'intraday_score', name: 'IMS', sortField: 'intraday_score', isVisible: true, align: 'center', canToggle: true, tooltip: 'Intraday Momentum Score (IMS): Aggregated Proprietary NLP and tick volume velocity score. Rating 1 to 10.' },
+        { id: 'swingscore', name: 'Swing', sortField: 'swingscore', isVisible: true, align: 'center', canToggle: true, tooltip: 'Swing Momentum Score: Daily swing alignment rating based on consolidation breaks and candle shapes. Rating 1 to 10.' },
         { id: 'gap', name: 'Gap (%)', sortField: 'gap', isVisible: false, align: 'right', canToggle: true },
         { id: 'change_from_open', name: 'Chg from Open (%)', sortField: 'change_from_open', isVisible: false, align: 'right', canToggle: true },
         { id: 'vwap', name: 'VWAP (₹)', sortField: 'VWAP', isVisible: false, align: 'right', canToggle: true },
@@ -397,8 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ic = document.getElementById('intraday-container');
             if (ic) ic.style.display = 'flex';
             if (typeof renderIntradayWorkspace === 'function') renderIntradayWorkspace();
-        } else if (viewName === 'ai-forecast') {
-            if (typeof renderAIForecastWorkspace === 'function') renderAIForecastWorkspace();
+
         } else if (viewName === 'ipo') {
             if (typeof renderIPOWorkspace === 'function') renderIPOWorkspace();
         } else if (viewName === 'ep') {
@@ -555,6 +554,14 @@ document.addEventListener('DOMContentLoaded', () => {
             el.addEventListener(eventName, filterAndRender);
         }
     });
+
+    const rangeToggle = document.getElementById('range-filter-toggle');
+    const rangePanel = document.getElementById('range-filters-panel');
+    if (rangeToggle && rangePanel) {
+        rangeToggle.addEventListener('click', () => {
+            rangePanel.classList.toggle('expanded');
+        });
+    }
     
     const btnClearRangeFilters = document.getElementById('btn-clear-range-filters');
     if (btnClearRangeFilters) {
@@ -2330,7 +2337,7 @@ function showErrorState(message) {
     if (tableBody) {
         tableBody.innerHTML = `
             <tr>
-                <td colspan="${visibleCount}" class="table-empty-state">
+                <td colspan="${visibleCount + 1}" class="table-empty-state">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="hsl(350, 80%, 55%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                     <p style="color:var(--accent-red); font-weight:600;">Scan Failed</p>
                     <p style="font-size:0.85rem; max-width:500px; margin:0.5rem auto 0 auto;">${message}</p>
@@ -2395,7 +2402,36 @@ function checkMaFlirtingOrBetween(stock) {
 }
 
 // Filter stocks by search, sector dropdown, and numeric ranges
+// Update Active Filters Count badge
+function updateActiveFiltersCount() {
+    let count = 0;
+    const rangeFilterInputs = [
+        'filter-rvol-min', 'filter-rvol-max',
+        'filter-change-min', 'filter-change-max',
+        'filter-pe-min', 'filter-pe-max',
+        'filter-ims', 'filter-swing', 'filter-candle', 'filter-volume-alert'
+    ];
+    rangeFilterInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && (el.value && el.value !== '' && el.value !== 'all')) count++;
+    });
+    if (typeof currentSetupFilter !== 'undefined' && currentSetupFilter !== 'all') count++;
+    if (typeof currentMtfFilter !== 'undefined' && currentMtfFilter !== 'all') count++;
+    
+    const badge = document.getElementById('active-filters-count');
+    if (badge) {
+        badge.textContent = count > 0 ? `${count} active` : '';
+        badge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+    
+    const clearBtn = document.getElementById('btn-clear-all-filters');
+    if (clearBtn) {
+        clearBtn.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+}
+
 function filterAndRender() {
+    updateActiveFiltersCount();
 
     const searchVal = searchInput.value.toLowerCase().trim();
     const sectorVal = selectedSector;
@@ -2673,7 +2709,7 @@ function renderTable() {
         if (tableBody) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="${visibleCount}" class="table-empty-state">
+                    <td colspan="${visibleCount + 1}" class="table-empty-state">
                         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                         <p>No matching stocks found</p>
                         <p style="font-size:0.8rem;">Try adjusting your search criteria or choosing a different sector.</p>
@@ -2704,6 +2740,14 @@ function renderTable() {
             rowClass += ' row-highlight-change';
         }
         html += `<tr data-ticker="${stock.clean_ticker}" class="${rowClass.trim()}" onclick="openTradeDrawer('${stock.clean_ticker}')">`;
+        
+        // Checkbox cell for multi-select bulk actions
+        const isChecked = window.selectedTickers && window.selectedTickers.has(stock.clean_ticker) ? 'checked' : '';
+        html += `
+            <td class="select-col" onclick="event.stopPropagation();">
+                <input type="checkbox" class="stock-checkbox" data-ticker="${stock.clean_ticker}" ${isChecked} style="cursor:pointer; width: 14px; height: 14px; vertical-align: middle;" onchange="toggleTickerSelection('${stock.clean_ticker}', this.checked)">
+            </td>
+        `;
         
         columnsConfig.forEach(col => {
             if (!col.isVisible) return;
@@ -2769,7 +2813,7 @@ function renderTable() {
                     : '';
                 
                 html += `
-                    <td data-column="ticker" class="ticker-col" style="position:relative;">
+                    <td data-column="ticker" class="ticker-col">
                         ${changeRibbonHtml}
                         <div class="symbol-cell">
                             <span class="ticker-box">${stock.clean_ticker}${sectorDotHtml}${high52wDotHtml}${popoverHtml}</span>
@@ -2814,7 +2858,7 @@ function renderTable() {
             } else if (col.id === 'description') {
                 const description = stock.description || '';
                 html += `
-                    <td data-column="description" style="font-weight: 600; color: var(--color-text-primary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 200px;" title="${escapeHtml(description)}">
+                    <td data-column="description" class="description-col" style="font-weight: 600; color: var(--color-text-primary); text-overflow: ellipsis; white-space: nowrap; overflow: hidden; max-width: 200px;" title="${escapeHtml(description)}">
                         ${description || '—'}
                     </td>
                 `;
@@ -3420,6 +3464,16 @@ function renderTableHeader() {
     
     headerRow.innerHTML = '';
     
+    // Checkbox header for multi-select bulk actions
+    const thCheck = document.createElement('th');
+    thCheck.className = 'select-col';
+    const allChecked = window.selectedTickers && window.selectedTickers.size > 0 && 
+                       typeof filteredStocks !== 'undefined' && 
+                       filteredStocks.length > 0 &&
+                       filteredStocks.every(s => window.selectedTickers.has(s.clean_ticker));
+    thCheck.innerHTML = `<input type="checkbox" id="select-all-stocks" style="cursor:pointer; width: 14px; height: 14px; vertical-align: middle;" ${allChecked ? 'checked' : ''} aria-label="Select all stocks" onchange="toggleSelectAllStocks(this.checked)">`;
+    headerRow.appendChild(thCheck);
+    
     let visibleIndex = 0;
     columnsConfig.forEach(col => {
         if (!col.isVisible) return;
@@ -3433,21 +3487,25 @@ function renderTableHeader() {
         }
         
         if (col.align === 'right') {
-            th.className = 'text-right';
+            th.classList.add('text-right');
         } else if (col.align === 'center') {
-            th.className = 'text-center';
+            th.classList.add('text-center');
+        }
+        
+        if (col.id === 'ticker') {
+            th.classList.add('ticker-col');
+        } else if (col.id === 'description') {
+            th.classList.add('description-col');
         }
         
         if (col.sortField === currentSortField) {
             th.classList.add(currentSortOrder === 'desc' ? 'sort-desc' : 'sort-asc');
         }
         
-        th.textContent = col.name;
-        
         if (col.tooltip) {
-            th.setAttribute('title', col.tooltip);
-            th.style.textDecoration = 'underline dotted rgba(255, 255, 255, 0.4)';
-            th.style.textUnderlineOffset = '4px';
+            th.innerHTML = `${col.name} <span class="help-tooltip-icon" title="${escapeHtml(col.tooltip)}" style="cursor:help; margin-left: 4px; display: inline-flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.08); border-radius: 50%; width: 14px; height: 14px; font-size: 0.65rem; font-weight: 700; vertical-align: middle; color: var(--color-text-muted);">?</span>`;
+        } else {
+            th.textContent = col.name;
         }
         
         th.setAttribute('draggable', 'true');
@@ -6193,15 +6251,15 @@ function renderRRGTimeline(frames, frameIdx) {
     // --- Background quadrant fills ---
     const quadrantFills = [
         { x: cx, y: pad,  w: W - pad - cx, h: cy - pad,      color: 'rgba(16, 185, 129, 0.04)', label: 'Leading',   pos: [W - pad - 12, pad + 20] },
-        { x: cx, y: cy,   w: W - pad - cx, h: H - pad - cy,  color: 'rgba(239, 68, 68, 0.04)',  label: 'Weakening', pos: [W - pad - 12, H - pad - 16] },
-        { x: pad, y: cy,  w: cx - pad,     h: H - pad - cy,  color: 'rgba(234, 179, 8, 0.04)',  label: 'Lagging',   pos: [pad + 12, H - pad - 16] },
+        { x: cx, y: cy,   w: W - pad - cx, h: H - pad - cy,  color: 'rgba(245, 158, 11, 0.04)',  label: 'Weakening', pos: [W - pad - 12, H - pad - 16] },
+        { x: pad, y: cy,  w: cx - pad,     h: H - pad - cy,  color: 'rgba(239, 68, 68, 0.04)',  label: 'Lagging',   pos: [pad + 12, H - pad - 16] },
         { x: pad, y: pad, w: cx - pad,     h: cy - pad,      color: 'rgba(59, 130, 246, 0.04)',  label: 'Improving', pos: [pad + 12, pad + 20] },
     ];
     quadrantFills.forEach(q => {
         ctx.fillStyle = q.color;
         ctx.fillRect(q.x, q.y, q.w, q.h);
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.font = 'bold 11px Outfit, sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.font = 'bold 11px Inter, sans-serif';
         ctx.textAlign = q.pos[0] > cx ? 'right' : 'left';
         ctx.fillText(q.label, q.pos[0], q.pos[1]);
     });
@@ -6363,9 +6421,9 @@ function renderRRGTimeline(frames, frameIdx) {
             
             let quadColor = '#94a3b8';
             if (entry.quadrant === 'Leading') quadColor = '#10b981';
-            else if (entry.quadrant === 'Weakening') quadColor = '#ef4444';
-            else if (entry.quadrant === 'Lagging') quadColor = '#6366f1';
-            else if (entry.quadrant === 'Improving') quadColor = '#f59e0b';
+            else if (entry.quadrant === 'Improving') quadColor = '#3b82f6';
+            else if (entry.quadrant === 'Weakening') quadColor = '#f59e0b';
+            else if (entry.quadrant === 'Lagging') quadColor = '#ef4444';
             
             ctx.fillStyle = quadColor;
             ctx.font = 'bold 10px Inter, sans-serif';
@@ -6685,7 +6743,9 @@ function renderSectorHeatmap() {
                     <span class="sector-tile-name" title="${sector.name}">${sector.name}</span>
                     <span class="sector-tile-arrow">${arrow}</span>
                 </div>
-                <div class="sector-tile-quad">${sector.quadrant}</div>
+                <div style="margin-top: 2px; margin-bottom: 2px;">
+                    <span class="quadrant-badge ${quadClass}">${sector.quadrant}</span>
+                </div>
                 <div class="sector-tile-stats">
                     <span>Score: ${sector.score}</span>
                     <span>A/D: <span style="color:var(--accent-green)">${sector.advances}</span> / <span style="color:var(--accent-red)">${sector.declines}</span></span>
@@ -7275,13 +7335,6 @@ function initializeTradeParams() {
     entryEl.value = savedParams && savedParams.entry ? savedParams.entry : Number(defaultEntry).toFixed(2);
     stopEl.value = savedParams && savedParams.stop ? savedParams.stop : Number(defaultStop).toFixed(2);
 
-    const targetMissingError = document.getElementById('target-missing-error');
-    if (!stock.target1_price) {
-        if (targetMissingError) targetMissingError.style.display = 'block';
-    } else {
-        if (targetMissingError) targetMissingError.style.display = 'none';
-    }
-
     if (savedParams && savedParams.risk) {
         riskEl.value = savedParams.risk;
     } else if (!riskEl.value) {
@@ -7454,31 +7507,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Kronos Workspace tab setup
-    const btnRunKronos = document.getElementById('btn-run-kronos');
-    if (btnRunKronos) {
-        btnRunKronos.addEventListener('click', () => {
-            renderAIForecastWorkspace();
-        });
-    }
 
-    const kronosTickerInput = document.getElementById('kronos-ticker-input');
-    if (kronosTickerInput) {
-        kronosTickerInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                renderAIForecastWorkspace();
-            }
-        });
-    }
-
-    // Toggle button clicks for pred len in AI Forecast Workspace
-    document.querySelectorAll('.workspace-view#view-ai-forecast .kronos-len-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.workspace-view#view-ai-forecast .kronos-len-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            renderAIForecastWorkspace();
-        });
-    });
 
     // Toggle button clicks for pred len in Trade Drawer
     document.querySelectorAll('#drawer-kronos-section .kronos-len-btn').forEach(btn => {
@@ -7507,38 +7536,7 @@ fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(window.currentTradeStock
         });
     });
 
-    // Hook toggle buttons for backtester mode in AI Forecast Workspace
-    document.querySelectorAll('.bt-mode-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.bt-mode-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
 
-            const searchInput = document.getElementById('kronos-ticker-input');
-            const symbol = (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
-            
-            loadBacktestingMetrics(symbol);
-        });
-    });
-
-    // Individual models toggle change event listener
-    document.getElementById('showIndividualModels')?.addEventListener('change', () => {
-        const searchInput = document.getElementById('kronos-ticker-input');
-        const symbol = (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
-        
-        // Re-render main chart if in ensemble mode
-        const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
-        const isEnsemble = activeBtn && activeBtn.dataset.mode === 'ensemble';
-        if (isEnsemble && window.lastEnsembleData) {
-            renderEnsembleChart(window.lastEnsembleData);
-        }
-
-        // Re-render backtest chart if in ensemble mode
-        const btModeActive = document.querySelector('.bt-mode-btn.active');
-        const isEnsembleBt = btModeActive && btModeActive.dataset.mode === 'ensemble';
-        if (isEnsembleBt && window.lastEnsembleBacktestData) {
-            renderEnsembleBacktestChart(window.lastEnsembleBacktestData);
-        }
-    });
 });
 
 // -----------------------------------------------------------------------------
@@ -7962,13 +7960,13 @@ function renderIntradayWorkspace() {
         const metricLabel = widgetConfigs[widgetId].metricLabel;
         const getSortIcon = (field) => sortState.field === field ? (sortState.asc ? ' ↑' : ' ↓') : '';
         
-        const metricWidth = widgetId === 'focus' ? '85px' : '60px';
+        const metricWidth = widgetId === 'focus' ? '105px' : '60px';
         let html = `
-            <div style="display: flex; align-items: center; padding: 0.5rem 0.25rem; border-bottom: 1px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 0.5rem; user-select: none; gap: 0.5rem;">
+            <div class="widget-table-header">
                 <span style="width: 20px; flex-shrink: 0;"></span>
-                <span style="cursor:pointer; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="sortIntradayWidget('${widgetId}', 'ticker')">Ticker${getSortIcon('ticker')}</span>
-                <span style="cursor:pointer; width: 65px; flex-shrink: 0; text-align: right;" onclick="sortIntradayWidget('${widgetId}', 'change')">Change%${getSortIcon('change')}</span>
-                <span style="cursor:pointer; text-align:right; width: ${metricWidth}; flex-shrink: 0;" onclick="sortIntradayWidget('${widgetId}', 'metric')">${metricLabel}${getSortIcon('metric')}</span>
+                <span class="widget-table-header-col" style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="sortIntradayWidget('${widgetId}', 'ticker')">Ticker${getSortIcon('ticker')}</span>
+                <span class="widget-table-header-col" style="width: 60px; flex-shrink: 0; text-align: right;" onclick="sortIntradayWidget('${widgetId}', 'change')">Change%${getSortIcon('change')}</span>
+                <span class="widget-table-header-col" style="text-align:right; width: ${metricWidth}; flex-shrink: 0;" onclick="sortIntradayWidget('${widgetId}', 'metric')">${metricLabel}${getSortIcon('metric')}</span>
             </div>
         `;
 
@@ -7999,10 +7997,12 @@ function renderIntradayWorkspace() {
             }
             
             html += `
-                <div class="intraday-item" onclick="openTradeDrawer('${s.clean_ticker || s.ticker}')" style="display: flex; align-items: center; cursor: pointer; padding: 0.5rem 0.25rem; border-radius: 4px; transition: var(--transition-smooth); gap: 0.5rem;">
-                    <button onclick="event.stopPropagation(); openTradingView('${s.clean_ticker || s.ticker}')" title="Open in TradingView" style="background: none; border: none; padding: 0; cursor: pointer; color: var(--accent-blue); font-size: 0.8rem; display: flex; align-items: center; justify-content: center; width: 20px; flex-shrink: 0;">📈</button>
-                    <span class="intraday-item-ticker" style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--color-text-primary);">${s.clean_ticker || s.ticker}</span>
-                    <span style="font-size: 0.75rem; color: ${changeColor}; width: 65px; flex-shrink: 0; text-align: right;">${changeSign}${change.toFixed(2)}%</span>
+                <div class="intraday-item" onclick="openTradeDrawer('${s.clean_ticker || s.ticker}')">
+                    <button class="intraday-chart-btn" onclick="event.stopPropagation(); openTradingView('${s.clean_ticker || s.ticker}')" title="Open in TradingView">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
+                    </button>
+                    <span class="intraday-item-ticker" style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.clean_ticker || s.ticker}</span>
+                    <span style="font-size: 0.75rem; color: ${changeColor}; width: 60px; flex-shrink: 0; text-align: right;">${changeSign}${change.toFixed(2)}%</span>
                     <span class="intraday-item-metric" style="justify-content: flex-end; width: ${metricWidth}; flex-shrink: 0;">
                         ${metricHtml}
                     </span>
@@ -9753,18 +9753,8 @@ function renderKronosForecastPanel(data) {
 
     const backtestRow = document.getElementById('kronos-backtest-row');
     if (backtestRow) {
-        backtestRow.style.display = 'flex';
-        const backtestBtn = document.getElementById('btn-kronos-backtest');
-        if (backtestBtn) {
-            backtestBtn.onclick = () => {
-                switchWorkspace('ai-forecast');
-                const searchInput = document.getElementById('kronos-ticker-input');
-                if (searchInput) {
-                    searchInput.value = data.ticker;
-                    renderAIForecastWorkspace(data.ticker);
-                }
-            };
-        }
+        backtestRow.style.display = 'none';
+    }
         
         fetch(`/api/kronos-backtest?ticker=${encodeURIComponent(data.ticker)}`)
             .then(res => res.json())
@@ -9781,193 +9771,10 @@ function renderKronosForecastPanel(data) {
                     badge.style.color = 'var(--color-text-secondary)';
                 }
             });
-    }
 }
 
 function renderAIForecastWorkspace(ticker) {
-    const searchInput = document.getElementById('kronos-ticker-input');
-    const symbol = ticker || (searchInput ? searchInput.value.trim().toUpperCase() : '') || 'RELIANCE';
-    if (!symbol) return;
-
-    if (searchInput) {
-        searchInput.value = symbol;
-    }
-
-    const activeBtn = document.querySelector('.workspace-view#view-ai-forecast .kronos-len-btn.active');
-    const isEnsemble = activeBtn && activeBtn.dataset.mode === 'ensemble';
-    const predLen = activeBtn ? parseInt(activeBtn.dataset.len) : 5;
-
-    const runBtn = document.getElementById('btn-run-kronos');
-
-    if (isEnsemble) {
-        if (runBtn) {
-            runBtn.disabled = true;
-            runBtn.textContent = 'Running...';
-        }
-        document.getElementById('ensemblePanel').style.display = 'block';
-        loadEnsembleForecast(symbol, predLen, true)
-            .finally(() => {
-                if (runBtn) {
-                    runBtn.disabled = false;
-                    runBtn.textContent = 'Run Forecast';
-                }
-            });
-        return;
-    }
-
-    // Otherwise standard Kronos mode
-    document.getElementById('ensemblePanel').style.display = 'none';
-
-    // Hide Ensemble Backtest elements
-    document.getElementById('ensembleBacktestTable').style.display = 'none';
-    const btKronosBtn = document.querySelector('.bt-mode-btn[data-mode="kronos"]');
-    if (btKronosBtn) {
-        document.querySelectorAll('.bt-mode-btn').forEach(b => b.classList.remove('active'));
-        btKronosBtn.classList.add('active');
-    }
-    const metricsContainer = document.getElementById('kronos-accuracy-metrics');
-    if (metricsContainer) metricsContainer.style.display = 'flex';
-
-    if (runBtn) {
-        runBtn.disabled = true;
-        runBtn.textContent = 'Running...';
-    }
-
-fetch(`/api/kronos-forecast?ticker=${encodeURIComponent(symbol)}&pred_len=${predLen}&sample_count=10`)
-        .then(res => {
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-            const ct = res.headers.get('content-type') || '';
-            if (!ct.includes('application/json')) {
-                throw new Error('Invalid content type');
-            }
-            return res.json();
-        })
-        .then(data => {
-            if (runBtn) {
-                runBtn.disabled = false;
-                runBtn.textContent = 'Run Forecast';
-            }
-            if (data.error) {
-                showToast("Error running forecast: " + data.error, "error");
-                return;
-            }
-
-            // Render Verdict Strip (Item 11.1)
-            const closeValues = data.forecast.map(f => f.close);
-            const firstClose = data.last_close;
-            const finalClose = closeValues[closeValues.length - 1];
-            const returnPct = firstClose ? (((finalClose - firstClose) / firstClose) * 100) : 0;
-            renderVerdictStrip(
-                'ai-verdict-container',
-                'AI Forecast View',
-                returnPct,
-                'Confidence Score',
-                `${data.ai_confidence_score || 0}%`
-            );
-
-            destroyKronosFullChart();
-            const container = document.getElementById('kronos-full-chart');
-            if (container && typeof LightweightCharts !== 'undefined') {
-                const currentTheme = document.body.getAttribute('data-theme') || 'dark';
-                const isDark = currentTheme === 'dark';
-                const chart = LightweightCharts.createChart(container, {
-                    width: container.clientWidth,
-                    height: 380,
-                    layout: {
-                        background: { color: 'transparent' },
-                        textColor: isDark ? '#94a3b8' : '#475569'
-                    },
-                    grid: {
-                        vertLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' },
-                        horzLines: { color: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }
-                    },
-                    timeScale: { borderVisible: false },
-                    rightPriceScale: { borderVisible: false },
-                });
-                activeKronosFullChart = chart;
-
-                const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
-                    upColor: '#6366f1', downColor: '#a78bfa',
-                    borderUpColor: '#6366f1', borderDownColor: '#a78bfa',
-                    wickUpColor: '#6366f1', wickDownColor: '#a78bfa',
-                });
-                candleSeries.setData(data.forecast.map(r => ({
-                    time: r.date,
-                    open: r.open, high: r.high, low: r.low, close: r.close,
-                })));
-
-                const bandLow = chart.addSeries(LightweightCharts.AreaSeries, {
-                    lineColor: 'rgba(99,102,241,0.25)', topColor: 'rgba(99,102,241,0.06)',
-                    bottomColor: 'transparent', lineWidth: 1.5,
-                });
-                bandLow.setData(data.forecast.map(r => ({ time: r.date, value: r.p10_close })));
-
-                const bandHigh = chart.addSeries(LightweightCharts.AreaSeries, {
-                    lineColor: 'rgba(99,102,241,0.25)', topColor: 'transparent',
-                    bottomColor: 'rgba(99,102,241,0.06)', lineWidth: 1.5,
-                });
-                bandHigh.setData(data.forecast.map(r => ({ time: r.date, value: r.p90_close })));
-
-                chart.timeScale().fitContent();
-
-                // Add resize listener support
-                const resizeObserver = new ResizeObserver(entries => {
-                    if (entries.length === 0 || !entries[0].contentRect) return;
-                    const { width, height } = entries[0].contentRect;
-                    chart.resize(width, height);
-                });
-                resizeObserver.observe(container);
-                container.resizeObserver = resizeObserver;
-            }
-
-            const tableWrap = document.getElementById('kronos-full-table-wrap');
-            if (tableWrap) {
-                const lastClose = data.last_close;
-                tableWrap.innerHTML = `
-                    <table class="kronos-forecast-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
-                                <th style="text-align: left; padding: 8px; color: var(--color-text-muted);">Forecast Date</th>
-                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Open</th>
-                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">High</th>
-                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Low</th>
-                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Predicted Close</th>
-                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Predicted Volume</th>
-                                <th style="text-align: right; padding: 8px; color: var(--color-text-muted);">Monte Carlo Band (P10–P90)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.forecast.map(row => {
-                                const closeClass = row.close >= lastClose ? 'val-up' : 'val-down';
-                                const band = `₹${row.p10_close.toFixed(2)} – ₹${row.p90_close.toFixed(2)}`;
-                                return `
-                                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                        <td style="text-align: left; padding: 8px;">${row.date}</td>
-                                        <td style="text-align: right; padding: 8px;">₹${row.open.toFixed(2)}</td>
-                                        <td style="text-align: right; padding: 8px;">₹${row.high.toFixed(2)}</td>
-                                        <td style="text-align: right; padding: 8px;">₹${row.low.toFixed(2)}</td>
-                                        <td class="${closeClass}" style="text-align: right; padding: 8px; font-weight: 700;">₹${row.close.toFixed(2)}</td>
-                                        <td style="text-align: right; padding: 8px;">${formatVolume(row.volume)}</td>
-                                        <td style="text-align: right; padding: 8px; color: var(--color-text-secondary); font-size: 0.8rem;">${band}</td>
-                                    </tr>
-                                `;
-                            }).join('')}
-                        </tbody>
-                    </table>
-                `;
-            }
-
-            loadBacktestingMetrics(symbol);
-        })
-        .catch(err => {
-            if (runBtn) {
-                runBtn.disabled = false;
-                runBtn.textContent = 'Run Forecast';
-            }
-            console.error("Kronos full forecast run error:", err);
-        });
+    // Decommissioned workspace view
 }
 
 function loadBacktestingMetrics(symbol) {
@@ -11186,31 +10993,31 @@ function renderIPOTable() {
         const cleanTicker = item.ticker.replace('.NS', '').replace('.BO', '');
         
         return `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
-                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
-                    <div class="symbol-cell" style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap;">
-                        <span class="ticker-box" style="cursor: pointer; flex-shrink: 0;" onclick="openTradingView('${item.ticker}'); event.stopPropagation();">${cleanTicker}</span>
+            <tr>
+                <td>
+                    <div class="symbol-cell">
+                        <span class="ticker-box" onclick="openTradingView('${item.ticker}'); event.stopPropagation();">${cleanTicker}</span>
                         <div style="display: flex; gap: 0.25rem; flex-shrink: 0;">
-                            <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); openTradingView('${item.ticker}')" title="Open Chart">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                            <button class="table-action-icon-btn" onclick="event.stopPropagation(); openTradingView('${item.ticker}')" title="Open Chart">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                             </button>
-                            <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); quickAddIPOTowatchlist('${item.ticker}', event)" title="Add to Watchlist">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <button class="table-action-icon-btn" onclick="event.stopPropagation(); quickAddIPOTowatchlist('${item.ticker}', event)" title="Add to Watchlist">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                             </button>
                         </div>
                     </div>
                 </td>
                 <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <span style="font-weight: 500; color: #fff;">${item.company_name}</span><br>
-                    <span style="font-size: 0.72rem; color: var(--color-text-muted);">${item.sector} | <span style="color: #60a5fa;">${item.exchange}</span></span>
+                    <span class="ipo-company-name">${item.company_name}</span><br>
+                    <span class="ipo-company-meta">${item.sector} | <span style="color: #60a5fa;">${item.exchange}</span></span>
                 </td>
                 <td>${item.listing_date}</td>
                 <td>${item.days_since_listing}</td>
                 <td>₹${item.issue_price}</td>
                 <td>₹${item.current_price ? item.current_price.toFixed(2) : '0.00'}</td>
-                <td style="${changeColor} font-weight: 500;">${changeText}</td>
+                <td style="${changeColor} font-weight: 600;">${changeText}</td>
                 <td>${dayRangeContent}</td>
-                <td style="color: var(--color-text-secondary); font-weight: 500;">${volContent}</td>
+                <td style="font-weight: 500;">${volContent}</td>
                 <td style="${listGainColor} font-weight: 500;">${listGainText}</td>
                 <td style="${gainIssueStyle} font-weight: 600;">${netGainText}</td>
                 <td style="${gainListingStyle} font-weight: 500;">${postListText}</td>
@@ -12117,8 +11924,13 @@ function renderEPListingsTable() {
         
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer; ${rowStyle}" onclick="if(!event.target.closest('button') && !event.target.closest('.ticker-box')) openEPDetailModal('${item.symbol}')">
-                <td style="font-weight: 600; color: #fff; font-family: 'Outfit', sans-serif;">
-                    <span class="ticker-box" style="cursor: pointer;" onclick="openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                <td>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                        <span class="ticker-box" style="cursor: pointer;" onclick="event.stopPropagation(); openTradingView('${item.symbol}.NS')">${item.symbol}</span>
+                        <button class="table-action-icon-btn" onclick="event.stopPropagation(); addToWatchlist('${item.symbol}', event)" title="Add to Watchlist">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                    </div>
                 </td>
                 <td style="font-weight: 500;">${item.ep_type}</td>
                 <td class="text-center" style="${scoreStyle}">${item.ep_score.toFixed(2)}${trendBadge}</td>
@@ -12131,10 +11943,12 @@ function renderEPListingsTable() {
                 <td class="text-right">${closeLocVal.toFixed(2)}</td>
                 <td class="text-right">₹${mktcapVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
                 <td class="text-right">₹${turnoverVal.toLocaleString('en-IN', {maximumFractionDigits:1})}</td>
-                <td style="font-weight: 600; color: ${item.confidence === 'HIGH' ? '#10b981' : item.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af'}">${item.confidence}</td>
+                <td>
+                    <span class="conviction-badge ${item.confidence === 'HIGH' ? 'HIGH' : item.confidence === 'MEDIUM' ? 'MODERATE' : 'LOW'}">${item.confidence}</span>
+                </td>
                 <td class="text-center" style="white-space: nowrap;">
-                    <button class="btn btn-xs btn-outline" onclick="openEPDetailModal('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; margin-right: 4px;">Details</button>
-                    <button class="btn btn-xs btn-outline" onclick="openTradingView('${item.symbol}.NS')" style="padding: 2px 6px; font-size: 0.7rem;">Chart</button>
+                    <button class="ep-action-btn" onclick="openEPDetailModal('${item.symbol}')">Details</button>
+                    <button class="ep-action-btn" onclick="openTradingView('${item.symbol}.NS')">Chart</button>
                 </td>
             </tr>
         `;
@@ -12266,7 +12080,7 @@ function renderEPWatchlistTable() {
                 <td>${item.trigger_type || 'None'}</td>
                 <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.notes || ''}</td>
                 <td class="text-center" style="white-space: nowrap;">
-                    <button class="btn btn-xs btn-outline" onclick="removeFromEPWatchlist('${item.symbol}')" style="padding: 2px 6px; font-size: 0.7rem; color: #f87171; border-color: rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.05);">Delete</button>
+                    <button class="ep-action-btn delete-action" onclick="removeFromEPWatchlist('${item.symbol}')">Delete</button>
                 </td>
             </tr>
         `;
@@ -13292,19 +13106,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     const finalScoreVal = row.final_score !== undefined ? row.final_score.toFixed(1) : 'N/A';
 
                     tbody.innerHTML += `
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.03); cursor: pointer;" onclick="if(typeof openDrawer === 'function') openDrawer('${row.symbol}')">
-                            <td style="padding: 10px 12px;"><strong>${row.symbol}</strong></td>
-                            <td style="padding: 10px 12px; text-align: right;">${closeVal}</td>
-                            <td style="padding: 10px 12px; text-align: right; color: ${changeColor}; font-weight: 500;">${changeVal}</td>
-                            <td style="padding: 10px 12px; text-align: right;">${volRatioVal}</td>
-                            <td style="padding: 10px 12px; text-align: right;">${closePosVal}</td>
-                            <td style="padding: 10px 12px; text-align: right; color: var(--color-text-secondary);">${dmaVal}</td>
-                            <td style="padding: 10px 12px; text-align: right; color: var(--color-text-secondary);">${gapNowVal}</td>
-                            <td style="padding: 10px 12px; text-align: right; color: var(--color-text-secondary);">${gapMaxVal}</td>
-                            <td style="padding: 10px 12px; text-align: center;">${pivotsVal}</td>
-                            <td style="padding: 10px 12px; text-align: center;">${surgesVal}</td>
-                            <td style="padding: 10px 12px; text-align: right; color: ${accumColor}; font-weight: 600;">${accumScoreVal}</td>
-                            <td style="padding: 10px 12px; text-align: right; color: ${scoreColor}; font-weight: 700;">${finalScoreVal}</td>
+                        <tr onclick="if(!event.target.closest('.ticker-box') && !event.target.closest('button') && typeof openDrawer === 'function') openDrawer('${row.symbol}')">
+                            <td>
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                                    <span class="ticker-box" style="cursor: pointer;" onclick="event.stopPropagation(); openTradingView('${row.symbol}.NS')">${row.symbol}</span>
+                                    <button class="table-action-icon-btn" onclick="event.stopPropagation(); addToWatchlist('${row.symbol}', event)" title="Add to Watchlist">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-right">${closeVal}</td>
+                            <td class="text-right" style="color: ${changeColor}; font-weight: 500;">${changeVal}</td>
+                            <td class="text-right">${volRatioVal}</td>
+                            <td class="text-right">${closePosVal}</td>
+                            <td class="text-right">${dmaVal}</td>
+                            <td class="text-right">${gapNowVal}</td>
+                            <td class="text-right">${gapMaxVal}</td>
+                            <td class="text-center">${pivotsVal}</td>
+                            <td class="text-center">${surgesVal}</td>
+                            <td class="text-right" style="color: ${accumColor}; font-weight: 600;">${accumScoreVal}</td>
+                            <td class="text-right" style="color: ${scoreColor}; font-weight: 700;">${finalScoreVal}</td>
                         </tr>
                     `;
                 });
@@ -13322,5 +13143,247 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (btnText) btnText.textContent = 'Run Screen';
             }
         });
+    }
+});
+
+// ── Floating Bulk Actions Bar & Selection State ──
+window.selectedTickers = new Set();
+
+function toggleTickerSelection(ticker, checked) {
+    if (checked) {
+        window.selectedTickers.add(ticker);
+    } else {
+        window.selectedTickers.delete(ticker);
+    }
+    updateBulkActionsBar();
+    
+    // Sync select-all-stocks header state
+    const checkboxes = document.querySelectorAll('.stock-checkbox');
+    const headerCheckbox = document.getElementById('select-all-stocks');
+    if (headerCheckbox && checkboxes.length > 0) {
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        headerCheckbox.checked = allChecked;
+    }
+}
+
+function toggleSelectAllStocks(checked) {
+    const checkboxes = document.querySelectorAll('.stock-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = checked;
+        const ticker = cb.dataset.ticker;
+        if (checked) {
+            window.selectedTickers.add(ticker);
+        } else {
+            window.selectedTickers.delete(ticker);
+        }
+    });
+    updateBulkActionsBar();
+}
+
+function clearTickerSelection() {
+    window.selectedTickers.clear();
+    const checkboxes = document.querySelectorAll('.stock-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = false;
+    });
+    const headerCheckbox = document.getElementById('select-all-stocks');
+    if (headerCheckbox) {
+        headerCheckbox.checked = false;
+    }
+    updateBulkActionsBar();
+}
+
+function updateBulkActionsBar() {
+    const bar = document.getElementById('bulk-actions-bar');
+    const countBadge = document.getElementById('bulk-selected-count');
+    if (!bar) return;
+    
+    const count = window.selectedTickers.size;
+    if (count > 0) {
+        if (countBadge) countBadge.textContent = count;
+        bar.classList.add('visible');
+    } else {
+        bar.classList.remove('visible');
+    }
+}
+
+function addSelectedToWatchlist(event) {
+    if (!window.selectedTickers || window.selectedTickers.size === 0) return;
+    
+    const tickersArray = Array.from(window.selectedTickers);
+    
+    if (typeof watchlistSections === 'undefined' || watchlistSections.length === 0) {
+        alert("Please create a watchlist section first in the Watchlist & Journal tab.");
+        return;
+    }
+    
+    if (watchlistSections.length === 1) {
+        addMultipleStocksToSection(watchlistSections[0].id, tickersArray);
+        return;
+    }
+    
+    showBulkAddToSectionMenu(tickersArray, event);
+}
+
+function showBulkAddToSectionMenu(tickersArray, event) {
+    const existingMenu = document.getElementById('screener-add-to-section-menu');
+    if (existingMenu) existingMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.id = 'screener-add-to-section-menu';
+    menu.className = 'floating-add-menu glass-panel';
+    
+    const posX = event.clientX + window.scrollX;
+    const posY = event.clientY + window.scrollY;
+    menu.style.left = `${posX}px`;
+    menu.style.top = `${posY}px`;
+    
+    let html = `<div class="floating-menu-header">Add ${tickersArray.length} stocks to:</div>`;
+    watchlistSections.forEach(sec => {
+        html += `
+            <div class="floating-menu-item" onclick="event.stopPropagation(); addMultipleStocksToSection('${sec.id}', ${JSON.stringify(tickersArray)}); document.getElementById('screener-add-to-section-menu').remove();">
+                <span>${escapeHtml(sec.name)}</span>
+                <span class="floating-menu-item-count">${sec.stocks.length}</span>
+            </div>
+        `;
+    });
+    menu.innerHTML = html;
+    
+    document.body.appendChild(menu);
+    event.stopPropagation();
+    
+    // Auto-dismiss menu when clicking outside
+    const dismissMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', dismissMenu);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', dismissMenu), 10);
+}
+
+function addMultipleStocksToSection(sectionId, tickersArray) {
+    const sec = watchlistSections.find(s => s.id === sectionId);
+    if (!sec) return;
+    
+    const toAdd = tickersArray.map(t => t.toUpperCase().trim()).filter(ticker => !sec.stocks.includes(ticker));
+    if (toAdd.length === 0) {
+        alert("All selected stocks are already in this section.");
+        return;
+    }
+    
+    const currentFlat = Array.from(new Set(watchlistSections.flatMap(s => s.stocks)));
+    const newUniqueCount = toAdd.filter(t => !currentFlat.includes(t)).length;
+    if (currentFlat.length + newUniqueCount > 50) {
+        alert(`Adding these stocks would exceed the 50-stock watchlist limit. (Currently: ${currentFlat.length} unique stocks)`);
+        return;
+    }
+    
+    let successCount = 0;
+    const promises = toAdd.map(ticker => {
+        return fetch('/api/watchlist/items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section_id: sectionId, ticker: ticker })
+        })
+        .then(res => res.json())
+        .then(resData => {
+            if (resData.success) {
+                sec.stocks.push(ticker);
+                successCount++;
+            }
+        })
+        .catch(err => console.error("Error batch adding stock:", err));
+    });
+    
+    Promise.all(promises).then(() => {
+        if (successCount > 0) {
+            saveWatchlistSections();
+            renderWatchlist();
+            renderAnnouncements();
+            alert(`Successfully added ${successCount} stock(s) to section "${sec.name}"!`);
+            clearTickerSelection();
+        } else {
+            alert("Failed to add selected stocks to watchlist.");
+        }
+    });
+}
+
+function clearAllFilters() {
+    const btn = document.getElementById('btn-clear-range-filters');
+    if (btn) {
+        btn.click();
+    }
+}
+
+// ── Global Floating Tooltip Controller ──
+document.addEventListener('DOMContentLoaded', () => {
+    let tooltipEl = document.getElementById('global-tooltip');
+    if (!tooltipEl) {
+        tooltipEl = document.createElement('div');
+        tooltipEl.id = 'global-tooltip';
+        tooltipEl.className = 'global-tooltip';
+        document.body.appendChild(tooltipEl);
+    }
+
+    document.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('.help-tooltip-icon, [data-tip], .ma-flirting-dot, .vol-dryup-dot');
+        if (!target) return;
+
+        let content = '';
+        if (target.classList.contains('help-tooltip-icon')) {
+            if (target.hasAttribute('title')) {
+                content = target.getAttribute('title');
+                target.setAttribute('data-tooltip-content', content);
+                target.removeAttribute('title');
+            } else {
+                content = target.getAttribute('data-tooltip-content') || '';
+            }
+        } else if (target.hasAttribute('data-tip')) {
+            content = target.getAttribute('data-tip');
+        } else if (target.hasAttribute('title')) {
+            content = target.getAttribute('title');
+            target.setAttribute('data-tooltip-content', content);
+            target.removeAttribute('title');
+        } else {
+            content = target.getAttribute('data-tooltip-content') || '';
+        }
+
+        if (!content) return;
+
+        tooltipEl.innerHTML = content.replace(/\n/g, '<br>');
+        tooltipEl.classList.add('visible');
+        positionTooltip(e, tooltipEl);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!tooltipEl.classList.contains('visible')) return;
+        positionTooltip(e, tooltipEl);
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const target = e.target.closest('.help-tooltip-icon, [data-tip], .ma-flirting-dot, .vol-dryup-dot');
+        if (!target) return;
+        tooltipEl.classList.remove('visible');
+    });
+
+    function positionTooltip(e, tooltip) {
+        const padding = 12;
+        let x = e.clientX + padding;
+        let y = e.clientY + padding;
+
+        const rect = tooltip.getBoundingClientRect();
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
+
+        if (x + rect.width > winW) {
+            x = e.clientX - rect.width - padding;
+        }
+        if (y + rect.height > winH) {
+            y = e.clientY - rect.height - padding;
+        }
+
+        tooltip.style.left = `${x + window.scrollX}px`;
+        tooltip.style.top = `${y + window.scrollY}px`;
     }
 });

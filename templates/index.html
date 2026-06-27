@@ -32,7 +32,7 @@
         align-items: center;
         gap: 6px;
         padding: 4px 10px;
-        border-radius: 0px;
+        border-radius: var(--radius-sm, 6px);
         font-size: 0.8rem;
         font-weight: 600;
         width: fit-content;
@@ -62,7 +62,7 @@
       .model-weights-bar {
         display: flex;
         height: 24px;
-        border-radius: 0px;
+        border-radius: var(--radius-sm, 6px);
         overflow: hidden;
         margin: 4px 0;
         font-size: 0.75rem;
@@ -89,7 +89,7 @@
         border-collapse: collapse;
         font-size: 0.78rem;
         background: rgba(0,0,0,0.15);
-        border-radius: 0px;
+        border-radius: var(--radius-sm, 6px);
         overflow: hidden;
       }
       .agreement-matrix th, .agreement-matrix td {
@@ -113,7 +113,7 @@
       }
       .bt-mode-btn {
         padding: 4px 12px;
-        border-radius: 0px;
+        border-radius: var(--radius-sm, 6px);
         border: 1px solid rgba(255,255,255,0.1);
         background: rgba(255,255,255,0.02);
         color: #ccc;
@@ -128,10 +128,10 @@
         color: #fff;
       }
       .bt-mode-btn.active {
-        background: #7c3aed;
+        background: var(--accent-blue, #3b82f6);
         color: #fff;
-        border-color: #7c3aed;
-        box-shadow: 0 0 10px rgba(124, 58, 237, 0.3);
+        border-color: var(--accent-blue, #3b82f6);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
       }
       .bt-comparison-table {
         width: 100%;
@@ -164,8 +164,7 @@
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- CSS stylesheet -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.62">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.65">
 </head>
 <body>
 
@@ -225,10 +224,7 @@
                     <span>🚀 IPO Momentum</span>
                     <span id="ipo-hot-count" class="badge" style="display: none; background: #ff4d4d; color: white; border-radius: 50%; padding: var(--space-1) var(--space-2); font-size: 0.7rem; margin-left: var(--space-2); font-weight: bold; box-shadow: 0 0 8px rgba(255, 77, 77, 0.6);">0</span>
                 </button>
-                <button class="workspace-tab" data-view="ai-forecast">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"></path><path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"></path></svg>
-                    <span>AI Forecast</span>
-                </button>
+
                 <button class="workspace-tab" data-view="ep" id="tab-ep">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
                     <span>🚀 EP Screener</span>
@@ -247,92 +243,131 @@
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
-              <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65" title="Click to view Regime History">
-                <svg class="market-pulse-svg" width="120" height="120"></svg>
-                <div class="market-pulse-info">
+              <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65"
+                   role="button" tabindex="0" aria-label="Market Regime Gauge — click to view Regime History"
+                   title="Click to view Regime History">
+                <svg class="market-pulse-svg" width="120" height="120"
+                     role="img" aria-labelledby="regime-gauge-title">
+                  <title id="regime-gauge-title">Market Regime Score Gauge</title>
+                </svg>
+                <div class="market-pulse-info" aria-hidden="true">
                   <span class="market-pulse-label">Regime</span>
                   <span class="market-pulse-score" id="regime-score-num">--</span>
                   <span class="market-pulse-delta" id="regime-score-delta">--</span>
                   <span class="market-pulse-band" id="regime-band">Loading...</span>
                 </div>
+                <!-- Screen-reader live region announces regime updates -->
+                <span id="regime-sr-announce" class="sr-only" aria-live="polite" aria-atomic="true"></span>
               </div>
     
               <div class="breadth-divider"></div>
     
               <div class="breadth-metric">
                 <div class="bm-label-wrap">
-                  <span class="bm-label">A / D Ratio</span>
+                  <span class="bm-label" data-tip="Advances vs Declines.
+More green = market breadth strengthening.
+Red dominance = broad selling.">A / D Ratio</span>
                   <canvas id="spark-ad" class="metric-spark" width="40" height="16"></canvas>
+                </div>
+                <div class="bm-val-row">
+                  <span class="bm-big-val"><span class="val-up" id="bm-advances">--</span><span class="val-sep">/</span><span class="val-down" id="bm-declines">--</span></span>
                 </div>
                 <div class="ad-bar-wrap">
                   <div class="ad-bar-adv" id="ad-bar-adv" style="width:50%"></div>
                   <div class="ad-bar-dec" id="ad-bar-dec" style="width:50%"></div>
                 </div>
-                <div class="bm-sub">
-                  <span class="val-up" id="bm-advances">--</span><span class="bm-sep">▲</span>
-                  <span class="val-down" id="bm-declines">--</span><span class="bm-sep">▼</span>
-                  <span class="bm-unch" id="bm-unchanged">--</span><span class="bm-sep">—</span>
-                </div>
+                <span class="bm-sub-text"><span id="bm-unchanged">--</span> unchanged</span>
               </div>
     
               <div class="breadth-divider"></div>
     
               <div class="breadth-metric">
                 <div class="bm-label-wrap">
-                  <span class="bm-label">% Above MA</span>
+                  <span class="bm-label" data-tip="% of NSE stocks trading above
+their 21-day and 50-day moving averages.
+>60% = healthy trend; <40% = weak market.">% Above MA</span>
                   <canvas id="spark-ma" class="metric-spark" width="40" height="16"></canvas>
                 </div>
-                <div class="bm-dual">
-                  <div class="bm-dual-item"><span class="bm-dual-label">SMA21</span><span class="bm-dual-val" id="bm-sma21">--%</span></div>
-                  <div class="bm-dual-item"><span class="bm-dual-label">SMA50</span><span class="bm-dual-val" id="bm-sma50">--%</span></div>
+                <div class="bm-val-row">
+                  <span class="bm-big-val"><span id="bm-sma21">--%</span><span class="val-sep">/</span><span id="bm-sma50" style="color:var(--color-text-secondary);">--%</span></span>
                 </div>
                 <div class="mini-progress-wrap"><div class="mini-progress-fill" id="bm-ma-fill" style="width:0%"></div></div>
+                <span class="bm-sub-text">Above 21d / 50d MA</span>
               </div>
     
               <div class="breadth-divider"></div>
     
               <div class="breadth-metric">
                 <div class="bm-label-wrap">
-                  <span class="bm-label">Near 52W High</span>
+                  <span class="bm-label" data-tip="% of stocks within 5% of their
+52-week high. High reading = strong
+upward momentum across the market.">Near 52W High</span>
                   <canvas id="spark-52w" class="metric-spark" width="40" height="16"></canvas>
                 </div>
-                <span class="bm-big-val" id="bm-52high-val">--%</span>
-                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
-              </div>
-    
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <span class="bm-label">New 52W H / L</span>
-                <div class="bm-sub">
-                  <span class="val-up" id="bm-newhighs">--</span><span class="bm-sep">H</span>
-                  <span class="val-down" id="bm-newlows">--</span><span class="bm-sep">L</span>
+                <div class="bm-val-row">
+                  <span class="bm-big-val" id="bm-52high-val">--%</span>
                 </div>
+                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
+                <span class="bm-sub-text">Within 5% of high</span>
               </div>
     
               <div class="breadth-divider"></div>
     
               <div class="breadth-metric">
                 <div class="bm-label-wrap">
-                  <span class="bm-label">TV Sentiment</span>
-                  <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
+                  <span class="bm-label" data-tip="New 52-week highs vs lows today.
+Highs dominating = bullish expansion.
+Lows dominating = distribution phase.">New 52W H / L</span>
+                  <canvas id="spark-52whl" class="metric-spark" style="display:none;"></canvas>
                 </div>
-                <span class="bm-big-val" id="bm-sent-val">--</span>
-                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
+                <div class="bm-val-row">
+                  <span class="bm-big-val"><span class="val-up" id="bm-newhighs">--</span><span class="val-sep">/</span><span class="val-down" id="bm-newlows">--</span></span>
+                </div>
+                <div class="ad-bar-wrap">
+                  <div class="ad-bar-adv" id="bm-newhighs-fill" style="width:50%"></div>
+                  <div class="ad-bar-dec" id="bm-newlows-fill" style="width:50%"></div>
+                </div>
+                <span class="bm-sub-text">New Highs / Lows</span>
               </div>
     
               <div class="breadth-divider"></div>
     
               <div class="breadth-metric">
-                <span class="bm-label">Scan Hit Rate</span>
-                <span class="bm-big-val" id="bm-scan-val">--%</span>
+                <div class="bm-label-wrap">
+                  <span class="bm-label" data-tip="Aggregated TradingView sentiment
+for NSE. Buy = broad buying pressure
+across multiple timeframes.">TV Sentiment</span>
+                  <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
+                </div>
+                <div class="bm-val-row">
+                  <span class="bm-big-val" id="bm-sent-val">--</span>
+                </div>
+                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
+                <span class="bm-sub-text">TV consensus view</span>
+              </div>
+    
+              <div class="breadth-divider"></div>
+    
+              <div class="breadth-metric">
+                <div class="bm-label-wrap">
+                  <span class="bm-label" data-tip="% of stocks passing the screener
+criteria in the last scan. Higher = more
+actionable setups available today.">Scan Hit Rate</span>
+                  <canvas id="spark-hitrate" class="metric-spark" style="display:none;"></canvas>
+                </div>
+                <div class="bm-val-row">
+                  <span class="bm-big-val" id="bm-scan-val">--%</span>
+                </div>
+                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-amber" id="bm-scan-fill" style="width:0%"></div></div>
                 <span class="bm-sub-text" id="bm-scan-sub">-- of -- qualify</span>
               </div>
     
               <div class="breadth-divider"></div>
     
               <div class="breadth-metric breadth-sectors">
-                <span class="bm-label">Top Breadth Sectors</span>
+                <span class="bm-label" data-tip="Top 3 sectors by breadth score.
+Click a sector row to filter
+the screener to that sector.">Top Breadth Sectors</span>
                 <div class="bm-sector-list" id="bm-top-sectors">
                   <span style="font-size:0.72rem;color:var(--color-text-muted)">Scanning...</span>
                 </div>
@@ -506,165 +541,190 @@
                             <span class="btn-label">Snapshot</span>
                         </button>
                     </div>
-</div>
-    <div class="input-error" id="target-missing-error" style="color: var(--accent-red); font-size:0.75rem; display:none;">Target 1 price missing – cannot calculate targets.</div>
-</section>
-
-        <!-- Range Filters Panel -->
-        <section class="range-filters-panel glass-panel">
-            <div class="range-filter-title">
-                <span>🎛️</span> Range Filters
-            </div>
-            
-            <!-- RVOL Filter -->
-            <div class="range-filter-group">
-                <label for="filter-rvol-min">RVOL</label>
-                <input type="number" id="filter-rvol-min" class="range-filter-input" step="0.1" placeholder="Min">
-                <span class="range-filter-span">to</span>
-                <input type="number" id="filter-rvol-max" class="range-filter-input" step="0.1" placeholder="Max">
-            </div>
-
-            <!-- Change% Filter -->
-            <div class="range-filter-group">
-                <label for="filter-change-min">Change %</label>
-                <input type="number" id="filter-change-min" class="range-filter-input" step="0.1" placeholder="Min">
-                <span class="range-filter-span">to</span>
-                <input type="number" id="filter-change-max" class="range-filter-input" step="0.1" placeholder="Max">
-            </div>
-
-            <!-- P/E Ratio Filter -->
-            <div class="range-filter-group">
-                <label for="filter-pe-min">P/E Ratio</label>
-                <input type="number" id="filter-pe-min" class="range-filter-input" step="0.1" placeholder="Min">
-                <span class="range-filter-span">to</span>
-                <input type="number" id="filter-pe-max" class="range-filter-input" step="0.1" placeholder="Max">
-            </div>
-
-            <!-- IMS Score Filter -->
-            <div class="range-filter-group">
-                <label>IMS Score</label>
-                <div class="custom-select-wrapper" id="ims-select-wrapper">
-                    <button class="btn btn-secondary select-trigger" id="btn-ims" style="min-width: 140px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Intraday Momentum Score">
-                        <span id="selected-ims-label">All Scores</span>
-                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="select-dropdown glass-panel hidden" id="ims-dropdown" style="min-width: 160px; top: calc(100% + 4px);">
-                        <div class="select-dropdown-item active" data-value="all">All Scores</div>
-                        <div class="select-dropdown-item" data-value="strong">🔥 Strong (7+)</div>
-                        <div class="select-dropdown-item" data-value="moderate">⚡ Moderate (5-6)</div>
-                        <div class="select-dropdown-item" data-value="weak">🧊 Weak (&lt;5)</div>
-                    </div>
-                    <input type="hidden" id="filter-ims" value="all">
                 </div>
-            </div>
+            </section>
 
-            <!-- Swing Score Filter -->
-            <div class="range-filter-group">
-                <label>Swing Score</label>
-                <div class="custom-select-wrapper" id="swing-select-wrapper">
-                    <button class="btn btn-secondary select-trigger" id="btn-swing" style="min-width: 140px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Swing Score">
-                        <span id="selected-swing-label">All Scores</span>
-                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="select-dropdown glass-panel hidden" id="swing-dropdown" style="min-width: 160px; top: calc(100% + 4px);">
-                        <div class="select-dropdown-item active" data-value="all">All Scores</div>
-                        <div class="select-dropdown-item" data-value="elite">🌟 Elite (8-10)</div>
-                        <div class="select-dropdown-item" data-value="strong">📈 Strong+ (6+)</div>
-                        <div class="select-dropdown-item" data-value="watch">👀 Watchlist (4+)</div>
-                    </div>
-                    <input type="hidden" id="filter-swing" value="all">
+        <!-- Range Filters Panel (Collapsible) -->
+        <section class="range-filters-panel glass-panel" id="range-filters-panel">
+            <div class="range-filter-header-bar" id="range-filter-toggle" style="cursor: pointer; width: 100%; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+                <div class="range-filter-title" style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-secondary);"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
+                    <span>Range & Advanced Filters</span>
                 </div>
-            </div>
-
-            <!-- Candlestick Pattern Filter -->
-            <div class="range-filter-group">
-                <label>Candlestick Pattern</label>
-                <div class="custom-select-wrapper" id="candle-select-wrapper">
-                    <button class="btn btn-secondary select-trigger" id="btn-candle" style="min-width: 150px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Candlestick Pattern">
-                        <span id="selected-candle-label">All Patterns</span>
-                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="select-dropdown glass-panel hidden" id="candle-dropdown" style="min-width: 170px; top: calc(100% + 4px); z-index: 10;">
-                        <div class="select-dropdown-item active" data-value="all">All Patterns</div>
-                        <div class="select-dropdown-item" data-value="Hammer">Hammer 🔨</div>
-                        <div class="select-dropdown-item" data-value="Shooting Star">Shooting Star 🌠</div>
-                        <div class="select-dropdown-item" data-value="Morning Star">Morning Star 🌅</div>
-                        <div class="select-dropdown-item" data-value="Evening Star">Evening Star 🌌</div>
-                        <div class="select-dropdown-item" data-value="Bullish Engulfing">Bullish Engulfing 🟢</div>
-                        <div class="select-dropdown-item" data-value="Bearish Engulfing">Bearish Engulfing 🔴</div>
-                        <div class="select-dropdown-item" data-value="Doji">Doji ⚖️</div>
-                    </div>
-                    <input type="hidden" id="filter-candle" value="all">
-                </div>
-            </div>
-
-            <!-- Volume Alert Filter -->
-            <div class="range-filter-group">
-                <label>Volume Alert</label>
-                <div class="custom-select-wrapper" id="volume-select-wrapper">
-                    <button class="btn btn-secondary select-trigger" id="btn-volume-filter" style="min-width: 150px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Volume Alert Status">
-                        <span id="selected-volume-filter-label">All Volume</span>
-                        <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    <div class="select-dropdown glass-panel hidden" id="volume-filter-dropdown" style="min-width: 175px; top: calc(100% + 4px); z-index: 10; padding: 6px 0;">
-                        <div class="select-dropdown-item" data-value="ppv" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
-                            <span>🔵 Pocket Pivot</span>
-                        </div>
-                        <div class="select-dropdown-item" data-value="vol-surge" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
-                            <span>🟢 Volume Surge</span>
-                        </div>
-                        <div class="select-dropdown-item" data-value="dry-vol" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                            <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
-                            <span>🟠 Dry Volume</span>
-                        </div>
-                    </div>
-                    <input type="hidden" id="filter-volume-alert" value="all">
+                <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
+                    <span id="active-filters-count" class="badge" style="background: var(--accent-blue, #3b82f6); color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; display: none;">0 active</span>
+                    <button id="btn-clear-all-filters" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: 22px; line-height: 1; border-radius: 4px; display: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);" onclick="clearAllFilters()">Clear Filters</button>
+                    <span class="filter-toggle-chevron" style="font-size: 0.8rem; color: var(--color-text-muted); transition: transform 0.25s ease; cursor: pointer;" onclick="document.getElementById('range-filter-toggle').click()">▼</span>
                 </div>
             </div>
             
-            
-            <!-- Quick Sort Swing Button -->
-            <button class="btn btn-primary" id="btn-quick-swing" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; margin-left: auto; background: var(--accent-blue); border-color: var(--accent-blue); color: #fff;" title="Sort by Swing Score then 1W Perf">
-                <span>🎯</span> Best Swing Setups
-            </button>
+            <div class="range-filter-body" id="range-filter-body">
+                <!-- Setup Filter Chips inside Accordion -->
+                <div class="range-filter-row-full">
+                    <span class="range-filter-section-title">Setup Filters</span>
+                    <div class="filter-chip-bar" id="setup-filter-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                        <div class="filter-chip active" data-value="all">All</div>
+                        <div class="filter-chip" data-value="intel-high-grade" style="border-color: rgba(168, 85, 247, 0.3); color: #a78bfa;">Elite Setups (A/A+)</div>
+                        <div class="filter-chip" data-value="Breakout Ready">Breakout</div>
+                        <div class="filter-chip" data-value="Pullback to MA">Pullback</div>
+                        <div class="filter-chip" data-value="Inside Bar Coil">Coil</div>
+                        <div class="filter-chip" data-value="stage2_camp">Stage 2 Camp</div>
+                        <div class="filter-chip" data-value="vol_coil">Vol Coil</div>
+                        <div class="filter-chip" data-value="Bullish Div">Bullish Div</div>
+                        <div class="filter-chip" data-value="Sector Leader">Leader</div>
+                        <div class="filter-chip" data-value="Momentum Continuation">Momentum</div>
+                        <div class="filter-chip" data-value="Earnings-Safe">Earnings-Safe</div>
+                    </div>
+                </div>
 
-            <!-- Save Preset Button -->
-            <button class="btn btn-secondary" id="btn-save-preset" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; margin-left: 0.5rem;" title="Save current filters as a preset">
-                <span>💾</span> Save
-            </button>
+                <!-- MTF Filter Chips inside Accordion -->
+                <div class="range-filter-row-full" style="border-bottom: none; margin-bottom: 0.25rem;">
+                    <span class="range-filter-section-title">MTF Confirmation</span>
+                    <div class="filter-chip-bar" id="mtf-filter-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                        <div class="filter-chip active" data-value="all">All</div>
+                        <div class="filter-chip" data-value="2">MTF Both (2TF)</div>
+                        <div class="filter-chip" data-value="1">MTF Partial (1TF)</div>
+                        <div class="filter-chip" data-value="0">MTF None (0TF)</div>
+                    </div>
+                </div>
+                <!-- RVOL Filter -->
+                <div class="range-filter-group">
+                    <label for="filter-rvol-min">RVOL</label>
+                    <div class="range-inputs-row">
+                        <input type="number" id="filter-rvol-min" class="range-filter-input" step="0.1" placeholder="Min">
+                        <span class="range-filter-span">to</span>
+                        <input type="number" id="filter-rvol-max" class="range-filter-input" step="0.1" placeholder="Max">
+                    </div>
+                </div>
 
-            <!-- Clear Button -->
-            <button class="btn btn-secondary" id="btn-clear-range-filters" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; margin-left: 0.5rem;">
-                <span>🧹</span> Clear
-            </button>
+                <!-- Change% Filter -->
+                <div class="range-filter-group">
+                    <label for="filter-change-min">Change %</label>
+                    <div class="range-inputs-row">
+                        <input type="number" id="filter-change-min" class="range-filter-input" step="0.1" placeholder="Min">
+                        <span class="range-filter-span">to</span>
+                        <input type="number" id="filter-change-max" class="range-filter-input" step="0.1" placeholder="Max">
+                    </div>
+                </div>
+
+                <!-- P/E Ratio Filter -->
+                <div class="range-filter-group">
+                    <label for="filter-pe-min">P/E Ratio</label>
+                    <div class="range-inputs-row">
+                        <input type="number" id="filter-pe-min" class="range-filter-input" step="0.1" placeholder="Min">
+                        <span class="range-filter-span">to</span>
+                        <input type="number" id="filter-pe-max" class="range-filter-input" step="0.1" placeholder="Max">
+                    </div>
+                </div>
+
+                <!-- IMS Score Filter -->
+                <div class="range-filter-group">
+                    <label>IMS Score</label>
+                    <div class="custom-select-wrapper" id="ims-select-wrapper">
+                        <button class="btn btn-secondary select-trigger" id="btn-ims" style="min-width: 140px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Intraday Momentum Score">
+                            <span id="selected-ims-label">All Scores</span>
+                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="select-dropdown glass-panel hidden" id="ims-dropdown" style="min-width: 160px; top: calc(100% + 4px);">
+                            <div class="select-dropdown-item active" data-value="all">All Scores</div>
+                            <div class="select-dropdown-item" data-value="strong">🔥 Strong (7+)</div>
+                            <div class="select-dropdown-item" data-value="moderate">⚡ Moderate (5-6)</div>
+                            <div class="select-dropdown-item" data-value="weak">🧊 Weak (&lt;5)</div>
+                        </div>
+                        <input type="hidden" id="filter-ims" value="all">
+                    </div>
+                </div>
+
+                <!-- Swing Score Filter -->
+                <div class="range-filter-group">
+                    <label>Swing Score</label>
+                    <div class="custom-select-wrapper" id="swing-select-wrapper">
+                        <button class="btn btn-secondary select-trigger" id="btn-swing" style="min-width: 140px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Swing Score">
+                            <span id="selected-swing-label">All Scores</span>
+                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="select-dropdown glass-panel hidden" id="swing-dropdown" style="min-width: 160px; top: calc(100% + 4px);">
+                            <div class="select-dropdown-item active" data-value="all">All Scores</div>
+                            <div class="select-dropdown-item" data-value="elite">🌟 Elite (8-10)</div>
+                            <div class="select-dropdown-item" data-value="strong">📈 Strong+ (6+)</div>
+                            <div class="select-dropdown-item" data-value="watch">👀 Watchlist (4+)</div>
+                        </div>
+                        <input type="hidden" id="filter-swing" value="all">
+                    </div>
+                </div>
+
+                <!-- Candlestick Pattern Filter -->
+                <div class="range-filter-group">
+                    <label>Candlestick Pattern</label>
+                    <div class="custom-select-wrapper" id="candle-select-wrapper">
+                        <button class="btn btn-secondary select-trigger" id="btn-candle" style="min-width: 150px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Candlestick Pattern">
+                            <span id="selected-candle-label">All Patterns</span>
+                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="select-dropdown glass-panel hidden" id="candle-dropdown" style="min-width: 170px; top: calc(100% + 4px); z-index: 10;">
+                            <div class="select-dropdown-item active" data-value="all">All Patterns</div>
+                            <div class="select-dropdown-item" data-value="Hammer">Hammer 🔨</div>
+                            <div class="select-dropdown-item" data-value="Shooting Star">Shooting Star 🌠</div>
+                            <div class="select-dropdown-item" data-value="Morning Star">Morning Star 🌅</div>
+                            <div class="select-dropdown-item" data-value="Evening Star">Evening Star 🌌</div>
+                            <div class="select-dropdown-item" data-value="Bullish Engulfing">Bullish Engulfing 🟢</div>
+                            <div class="select-dropdown-item" data-value="Bearish Engulfing">Bearish Engulfing 🔴</div>
+                            <div class="select-dropdown-item" data-value="Doji">Doji ⚖️</div>
+                        </div>
+                        <input type="hidden" id="filter-candle" value="all">
+                    </div>
+                </div>
+
+                <!-- Volume Alert Filter -->
+                <div class="range-filter-group">
+                    <label>Volume Alert</label>
+                    <div class="custom-select-wrapper" id="volume-select-wrapper">
+                        <button class="btn btn-secondary select-trigger" id="btn-volume-filter" style="min-width: 150px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Volume Alert Status">
+                            <span id="selected-volume-filter-label">All Volume</span>
+                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </button>
+                        <div class="select-dropdown glass-panel hidden" id="volume-filter-dropdown" style="min-width: 175px; top: calc(100% + 4px); z-index: 10; padding: 6px 0;">
+                            <div class="select-dropdown-item" data-value="ppv" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                                <span>🔵 Pocket Pivot</span>
+                            </div>
+                            <div class="select-dropdown-item" data-value="vol-surge" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                                <span>🟢 Volume Surge</span>
+                            </div>
+                            <div class="select-dropdown-item" data-value="dry-vol" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
+                                <span>🟠 Dry Volume</span>
+                            </div>
+                        </div>
+                        <input type="hidden" id="filter-volume-alert" value="all">
+                    </div>
+                </div>
+                
+                <!-- Quick Action Buttons -->
+                <div class="range-filter-actions-row">
+                    <!-- Quick Sort Swing Button -->
+                    <button class="btn btn-primary" id="btn-quick-swing" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; background: var(--accent-blue); border-color: var(--accent-blue); color: #fff;" title="Sort by Swing Score then 1W Perf">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                        Best Swing Setups
+                    </button>
+
+                    <!-- Save Preset Button -->
+                    <button class="btn btn-secondary" id="btn-save-preset" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem;" title="Save current filters as a preset">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save
+                    </button>
+
+                    <!-- Clear Button -->
+                    <button class="btn btn-secondary" id="btn-clear-range-filters" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Clear
+                    </button>
+                </div>
+            </div>
         </section>
 
-        <!-- Filter Chips Bar -->
-        <section class="filter-chip-bar" id="setup-filter-chips">
-            <span style="font-size: 0.8rem; color: var(--color-text-secondary); margin-right: var(--space-2);">Setup Filter:</span>
-            <div class="filter-chip active" data-value="all">All</div>
-            <div class="filter-chip" data-value="intel-high-grade" style="border-color: rgba(168, 85, 247, 0.3); color: #a78bfa;">🧠 Elite Setups (A/A+)</div>
-            <div class="filter-chip" data-value="Breakout Ready">🚀 Breakout</div>
-            <div class="filter-chip" data-value="Pullback to MA">📉 Pullback</div>
-            <div class="filter-chip" data-value="Inside Bar Coil">🌀 Coil</div>
-            <div class="filter-chip" data-value="stage2_camp">⛺ Stage 2 Camp</div>
-            <div class="filter-chip" data-value="vol_coil">📦 Vol Coil</div>
-            <div class="filter-chip" data-value="Bullish Div">🔍 Bullish Div</div>
-            <div class="filter-chip" data-value="Sector Leader">👑 Leader</div>
-            <div class="filter-chip" data-value="Momentum Continuation">📈 Momentum</div>
-            <div class="filter-chip" data-value="Earnings-Safe">🛡️ Earnings-Safe</div>
-        </section>
 
-        <!-- MTF Filter Chips Bar -->
-        <section class="filter-chip-bar" id="mtf-filter-chips" style="margin-top: var(--space-2);">
-            <span style="font-size: 0.8rem; color: var(--color-text-secondary); margin-right: 0.5rem;">MTF Filter:</span>
-            <div class="filter-chip active" data-value="all">All</div>
-            <div class="filter-chip" data-value="2">MTF Both (2TF)</div>
-            <div class="filter-chip" data-value="1">MTF Partial (1TF)</div>
-            <div class="filter-chip" data-value="0">MTF None (0TF)</div>
-        </section>
 
         <!-- Main Dashboard Content Grid -->
         <div class="dashboard-grid single-column">
@@ -806,22 +866,22 @@
                             </button>
                         </div>
                     </div>
-                    <div class="journal-stats glass-panel" style="display: flex; gap: 2rem; margin-bottom: 1.5rem; background: rgba(30, 41, 59, 0.25); padding: 1.25rem; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.05); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
-                        <div style="flex: 1;">
-                            <div style="font-size: 0.85rem; color: var(--color-text-secondary);">Total Trades</div>
-                            <div id="journal-total-trades" style="font-size: 1.25rem; font-weight: 700;">0</div>
+                    <div class="journal-stats-container">
+                        <div class="journal-stat-card glass-panel">
+                            <div class="journal-stat-label">Total Trades</div>
+                            <div id="journal-total-trades" class="journal-stat-value">0</div>
                         </div>
-                        <div style="flex: 1;">
-                            <div style="font-size: 0.85rem; color: var(--color-text-secondary);">Win Rate</div>
-                            <div id="journal-win-rate" style="font-size: 1.25rem; font-weight: 700;">0%</div>
+                        <div class="journal-stat-card glass-panel">
+                            <div class="journal-stat-label">Win Rate</div>
+                            <div id="journal-win-rate" class="journal-stat-value">0%</div>
                         </div>
-                        <div style="flex: 1;">
-                            <div style="font-size: 0.85rem; color: var(--color-text-secondary);">Avg R</div>
-                            <div id="journal-avg-r" style="font-size: 1.25rem; font-weight: 700;">0R</div>
+                        <div class="journal-stat-card glass-panel">
+                            <div class="journal-stat-label">Avg R</div>
+                            <div id="journal-avg-r" class="journal-stat-value">0R</div>
                         </div>
-                        <div style="flex: 1;">
-                            <div style="font-size: 0.85rem; color: var(--color-text-secondary);">Total PnL</div>
-                            <div id="journal-total-pnl" style="font-size: 1.25rem; font-weight: 700;">₹0</div>
+                        <div class="journal-stat-card glass-panel">
+                            <div class="journal-stat-label">Total PnL</div>
+                            <div id="journal-total-pnl" class="journal-stat-value">₹0</div>
                         </div>
                     </div>
                     <div class="table-container" style="overflow-x: auto; width: 100%;">
@@ -960,8 +1020,8 @@
                 
                 <div class="intraday-grid">
                     <div class="intraday-widget">
-                        <div class="widget-header gap-go" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
-                            <span>Gap and Go</span>
+                        <div class="widget-header gap-go" onclick="window.toggleIntradayWidget(this)">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot gap-go"></span>Gap and Go</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-gap-go">0</span>
                                 <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
@@ -970,8 +1030,8 @@
                         <div class="widget-content" id="widget-gap-go"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header vwap" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
-                            <span>VWAP Reclaim</span>
+                        <div class="widget-header vwap" onclick="window.toggleIntradayWidget(this)">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot vwap"></span>VWAP Reclaim</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-vwap">0</span>
                                 <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
@@ -980,8 +1040,8 @@
                         <div class="widget-content" id="widget-vwap"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header rvol" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
-                            <span>High RVOL Movers</span>
+                        <div class="widget-header rvol" onclick="window.toggleIntradayWidget(this)">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot rvol"></span>High RVOL Movers</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-rvol">0</span>
                                 <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
@@ -990,8 +1050,8 @@
                         <div class="widget-content" id="widget-rvol"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header confluence" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
-                            <span>IMS + Swing Overlap</span>
+                        <div class="widget-header confluence" onclick="window.toggleIntradayWidget(this)">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot confluence"></span>IMS + Swing Overlap</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-confluence">0</span>
                                 <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
@@ -1000,8 +1060,8 @@
                         <div class="widget-content" id="widget-confluence"></div>
                     </div>
                     <div class="intraday-widget">
-                        <div class="widget-header focus" onclick="window.toggleIntradayWidget(this)" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none;">
-                            <span>Intraday Confluence Focus</span>
+                        <div class="widget-header focus" onclick="window.toggleIntradayWidget(this)">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot focus"></span>Intraday Confluence Focus</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-focus">0</span>
                                 <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
@@ -1029,23 +1089,23 @@
                 <!-- RRG Timeline Bar -->
                 <div id="rrg-timeline-bar" class="rrg-timeline-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md, 8px); margin-bottom: var(--space-4); flex-wrap: wrap;">
                     <div class="rrg-timeline-controls" style="display: flex; gap: var(--space-2);">
-                        <button id="btn-rrg-play" class="btn-icon" title="Play animation" aria-label="Play animation" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                        <button id="btn-rrg-play" class="btn-icon" title="Play animation" aria-label="Play animation">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                         </button>
-                        <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" aria-label="Pause" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                        <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" aria-label="Pause">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
                         </button>
-                        <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" aria-label="Reset to start" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-primary);">
+                        <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" aria-label="Reset to start">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
                         </button>
                     </div>
 
-                    <input type="range" id="rrg-timeline-scrubber" min="0" max="11" value="11" step="1" class="rrg-scrubber" style="flex: 1; min-width: 120px; max-width: 320px; accent-color: #6366f1; cursor: pointer;" />
+                    <input type="range" id="rrg-timeline-scrubber" min="0" max="11" value="11" step="1" class="rrg-scrubber" style="flex: 1; min-width: 120px; max-width: 320px; cursor: pointer;" />
 
                     <span id="rrg-week-label" class="rrg-week-label" style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); min-width: 100px;">Week: --</span>
 
                     <div class="rrg-timeline-right" style="margin-left: auto; display: flex; gap: 0.5rem; align-items: center;">
-                        <select id="rrg-weeks-select" class="select-sm" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 4px; padding: 2px 6px; font-size: 0.8rem; outline: none; cursor: pointer;">
+                        <select id="rrg-weeks-select" class="select-sm">
                             <option value="4">4 weeks</option>
                             <option value="8">8 weeks</option>
                             <option value="12" selected>12 weeks</option>
@@ -1073,9 +1133,9 @@
                             <p class="guide-title" style="font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; color: #fff; margin: 0 0 var(--space-2) 0;">How to Use RRG Today</p>
                             <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-2);">
                                 <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--accent-green); font-weight: 600;">🟢 Leading</span> <span>Overweight, breakouts</span></li>
-                                <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🟡 Improving</span> <span>Build watchlists</span></li>
-                                <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🔴 Weakening</span> <span>Tighten stops</span></li>
-                                <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--color-text-muted); font-weight: 600;">⚪ Lagging</span> <span>Avoid entry</span></li>
+                                <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--accent-blue); font-weight: 600;">🔵 Improving</span> <span>Build watchlists</span></li>
+                                <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--accent-orange); font-weight: 600;">🟡 Weakening</span> <span>Tighten stops</span></li>
+                                <li style="display: flex; gap: var(--space-2); align-items: flex-start;"><span style="color: var(--accent-red); font-weight: 600;">🔴 Lagging</span> <span>Avoid entry</span></li>
                             </ul>
                         </div>
                         <div style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 0.75rem;">
@@ -1102,104 +1162,104 @@
 
     <!-- Workspace View: IPO Momentum -->
     <div class="workspace-view" id="view-ipo">
-        <div class="ipo-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
-                <div>
-                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
+        <div class="ipo-workspace-wrapper glass-panel">
+            <div class="ipo-header">
+                <div class="ipo-title-container">
+                    <div class="ipo-title">
                         <span>🚀 IPO Momentum</span>
                     </div>
-                    <div style="font-size: 0.8rem; color: var(--color-text-secondary); margin-top: 0.25rem;">
+                    <div class="ipo-subtitle">
                         Track post-listing momentum, swing scores, and patterns of listings from the past 18 months.
                     </div>
                 </div>
                 <div>
-                    <button class="action-btn" id="ipo-sync-btn" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                    <button class="ipo-sync-button" id="ipo-sync-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
                         <span>Sync Prices</span>
                     </button>
                 </div>
             </div>
 
             <!-- Stats Header Cards -->
-            <div class="ipo-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: var(--space-2);">
-                <div class="ipo-stat-card glass-panel" data-phase="all" style="padding: 1rem; border-radius: 10px; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; border: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); transition: all 0.2s;">
-                    <span style="font-size: 0.75rem; color: var(--color-text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">Total Recent IPOs</span>
-                    <span id="ipo-stat-total" style="font-size: 1.8rem; font-weight: 700; color: var(--color-text-primary); font-family: 'Outfit', sans-serif;">0</span>
+            <div class="ipo-stats-grid">
+                <div class="ipo-stat-card glass-panel active" data-phase="all">
+                    <span class="stat-label">Total Recent IPOs</span>
+                    <span id="ipo-stat-total" class="stat-value">0</span>
                 </div>
-                <div class="ipo-stat-card glass-panel" data-phase="HOT" style="padding: 1rem; border-radius: 10px; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; border: 1px solid rgba(239, 68, 68, 0.1); background: rgba(239, 68, 68, 0.02); transition: all 0.2s;">
-                    <span style="font-size: 0.75rem; color: #f87171; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.25rem;">
-                        <span style="width: 6px; height: 6px; background: #ef4444; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #ef4444;"></span>
+                <div class="ipo-stat-card glass-panel" data-phase="HOT">
+                    <span class="stat-label">
+                        <span class="header-indicator-dot gap-go" style="width:6px; height:6px;"></span>
                         HOT Phase
                     </span>
-                    <span id="ipo-stat-hot" style="font-size: 1.8rem; font-weight: 700; color: #ef4444; font-family: 'Outfit', sans-serif;">0</span>
+                    <span id="ipo-stat-hot" class="stat-value">0</span>
                 </div>
-                <div class="ipo-stat-card glass-panel" data-phase="STABLE" style="padding: 1rem; border-radius: 10px; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; border: 1px solid rgba(16, 185, 129, 0.1); background: rgba(16, 185, 129, 0.02); transition: all 0.2s;">
-                    <span style="font-size: 0.75rem; color: #34d399; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.25rem;">
-                        <span style="width: 6px; height: 6px; background: #10b981; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #10b981;"></span>
+                <div class="ipo-stat-card glass-panel" data-phase="STABLE">
+                    <span class="stat-label">
+                        <span class="header-indicator-dot vwap" style="width:6px; height:6px;"></span>
                         STABLE Phase
                     </span>
-                    <span id="ipo-stat-stable" style="font-size: 1.8rem; font-weight: 700; color: #10b981; font-family: 'Outfit', sans-serif;">0</span>
+                    <span id="ipo-stat-stable" class="stat-value">0</span>
                 </div>
-                <div class="ipo-stat-card glass-panel" data-phase="FADING" style="padding: 1rem; border-radius: 10px; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; border: 1px solid rgba(245, 158, 11, 0.1); background: rgba(245, 158, 11, 0.02); transition: all 0.2s;">
-                    <span style="font-size: 0.75rem; color: #fbbf24; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.25rem;">
-                        <span style="width: 6px; height: 6px; background: #f59e0b; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #f59e0b;"></span>
+                <div class="ipo-stat-card glass-panel" data-phase="FADING">
+                    <span class="stat-label">
+                        <span class="header-indicator-dot rvol" style="width:6px; height:6px;"></span>
                         FADING Phase
                     </span>
-                    <span id="ipo-stat-fading" style="font-size: 1.8rem; font-weight: 700; color: #f59e0b; font-family: 'Outfit', sans-serif;">0</span>
+                    <span id="ipo-stat-fading" class="stat-value">0</span>
                 </div>
-                <div class="ipo-stat-card glass-panel" data-phase="BROKEN" style="padding: 1rem; border-radius: 10px; display: flex; flex-direction: column; gap: 0.25rem; cursor: pointer; border: 1px solid rgba(156, 163, 175, 0.15); background: rgba(156, 163, 175, 0.02); transition: all 0.2s;">
-                    <span style="font-size: 0.75rem; color: #9ca3af; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 0.25rem;">
-                        <span style="width: 6px; height: 6px; background: #6b7280; border-radius: 50%; display: inline-block;"></span>
+                <div class="ipo-stat-card glass-panel" data-phase="BROKEN">
+                    <span class="stat-label">
+                        <span class="header-indicator-dot focus" style="width:6px; height:6px; background:#6b7280; box-shadow:none;"></span>
                         BROKEN Phase
                     </span>
-                    <span id="ipo-stat-broken" style="font-size: 1.8rem; font-weight: 700; color: #9ca3af; font-family: 'Outfit', sans-serif;">0</span>
+                    <span id="ipo-stat-broken" class="stat-value">0</span>
                 </div>
             </div>
 
             <!-- Filters Panel -->
-            <div class="ipo-filters-bar glass-panel" style="position: relative; z-index: 100; padding: 1rem; border-radius: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; border: 1px solid rgba(255,255,255,0.05);">
-                <div style="display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: center;">
+            <div class="ipo-filters-bar">
+                <div class="ipo-filters-group">
                     <!-- Exchange Filter -->
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Exchange:</span>
-                        <div class="ipo-btn-group" id="ipo-exchange-filters" style="display: flex; gap: 4px; background: rgba(0,0,0,0.2); padding: 3px; border-radius: 8px;">
-                            <button class="filter-chip active" data-val="all" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">All</button>
-                            <button class="filter-chip" data-val="NSE" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">NSE</button>
-                            <button class="filter-chip" data-val="BSE" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">BSE</button>
+                    <div class="ipo-filter-item">
+                        <span class="ipo-filter-label">Exchange:</span>
+                        <div class="ipo-btn-group" id="ipo-exchange-filters">
+                            <button class="filter-chip active" data-val="all">All</button>
+                            <button class="filter-chip" data-val="NSE">NSE</button>
+                            <button class="filter-chip" data-val="BSE">BSE</button>
                         </div>
                     </div>
                     
                     <!-- Age Filter -->
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Listing Age:</span>
-                        <div class="ipo-btn-group" id="ipo-age-filters" style="display: flex; gap: 4px; background: rgba(0,0,0,0.2); padding: 3px; border-radius: 8px;">
-                            <button class="filter-chip active" data-val="all" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">All</button>
-                            <button class="filter-chip" data-val="1m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">1 Month</button>
-                            <button class="filter-chip" data-val="3m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">3 Months</button>
-                            <button class="filter-chip" data-val="6m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">6 Months</button>
-                            <button class="filter-chip" data-val="1y" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">1 Year</button>
-                            <button class="filter-chip" data-val="18m" style="padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; border: none; cursor: pointer; background: transparent; color: var(--color-text-secondary); font-weight: 500; transition: all 0.15s;">18 Months</button>
+                    <div class="ipo-filter-item">
+                        <span class="ipo-filter-label">Listing Age:</span>
+                        <div class="ipo-btn-group" id="ipo-age-filters">
+                            <button class="filter-chip active" data-val="all">All</button>
+                            <button class="filter-chip" data-val="1m">1 Month</button>
+                            <button class="filter-chip" data-val="3m">3 Months</button>
+                            <button class="filter-chip" data-val="6m">6 Months</button>
+                            <button class="filter-chip" data-val="1y">1 Year</button>
+                            <button class="filter-chip" data-val="18m">18 Months</button>
                         </div>
                     </div>
                     
                     <!-- Volume Filter -->
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;">Volume Alert:</span>
-                        <div class="custom-select-wrapper" id="ipo-volume-select-wrapper" style="position: relative; z-index: 105;">
-                            <button class="btn btn-secondary select-trigger" id="btn-ipo-volume-filter" style="min-width: 150px; height: 32px; padding: 0 0.8rem; font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-secondary); cursor: pointer;" title="Filter by Volume Alert Status">
+                    <div class="ipo-filter-item">
+                        <span class="ipo-filter-label">Volume Alert:</span>
+                        <div class="custom-select-wrapper" id="ipo-volume-select-wrapper">
+                            <button class="ipo-volume-select" id="btn-ipo-volume-filter" title="Filter by Volume Alert Status">
                                 <span id="selected-ipo-volume-filter-label">All Volume</span>
                                 <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                             </button>
-                            <div class="select-dropdown glass-panel hidden" id="ipo-volume-filter-dropdown" style="min-width: 175px; top: calc(100% + 4px); z-index: 100; padding: 6px 0; position: absolute; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3);">
-                                <div class="select-dropdown-item" data-value="ppv" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-secondary);">
+                            <div class="ipo-volume-dropdown hidden" id="ipo-volume-filter-dropdown">
+                                <div class="select-dropdown-item" data-value="ppv">
                                     <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
                                     <span>🔵 Pocket Pivot</span>
                                 </div>
-                                <div class="select-dropdown-item" data-value="vol-surge" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-secondary);">
+                                <div class="select-dropdown-item" data-value="vol-surge">
                                     <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
                                     <span>🟢 Volume Surge</span>
                                 </div>
-                                <div class="select-dropdown-item" data-value="dry-vol" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; color: var(--color-text-secondary);">
+                                <div class="select-dropdown-item" data-value="dry-vol">
                                     <input type="checkbox" style="cursor: pointer; pointer-events: none; width: 14px; height: 14px; accent-color: var(--accent-blue, #3b82f6);">
                                     <span>🟠 Dry Volume</span>
                                 </div>
@@ -1224,9 +1284,9 @@
                             <th class="sortable-header" data-sort="ticker" style="cursor: pointer; min-width: 175px; width: 175px;">Ticker <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="company_name" style="cursor: pointer;">Company Name <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="listing_date" style="cursor: pointer;">Listing Date <span class="sort-icon">⇅</span></th>
-                            <th class="sortable-header" data-sort="days_since_listing" style="cursor: pointer;">Days <span class="sort-icon">⇅</span></th>
-                            <th class="sortable-header" data-sort="issue_price" style="cursor: pointer;">Issue Px <span class="sort-icon">⇅</span></th>
-                            <th class="sortable-header" data-sort="current_price" style="cursor: pointer;">Current Px <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="days_since_listing" style="cursor: pointer;">Age (Days) <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="issue_price" style="cursor: pointer;">Issue Price <span class="sort-icon">⇅</span></th>
+                            <th class="sortable-header" data-sort="current_price" style="cursor: pointer;">Current Price <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="change_pct" style="cursor: pointer;">Chg % <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="day_range_pct" style="cursor: pointer;">Day's Range <span class="sort-icon">⇅</span></th>
                             <th class="sortable-header" data-sort="volume" style="cursor: pointer;">Volume <span class="sort-icon">⇅</span></th>
@@ -1257,64 +1317,64 @@
 
     <!-- Workspace View: Episodic Pivot (EP) Screener -->
     <div class="workspace-view" id="view-ep">
-        <div class="ep-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
+        <div class="ep-workspace-wrapper glass-panel">
+            <div class="ep-header-section">
                 <div>
-                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
+                    <div class="ep-header-title">
                         <span>🚀 Episodic Pivot Screener</span>
                     </div>
-                    <div style="font-size: 0.8rem; color: var(--color-text-secondary); margin-top: 0.25rem;">
+                    <div class="ep-header-subtitle">
                         Identify neglected stocks receiving catalysts with rapid EOD repricing (Growth, Turnaround, Story, and Volume EPs).
                     </div>
                 </div>
                 <div>
-                    <button class="action-btn" id="ep-refresh-btn" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 500; cursor: pointer; transition: all 0.2s;">
+                    <button class="ep-scan-button" id="ep-refresh-btn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
                         <span>Scan EPs</span>
                     </button>
                 </div>
             </div>
 
-            <div class="ep-sub-tabs" style="display: flex; gap: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: var(--space-2); margin-bottom: var(--space-2);">
-                <button class="ep-sub-tab active" data-sub="today" style="background: none; border: none; color: #fff; font-size: 0.9rem; font-weight: 600; padding: var(--space-2) var(--space-3); cursor: pointer; border-bottom: 2px solid var(--accent-blue); transition: all 0.2s;">Today's EPs</button>
-                <button class="ep-sub-tab" data-sub="watchlist" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: var(--space-2) var(--space-3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Active Watchlist</button>
-                <button class="ep-sub-tab" data-sub="sugar-babies" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: var(--space-2) var(--space-3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Sugar Babies</button>
-                <button class="ep-sub-tab" data-sub="themes" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: var(--space-2) var(--space-3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Themes & Rotation</button>
-                <button class="ep-sub-tab" data-sub="backtest" style="background: none; border: none; color: var(--color-text-secondary); font-size: 0.9rem; font-weight: 500; padding: var(--space-2) var(--space-3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;">Backtest Engine</button>
+            <div class="ep-sub-tabs">
+                <button class="ep-sub-tab active" data-sub="today">Today's EPs</button>
+                <button class="ep-sub-tab" data-sub="watchlist">Active Watchlist</button>
+                <button class="ep-sub-tab" data-sub="sugar-babies">Sugar Babies</button>
+                <button class="ep-sub-tab" data-sub="themes">Themes & Rotation</button>
+                <button class="ep-sub-tab" data-sub="backtest">Backtest Engine</button>
             </div>
 
             <!-- Panel: Today's EPs -->
             <div class="ep-panel" id="ep-panel-today">
-                <div class="ep-filters-bar glass-panel" style="position: relative; z-index: 100;">
+                <div class="ep-filters-bar glass-panel">
                     <div style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center;">
 
                         <!-- EP Type Custom Dropdown -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">EP Type</span>
+                            <span class="ep-filter-label">EP Type</span>
                             <div class="ep-custom-select" id="ep-type-select-wrap" style="position: relative;">
-                                <button class="ep-select-btn" id="ep-type-select-btn" onclick="window.toggleEpDropdown('ep-type-select')" style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:7px; padding:0.38rem 0.75rem; color:var(--color-text-primary); font-size:0.82rem; font-weight:600; cursor:pointer; font-family:inherit; min-width:130px; justify-content:space-between; transition:all 0.2s; white-space:nowrap;" onmouseover="this.style.borderColor='rgba(59,130,246,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'">
+                                <button class="ep-select-btn" id="ep-type-select-btn" onclick="window.toggleEpDropdown('ep-type-select')">
                                     <span id="ep-type-label">All Types</span>
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </button>
-                                <div id="ep-type-select-menu" style="display:none; position:absolute; top:calc(100% + 4px); left:0; min-width:160px; background:rgba(10,14,28,0.98); border:1px solid rgba(59,130,246,0.2); border-radius:8px; box-shadow:0 16px 40px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04); z-index:9999; overflow:hidden; backdrop-filter:blur(16px);">
+                                <div class="ep-select-menu" id="ep-type-select-menu" style="display:none;">
                                     <div style="padding:0.3rem;">
-                                        <div class="ep-select-opt" data-val="all" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--color-text-primary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">All Types</div>
-                                        <div class="ep-select-opt" data-val="Growth EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                        <div class="ep-select-opt" data-val="all" data-target="ep-type" onclick="window.selectEpOption(this)">All Types</div>
+                                        <div class="ep-select-opt" data-val="Growth EP" data-target="ep-type" onclick="window.selectEpOption(this)">
                                             <span style="width:6px;height:6px;border-radius:50%;background:#10b981;flex-shrink:0;"></span> Growth EP
                                         </div>
-                                        <div class="ep-select-opt" data-val="Turnaround EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                        <div class="ep-select-opt" data-val="Turnaround EP" data-target="ep-type" onclick="window.selectEpOption(this)">
                                             <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span> Turnaround EP
                                         </div>
-                                        <div class="ep-select-opt" data-val="Story EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                        <div class="ep-select-opt" data-val="Story EP" data-target="ep-type" onclick="window.selectEpOption(this)">
                                             <span style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;flex-shrink:0;"></span> Story EP
                                         </div>
-                                        <div class="ep-select-opt" data-val="Volume EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                        <div class="ep-select-opt" data-val="Volume EP" data-target="ep-type" onclick="window.selectEpOption(this)">
                                             <span style="width:6px;height:6px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></span> Volume EP
                                         </div>
-                                        <div class="ep-select-opt" data-val="Delayed EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                        <div class="ep-select-opt" data-val="Delayed EP" data-target="ep-type" onclick="window.selectEpOption(this)">
                                             <span style="width:6px;height:6px;border-radius:50%;background:#f97316;flex-shrink:0;"></span> Delayed EP
                                         </div>
-                                        <div class="ep-select-opt" data-val="Short EP" data-target="ep-type" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:var(--color-text-secondary); transition:background 0.15s; display:flex; align-items:center; gap:0.5rem;">
+                                        <div class="ep-select-opt" data-val="Short EP" data-target="ep-type" onclick="window.selectEpOption(this)">
                                             <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;"></span> Short EP
                                         </div>
                                     </div>
@@ -1334,18 +1394,18 @@
 
                         <!-- Confidence Custom Dropdown -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Confidence</span>
+                            <span class="ep-filter-label">Confidence</span>
                             <div class="ep-custom-select" id="ep-conf-select-wrap" style="position: relative;">
-                                <button class="ep-select-btn" id="ep-conf-select-btn" onclick="window.toggleEpDropdown('ep-conf-select')" style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:7px; padding:0.38rem 0.75rem; color:var(--color-text-primary); font-size:0.82rem; font-weight:600; cursor:pointer; font-family:inherit; min-width:110px; justify-content:space-between; transition:all 0.2s; white-space:nowrap;" onmouseover="this.style.borderColor='rgba(59,130,246,0.4)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'">
+                                <button class="ep-select-btn" id="ep-conf-select-btn" onclick="window.toggleEpDropdown('ep-conf-select')">
                                     <span id="ep-conf-label">All Levels</span>
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </button>
-                                <div id="ep-conf-select-menu" style="display:none; position:absolute; top:calc(100% + 4px); left:0; min-width:130px; background:rgba(10,14,28,0.98); border:1px solid rgba(59,130,246,0.2); border-radius:8px; box-shadow:0 16px 40px -8px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04); z-index:9999; overflow:hidden; backdrop-filter:blur(16px);">
+                                <div class="ep-select-menu" id="ep-conf-select-menu" style="display:none;">
                                     <div style="padding:0.3rem;">
-                                        <div class="ep-select-opt" data-val="all" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; font-weight:600; color:var(--color-text-primary); transition:background 0.15s;">All Levels</div>
-                                        <div class="ep-select-opt" data-val="HIGH" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:#10b981; font-weight:700; transition:background 0.15s;">HIGH</div>
-                                        <div class="ep-select-opt" data-val="MEDIUM" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:#f59e0b; font-weight:700; transition:background 0.15s;">MEDIUM</div>
-                                        <div class="ep-select-opt" data-val="LOW" data-target="ep-conf" onclick="window.selectEpOption(this)" style="padding:0.5rem 0.75rem; border-radius:5px; cursor:pointer; font-size:0.82rem; color:#94a3b8; font-weight:700; transition:background 0.15s;">LOW</div>
+                                        <div class="ep-select-opt" data-val="all" data-target="ep-conf" onclick="window.selectEpOption(this)">All Levels</div>
+                                        <div class="ep-select-opt" data-val="HIGH" data-target="ep-conf" onclick="window.selectEpOption(this)" style="color:#10b981; font-weight:700;">HIGH</div>
+                                        <div class="ep-select-opt" data-val="MEDIUM" data-target="ep-conf" onclick="window.selectEpOption(this)" style="color:#f59e0b; font-weight:700;">MEDIUM</div>
+                                        <div class="ep-select-opt" data-val="LOW" data-target="ep-conf" onclick="window.selectEpOption(this)" style="color:#94a3b8; font-weight:700;">LOW</div>
                                     </div>
                                 </div>
                                 <select id="filter-ep-confidence" style="display:none;">
@@ -1359,16 +1419,16 @@
 
                         <!-- Min Score -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Min Score</span>
-                            <input type="number" id="filter-ep-min-score" step="0.05" min="0.0" max="1.0" value="0.55" style="width: 64px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 7px; padding: 0.38rem 0.5rem; font-size: 0.82rem; font-weight: 600; text-align: center; outline: none; font-family: var(--font-utility); transition: border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                            <span class="ep-filter-label">Min Score</span>
+                            <input type="number" id="filter-ep-min-score" class="ep-number-input" step="0.05" min="0.0" max="1.0" value="0.55" style="width: 64px;">
                         </div>
 
                         <!-- Mkt Cap -->
                         <div style="display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">Mkt Cap (Cr)</span>
-                            <input type="number" id="filter-ep-min-mktcap" placeholder="Min" style="width: 72px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 7px; padding: 0.38rem 0.5rem; font-size: 0.82rem; text-align: center; outline: none; font-family: var(--font-utility); transition: border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                            <span class="ep-filter-label">Mkt Cap (Cr)</span>
+                            <input type="number" id="filter-ep-min-mktcap" class="ep-number-input" placeholder="Min" style="width: 72px;">
                             <span style="color: var(--color-text-muted); font-size: 0.78rem;">to</span>
-                            <input type="number" id="filter-ep-max-mktcap" placeholder="Max" style="width: 72px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-primary); border-radius: 7px; padding: 0.38rem 0.5rem; font-size: 0.82rem; text-align: center; outline: none; font-family: var(--font-utility); transition: border-color 0.2s;" onfocus="this.style.borderColor='rgba(59,130,246,0.5)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
+                            <input type="number" id="filter-ep-max-mktcap" class="ep-number-input" placeholder="Max" style="width: 72px;">
                         </div>
                     </div>
                 </div>
@@ -1448,7 +1508,7 @@
 
             <!-- Panel: Sugar Babies -->
             <div class="ep-panel" id="ep-panel-sugar-babies" style="display: none;">
-                <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 0.85rem; margin-bottom: 1.2rem; display: flex; gap: 0.65rem; align-items: flex-start;">
+                <div class="ep-warning-card" style="display: flex; gap: 0.65rem; align-items: flex-start;">
                     <span style="font-size: 1.2rem; line-height: 1;">⚠️</span>
                     <div>
                         <h5 style="margin: 0 0 0.25rem 0; font-size: 0.85rem; color: var(--accent-amber, #fbbf24); font-weight: 700;">High Risk Breakout Setups</h5>
@@ -1522,10 +1582,10 @@
             <div class="ep-panel" id="ep-panel-backtest" style="display: none;">
                 <div style="display: flex; flex-direction: column; gap: 1.5rem; width: 100%;">
                     <!-- Configuration Form -->
-                    <div class="glass-panel" style="padding: 1.5rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.2rem; align-items: flex-end;">
+                    <div class="ep-backtest-settings-grid glass-panel" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.2rem; align-items: flex-end;">
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">EP Strategy Type</label>
-                            <select id="backtest-ep-type" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                            <select id="backtest-ep-type" class="select-sm" style="width:100%;">
                                 <option value="all">All EP Types</option>
                                 <option value="Growth EP">Growth EP</option>
                                 <option value="Turnaround EP">Turnaround EP</option>
@@ -1535,26 +1595,26 @@
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Start Date</label>
-                            <input type="date" id="backtest-start-date" value="2019-01-01" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem;">
+                            <input type="date" id="backtest-start-date" class="ep-number-input" value="2019-01-01" style="width:100%;">
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">End Date</label>
-                            <input type="date" id="backtest-end-date" value="2025-12-31" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 0.8rem;">
+                            <input type="date" id="backtest-end-date" class="ep-number-input" value="2025-12-31" style="width:100%;">
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Min EP Score</label>
-                            <input type="number" id="backtest-min-score" step="0.05" min="0.0" max="1.0" value="0.55" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                            <input type="number" id="backtest-min-score" class="ep-number-input" step="0.05" min="0.0" max="1.0" value="0.55" style="width:100%;">
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Entry Trigger</label>
-                            <select id="backtest-entry-rule" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                            <select id="backtest-entry-rule" class="select-sm" style="width:100%;">
                                 <option value="DAY1_OPEN">Day-2 Market Open (MOO)</option>
                                 <option value="DAY1_CLOSE">Day-2 Market Close</option>
                             </select>
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Initial Stop Loss</label>
-                            <select id="backtest-stop-rule" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                            <select id="backtest-stop-rule" class="select-sm" style="width:100%;">
                                 <option value="DAY1_LOW">Below Day-1 Low</option>
                                 <option value="STRUCTURE_LOW">Below 5D Swing Low</option>
                                 <option value="ATR_2X">Entry - 2x ATR</option>
@@ -1562,7 +1622,7 @@
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Trade Management Exit</label>
-                            <select id="backtest-exit-rule" class="select-sm" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                            <select id="backtest-exit-rule" class="select-sm" style="width:100%;">
                                 <option value="SWING_LOW_TRAIL">Trail 3D Swing Low</option>
                                 <option value="20D_MA">Cross below 20-EMA/SMA</option>
                                 <option value="FIXED_PCT">Take profit +20% / Stop</option>
@@ -1570,7 +1630,7 @@
                         </div>
                         <div>
                             <label style="display: block; font-size: 0.75rem; color: var(--color-text-secondary); margin-bottom: var(--space-2); font-weight: 600;">Position Size (%)</label>
-                            <input type="number" id="backtest-pos-size" step="1.0" min="1.0" max="100.0" value="5.0" style="width:100%; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem;">
+                            <input type="number" id="backtest-pos-size" class="ep-number-input" step="1.0" min="1.0" max="100.0" value="5.0" style="width:100%;">
                         </div>
                         <div style="display: flex; gap: 0.5rem;">
                             <button id="btn-run-ep-backtest" class="btn btn-primary" style="flex: 1; padding: 0.5rem 1rem; font-weight: 600; font-size: 0.85rem; height: 34px;">Run Backtest</button>
@@ -1644,45 +1704,45 @@
 
     <!-- Workspace View: Bull Snort -->
     <div class="workspace-view" id="view-bull-snort">
-        <div class="bull-snort-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
+        <div class="bull-snort-workspace-wrapper glass-panel">
+            <div class="bull-snort-header-section">
                 <div>
-                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.3rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
+                    <div class="bull-snort-header-title">
                         <span>🐂 Bull Snort Screener</span>
                     </div>
-                    <div style="font-size: 0.8rem; color: var(--color-text-secondary); margin-top: 0.25rem;">
+                    <div class="bull-snort-header-subtitle">
                         Identify institutional accumulation (Volume Pivots/Surges) and breakout setups near the 200 DMA.
                     </div>
                 </div>
             </div>
 
             <!-- Parameters Bar -->
-            <div class="filter-bar glass-panel" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: center; font-size: 0.82rem;">
+            <div class="bull-snort-params-bar glass-panel">
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <label for="bs-vol-period" style="color: var(--color-text-secondary); font-weight: 500;">Vol Avg Period:</label>
-                    <select id="bs-vol-period" style="padding: var(--space-2) var(--space-3); border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer;">
+                    <label for="bs-vol-period" class="bull-snort-param-label">Vol Avg Period:</label>
+                    <select id="bs-vol-period" class="bull-snort-select">
                         <option value="10">10-day</option>
                         <option value="20" selected>20-day</option>
                         <option value="50">50-day</option>
                     </select>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <label for="bs-vol-surge" style="color: var(--color-text-secondary); font-weight: 500;">Min Vol Surge:</label>
-                    <input type="number" id="bs-vol-surge" value="3.0" step="0.5" min="1.5" style="width: 70px; padding: var(--space-2) var(--space-3); border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; text-align: center;" />
+                    <label for="bs-vol-surge" class="bull-snort-param-label">Min Vol Surge:</label>
+                    <input type="number" id="bs-vol-surge" class="bull-snort-input" value="3.0" step="0.5" min="1.5" style="width: 70px;" />
                 </div>
                 <div style="display: flex; align-items: center; gap: var(--space-2);">
-                    <label for="bs-min-gap" style="color: var(--color-text-secondary); font-weight: 500;">Min Gap History %:</label>
-                    <input type="number" id="bs-min-gap" value="10.0" step="1.0" min="5.0" style="width: 70px; padding: var(--space-2) var(--space-3); border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; text-align: center;" />
+                    <label for="bs-min-gap" class="bull-snort-param-label">Min Gap History %:</label>
+                    <input type="number" id="bs-min-gap" class="bull-snort-input" value="10.0" step="1.0" min="5.0" style="width: 70px;" />
                 </div>
                 <div style="display: flex; align-items: center; gap: var(--space-2);">
-                    <label for="bs-max-gap" style="color: var(--color-text-secondary); font-weight: 500;">Max Current Gap %:</label>
-                    <input type="number" id="bs-max-gap" value="5.0" step="1.0" min="0.0" style="width: 70px; padding: var(--space-2) var(--space-3); border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; text-align: center;" />
+                    <label for="bs-max-gap" class="bull-snort-param-label">Max Current Gap %:</label>
+                    <input type="number" id="bs-max-gap" class="bull-snort-input" value="5.0" step="1.0" min="0.0" style="width: 70px;" />
                 </div>
                 <div style="display: flex; align-items: center; gap: var(--space-2);">
-                    <label for="bs-close-pos" style="color: var(--color-text-secondary); font-weight: 500;">Min Close Pos:</label>
-                    <input type="number" id="bs-close-pos" value="0.65" step="0.05" min="0.0" max="1.0" style="width: 70px; padding: var(--space-2) var(--space-3); border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; text-align: center;" />
+                    <label for="bs-close-pos" class="bull-snort-param-label">Min Close Pos:</label>
+                    <input type="number" id="bs-close-pos" class="bull-snort-input" value="0.65" step="0.05" min="0.0" max="1.0" style="width: 70px;" />
                 </div>
-                <button id="btn-run-bull-snort" class="btn btn-primary" style="padding: var(--space-2) var(--space-5); font-weight: 600; margin-left: auto;">
+                <button id="btn-run-bull-snort" class="bull-snort-run-btn" style="margin-left: auto;">
                     <span class="btn-spinner hidden" id="bs-scan-spinner"></span>
                     <span class="btn-text">🔍 Run Screen</span>
                 </button>
@@ -1721,126 +1781,7 @@
         </div>
     </div>
 
-    <!-- Workspace View: AI Forecast -->
-    <div class="workspace-view" id="view-ai-forecast">
-        <div class="ai-forecast-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column;">
-            <!-- Stock search to pick a symbol -->
-            <div class="ai-forecast-header" style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-                <h3 style="font-family: 'Outfit', sans-serif; font-weight: 600; margin: 0; font-size: 1.2rem;">Kronos AI Price Predictor</h3>
-                <div style="flex-grow: 1;"></div>
-                <input id="kronos-ticker-input" placeholder="Enter NSE ticker (e.g. RELIANCE)..." class="search-input" style="max-width: 250px; padding: 0.5rem 1rem; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;" />
-                <div class="kronos-pred-len-toggle" style="display: flex; gap: 0.25rem;">
-                    <button class="kronos-len-btn" data-len="3" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">3D</button>
-                    <button class="kronos-len-btn active" data-len="5" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">5D</button>
-                    <button class="kronos-len-btn" data-len="10" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">10D</button>
-                    <button class="kronos-len-btn ensemble-btn" data-len="10" data-mode="ensemble" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #ccc; cursor: pointer;">⚡ Ensemble</button>
-                </div>
-                <button id="btn-run-kronos" class="btn btn-primary" style="padding: 0.5rem 1.25rem; font-weight: 600;">Run Forecast</button>
-            </div>
 
-            <!-- Full-size chart container -->
-            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
-                <div id="ai-verdict-container" style="margin-bottom: 0.75rem;"></div>
-                <div id="kronos-full-chart" style="height: 380px; width: 100%;"></div>
-            </div>
-
-            <!-- Ensemble Panel -->
-            <div id="ensemblePanel" class="ensemble-panel glass-panel" style="display:none; margin-top: 1.5rem; padding: 1.2rem; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); flex-wrap: wrap; gap: var(--space-3);">
-                    <div style="display: flex; align-items: center; gap: var(--space-3);">
-                        <span style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.95rem; color: #fff;">Consensus Conviction:</span>
-                        <!-- Conviction Badge -->
-                        <div id="convictionBadge" class="conviction-badge conviction-loading">
-                            <span id="convictionIcon">●</span>
-                            <span id="convictionLabel">Calculating…</span>
-                        </div>
-                    </div>
-                    <!-- Individual Models Toggle -->
-                    <label class="model-paths-toggle" style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--color-text-secondary); cursor: pointer; user-select: none;">
-                        <input type="checkbox" id="showIndividualModels" style="cursor: pointer;" />
-                        Show individual model paths
-                    </label>
-                </div>
-
-                <details class="ai-internals" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: var(--space-3); margin-top: var(--space-2); cursor: pointer;">
-                    <summary style="font-size: 0.85rem; color: var(--color-text-muted); font-weight: 600; outline: none; list-style: none; display: flex; align-items: center; gap: 4px; user-select: none;">
-                        <span>▶</span> Show Model Internals (weights, agreement)
-                    </summary>
-                    <div class="ai-internals-content" style="cursor: default; margin-top: 1rem;">
-                        <!-- Model Weights Contribution Bar -->
-                        <div style="margin-bottom: 1.2rem;">
-                            <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: var(--space-2);">Model Weight Contribution</div>
-                            <div class="model-weights-bar" id="modelWeightsBar">
-                                <div class="weight-segment kronos-segment" id="kronosWeightSeg" style="width:50%">
-                                    Kronos <span class="weight-pct" id="kronosWeightPct">50%</span>
-                                </div>
-                                <div class="weight-segment prophet-segment" id="prophetWeightSeg" style="width:30%">
-                                    Prophet <span class="weight-pct" id="prophetWeightPct">30%</span>
-                                </div>
-                                <div class="weight-segment arima-segment" id="arimaWeightSeg" style="width:20%">
-                                    ARIMA <span class="weight-pct" id="arimaWeightPct">20%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Model Agreement Matrix -->
-                        <div>
-                            <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: var(--space-2);">Pairwise Directional Agreement Matrix</div>
-                            <div class="agreement-matrix" id="agreementMatrix">
-                                <table>
-                                    <thead>
-                                        <tr><th></th><th>Kronos</th><th>Prophet</th><th>ARIMA</th></tr>
-                                    </thead>
-                                    <tbody id="agreementMatrixBody"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Forecast + backtest table -->
-                    <div id="kronos-full-table-wrap" style="margin-top: 1.5rem; overflow-x: auto;"></div>
-
-                    <!-- Forecast vs Actual section (shown after actuals arrive) -->
-                    <div id="kronos-backtest-section" style="display: none; margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4);">
-                            <h4 style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin: 0; color: var(--color-text-primary);">Accuracy Assessment (Forecast vs Actual)</h4>
-                            <!-- Backtester Mode Toggle -->
-                            <div class="backtest-mode-toggle">
-                                <button class="bt-mode-btn active" data-mode="kronos">Kronos Only</button>
-                                <button class="bt-mode-btn" data-mode="ensemble">⚡ Ensemble</button>
-                            </div>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-                            <div style="background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;">
-                                <div id="kronos-backtest-chart" style="height: 280px; width: 100%;"></div>
-                            </div>
-                            <div>
-                                <!-- Normal Kronos Metrics Container -->
-                                <div style="display: flex; flex-direction: column; gap: 1rem; justify-content: center; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem;" id="kronos-accuracy-metrics">
-                                    <!-- Metrics will go here -->
-                                </div>
-                                <!-- Ensemble Comparison Table (hidden by default) -->
-                                <div id="ensembleBacktestTable" style="display:none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 1.5rem; height: 100%; box-sizing: border-box;">
-                                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1rem; color: #fff; margin-bottom: var(--space-3);">Multi-Model Comparison</div>
-                                    <table class="bt-comparison-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Model</th>
-                                                <th>MAE</th>
-                                                <th>MAPE %</th>
-                                                <th>Dir. Acc %</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="btComparisonBody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </details>
-            </div>
-        </div>
-    </div>
 
 
 
@@ -1857,7 +1798,7 @@
                     </button>
                 </div>
                 <div class="modal-body" style="padding: 1.5rem; overflow-y: auto; background: rgba(0, 0, 0, 0.4); display: block;">
-                    <div class="corporate-filing-doc" style="background: #ffffff; color: #1e293b; padding: 2rem; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: 'Times New Roman', Times, serif; font-size: 0.95rem; line-height: 1.6; border-top: 6px solid var(--accent-blue);">
+                    <div class="corporate-filing-doc" style="background: #ffffff; color: #1e293b; padding: 2rem; border-radius: 0 0 6px 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); font-family: 'Times New Roman', Times, serif; font-size: 0.95rem; line-height: 1.6; border-top: 6px solid var(--accent-blue);">
                         <div style="text-align: center; border-bottom: 2px double #475569; padding-bottom: var(--space-3); margin-bottom: var(--space-5);">
                             <h2 id="doc-company-name" style="font-family: inherit; font-size: 1.4rem; font-weight: bold; color: #0f172a; margin-bottom: var(--space-1); text-transform: uppercase; letter-spacing: 0.5px;">RELIANCE INDUSTRIES LIMITED</h2>
                             <p style="font-size: 0.75rem; margin: 0; color: #64748b; font-family: sans-serif;">Registered Office: Maker Chambers IV, 3rd Floor, Nariman Point, Mumbai 400 021</p>
@@ -2274,6 +2215,23 @@
 </div> <!-- Close .app-container -->
 
     <!-- Trade Setup Drawer Overlay -->
+    <!-- Floating Bulk Actions Bar -->
+    <div class="bulk-actions-bar" id="bulk-actions-bar">
+        <span class="bulk-actions-info" style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="bulk-count-badge" id="bulk-selected-count" style="background: var(--accent-blue, #3b82f6); color: #fff; border-radius: 9999px; padding: 2px 8px; font-size: 0.75rem; font-weight: 700; min-width: 20px; text-align: center;">0</span>
+            <span style="font-size: 0.82rem; font-weight: 600; color: var(--color-text-secondary);">stocks selected</span>
+        </span>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-primary" style="font-size: 0.78rem; padding: 0.4rem 0.85rem; height: 32px; border-radius: var(--radius-sm, 6px); display: flex; align-items: center; gap: 4px;" onclick="addSelectedToWatchlist(event)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Add Selected to Watchlist
+            </button>
+            <button class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem 0.85rem; height: 32px; border-radius: var(--radius-sm, 6px); background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);" onclick="clearTickerSelection()">
+                Cancel
+            </button>
+        </div>
+    </div>
+
     <div class="trade-drawer-overlay" id="trade-drawer-overlay"></div>
 
     <!-- Trade Setup Drawer -->
@@ -2382,7 +2340,7 @@
                 </div>
             </details>
 
-            <div id="drawer-intelligence-section" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <div id="drawer-intelligence-section" style="display: flex; flex-direction: column; gap: 0.85rem;">
                 <!-- 2. AI Forecast (Kronos Ensemble) Details -->
                 <details class="drawer-section">
                 <summary>AI Forecast (Kronos Ensemble)</summary>
@@ -2544,6 +2502,7 @@
                     Add to Watchlist
                 </button>
                 <button class="btn btn-primary" id="btn-save-journal" onclick="saveTradeToJournal()" style="flex: 1;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
                     Save to Journal
                 </button>
             </div>
@@ -2552,6 +2511,6 @@
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.62"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.66"></script>
 </body>
 </html>
