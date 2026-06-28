@@ -60,6 +60,7 @@ class Config:
     EP_MODEL_TRAIN_MINUTE = int(os.environ.get('EP_MODEL_TRAIN_MINUTE', '0'))
     EP_MODEL_TRAINING_ENABLED = os.environ.get('EP_MODEL_TRAINING_ENABLED', 'False').lower() == 'true'
     EP_MODEL_TRAINING_DRY_RUN = os.environ.get('EP_MODEL_TRAINING_DRY_RUN', 'True').lower() == 'true'
+    EP_STALENESS_DAYS = int(os.environ.get('EP_STALENESS_DAYS', '180'))
 
     @staticmethod
     def init_app(app):
@@ -70,6 +71,7 @@ class DevelopmentConfig(Config):
     DEBUG = True
     # Development-specific settings
     ASSETS_DEBUG = True
+    EP_STALENESS_DAYS = 9999
 
 
 class ProductionConfig(Config):
@@ -93,6 +95,7 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False
     DATABASE = os.environ.get('DATABASE') or ':memory:'
     ENABLE_BACKGROUND_TASKS = False
+    EP_STALENESS_DAYS = 9999
 
 
 class PytestConfig(Config):
@@ -101,6 +104,7 @@ class PytestConfig(Config):
     WTF_CSRF_ENABLED = False
     DATABASE = ':memory:'
     ENABLE_BACKGROUND_TASKS = False
+    EP_STALENESS_DAYS = 9999
 
 
 config = {

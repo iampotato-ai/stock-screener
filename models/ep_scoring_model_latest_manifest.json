@@ -1,0 +1,12 @@
+{
+  "feature_order": [
+    "neglect_score",
+    "catalyst_score",
+    "repricing_score",
+    "liquidity_ok",
+    "has_fundamentals"
+  ],
+  "version": "1.0",
+  "trained_on": "2026-06-28 21:53:14",
+  "training_samples": 100
+}
