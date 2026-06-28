@@ -1,3 +1,5 @@
+var safeStorage = window.safeStorage || localStorage;
+
 // App state variables
 let previousScanMap = {};
 let stocksData = [];
@@ -39,6 +41,49 @@ const statCardPrev = {
   sectorLeader: 0,
   breakoutReady: 0,
 };
+
+// ── Market session tracking for NSE India (IST) ──
+function getMarketStatus() {
+    const now = new Date();
+    // Convert to IST (UTC + 5.5 hours)
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60 * 1000) + istOffset);
+    
+    const day = istTime.getDay(); // 0 = Sunday, 6 = Saturday
+    const hours = istTime.getHours();
+    const minutes = istTime.getMinutes();
+    const timeVal = hours * 100 + minutes;
+    
+    // Check weekend
+    if (day === 0 || day === 6) {
+        return { status: 'CLOSED', label: 'Market Closed (Weekend)', color: 'rgba(255,255,255,0.05)', text: '#94a3b8', badge: 'CLOSED' };
+    }
+    
+    // Pre-market: 9:00 AM - 9:15 AM
+    if (timeVal >= 900 && timeVal < 915) {
+        return { status: 'PRE_MARKET', label: 'Pre-Market Session', color: 'rgba(245, 158, 11, 0.12)', text: '#fbbf24', badge: 'PRE-OPEN' };
+    }
+    
+    // Regular trading: 9:15 AM - 3:30 PM
+    if (timeVal >= 915 && timeVal < 1530) {
+        return { status: 'OPEN', label: 'NSE India Market is Open', color: 'rgba(16, 185, 129, 0.12)', text: '#34d399', badge: 'OPEN' };
+    }
+    
+    // Post-market / Closed
+    return { status: 'CLOSED', label: 'Market Closed', color: 'rgba(255,255,255,0.05)', text: '#94a3b8', badge: 'CLOSED' };
+}
+
+function updateMarketStatusUI() {
+    const market = getMarketStatus();
+    const badge = document.getElementById('market-session-badge');
+    
+    if (badge) {
+        badge.textContent = market.badge;
+        badge.style.background = market.color;
+        badge.style.borderColor = market.status === 'CLOSED' ? 'rgba(255,255,255,0.08)' : market.status === 'OPEN' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)';
+        badge.style.color = market.text;
+    }
+}
 
 /**
  * Animates a numeric value counting up/down to a target.
@@ -88,12 +133,52 @@ function updateStatCards(stocks) {
     breakoutReady: stocks.filter(s => s.setupLabel === 'Breakout Ready').length,
   };
 
-  // Animate each card
-  animateCount(document.getElementById('stat-total'),        statCardPrev.total,        counts.total,        700);
-  animateCount(document.getElementById('stat-elite'),        statCardPrev.elite,        counts.elite,        600);
-  animateCount(document.getElementById('stat-strong'),       statCardPrev.strong,       counts.strong,       650);
-  animateCount(document.getElementById('stat-sector-leader'), statCardPrev.sectorLeader, counts.sectorLeader, 600);
-  animateCount(document.getElementById('stat-breakout'),     statCardPrev.breakoutReady, counts.breakoutReady, 600);
+  const keys = ['total', 'elite', 'strong', 'sectorLeader', 'breakoutReady'];
+  const ids = ['stat-total', 'stat-elite', 'stat-strong', 'stat-sector-leader', 'stat-breakout'];
+  const durations = [700, 600, 650, 600, 600];
+
+  const isInitialLoad = Object.values(statCardPrev).every(v => v === 0);
+
+  keys.forEach((key, idx) => {
+    const el = document.getElementById(ids[idx]);
+    if (!el) return;
+    
+    const prevVal = statCardPrev[key];
+    const newVal = counts[key];
+    
+    // Stagger the count up on initial load (80ms delay per card)
+    const delay = isInitialLoad ? idx * 80 : 0;
+
+    // Trigger flash if value changed and it's not initial load
+    if (!isInitialLoad && prevVal !== newVal) {
+        const card = el.closest('.stat-card');
+        if (card) {
+            const flashColor = newVal > prevVal ? 'rgba(16, 185, 129, 0.45)' : 'rgba(239, 68, 68, 0.45)';
+            card.style.transition = 'none';
+            card.style.boxShadow = `0 0 20px ${flashColor}`;
+            card.style.borderColor = flashColor;
+            setTimeout(() => {
+                card.style.transition = 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
+                card.style.boxShadow = '';
+                card.style.borderColor = '';
+            }, 800);
+        }
+    }
+
+    setTimeout(() => {
+      animateCount(el, prevVal, newVal, durations[idx]);
+    }, delay);
+
+    // Update progress bars (percent relative to total)
+    if (key !== 'total') {
+      const progressKey = key === 'sectorLeader' ? 'leader' : key === 'breakoutReady' ? 'breakout' : key;
+      const progressEl = document.getElementById(`progress-${progressKey}`);
+      if (progressEl) {
+        const pct = counts.total > 0 ? (newVal / counts.total) * 100 : 0;
+        progressEl.style.width = `${pct}%`;
+      }
+    }
+  });
 
   // Save for next animation cycle
   Object.assign(statCardPrev, counts);
@@ -339,6 +424,10 @@ document.addEventListener('DOMContentLoaded', () => {
         AlertEngine.initUI();
     }
 
+    // Initialize market status tracking
+    updateMarketStatusUI();
+    setInterval(updateMarketStatusUI, 5000);
+
 
 
     // Primary Workspace Navigation Tabs
@@ -378,13 +467,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderJournal();
                 const openTrades = (journalData || []).filter(t => t.status === 'open');
                 if (openTrades.length > 0) {
-                    const lastPriceRefresh = parseInt(localStorage.getItem('journal_price_refresh_ts') || '0');
+                    const lastPriceRefresh = parseInt(safeStorage.getItem('journal_price_refresh_ts') || '0');
                     const now = Date.now();
                     const TWO_MINUTES = 2 * 60 * 1000;
                     if ((now - lastPriceRefresh) > TWO_MINUTES) {
                         if (typeof window.updateJournalLivePrices === 'function') {
                             window.updateJournalLivePrices();
-                            localStorage.setItem('journal_price_refresh_ts', now.toString());
+                            safeStorage.setItem('journal_price_refresh_ts', now.toString());
                         }
                     }
                 }
@@ -435,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        localStorage.setItem('momentum_active_workspace', viewName);
+        safeStorage.setItem('momentum_active_workspace', viewName);
     }
 
     if (workspaceTabs.length > 0) {
@@ -446,7 +535,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Restore cached workspace selection or default to dashboard
-        const cachedWorkspace = localStorage.getItem('momentum_active_workspace') || 'dashboard';
+        const cachedWorkspace = safeStorage.getItem('momentum_active_workspace') || 'dashboard';
         switchWorkspace(cachedWorkspace);
 
         window.addEventListener('resize', () => {
@@ -468,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentTheme = document.body.getAttribute('data-theme') || 'dark';
             const newTheme = currentTheme === 'light' ? 'dark' : 'light';
             document.body.setAttribute('data-theme', newTheme);
-            localStorage.setItem('app-theme', newTheme);
+            safeStorage.setItem('app-theme', newTheme);
             
             // Sync active TradingView chart
             if (activeDrawerChart) {
@@ -870,10 +959,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Auto Refresh
     if (autoRefreshCheckbox) {
-        const saved = localStorage.getItem('tv_auto_refresh') === 'true';
+        const saved = safeStorage.getItem('tv_auto_refresh') === 'true';
         autoRefreshCheckbox.checked = saved;
         autoRefreshCheckbox.addEventListener('change', (e) => {
-            localStorage.setItem('tv_auto_refresh', e.target.checked);
+            safeStorage.setItem('tv_auto_refresh', e.target.checked);
             if (e.target.checked) {
                 startAutoRefresh();
             } else {
@@ -902,7 +991,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.classList.remove('compact-mode');
             if (densityLabel) densityLabel.textContent = 'Compact';
         }
-        localStorage.setItem('momentum_table_density', isCompact ? 'compact' : 'comfortable');
+        safeStorage.setItem('momentum_table_density', isCompact ? 'compact' : 'comfortable');
     }
     
     if (densityBtn) {
@@ -912,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         // Restore cached density preference
-        const cachedDensity = localStorage.getItem('momentum_table_density') === 'compact';
+        const cachedDensity = safeStorage.getItem('momentum_table_density') === 'compact';
         applyDensity(cachedDensity);
     }
     
@@ -1246,7 +1335,7 @@ function computeScanDelta(oldStock, newStock) {
     
     // Trigger notification if it's in watchlist
     if (hasChange) {
-        const watchlistData = JSON.parse(localStorage.getItem('tvScreenerWatchlist') || '[]');
+        const watchlistData = JSON.parse(safeStorage.getItem('tvScreenerWatchlist') || '[]');
         const isInWatchlist = watchlistData.some(item => item.ticker === newStock.clean_ticker);
         
         if (isInWatchlist && "Notification" in window && Notification.permission === "granted") {
@@ -1338,11 +1427,24 @@ async function runScan() {
         });
         filteredStocks = [...stocksData];
         
-        // Update timestamp
-        const timeStr = new Date().toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        // Update timestamp and start real-time counter
+        window.lastUpdateTime = new Date();
+        const timeStr = window.lastUpdateTime.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
         const timeEl = document.getElementById('last-updated-time');
         if (timeEl) {
-            timeEl.textContent = `(Updated: ${timeStr})`;
+            timeEl.textContent = `(Updated: ${timeStr} · 0s ago)`;
+        }
+        
+        // Start live age ticking interval if not active
+        if (!window.updateAgeInterval) {
+            window.updateAgeInterval = setInterval(() => {
+                const el = document.getElementById('last-updated-time');
+                if (el && window.lastUpdateTime) {
+                    const elapsed = Math.floor((new Date() - window.lastUpdateTime) / 1000);
+                    const formattedTime = window.lastUpdateTime.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                    el.textContent = `(Updated: ${formattedTime} · ${elapsed}s ago)`;
+                }
+            }, 1000);
         }
         
         // Calculate sector scores using the full market universe
@@ -1510,41 +1612,115 @@ function selectSector(sector) {
     filterAndRender();
 }
 
+const sparklineAnimations = new Map();
+
 function renderSparkline(canvas, points, isPositive) {
   if (!canvas || !points || points.length < 2) return;
+  
+  // Cancel existing animation on this canvas
+  if (sparklineAnimations.has(canvas)) {
+    cancelAnimationFrame(sparklineAnimations.get(canvas));
+  }
+  
   const ctx = canvas.getContext('2d');
   const width = canvas.width;
   const height = canvas.height;
-  
-  ctx.clearRect(0, 0, width, height);
   
   const min = Math.min(...points);
   const max = Math.max(...points);
   const range = (max - min) || 1;
   
-  ctx.beginPath();
-  points.forEach((val, idx) => {
-    const x = (idx / (points.length - 1)) * (width - 4) + 2;
-    const y = height - ((val - min) / range) * (height - 4) - 2;
-    if (idx === 0) {
-      ctx.moveTo(x, y);
+  const startTime = performance.now();
+  const duration = 600; // 600ms duration
+  
+  function animateFrame(timestamp) {
+    const elapsed = timestamp - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    
+    ctx.clearRect(0, 0, width, height);
+    
+    ctx.beginPath();
+    const activePointsCount = Math.ceil(progress * points.length);
+    
+    if (activePointsCount < 2) {
+      const x0 = 2;
+      const y0 = height - ((points[0] - min) / range) * (height - 4) - 2;
+      const x1 = (1 / (points.length - 1)) * (width - 4) + 2;
+      const y1 = height - ((points[1] - min) / range) * (height - 4) - 2;
+      
+      const currX = x0 + (x1 - x0) * progress;
+      const currY = y0 + (y1 - y0) * progress;
+      
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(currX, currY);
     } else {
-      ctx.lineTo(x, y);
+      points.forEach((val, idx) => {
+        if (idx >= activePointsCount) return;
+        
+        let x = (idx / (points.length - 1)) * (width - 4) + 2;
+        let y = height - ((val - min) / range) * (height - 4) - 2;
+        
+        if (idx === activePointsCount - 1 && idx < points.length - 1) {
+          const nextVal = points[idx + 1];
+          const nextX = ((idx + 1) / (points.length - 1)) * (width - 4) + 2;
+          const nextY = height - ((nextVal - min) / range) * (height - 4) - 2;
+          
+          const segmentProgress = (progress * (points.length - 1)) % 1;
+          x = x + (nextX - x) * segmentProgress;
+          y = y + (nextY - y) * segmentProgress;
+        }
+        
+        if (idx === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
     }
-  });
+    
+    ctx.strokeStyle = isPositive ? '#10b981' : '#ef4444';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    if (isPositive) {
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 3;
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
+    } else {
+      ctx.shadowColor = '#ff5050';
+      ctx.shadowBlur = 3;
+      ctx.strokeStyle = 'rgba(255, 80, 80, 0.9)';
+    }
+    
+    ctx.stroke();
+    ctx.shadowBlur = 0; // reset
+    
+    // Fill gradient
+    const endIdx = Math.min(activePointsCount - 1, points.length - 1);
+    let endX = (endIdx / (points.length - 1)) * (width - 4) + 2;
+    if (endIdx < points.length - 1) {
+      const nextX = ((endIdx + 1) / (points.length - 1)) * (width - 4) + 2;
+      const segmentProgress = (progress * (points.length - 1)) % 1;
+      endX = endX + (nextX - endX) * segmentProgress;
+    }
+    
+    ctx.lineTo(endX, height);
+    ctx.lineTo(2, height);
+    ctx.closePath();
+    ctx.fillStyle = isPositive ? 'rgba(16, 185, 129, 0.05)' : 'rgba(255, 80, 80, 0.05)';
+    ctx.fill();
+    
+    if (progress < 1) {
+      const animId = requestAnimationFrame(animateFrame);
+      sparklineAnimations.set(canvas, animId);
+    } else {
+      sparklineAnimations.delete(canvas);
+    }
+  }
   
-  ctx.strokeStyle = isPositive ? '#10b981' : '#ef4444';
-  ctx.lineWidth = 1.5;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-  
-  // Fill gradient
-  ctx.lineTo((width - 4) + 2, height);
-  ctx.lineTo(2, height);
-  ctx.closePath();
-  ctx.fillStyle = isPositive ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)';
-  ctx.fill();
+  const animId = requestAnimationFrame(animateFrame);
+  sparklineAnimations.set(canvas, animId);
 }
 
 function computeMarketBreadth(universe, filtered) {
@@ -1637,16 +1813,50 @@ function renderBreadthPanel() {
   const b = marketBreadth;
   if (!b.total) return;
 
-  const setText  = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  // Pulse Refreshed time
+  const refreshTimeEl = document.getElementById('market-refreshed-time');
+  if (refreshTimeEl) {
+      const now = new Date();
+      refreshTimeEl.textContent = now.toLocaleTimeString([], { hour12: false });
+  }
+
+  function flashValueChange(el) {
+      if (!el) return;
+      const card = el.closest('.breadth-metric');
+      if (card) {
+          card.classList.remove('value-changed-flash');
+          void card.offsetWidth; // trigger reflow
+          card.classList.add('value-changed-flash');
+      }
+  }
+
+  function updateAndFlash(id, newValue) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const oldVal = el.textContent.trim();
+      if (oldVal !== newValue.toString()) {
+          el.textContent = newValue;
+          flashValueChange(el);
+      }
+  }
+
+  const setText  = (id, v) => updateAndFlash(id, v);
   const setWidth = (id, p) => { const el = document.getElementById(id); if (el) el.style.width = p + '%'; };
 
   // Regime arc gauge
-  setText('regime-band',  b.regimeBand);
-  setText('regime-emoji', b.regimeEmoji);
-  const badge = document.getElementById('breadth-regime-badge');
-  if (badge) badge.setAttribute('data-regime', b.regimeBand.toLowerCase().replace(' ', '-'));
-  animateCount(document.getElementById('regime-score-num'),
-    parseInt(document.getElementById('regime-score-num')?.textContent) || 0, b.regimeScore, 800);
+  updateAndFlash('regime-band',  b.regimeBand);
+  const oldRegimeScore = parseInt(document.getElementById('regime-score-num')?.textContent) || 0;
+  if (oldRegimeScore !== b.regimeScore) {
+      animateCount(document.getElementById('regime-score-num'), oldRegimeScore, b.regimeScore, 800);
+      // Flash the market-pulse container on change
+      const mp = document.getElementById('market-pulse');
+      if (mp) {
+          mp.classList.remove('value-changed-flash');
+          void mp.offsetWidth;
+          mp.classList.add('value-changed-flash');
+      }
+  }
+
   const arc = document.getElementById('regime-arc-fill');
   if (arc) { arc.style.strokeDashoffset = 78.5 - (b.regimeScore / 100) * 78.5; }
   const needle = document.getElementById('regime-needle');
@@ -1660,37 +1870,69 @@ function renderBreadthPanel() {
   }
 
   // A/D
-  animateCount(document.getElementById('bm-advances'),  0, b.advances,  600);
-  animateCount(document.getElementById('bm-declines'),  0, b.declines,  600);
-  animateCount(document.getElementById('bm-unchanged'), 0, b.unchanged, 600);
+  const oldAdv = parseInt(document.getElementById('bm-advances')?.textContent) || 0;
+  const oldDec = parseInt(document.getElementById('bm-declines')?.textContent) || 0;
+  const oldUnch = parseInt(document.getElementById('bm-unchanged')?.textContent) || 0;
+
+  if (oldAdv !== b.advances || oldDec !== b.declines) {
+      animateCount(document.getElementById('bm-advances'), oldAdv, b.advances, 600);
+      animateCount(document.getElementById('bm-declines'), oldDec, b.declines, 600);
+      animateCount(document.getElementById('bm-unchanged'), oldUnch, b.unchanged, 600);
+      flashValueChange(document.getElementById('bm-advances'));
+  }
+
   setWidth('ad-bar-adv', (b.advances / b.total) * 100);
   setWidth('ad-bar-dec', (b.declines / b.total) * 100);
 
   // MA breadth
-  setText('bm-sma21', b.pctAboveSMA21 + '%');
-  setText('bm-sma50', b.pctAboveSMA50 + '%');
+  const oldSma21 = document.getElementById('bm-sma21')?.textContent.trim();
+  const oldSma50 = document.getElementById('bm-sma50')?.textContent.trim();
+  const newSma21 = b.pctAboveSMA21 + '%';
+  const newSma50 = b.pctAboveSMA50 + '%';
+  if (oldSma21 !== newSma21 || oldSma50 !== newSma50) {
+      if (document.getElementById('bm-sma21')) document.getElementById('bm-sma21').textContent = newSma21;
+      if (document.getElementById('bm-sma50')) document.getElementById('bm-sma50').textContent = newSma50;
+      flashValueChange(document.getElementById('bm-sma21'));
+  }
   setWidth('bm-ma-fill', b.maBreadthScore);
   const maFill = document.getElementById('bm-ma-fill');
   if (maFill) maFill.className = 'mini-progress-fill ' +
     (b.maBreadthScore > 60 ? 'bm-green' : b.maBreadthScore > 40 ? 'bm-amber' : 'bm-red');
 
   // 52W high
-  setText('bm-52high-val', b.pctNear52High + '%');
+  const old52H = document.getElementById('bm-52high-val')?.textContent.trim();
+  const new52H = b.pctNear52High + '%';
+  if (old52H !== new52H) {
+      if (document.getElementById('bm-52high-val')) document.getElementById('bm-52high-val').textContent = new52H;
+      flashValueChange(document.getElementById('bm-52high-val'));
+  }
   setWidth('bm-52high-fill', b.pctNear52High);
 
   // New 52W Highs/Lows
-  animateCount(document.getElementById('bm-newhighs'), 0, b.new52Highs, 600);
-  animateCount(document.getElementById('bm-newlows'),  0, b.new52Lows,  600);
+  const oldNewH = parseInt(document.getElementById('bm-newhighs')?.textContent) || 0;
+  const oldNewL = parseInt(document.getElementById('bm-newlows')?.textContent) || 0;
+  if (oldNewH !== b.new52Highs || oldNewL !== b.new52Lows) {
+      animateCount(document.getElementById('bm-newhighs'), oldNewH, b.new52Highs, 600);
+      animateCount(document.getElementById('bm-newlows'), oldNewL, b.new52Lows, 600);
+      flashValueChange(document.getElementById('bm-newhighs'));
+  }
 
   // TV sentiment
   const sentLabel = b.avgRecommend >= 70 ? 'Strong Buy' : b.avgRecommend >= 55 ? 'Buy' :
                     b.avgRecommend >= 45 ? 'Neutral'    : b.avgRecommend >= 30 ? 'Sell' : 'Strong Sell';
-  setText('bm-sent-val', sentLabel);
+  updateAndFlash('bm-sent-val', sentLabel);
   setWidth('bm-sent-fill', b.avgRecommend);
 
   // Scan hit rate
-  setText('bm-scan-val', b.scanStrength + '%');
-  setText('bm-scan-sub', `${filteredStocks?.length ?? '--'} of ${b.total} stocks qualify`);
+  const oldScan = document.getElementById('bm-scan-val')?.textContent.trim();
+  const newScan = b.scanStrength + '%';
+  if (oldScan !== newScan) {
+      if (document.getElementById('bm-scan-val')) document.getElementById('bm-scan-val').textContent = newScan;
+      flashValueChange(document.getElementById('bm-scan-val'));
+  }
+  if (document.getElementById('bm-scan-sub')) {
+      document.getElementById('bm-scan-sub').textContent = `${filteredStocks?.length ?? '--'} of ${b.total} qualify`;
+  }
 
   // Top breadth sectors
   const topEl = document.getElementById('bm-top-sectors');
@@ -3307,7 +3549,7 @@ function exportToExcel() {
 // Dynamic Column Management System
 function initColumns() {
     const storageKey = `tv_columns_config_${currentTab}`;
-    const savedConfig = localStorage.getItem(storageKey);
+    const savedConfig = safeStorage.getItem(storageKey);
     if (savedConfig) {
         try {
             const parsed = JSON.parse(savedConfig);
@@ -3316,7 +3558,7 @@ function initColumns() {
                 const defaultIds = masterColumnsConfig[currentTab].map(c => c.id);
                 const validParsed = parsed.filter(item => defaultIds.includes(item.id));
                 
-                // Sync sortField and other default settings from master configuration to prevent stale values in localStorage
+                // Sync sortField and other default settings from master configuration to prevent stale values in safeStorage
                 validParsed.forEach(col => {
                     const defaultCol = masterColumnsConfig[currentTab].find(c => c.id === col.id);
                     if (defaultCol) {
@@ -3339,7 +3581,7 @@ function initColumns() {
                 masterColumnsConfig[currentTab] = columnsConfig;
             }
         } catch (e) {
-            console.error("Error reading columns config from localStorage:", e);
+            console.error("Error reading columns config from safeStorage:", e);
         }
     }
     
@@ -3348,7 +3590,7 @@ function initColumns() {
 
 function saveColumnsConfig() {
     const storageKey = `tv_columns_config_${currentTab}`;
-    localStorage.setItem(storageKey, JSON.stringify(columnsConfig));
+    safeStorage.setItem(storageKey, JSON.stringify(columnsConfig));
 }
 
 function applyColumnVisibilityAndOrder() {
@@ -3660,7 +3902,7 @@ function fetchWatchlistFromBackend() {
         .then(data => {
             const sectionsList = (data && data.success && Array.isArray(data.data)) ? data.data : (Array.isArray(data) ? data : null);
             if (sectionsList) {
-                const savedOrder = localStorage.getItem('tv_watchlist_sections_order');
+                const savedOrder = safeStorage.getItem('tv_watchlist_sections_order');
                 if (savedOrder) {
                     try {
                         const orderArray = JSON.parse(savedOrder);
@@ -3729,10 +3971,10 @@ function fetchJournalFromBackend() {
 
 function initWatchlist() {
     // Check if migration to SQLite backend is complete
-    const migrationComplete = localStorage.getItem('tv_migration_complete');
+    const migrationComplete = safeStorage.getItem('tv_migration_complete');
     if (!migrationComplete) {
-        const legacySections = localStorage.getItem('tv_watchlist_sections');
-        const legacyJournal = localStorage.getItem('tvTradeJournal');
+        const legacySections = safeStorage.getItem('tv_watchlist_sections');
+        const legacyJournal = safeStorage.getItem('tvTradeJournal');
         
         if (legacySections || legacyJournal) {
             const payload = {
@@ -3748,10 +3990,10 @@ function initWatchlist() {
             .then(res => res.json())
             .then(resData => {
                 if (resData.success) {
-                    localStorage.setItem('tv_migration_complete', 'true');
-                    localStorage.removeItem('tv_watchlist_sections');
-                    localStorage.removeItem('tv_watchlist_stocks');
-                    localStorage.removeItem('tvTradeJournal');
+                    safeStorage.setItem('tv_migration_complete', 'true');
+                    safeStorage.removeItem('tv_watchlist_sections');
+                    safeStorage.removeItem('tv_watchlist_stocks');
+                    safeStorage.removeItem('tvTradeJournal');
                     console.log("Migration of watchlists and journals to SQLite database complete.");
                 }
                 fetchWatchlistFromBackend();
@@ -3763,7 +4005,7 @@ function initWatchlist() {
                 fetchJournalFromBackend();
             });
         } else {
-            localStorage.setItem('tv_migration_complete', 'true');
+            safeStorage.setItem('tv_migration_complete', 'true');
             fetchWatchlistFromBackend();
             fetchJournalFromBackend();
         }
@@ -3996,7 +4238,7 @@ async function saveWatchlistSections(force = false) {
         return;
     }
     const order = watchlistSections.map(s => s.id);
-    localStorage.setItem('tv_watchlist_sections_order', JSON.stringify(order));
+    safeStorage.setItem('tv_watchlist_sections_order', JSON.stringify(order));
     syncWatchlistStocksFlat();
     
     try {
@@ -4032,7 +4274,7 @@ function syncWatchlistStocksFlat() {
         }
     });
     watchlistStocks = Array.from(allSyms);
-    localStorage.setItem('tv_watchlist_stocks', JSON.stringify(watchlistStocks));
+    safeStorage.setItem('tv_watchlist_stocks', JSON.stringify(watchlistStocks));
 }
 
 function submitGlobalSection() {
@@ -4264,13 +4506,13 @@ function addStockToSection(sectionId, ticker) {
     if (!sec) return;
     
     if (sec.stocks.includes(ticker)) {
-        alert(`${ticker} is already in this section.`);
+        showToast(`${ticker} is already in this section.`, 'info');
         return;
     }
     
     const currentFlat = Array.from(new Set(watchlistSections.flatMap(s => s.stocks)));
     if (currentFlat.length >= 50 && !currentFlat.includes(ticker)) {
-        alert("Watchlist limit reached. You can add up to 50 unique stocks across all sections.");
+        showToast("Watchlist limit reached. You can add up to 50 unique stocks across all sections.", 'error');
         return;
     }
     
@@ -4289,11 +4531,15 @@ function addStockToSection(sectionId, ticker) {
             selectWatchlistStock(ticker);
             fetchWatchlistSingle(ticker);
             renderAnnouncements();
+            showToast(`Successfully added ${ticker} to section "${sec.name}"!`, 'success');
         } else {
-            alert("Failed to add stock: " + resData.error);
+            showToast("Failed to add stock: " + (resData.error || 'Unknown error'), 'error');
         }
     })
-    .catch(err => console.error("Error adding stock to watchlist:", err));
+    .catch(err => {
+        console.error("Error adding stock to watchlist:", err);
+        showToast("Error adding stock to watchlist.", 'error');
+    });
 }
 
 function removeStockFromSection(sectionId, ticker) {
@@ -7287,7 +7533,7 @@ function initializeTradeParams() {
     const stopEl = document.getElementById('drawer-stop-input');
     const riskEl = document.getElementById('drawer-risk-amount');
     
-    const savedStr = localStorage.getItem('tradeDrawerParams_' + stock.clean_ticker);
+    const savedStr = safeStorage.getItem('tradeDrawerParams_' + stock.clean_ticker);
     let savedParams = null;
     if (savedStr) {
         try { savedParams = JSON.parse(savedStr); } catch(e){}
@@ -7452,7 +7698,7 @@ function updateTradeParams() {
         risk: riskEl.value,
         notes: notesEl ? notesEl.value : ''
     };
-    localStorage.setItem('tradeDrawerParams_' + window.currentTradeStock.clean_ticker, JSON.stringify(userParams));
+    safeStorage.setItem('tradeDrawerParams_' + window.currentTradeStock.clean_ticker, JSON.stringify(userParams));
 }
 
 function closeTradeDrawer() {
@@ -7604,7 +7850,7 @@ const systemPresets = [
 
 function getUserPresets() {
     try {
-        const data = localStorage.getItem('tvFilterPresets_user');
+        const data = safeStorage.getItem('tvFilterPresets_user');
         return data ? JSON.parse(data) : [];
     } catch (e) {
         return [];
@@ -7612,7 +7858,7 @@ function getUserPresets() {
 }
 
 function saveUserPresets(presets) {
-    localStorage.setItem('tvFilterPresets_user', JSON.stringify(presets));
+    safeStorage.setItem('tvFilterPresets_user', JSON.stringify(presets));
 }
 
 function getAllPresets() {
@@ -10512,8 +10758,8 @@ function runRRScreen() {
         minRvol: 0.8
     };
     
-    // Save to localStorage
-    localStorage.setItem('rr_screen_prefs', JSON.stringify(params));
+    // Save to safeStorage
+    safeStorage.setItem('rr_screen_prefs', JSON.stringify(params));
     
     // Filter stocksData by global search and sector select before screening
     const searchVal = document.getElementById('search-input')?.value.toLowerCase().trim() || '';
@@ -10578,7 +10824,7 @@ function openTradeDrawerFromRR(ticker) {
 }
 
 function restoreRRPrefs() {
-    const saved = localStorage.getItem('rr_screen_prefs');
+    const saved = safeStorage.getItem('rr_screen_prefs');
     if (saved) {
         try {
             const params = JSON.parse(saved);
@@ -13213,7 +13459,7 @@ function addSelectedToWatchlist(event) {
     const tickersArray = Array.from(window.selectedTickers);
     
     if (typeof watchlistSections === 'undefined' || watchlistSections.length === 0) {
-        alert("Please create a watchlist section first in the Watchlist & Journal tab.");
+        showToast("Please create a watchlist section first in the Watchlist & Journal tab.", 'error');
         return;
     }
     
@@ -13238,16 +13484,33 @@ function showBulkAddToSectionMenu(tickersArray, event) {
     menu.style.left = `${posX}px`;
     menu.style.top = `${posY}px`;
     
-    let html = `<div class="floating-menu-header">Add ${tickersArray.length} stocks to:</div>`;
+    const header = document.createElement('div');
+    header.className = 'floating-menu-header';
+    header.textContent = `Add ${tickersArray.length} stocks to:`;
+    menu.appendChild(header);
+    
     watchlistSections.forEach(sec => {
-        html += `
-            <div class="floating-menu-item" onclick="event.stopPropagation(); addMultipleStocksToSection('${sec.id}', ${JSON.stringify(tickersArray)}); document.getElementById('screener-add-to-section-menu').remove();">
-                <span>${escapeHtml(sec.name)}</span>
-                <span class="floating-menu-item-count">${sec.stocks.length}</span>
-            </div>
-        `;
+        const item = document.createElement('div');
+        item.className = 'floating-menu-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = sec.name;
+        
+        const countSpan = document.createElement('span');
+        countSpan.className = 'floating-menu-item-count';
+        countSpan.textContent = sec.stocks.length;
+        
+        item.appendChild(nameSpan);
+        item.appendChild(countSpan);
+        
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            addMultipleStocksToSection(sec.id, tickersArray);
+            menu.remove();
+        });
+        
+        menu.appendChild(item);
     });
-    menu.innerHTML = html;
     
     document.body.appendChild(menu);
     event.stopPropagation();
@@ -13259,7 +13522,7 @@ function showBulkAddToSectionMenu(tickersArray, event) {
             document.removeEventListener('click', dismissMenu);
         }
     };
-    setTimeout(() => document.addEventListener('click', dismissMenu), 10);
+    document.addEventListener('click', dismissMenu);
 }
 
 function addMultipleStocksToSection(sectionId, tickersArray) {
@@ -13268,14 +13531,14 @@ function addMultipleStocksToSection(sectionId, tickersArray) {
     
     const toAdd = tickersArray.map(t => t.toUpperCase().trim()).filter(ticker => !sec.stocks.includes(ticker));
     if (toAdd.length === 0) {
-        alert("All selected stocks are already in this section.");
+        showToast("All selected stocks are already in this section.", 'info');
         return;
     }
     
     const currentFlat = Array.from(new Set(watchlistSections.flatMap(s => s.stocks)));
     const newUniqueCount = toAdd.filter(t => !currentFlat.includes(t)).length;
     if (currentFlat.length + newUniqueCount > 50) {
-        alert(`Adding these stocks would exceed the 50-stock watchlist limit. (Currently: ${currentFlat.length} unique stocks)`);
+        showToast(`Adding these stocks would exceed the 50-stock watchlist limit. (Currently: ${currentFlat.length} unique stocks)`, 'error');
         return;
     }
     
@@ -13301,10 +13564,10 @@ function addMultipleStocksToSection(sectionId, tickersArray) {
             saveWatchlistSections();
             renderWatchlist();
             renderAnnouncements();
-            alert(`Successfully added ${successCount} stock(s) to section "${sec.name}"!`);
+            showToast(`Successfully added ${successCount} stock(s) to section "${sec.name}"!`, 'success');
             clearTickerSelection();
         } else {
-            alert("Failed to add selected stocks to watchlist.");
+            showToast("Failed to add selected stocks to watchlist.", 'error');
         }
     });
 }

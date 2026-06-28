@@ -31,8 +31,9 @@
   --radius-full: 9999px;
 
   /* Typography */
-  --font-heading: 'Inter', sans-serif;
-  --font-body:    'Inter', sans-serif;
+  --font-heading: 'Cabinet Grotesk', -apple-system, sans-serif;
+  --font-body:    'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono:    'IBM Plex Mono', monospace;
 
   /* Token shortcuts for typography */
   --typography-display-xl:   var(--font-heading) 80px 700 1 0;
@@ -48,7 +49,15 @@
   --typography-button:       var(--font-heading) 14px 700 1 1.5px;
   --typography-nav-link:     var(--font-heading) 14px 400 1.4 0.5px;
 
+  /* Accent Colors */
+  --accent-blue:   var(--color-m-blue-dark);   /* #1c69d4 */
+  --accent-purple: #7c3aed;
+  --accent-red:    #ef4444;
+  --accent-green:  #10b981;
+  --accent-amber:  #f59e0b;
+  --accent-orange: #f97316;
+
   /* Convenience aliases — keep components DRY */
   --color-accent:  var(--color-m-blue-dark);          /* primary interactive accent */
-  --font-display:  'Cabinet Grotesk', 'Outfit', sans-serif; /* display / heading font */
+  --font-display:  'Cabinet Grotesk', -apple-system, sans-serif; /* display / heading font */
 }

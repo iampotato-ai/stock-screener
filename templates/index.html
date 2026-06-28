@@ -7,8 +7,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
 
     <!-- Cabinet Grotesk (headings) — Fontshare CDN -->
     <link rel="preconnect" href="https://api.fontshare.com">
@@ -164,13 +163,47 @@
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.65">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.68">
 </head>
 <body>
 
     <script>
         (function() {
-            const theme = localStorage.getItem('app-theme') || 'dark';
+            window.safeStorage = {
+                getItem(key) {
+                    try {
+                        return localStorage.getItem(key);
+                    } catch (e) {
+                        if (key === 'app-theme') {
+                            const match = document.cookie.match(/(^|;)\s*app-theme\s*=\s*([^;]+)/);
+                            return match ? match[2] : null;
+                        }
+                        return window.inMemoryStore?.[key] || null;
+                    }
+                },
+                setItem(key, value) {
+                    try {
+                        localStorage.setItem(key, value);
+                    } catch (e) {
+                        if (key === 'app-theme') {
+                            document.cookie = `app-theme=${value};path=/;max-age=31536000;SameSite=Lax`;
+                        }
+                        if (!window.inMemoryStore) window.inMemoryStore = {};
+                        window.inMemoryStore[key] = value.toString();
+                    }
+                },
+                removeItem(key) {
+                    try {
+                        localStorage.removeItem(key);
+                    } catch (e) {
+                        if (key === 'app-theme') {
+                            document.cookie = 'app-theme=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                        }
+                        if (window.inMemoryStore) delete window.inMemoryStore[key];
+                    }
+                }
+            };
+            const theme = window.safeStorage.getItem('app-theme') || 'dark';
             document.body.setAttribute('data-theme', theme);
         })();
     </script>
@@ -179,18 +212,30 @@
         <header class="main-header">
             <div class="logo-area" style="cursor: pointer;" onclick="if(typeof switchWorkspace === 'function') switchWorkspace('dashboard')">
                 <div class="logo-icon">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="logo-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#3b82f6" />
+                                <stop offset="100%" stop-color="#06b6d4" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M3 20h18" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M3 18L9 12L13 15L21 6" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16 6h5v5" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="21" cy="6" r="2.5" fill="#10b981" />
+                    </svg>
                 </div>
                 <div class="logo-text">
                     <h1>Momentum<span>Scan</span><span class="logo-badge">Live</span></h1>
-                    <p>NSE India Screener</p>
+                    <p style="letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted);">NSE India Screener</p>
                 </div>
             </div>
             
-            <div class="header-controls">
+            <div class="header-controls" style="display: flex; gap: 0.75rem; align-items: center;">
+                <div class="market-session-badge" id="market-session-badge" style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: var(--radius-sm, 6px); letter-spacing: 0.5px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: #94a3b8; transition: all 0.3s ease;">CLOSED</div>
                 <div class="system-status">
                     <span class="status-indicator online"></span>
-                    <span class="status-label">TV Live Data connected</span>
+                    <span class="status-label" id="market-status-label">TV Live Data connected</span>
                     <span class="status-time" id="last-updated-time" style="margin-left: var(--space-2); font-size: 0.7rem; color: var(--color-text-muted);">(Updated: --:--)</span>
                 </div>
             </div>
@@ -200,39 +245,39 @@
         <nav class="workspace-nav-bar" id="workspace-nav">
             <div class="workspace-tabs-container glass-panel">
                 <button class="workspace-tab active" data-view="dashboard">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
                     <span>Dashboard</span>
                 </button>
                 <button class="workspace-tab" data-view="screener">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
                     <span>Screener</span>
                 </button>
                 <button class="workspace-tab" data-view="watchlist">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                     <span>Watchlist & Journal</span>
                 </button>
                 <button class="workspace-tab" data-view="rrg">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
                     <span>RRG Rotation</span>
                 </button>
                 <button class="workspace-tab" data-view="intraday">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
                     <span>Intraday Pro</span>
                 </button>
                 <button class="workspace-tab" data-view="ipo" id="tab-ipo">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
-                    <span>🚀 IPO Momentum</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                    <span>IPO Momentum</span>
                     <span id="ipo-hot-count" class="badge" style="display: none; background: #ff4d4d; color: white; border-radius: 50%; padding: var(--space-1) var(--space-2); font-size: 0.7rem; margin-left: var(--space-2); font-weight: bold; box-shadow: 0 0 8px rgba(255, 77, 77, 0.6);">0</span>
                 </button>
 
                 <button class="workspace-tab" data-view="ep" id="tab-ep">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-                    <span>🚀 EP Screener</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                    <span>EP Screener</span>
                     <span id="ep-high-count" class="badge" style="display: none; background: #3b82f6; color: white; border-radius: 50%; padding: var(--space-1) var(--space-2); font-size: 0.7rem; margin-left: var(--space-2); font-weight: bold; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);">0</span>
                 </button>
-                <button class="workspace-tab" data-view="bull-snort" id="tab-bull-snort">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    <span>🐂 Bull Snort</span>
+                <button class="workspace-tab" data-view="bull-snort" id="tab-bull-snort" style="color: #fbbf24; transition: all 180ms cubic-bezier(0.16,1,0.3,1);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                    <span style="color: #fbbf24; font-weight: 700; text-shadow: 0 0 8px rgba(251, 191, 36, 0.25);">Bull Snort</span>
                 </button>
                 <div class="workspace-sliding-cap"></div>
             </div>
@@ -243,9 +288,11 @@
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
+              <!-- Regime Gauge (Visually Dominant) -->
               <div id="market-pulse" class="market-pulse glass-panel-dark" data-initial-score="65"
                    role="button" tabindex="0" aria-label="Market Regime Gauge — click to view Regime History"
                    title="Click to view Regime History">
+                <div class="market-pulse-glow-ring"></div>
                 <svg class="market-pulse-svg" width="120" height="120"
                      role="img" aria-labelledby="regime-gauge-title">
                   <title id="regime-gauge-title">Market Regime Score Gauge</title>
@@ -255,139 +302,146 @@
                   <span class="market-pulse-score" id="regime-score-num">--</span>
                   <span class="market-pulse-delta" id="regime-score-delta">--</span>
                   <span class="market-pulse-band" id="regime-band">Loading...</span>
+                  <div class="market-pulse-refresh">
+                    <span class="pulse-dot"></span>
+                    <span id="market-refreshed-time">--:--:--</span>
+                  </div>
                 </div>
                 <!-- Screen-reader live region announces regime updates -->
                 <span id="regime-sr-announce" class="sr-only" aria-live="polite" aria-atomic="true"></span>
               </div>
     
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <div class="bm-label-wrap">
-                  <span class="bm-label" data-tip="Advances vs Declines.
-More green = market breadth strengthening.
-Red dominance = broad selling.">A / D Ratio</span>
-                  <canvas id="spark-ad" class="metric-spark" width="40" height="16"></canvas>
+              <!-- Group 1: BREADTH -->
+              <div class="metric-group border-breadth">
+                <div class="metric-group-header"><span class="header-dot dot-breadth"></span>BREADTH</div>
+                <div class="metric-group-tiles">
+                  
+                  <!-- A / D Ratio -->
+                  <div class="breadth-metric metric-tile-card">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label" data-tip="Advances vs Declines. More green = market breadth strengthening. Red dominance = broad selling.">A / D Ratio</span>
+                      <canvas id="spark-ad" class="metric-spark" width="40" height="16"></canvas>
+                    </div>
+                    <div class="bm-val-row">
+                      <span class="bm-big-val"><span class="val-up" id="bm-advances">--</span><span class="val-sep">/</span><span class="val-down" id="bm-declines">--</span></span>
+                    </div>
+                    <div class="ad-bar-wrap">
+                      <div class="ad-bar-adv" id="ad-bar-adv" style="width:50%"></div>
+                      <div class="ad-bar-dec" id="ad-bar-dec" style="width:50%"></div>
+                    </div>
+                    <span class="bm-sub-text"><span id="bm-unchanged">--</span> unchanged</span>
+                  </div>
+
+                  <!-- % Above MA -->
+                  <div class="breadth-metric metric-tile-card">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label" data-tip="% of NSE stocks trading above their 21-day and 50-day moving averages. >60% = healthy trend; <40% = weak market.">% Above MA</span>
+                      <canvas id="spark-ma" class="metric-spark" width="40" height="16"></canvas>
+                    </div>
+                    <div class="bm-val-row">
+                      <span class="bm-big-val"><span id="bm-sma21">--%</span><span class="val-sep">/</span><span id="bm-sma50" style="color:var(--color-text-secondary);">--%</span></span>
+                    </div>
+                    <div class="mini-progress-wrap"><div class="mini-progress-fill" id="bm-ma-fill" style="width:0%"></div></div>
+                    <span class="bm-sub-text">Above 21d / 50d MA</span>
+                  </div>
+
                 </div>
-                <div class="bm-val-row">
-                  <span class="bm-big-val"><span class="val-up" id="bm-advances">--</span><span class="val-sep">/</span><span class="val-down" id="bm-declines">--</span></span>
-                </div>
-                <div class="ad-bar-wrap">
-                  <div class="ad-bar-adv" id="ad-bar-adv" style="width:50%"></div>
-                  <div class="ad-bar-dec" id="ad-bar-dec" style="width:50%"></div>
-                </div>
-                <span class="bm-sub-text"><span id="bm-unchanged">--</span> unchanged</span>
               </div>
     
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <div class="bm-label-wrap">
-                  <span class="bm-label" data-tip="% of NSE stocks trading above
-their 21-day and 50-day moving averages.
->60% = healthy trend; <40% = weak market.">% Above MA</span>
-                  <canvas id="spark-ma" class="metric-spark" width="40" height="16"></canvas>
+              <!-- Group 2: MOMENTUM -->
+              <div class="metric-group border-momentum">
+                <div class="metric-group-header"><span class="header-dot dot-momentum"></span>MOMENTUM</div>
+                <div class="metric-group-tiles">
+                  
+                  <!-- Near 52W High -->
+                  <div class="breadth-metric metric-tile-card">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label" data-tip="% of stocks within 5% of their 52-week high. High reading = strong upward momentum across the market.">Near 52W High</span>
+                      <canvas id="spark-52w" class="metric-spark" width="40" height="16"></canvas>
+                    </div>
+                    <div class="bm-val-row">
+                      <span class="bm-big-val" id="bm-52high-val">--%</span>
+                    </div>
+                    <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
+                    <span class="bm-sub-text">Within 5% of high</span>
+                  </div>
+
+                  <!-- New 52W H / L -->
+                  <div class="breadth-metric metric-tile-card">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label" data-tip="New 52-week highs vs lows today. Highs dominating = bullish expansion. Lows dominating = distribution phase.">New 52W H / L</span>
+                      <canvas id="spark-52whl" class="metric-spark" style="display:none;"></canvas>
+                    </div>
+                    <div class="bm-val-row">
+                      <span class="bm-big-val"><span class="val-up pill-badge" id="bm-newhighs">--</span><span class="val-sep">/</span><span class="val-down pill-badge" id="bm-newlows">--</span></span>
+                    </div>
+                    <div class="ad-bar-wrap">
+                      <div class="ad-bar-adv" id="bm-newhighs-fill" style="width:50%"></div>
+                      <div class="ad-bar-dec" id="bm-newlows-fill" style="width:50%"></div>
+                    </div>
+                    <span class="bm-sub-text">New Highs / Lows</span>
+                  </div>
+
+                  <!-- Scan Hit Rate -->
+                  <div class="breadth-metric metric-tile-card tile-amber-tint">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label" data-tip="% of stocks passing the screener criteria in the last scan. Higher = more actionable setups available today.">Scan Hit Rate</span>
+                      <canvas id="spark-hitrate" class="metric-spark" style="display:none;"></canvas>
+                    </div>
+                    <div class="bm-val-row">
+                      <span class="bm-big-val" id="bm-scan-val">--%</span>
+                    </div>
+                    <div class="mini-progress-wrap"><div class="mini-progress-fill bm-amber" id="bm-scan-fill" style="width:0%"></div></div>
+                    <span class="bm-sub-text" id="bm-scan-sub">-- of -- qualify</span>
+                  </div>
+
                 </div>
-                <div class="bm-val-row">
-                  <span class="bm-big-val"><span id="bm-sma21">--%</span><span class="val-sep">/</span><span id="bm-sma50" style="color:var(--color-text-secondary);">--%</span></span>
-                </div>
-                <div class="mini-progress-wrap"><div class="mini-progress-fill" id="bm-ma-fill" style="width:0%"></div></div>
-                <span class="bm-sub-text">Above 21d / 50d MA</span>
               </div>
     
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <div class="bm-label-wrap">
-                  <span class="bm-label" data-tip="% of stocks within 5% of their
-52-week high. High reading = strong
-upward momentum across the market.">Near 52W High</span>
-                  <canvas id="spark-52w" class="metric-spark" width="40" height="16"></canvas>
-                </div>
-                <div class="bm-val-row">
-                  <span class="bm-big-val" id="bm-52high-val">--%</span>
-                </div>
-                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-purple" id="bm-52high-fill" style="width:0%"></div></div>
-                <span class="bm-sub-text">Within 5% of high</span>
-              </div>
-    
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <div class="bm-label-wrap">
-                  <span class="bm-label" data-tip="New 52-week highs vs lows today.
-Highs dominating = bullish expansion.
-Lows dominating = distribution phase.">New 52W H / L</span>
-                  <canvas id="spark-52whl" class="metric-spark" style="display:none;"></canvas>
-                </div>
-                <div class="bm-val-row">
-                  <span class="bm-big-val"><span class="val-up" id="bm-newhighs">--</span><span class="val-sep">/</span><span class="val-down" id="bm-newlows">--</span></span>
-                </div>
-                <div class="ad-bar-wrap">
-                  <div class="ad-bar-adv" id="bm-newhighs-fill" style="width:50%"></div>
-                  <div class="ad-bar-dec" id="bm-newlows-fill" style="width:50%"></div>
-                </div>
-                <span class="bm-sub-text">New Highs / Lows</span>
-              </div>
-    
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <div class="bm-label-wrap">
-                  <span class="bm-label" data-tip="Aggregated TradingView sentiment
-for NSE. Buy = broad buying pressure
-across multiple timeframes.">TV Sentiment</span>
-                  <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
-                </div>
-                <div class="bm-val-row">
-                  <span class="bm-big-val" id="bm-sent-val">--</span>
-                </div>
-                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
-                <span class="bm-sub-text">TV consensus view</span>
-              </div>
-    
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric">
-                <div class="bm-label-wrap">
-                  <span class="bm-label" data-tip="% of stocks passing the screener
-criteria in the last scan. Higher = more
-actionable setups available today.">Scan Hit Rate</span>
-                  <canvas id="spark-hitrate" class="metric-spark" style="display:none;"></canvas>
-                </div>
-                <div class="bm-val-row">
-                  <span class="bm-big-val" id="bm-scan-val">--%</span>
-                </div>
-                <div class="mini-progress-wrap"><div class="mini-progress-fill bm-amber" id="bm-scan-fill" style="width:0%"></div></div>
-                <span class="bm-sub-text" id="bm-scan-sub">-- of -- qualify</span>
-              </div>
-    
-              <div class="breadth-divider"></div>
-    
-              <div class="breadth-metric breadth-sectors">
-                <span class="bm-label" data-tip="Top 3 sectors by breadth score.
-Click a sector row to filter
-the screener to that sector.">Top Breadth Sectors</span>
-                <div class="bm-sector-list" id="bm-top-sectors">
-                  <span style="font-size:0.72rem;color:var(--color-text-muted)">Scanning...</span>
+              <!-- Group 3: SENTIMENT -->
+              <div class="metric-group border-sentiment">
+                <div class="metric-group-header"><span class="header-dot dot-sentiment"></span>SENTIMENT</div>
+                <div class="metric-group-tiles">
+                  
+                  <!-- TV Sentiment -->
+                  <div class="breadth-metric metric-tile-card">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label" data-tip="Aggregated TradingView sentiment for NSE. Buy = broad buying pressure across multiple timeframes.">TV Sentiment</span>
+                      <canvas id="spark-sent" class="metric-spark" width="40" height="16"></canvas>
+                    </div>
+                    <div class="bm-val-row">
+                      <span class="bm-big-val" id="bm-sent-val">--</span>
+                    </div>
+                    <div class="mini-progress-wrap"><div class="mini-progress-fill bm-blue" id="bm-sent-fill" style="width:0%"></div></div>
+                    <span class="bm-sub-text">TV consensus view</span>
+                  </div>
+
+                  <!-- Top Breadth Sectors -->
+                  <div class="breadth-metric metric-tile-card breadth-sectors">
+                    <span class="bm-label" data-tip="Top 3 sectors by breadth score. Click a sector row to filter the screener to that sector.">Top Sectors</span>
+                    <div class="bm-sector-list" id="bm-top-sectors">
+                      <span style="font-size:0.72rem;color:var(--color-text-muted)">Scanning...</span>
+                    </div>
+                  </div>
+
                 </div>
               </div>
     
             </div>
     
-            <div class="dashboard-workspace-grid" style="display: grid; grid-template-columns: 2.2fr 1fr; gap: var(--space-4); align-items: start; margin-top: var(--space-4);">
+            <div class="dashboard-workspace-grid">
                 <div class="dashboard-left-col">
-                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--color-text-primary);">Sector Heatmap</div>
+                    <div class="dashboard-section-title">Sector Heatmap</div>
                     <div class="breadth-sector-heatmap" id="breadth-sector-heatmap" style="margin-top: 0;"></div>
                 </div>
                 <aside class="dashboard-sidebar">
                     <!-- Alert Log Panel -->
-                    <div id="alert-log-panel" class="glass-panel alert-log-panel" style="padding: 1.25rem; border-radius: var(--radius-md, 8px); position: relative;">
-                        <div class="alert-log-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 0.5rem;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 1.1rem;">🔔</span>
-                                <h3 style="margin: 0; font-family: 'Outfit', sans-serif; font-size: 1.05rem; font-weight: 600; color: #fff;">Alert Log</h3>
-                                <span id="alert-log-count" class="badge" style="background: var(--accent-purple, #7c3aed); color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 600;">0</span>
+                    <div id="alert-log-panel" class="glass-panel alert-log-panel">
+                        <div class="alert-log-header">
+                            <div class="alert-log-header-title">
+                                <span style="font-size: 1.1rem;" aria-hidden="true">🔔</span>
+                                <h3 class="alert-log-title">Alert Log</h3>
+                                <span id="alert-log-count" class="alert-log-count-badge">0</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <button id="btn-alert-settings" class="btn-ghost btn-xs" title="Alert Settings" style="background: none; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: var(--space-2); border-radius: 4px; transition: var(--transition-smooth);">
@@ -398,9 +452,9 @@ the screener to that sector.">Top Breadth Sectors</span>
                         </div>
 
                         <!-- Alert Settings Panel -->
-                        <div id="alert-settings-panel" class="alert-settings-panel hidden" style="background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: var(--space-3); margin-bottom: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); font-size: 0.8rem; color: var(--color-text-secondary); position: absolute; z-index: 100; right: 1.25rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); min-width: 210px;">
+                        <div id="alert-settings-panel" class="alert-settings-panel hidden">
                             <div style="font-weight: 600; color: #fff; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 4px; display:flex; justify-content:space-between; align-items:center;">
-                                <span>⚙️ Alert Settings</span>
+                                <span><span aria-hidden="true">⚙️</span> Alert Settings</span>
                                 <button id="btn-close-alert-settings" style="background:none; border:none; color:var(--color-text-muted); cursor:pointer; font-size:0.9rem;">✕</button>
                             </div>
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -435,29 +489,34 @@ the screener to that sector.">Top Breadth Sectors</span>
         <div class="workspace-view" id="view-screener">
             <div class="stat-cards-row">
     
-              <div class="stat-card" id="card-total" onclick="applyStatFilter('total')" style="cursor: pointer;">
+              <div class="stat-card" id="card-total" onclick="applyStatFilter('total')" style="cursor: pointer;" title="Total scanned stocks matching the basic filter criteria">
                 <span class="stat-card-value" id="stat-total">0</span>
                 <span class="stat-card-label">Total Stocks</span>
+                <div class="stat-card-progress-wrapper" style="display: none;"><div class="stat-card-progress" style="width: 100%;"></div></div>
               </div>
     
-              <div class="stat-card stat-card--elite" id="card-elite" onclick="applyStatFilter('elite')" style="cursor: pointer;">
+              <div class="stat-card stat-card--elite" id="card-elite" onclick="applyStatFilter('elite')" style="cursor: pointer;" title="High momentum stocks with elite-grade swing setups">
                 <span class="stat-card-value" id="stat-elite">0</span>
                 <span class="stat-card-label">Elite Swing</span>
+                <div class="stat-card-progress-wrapper"><div class="stat-card-progress" id="progress-elite" style="width: 0%;"></div></div>
               </div>
     
-              <div class="stat-card stat-card--strong" id="card-strong" onclick="applyStatFilter('strong')" style="cursor: pointer;">
+              <div class="stat-card stat-card--strong" id="card-strong" onclick="applyStatFilter('strong')" style="cursor: pointer;" title="Strong momentum stocks with strong swing structures">
                 <span class="stat-card-value" id="stat-strong">0</span>
                 <span class="stat-card-label">Strong Swing</span>
+                <div class="stat-card-progress-wrapper"><div class="stat-card-progress" id="progress-strong" style="width: 0%;"></div></div>
               </div>
     
-              <div class="stat-card stat-card--leader" id="card-leader" onclick="applyStatFilter('leader')" style="cursor: pointer;">
+              <div class="stat-card stat-card--leader" id="card-leader" onclick="applyStatFilter('leader')" style="cursor: pointer;" title="Stocks in top-performing market sectors showing leading momentum">
                 <span class="stat-card-value" id="stat-sector-leader">0</span>
                 <span class="stat-card-label">Sector Leaders</span>
+                <div class="stat-card-progress-wrapper"><div class="stat-card-progress" id="progress-leader" style="width: 0%;"></div></div>
               </div>
     
-              <div class="stat-card stat-card--breakout" id="card-breakout" onclick="applyStatFilter('breakout')" style="cursor: pointer;">
+              <div class="stat-card stat-card--breakout" id="card-breakout" onclick="applyStatFilter('breakout')" style="cursor: pointer;" title="Breakout setups meeting breakout criteria: volume compression, tightness, or breakout patterns">
                 <span class="stat-card-value" id="stat-breakout">0</span>
                 <span class="stat-card-label">Breakout Ready</span>
+                <div class="stat-card-progress-wrapper"><div class="stat-card-progress" id="progress-breakout" style="width: 0%;"></div></div>
               </div>
     
             </div>
@@ -744,7 +803,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                 </div>
 
 
-                <div id="growth-disclaimer" style="display:none; padding: 10px 14px; margin-bottom: 12px; font-size: 0.78rem; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: #f59e0b; border-radius: 8px; align-items: center; gap: var(--space-2); line-height: 1.4; font-family: 'Outfit', sans-serif;">
+                <div id="growth-disclaimer">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"></svg>
                     <span><strong>Simulated Growth Metrics Disclaimer:</strong> QoQ/YoY growth, 3-Year revenue/EBITDA/EPS CAGRs, segment growth breakdown, and order-book metrics are generated for visual simulation purposes and should not be used as real financial data for trading decisions.</span>
                 </div>
@@ -856,13 +915,16 @@ the screener to that sector.">Top Breadth Sectors</span>
                         <h2 style="margin: 0;">Trade Journal</h2>
                         <div style="display: flex; gap: 0.5rem;">
                             <button class="btn btn-secondary" onclick="window.updateJournalLivePrices(event)">
-                                <span style="margin-right: 6px;">🔄</span> Refresh Prices
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                                Refresh Prices
                             </button>
                             <button class="btn btn-primary" onclick="window.openManualTradeModal()">
-                                <span style="margin-right: 6px;">➕</span> Add Trade
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add Trade
                             </button>
                             <button class="btn btn-secondary" onclick="exportJournalToExcel()">
-                                <span style="margin-right: 6px;">📥</span> Export Journal
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                                Export Journal
                             </button>
                         </div>
                     </div>
@@ -992,9 +1054,9 @@ the screener to that sector.">Top Breadth Sectors</span>
     <div class="workspace-view" id="view-intraday">
         <div class="intraday-workspace-wrapper glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
             <div class="intraday-header-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); flex-wrap: wrap; gap: 1rem;">
-                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; flex-direction: column; gap: 4px;">
+                <div style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span>⚡</span> Intraday Pro Cockpit
+                        <span aria-hidden="true">⚡</span> Intraday Pro Cockpit
                     </div>
                     <div style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: normal;">
                         Currently viewing: <span id="intraday-active-preset-label" style="font-weight: 600; color: var(--accent-blue);">All Presets</span>
@@ -1080,7 +1142,7 @@ the screener to that sector.">Top Breadth Sectors</span>
             <!-- RRG Container -->
             <div class="rrg-container" id="rrg-container" style="padding: 1rem; display: flex; flex-direction: column;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
-                    <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem;">Relative Rotation Graph (Proxy)</div>
+                    <div style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem;">Relative Rotation Graph (Proxy)</div>
                     <div class="rrg-toggles" style="display: flex; gap: 0.5rem;">
                         <button class="btn btn-primary" id="btn-rrg-sectors" style="padding: var(--space-1) var(--space-3); font-size: 0.8rem; height: auto;">Sectors</button>
                         <button class="btn btn-secondary" id="btn-rrg-stocks" style="padding: var(--space-1) var(--space-3); font-size: 0.8rem; height: auto;">Stocks</button>
@@ -1154,7 +1216,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                     <strong>X-Axis:</strong> 1M Perf vs Market Median | <strong>Y-Axis:</strong> 1W Perf vs Market Median
                 </div>
                 
-                <div style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 1.2rem; margin-bottom: var(--space-4); padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05);">Sector Heatmap</div>
+                <div style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; margin-bottom: var(--space-4); padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05);">Sector Heatmap</div>
                 <div id="sector-heatmap" class="sector-heatmap"></div>
             </div>
         </div>
@@ -1546,7 +1608,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; width: 100%;">
                     <!-- Left: Theme Clustering (Story/Volume EPs grouped by sector) -->
                     <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem;">
-                        <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">🔥 Today's Theme Clustering</h4>
+                        <h4 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: #fff; font-size: 1.05rem;"><span aria-hidden="true">🔥</span> Today's Theme Clustering</h4>
                         <div id="ep-themes-container" style="display: flex; flex-direction: column; gap: 0.75rem; overflow-y: auto; max-height: 500px;">
                             <div style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">No themes loaded. Run a scan to find today's themes.</div>
                         </div>
@@ -1554,7 +1616,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                     
                     <!-- Right: Sector Rotation Rankings -->
                     <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem;">
-                        <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">👑 Sector Relative Rotation Overlay</h4>
+                        <h4 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: #fff; font-size: 1.05rem;"><span aria-hidden="true">👑</span> Sector Relative Rotation Overlay</h4>
                         <div class="table-container" style="overflow-y: auto; max-height: 500px;">
                             <table class="screener-table" id="ep-sector-rotation-table" style="font-size: 0.8rem;">
                                 <thead>
@@ -1656,7 +1718,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                     <div id="backtest-dashboard" style="display: none; grid-template-columns: 1fr 2fr; gap: 1.5rem; width: 100%;">
                         <!-- Left: Stats & Metrics Grid -->
                         <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem;">
-                            <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">📊 Strategy Performance</h4>
+                            <h4 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: #fff; font-size: 1.05rem;"><span aria-hidden="true">📊</span> Strategy Performance</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
                                 <div style="background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03);">
                                     <div style="font-size: 0.7rem; color: var(--color-text-secondary); margin-bottom: 2px;">Total Trades</div>
@@ -1691,7 +1753,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                         
                         <!-- Right: Equity Curve Chart -->
                         <div class="glass-panel" style="padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; gap: 1rem; min-height: 300px;">
-                            <h4 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; color: #fff; font-size: 1.05rem;">📈 Portfolio Equity Growth (Compounded)</h4>
+                            <h4 style="margin: 0; font-family: var(--font-display); font-weight: 600; color: #fff; font-size: 1.05rem;"><span aria-hidden="true">📈</span> Portfolio Equity Growth (Compounded)</h4>
                             <div style="flex-grow: 1; position: relative; width: 100%; height: 100%;">
                                 <canvas id="backtest-equity-chart" style="width: 100%; height: 100%; max-height: 250px;"></canvas>
                             </div>
@@ -1755,18 +1817,18 @@ the screener to that sector.">Top Breadth Sectors</span>
                 <table class="screener-table" id="bull-snort-table" style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase;">Symbol</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Close</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Change %</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Vol Ratio</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Close Pos</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">200 DMA</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Gap Now</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Max Gap 6mo</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: center;">Vol Pivots</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: center;">Vol Surges</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Accum Score</th>
-                            <th style="padding: 10px 12px; font-weight: 600; color: var(--color-text-muted); border-bottom: 2px solid rgba(255,255,255,0.08); font-size: 0.78rem; text-transform: uppercase; text-align: right;">Final Score</th>
+                            <th>Symbol</th>
+                            <th class="text-right">Close</th>
+                            <th class="text-right">Change %</th>
+                            <th class="text-right">Vol Ratio</th>
+                            <th class="text-right">Close Pos</th>
+                            <th class="text-right">200 DMA</th>
+                            <th class="text-right">Gap Now</th>
+                            <th class="text-right">Max Gap 6mo</th>
+                            <th class="text-center">Vol Pivots</th>
+                            <th class="text-center">Vol Surges</th>
+                            <th class="text-right">Accum Score</th>
+                            <th class="text-right">Final Score</th>
                         </tr>
                     </thead>
                     <tbody id="bull-snort-tbody">
@@ -1982,7 +2044,8 @@ the screener to that sector.">Top Breadth Sectors</span>
                 </div>
                 <div style="display: flex; align-items: center; margin-left: auto;">
                     <button id="btn-export-regime-csv" style="padding: 0.35rem var(--space-3); font-size: 0.72rem; height: auto; margin-right: 0.8rem; border-radius: 4px; display: flex; align-items: center; gap: 4px; cursor: pointer; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--color-text-primary); transition: var(--transition-smooth);" title="Export history to Excel/CSV">
-                        📥 Export Excel
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                        Export Excel
                     </button>
                     <button class="modal-close-btn" id="close-regime-history" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -2050,7 +2113,7 @@ the screener to that sector.">Top Breadth Sectors</span>
                         <div style="font-size:0.7rem; color:var(--color-text-muted);">Log a new trade to your journal</div>
                     </div>
                 </div>
-                <button onclick="window.closeManualTradeModal()" data-modal-close style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;cursor:pointer;color:var(--color-text-muted);transition:all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+                <button onclick="window.closeManualTradeModal()" data-modal-close class="modal-close-btn">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
@@ -2132,8 +2195,8 @@ the screener to that sector.">Top Breadth Sectors</span>
 
                 <!-- Action Buttons -->
                 <div style="display:flex; justify-content:flex-end; gap:0.6rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.05);">
-                    <button onclick="window.closeManualTradeModal()" data-modal-close style="padding:0.6rem 1.3rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--color-text-secondary); font-size:0.88rem; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">Cancel</button>
-                    <button onclick="window.saveManualTrade()" id="btn-add-manual-trade" style="padding:0.6rem 1.5rem; background:var(--color-accent); border:none; border-radius:8px; color:#0f172a; font-size:0.88rem; font-weight:800; cursor:pointer; font-family:inherit; transition:all 0.2s; display:flex; align-items:center; gap:0.4rem;" onmouseover="this.style.background='#d97706'" onmouseout="this.style.background='var(--color-accent)'">
+                    <button onclick="window.closeManualTradeModal()" data-modal-close class="modal-cancel-btn">Cancel</button>
+                    <button onclick="window.saveManualTrade()" id="btn-add-manual-trade" class="modal-save-btn">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         Add Trade
                     </button>
@@ -2510,7 +2573,7 @@ the screener to that sector.">Top Breadth Sectors</span>
 
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
-    <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.54"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.66"></script>
+    <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.55"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.68"></script>
 </body>
 </html>
