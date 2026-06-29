@@ -45,6 +45,18 @@ document.addEventListener('DOMContentLoaded', () => {
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
 
+  // Helper to color-code scan badges
+  function getScanTagClass(tagText) {
+    if (!tagText) return 'tag-default';
+    const text = tagText.toLowerCase();
+    if (text.includes('breakout')) return 'tag-breakout';
+    if (text.includes('elite')) return 'tag-elite';
+    if (text.includes('strong')) return 'tag-strong';
+    if (text.includes('leader')) return 'tag-leader';
+    if (text.includes('pullback') || text.includes('support')) return 'tag-pullback';
+    return 'tag-default';
+  }
+
   // -----------------------------------------------------------
   // 2. HERO TERMINAL DYNAMIC STOCK LIST
   // -----------------------------------------------------------
@@ -65,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="mono font-bold"><span class="terminal-stock-ticker">${s.ticker}</span><span class="terminal-stock-name">${s.name}</span></td>
         <td class="mono font-semibold">${s.ltp.toFixed(2)}</td>
         <td class="mono"><span class="change-badge ${changeClass}">${changeSign}${s.change.toFixed(2)}%</span></td>
-        <td><span class="scan-tag">${s.tag}</span></td>
+        <td><span class="scan-tag ${getScanTagClass(s.tag)}">${s.tag}</span></td>
         <td>
           <svg class="sparkline-svg" viewBox="0 0 100 30">
             <path class="sparkline-path" d="${s.sparkline}" style="stroke: ${s.change >= 0 ? '#10b981' : '#ef4444'}"></path>
@@ -218,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="mono"><span class="change-badge ${changeClass}">${changeSign}${item.change.toFixed(2)}%</span></td>
         <td class="mono">${item.rsi.toFixed(1)}</td>
         <td class="mono">${item.volSurge}</td>
-        <td><span class="scan-tag">${item.setup}</span></td>
+        <td><span class="scan-tag ${getScanTagClass(item.setup)}">${item.setup}</span></td>
         <td class="mono text-muted text-xs">${item.pat}</td>
       `;
       container.appendChild(row);
@@ -312,10 +324,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const highsBar = document.getElementById('highs-bar-fill');
     const lowsBar = document.getElementById('lows-bar-fill');
     
-    // Scale column heights (maximum 100px)
+    // Scale column heights (maximum 80px)
     const maxVal = Math.max(data.highsLows.highs52w, data.highsLows.lows52w);
-    const highsHeight = (data.highsLows.highs52w / maxVal) * 100;
-    const lowsHeight = (data.highsLows.lows52w / maxVal) * 100;
+    const highsHeight = (data.highsLows.highs52w / maxVal) * 80;
+    const lowsHeight = (data.highsLows.lows52w / maxVal) * 80;
 
     if (highsBar) highsBar.style.height = `${highsHeight}px`;
     if (lowsBar) lowsBar.style.height = `${lowsHeight}px`;

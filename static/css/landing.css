@@ -379,6 +379,33 @@ body.page-loaded .hero-visual-wrapper {
 }
 
 @media (min-width: 1024px) {
+  .hero-layout {
+    flex-direction: row;
+    text-align: left;
+    justify-content: space-between;
+    align-items: center;
+    gap: 48px;
+  }
+  
+  .hero-text-area {
+    text-align: left;
+    max-width: 500px;
+    flex: 1;
+  }
+  
+  .hero-ctas {
+    justify-content: flex-start;
+  }
+  
+  .hero-mini-metrics {
+    justify-content: flex-start;
+  }
+  
+  .hero-visual-wrapper {
+    flex: 1.2;
+    margin-top: 0;
+  }
+
   .terminal-container {
     transform: perspective(1200px) rotateY(-5deg) rotateX(2deg);
     transform-origin: left center;
@@ -545,12 +572,15 @@ body.page-loaded .hero-visual-wrapper {
   letter-spacing: 0.05em;
 }
 
-.terminal-table tbody tr {
-  transition: background-color 0.2s ease;
+.terminal-table tbody tr,
+.gallery-pane table tbody tr {
+  transition: background-color 0.15s ease;
 }
 
-.terminal-table tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.02);
+.terminal-table tbody tr:hover,
+.gallery-pane table tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.04);
+  cursor: pointer;
 }
 
 .terminal-stock-ticker {
@@ -590,9 +620,42 @@ body.page-loaded .hero-visual-wrapper {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.scan-tag.tag-elite {
   background: rgba(59, 130, 246, 0.08);
   border: 1px solid rgba(59, 130, 246, 0.2);
   color: var(--landing-text-accent);
+}
+
+.scan-tag.tag-strong {
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: #c084fc;
+}
+
+.scan-tag.tag-breakout {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: var(--landing-success);
+}
+
+.scan-tag.tag-leader {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: var(--landing-warning);
+}
+
+.scan-tag.tag-pullback {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.scan-tag.tag-default {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--landing-text-muted);
 }
 
 .sparkline-svg {
@@ -698,7 +761,7 @@ body.page-loaded .hero-visual-wrapper {
 .gallery-layout {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 16px;
 }
 
 .gallery-tabs {
@@ -799,7 +862,7 @@ body.page-loaded .hero-visual-wrapper {
  * 5. MARKET INTELLIGENCE SECTION (BENTO GRID)
  * ------------------------------------------------------------- */
 .market-intel-section {
-  padding: 96px 0;
+  padding: 96px 0 48px 0;
   background: linear-gradient(180deg, rgba(3, 7, 12, 0) 0%, rgba(10, 15, 22, 0.3) 50%, rgba(3, 7, 12, 0) 100%);
 }
 
@@ -821,7 +884,7 @@ body.page-loaded .hero-visual-wrapper {
     grid-template-columns: repeat(3, 1fr);
   }
   .bento-col-span-2 {
-    grid-column: span 2;
+    grid-column: span 3;
   }
 }
 
@@ -982,7 +1045,7 @@ body.page-loaded .hero-visual-wrapper {
   justify-content: space-around;
   align-items: flex-end;
   height: 120px;
-  padding-top: 10px;
+  margin-top: 8px;
   border-bottom: 1px solid var(--landing-border);
 }
 
@@ -1086,7 +1149,7 @@ body.page-loaded .hero-visual-wrapper {
  * 6. WORKFLOW SECTION
  * ------------------------------------------------------------- */
 .workflow-section {
-  padding: 96px 0;
+  padding: 48px 0 96px 0;
 }
 
 .workflow-steps-grid {
@@ -1150,11 +1213,11 @@ body.page-loaded .hero-visual-wrapper {
     content: '';
     position: absolute;
     top: 36px;
-    right: -13px;
+    left: 100%;
     width: 24px;
     height: 1px;
-    background: repeating-linear-gradient(90deg, var(--landing-border), var(--landing-border) 4px, transparent 4px, transparent 8px);
-    z-index: 2;
+    border-top: 1px dashed rgba(59, 130, 246, 0.3);
+    z-index: 10;
   }
 }
 
@@ -1251,6 +1314,15 @@ body.page-loaded .hero-visual-wrapper {
 .cta-btn {
   width: 100%;
   padding: 12px 24px;
+  position: relative;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.4);
+  animation: cta-pulse 2s infinite;
+}
+
+@keyframes cta-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
+  70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
 }
 
 @media (min-width: 576px) {
