@@ -23,6 +23,15 @@
           </svg>
         </a>
       </div>
+
+      <!-- Mini metrics row (First-impression punch) -->
+      <div class="hero-mini-metrics mono">
+        <span><strong>2,145+</strong> Stocks Tracked</span>
+        <span class="metrics-separator">•</span>
+        <span><strong>8</strong> Breadth Engines</span>
+        <span class="metrics-separator">•</span>
+        <span><strong>0.8s</strong> Refresh Speed</span>
+      </div>
     </div>
 
     <!-- Central Hero Terminal Mockup -->
@@ -73,8 +82,26 @@
               </thead>
               <tbody id="terminal-stocks-body">
                 <!-- Dynamically populated by JS from landing-data.js -->
-                <tr>
-                  <td colspan="5" class="mono text-muted text-center" style="padding: 40px 0;">Connecting data stream...</td>
+                <tr class="skeleton-row">
+                  <td><div class="skeleton-bar skeleton-ticker"></div></td>
+                  <td><div class="skeleton-bar skeleton-price"></div></td>
+                  <td><div class="skeleton-bar skeleton-change"></div></td>
+                  <td><div class="skeleton-bar skeleton-condition"></div></td>
+                  <td><div class="skeleton-bar skeleton-sparkline"></div></td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td><div class="skeleton-bar skeleton-ticker"></div></td>
+                  <td><div class="skeleton-bar skeleton-price"></div></td>
+                  <td><div class="skeleton-bar skeleton-change"></div></td>
+                  <td><div class="skeleton-bar skeleton-condition"></div></td>
+                  <td><div class="skeleton-bar skeleton-sparkline"></div></td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td><div class="skeleton-bar skeleton-ticker"></div></td>
+                  <td><div class="skeleton-bar skeleton-price"></div></td>
+                  <td><div class="skeleton-bar skeleton-change"></div></td>
+                  <td><div class="skeleton-bar skeleton-condition"></div></td>
+                  <td><div class="skeleton-bar skeleton-sparkline"></div></td>
                 </tr>
               </tbody>
             </table>

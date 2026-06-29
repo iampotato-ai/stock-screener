@@ -3,7 +3,7 @@
  * Realistic Indian Equity market stats for active breakouts, swing setups, and breadth.
  */
 
-const LANDING_DATA = {
+export const LANDING_DATA = {
   // Hero Terminal initial stocks (Live Breakouts Feed)
   heroStocks: [
     { ticker: 'HAL', name: 'Hindustan Aeronautics', ltp: 4684.50, change: 6.84, sector: 'Defense', tag: 'Breakout Ready', sparkline: 'M 0,25 Q 10,28 20,18 T 40,22 T 60,8 T 80,14 T 100,2' },

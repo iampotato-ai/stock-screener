@@ -65,8 +65,7 @@
   <!-- 8. Footer Section -->
   {% include 'components/landing/footer.html' %}
 
-  <!-- Javascript Logic files -->
-  <script src="{{ url_for('static', filename='js/landing-data.js') }}?v=1.0.0"></script>
-  <script src="{{ url_for('static', filename='js/landing-motion.js') }}?v=1.0.0"></script>
+  <!-- Javascript Logic files (ES Modules) -->
+  <script type="module" src="{{ url_for('static', filename='js/landing-motion.js') }}?v=1.0.0"></script>
 </body>
 </html>

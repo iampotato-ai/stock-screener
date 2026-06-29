@@ -3,7 +3,12 @@
  * Implements smooth terminal updates, tab switches, count-up numbers, and widget draws.
  */
 
+import { LANDING_DATA } from './landing-data.js';
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Add loaded class to body for entrance animations
+  document.body.classList.add('page-loaded');
+
   const isReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // -----------------------------------------------------------
@@ -38,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Update clock every second
   updateLiveClock();
-  setInterval(updateLiveClock, 3000);
+  setInterval(updateLiveClock, 1000);
 
   // -----------------------------------------------------------
   // 2. HERO TERMINAL DYNAMIC STOCK LIST
