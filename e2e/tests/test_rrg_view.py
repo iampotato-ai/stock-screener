@@ -3,7 +3,7 @@
 Ensures the RRG tab activates and core UI elements appear.
 """
 
-from .common import get_base_url, launch_browser
+from .common import get_dashboard_url, launch_browser
 from playwright.sync_api import sync_playwright
 
 
@@ -12,7 +12,7 @@ def test_rrg_view():
         browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
-        page.goto(get_base_url())
+        page.goto(get_dashboard_url())
         # Click the RRG tab via data-view attribute
         page.click('button[data-view="rrg"]')
         # Verify RRG view is visible

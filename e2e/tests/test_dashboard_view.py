@@ -3,7 +3,7 @@
 Ensures the Dashboard tab (default) is visible and key UI components appear.
 """
 
-from .common import get_base_url, launch_browser
+from .common import get_dashboard_url, launch_browser
 from playwright.sync_api import sync_playwright
 
 
@@ -12,8 +12,8 @@ def test_dashboard_view():
         browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
-        # Load home page (dashboard is active by default)
-        page.goto(get_base_url())
+        # Load dashboard page
+        page.goto(get_dashboard_url())
         # Verify the dashboard container is visible
         view = page.locator("#view-dashboard")
         view.wait_for(state="visible")

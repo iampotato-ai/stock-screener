@@ -4,7 +4,7 @@ Ensures the Intraday tab activates and core UI elements appear.
 """
 
 from playwright.sync_api import sync_playwright
-from .common import get_base_url, launch_browser
+from .common import get_dashboard_url, launch_browser
 
 
 def test_intraday_view():
@@ -12,8 +12,8 @@ def test_intraday_view():
         browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
-        # Load home page
-        page.goto(get_base_url())
+        # Load dashboard page
+        page.goto(get_dashboard_url())
         # Click the Intraday tab
         page.click('button[data-view="intraday"]')
         # Verify Intraday view is visible
