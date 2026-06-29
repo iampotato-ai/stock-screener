@@ -1316,7 +1316,7 @@ body.page-loaded .hero-visual-wrapper {
   padding: 12px 24px;
   position: relative;
   box-shadow: 0 0 16px rgba(59, 130, 246, 0.4);
-  animation: cta-pulse 2s infinite;
+  animation: cta-pulse 2s ease 3;
 }
 
 @keyframes cta-pulse {

@@ -51,8 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const text = tagText.toLowerCase();
     if (text.includes('breakout')) return 'tag-breakout';
     if (text.includes('elite')) return 'tag-elite';
-    if (text.includes('strong')) return 'tag-strong';
-    if (text.includes('leader')) return 'tag-leader';
+    if (text.includes('strong') || text.includes('intraday')) return 'tag-strong';
+    if (text.includes('leader') || text.includes('rrg') || text.includes('rotation')) return 'tag-leader';
     if (text.includes('pullback') || text.includes('support')) return 'tag-pullback';
     return 'tag-default';
   }
