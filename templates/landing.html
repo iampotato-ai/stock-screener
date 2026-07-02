@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO Best Practices -->
+  <title>MomentumScan - Premium Indian Stock Screener & Breakout Engine</title>
+  <meta name="description" content="Identify stock breakouts, momentum rotations, and market breadth regimes early. Institutional-grade screener for Nifty & active NSE India traders.">
+  <meta name="keywords" content="MomentumScan, NSE India, stock screener, breakout stocks, swing trading, Nifty breadth, RRG rotation, Indian stock market, TradingView">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="MomentumScan - NSE India Stock Breakout Screener">
+  <meta property="og:description" content="Aggregate real-time NSE data, breadth internals, and relative rotation trends into high-probability setups.">
+  <meta property="og:type" content="website">
+
+  <!-- Google Fonts & CDN Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Cabinet Grotesk (headings) — Fontshare CDN -->
+  <link rel="preconnect" href="https://api.fontshare.com">
+  <link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+
+  <!-- Geist Variable (body) — jsDelivr CDN -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link href="https://cdn.jsdelivr.net/fontsource/fonts/geist:vf@latest/latin-wght-normal.woff2" rel="preload" as="font" type="font/woff2" crossorigin>
+  <style>
+    @font-face {
+      font-family: 'Geist';
+      font-style: normal;
+      font-display: swap;
+      font-weight: 100 900;
+      src: url('https://cdn.jsdelivr.net/fontsource/fonts/geist:vf@latest/latin-wght-normal.woff2') format('woff2-variations');
+    }
+  </style>
+
+  <!-- Premium Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=1.0.0">
+</head>
+<body class="landing-page-body">
+
+  <!-- 1. Header -->
+  {% include 'components/landing/header.html' %}
+
+  <!-- 2. Hero Section -->
+  {% include 'components/landing/hero.html' %}
+
+  <!-- 3. Metrics Strip -->
+  {% include 'components/landing/metrics.html' %}
+
+  <!-- 4. Scan Gallery Section -->
+  {% include 'components/landing/scan_gallery.html' %}
+
+  <!-- 5. Market Intelligence Section -->
+  {% include 'components/landing/market_intelligence.html' %}
+
+  <!-- 6. Workflow Section -->
+  {% include 'components/landing/workflow.html' %}
+
+  <!-- 7. Waitlist CTA Section -->
+  {% include 'components/landing/cta.html' %}
+
+  <!-- 8. Footer Section -->
+  {% include 'components/landing/footer.html' %}
+
+  <!-- Javascript Logic files (ES Modules) -->
+  <script type="module" src="{{ url_for('static', filename='js/landing-motion.js') }}?v=1.0.0"></script>
+</body>
+</html>

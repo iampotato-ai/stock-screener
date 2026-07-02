@@ -4,7 +4,7 @@ Ensures the Bull Snort tab loads, the Bull Snort workspace becomes active, and k
 """
 
 from playwright.sync_api import sync_playwright
-from .common import get_base_url, launch_browser
+from .common import get_dashboard_url, launch_browser
 
 
 def test_bull_snort_view():
@@ -12,8 +12,8 @@ def test_bull_snort_view():
         browser = launch_browser(p)
         context = browser.new_context()
         page = context.new_page()
-        # Load home page (baseURL from config)
-        page.goto(get_base_url())
+        # Load dashboard page
+        page.goto(get_dashboard_url())
         # Click Bull Snort tab
         page.click("#tab-bull-snort")
         # Bull Snort view should become visible

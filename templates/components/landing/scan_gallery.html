@@ -1,0 +1,61 @@
+<section class="scan-gallery-section" id="scan-gallery-section">
+  <div class="container">
+    
+    <!-- Section Header -->
+    <div class="section-header">
+      <h2 class="section-title">Built-In Scans for Every Setup</h2>
+      <p class="section-desc">
+        Toggle through curated scanning algorithms tailored for swing setups, breakout continuations, and market leadership.
+      </p>
+    </div>
+
+    <!-- Gallery Tabs and Panel Grid -->
+    <div class="gallery-layout">
+      <!-- Tabs controls -->
+      <div class="gallery-tabs" id="gallery-tabs-list">
+        <!-- Capsule overlay for active sliding capsule background -->
+        <div class="tab-capsule" id="tab-sliding-capsule"></div>
+        
+        <button class="gallery-tab-btn active" data-scan="elite-swing">Elite Swing</button>
+        <button class="gallery-tab-btn" data-scan="strong-swing">Strong Swing</button>
+        <button class="gallery-tab-btn" data-scan="breakout-ready">Breakout Ready</button>
+        <button class="gallery-tab-btn" data-scan="sector-leaders">Sector Leaders</button>
+        <button class="gallery-tab-btn" data-scan="rrg-rotation">RRG Rotation</button>
+        <button class="gallery-tab-btn" data-scan="intraday-pro">Intraday Pro</button>
+      </div>
+
+      <!-- Tab View Display Pane -->
+      <div class="gallery-pane" id="gallery-pane-window">
+        <div class="pane-content" id="gallery-pane-content">
+          <div class="pane-header-info">
+            <div class="pane-title">Curated Scan Results</div>
+            <div class="pane-description mono">UNIVERSE: NIFTY 500 & MIDCAP 150 · UPDATED: LIVE</div>
+          </div>
+          
+          <div class="terminal-table-wrapper">
+            <table class="terminal-table">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>LTP (₹)</th>
+                  <th>Change %</th>
+                  <th>RSI (14)</th>
+                  <th>Vol Surge</th>
+                  <th>Trigger Setup</th>
+                  <th>Chart Pattern</th>
+                </tr>
+              </thead>
+              <tbody id="pane-table-body">
+                <!-- Populated dynamically via JS -->
+                <tr>
+                  <td colspan="7" class="mono text-muted text-center" style="padding: 40px 0;">Loading scan table...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>

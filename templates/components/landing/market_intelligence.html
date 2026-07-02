@@ -1,0 +1,204 @@
+<section class="market-intel-section" id="market-intel-bento">
+  <div class="container">
+    
+    <!-- Section Header -->
+    <div class="section-header">
+      <h2 class="section-title">Institutional-Grade Market Intelligence</h2>
+      <p class="section-desc">
+        Never trade blind. MomentumScan calculates breadth and sector rotation indicators to help you deploy capital during favorable market regimes.
+      </p>
+    </div>
+
+    <!-- Bento Grid -->
+    <div class="bento-grid">
+      
+      <!-- Card A: Market Regime Gauge (col-span-1) -->
+      <div class="bento-card">
+        <div class="bento-card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>Market Regime Score</span>
+        </div>
+        <div class="regime-widget-content">
+          <div class="regime-dial-wrapper">
+            <!-- Semi-circle gauge SVG -->
+            <svg class="regime-dial-svg" viewBox="0 0 160 100">
+              <path class="regime-dial-bg" d="M 16,84 A 64,64 0 0,1 144,84"></path>
+              <path class="regime-dial-value" id="regime-value-circle" d="M 16,84 A 64,64 0 0,1 144,84" style="stroke: #10b981;"></path>
+            </svg>
+            <div class="regime-score-center">
+              <span class="regime-score-val mono">72</span>
+              <span class="regime-score-band">Bullish</span>
+            </div>
+          </div>
+          <p class="regime-badge-desc">
+            Breadth is expanding. Nifty index is holding above major SMAs. Long setups are heavily favored.
+          </p>
+        </div>
+      </div>
+
+      <!-- Card B: Advances & Declines (col-span-1) -->
+      <div class="bento-card">
+        <div class="bento-card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          <span>Market Breadth (A/D)</span>
+        </div>
+        <div style="display: flex; flex-direction: column; justify-content: space-between; height: calc(100% - 35px);">
+          <div>
+            <p style="font-size: 0.8rem; color: var(--landing-text-muted); margin-bottom: 24px;">
+              Net advancing stocks across NSE Nifty 500 equities.
+            </p>
+            
+            <div class="breadth-bar-container">
+              <div class="breadth-stats-text">
+                <span class="breadth-label-adv mono">1,412 Advances</span>
+                <span class="breadth-label-dec mono">648 Declines</span>
+              </div>
+              <div class="breadth-stacked-bar">
+                <div class="breadth-bar-segment advances" id="breadth-seg-adv" style="width: 0%;"></div>
+                <div class="breadth-bar-segment unchanged" id="breadth-seg-unc" style="width: 0%;"></div>
+                <div class="breadth-bar-segment declines" id="breadth-seg-dec" style="width: 0%;"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="ratio-metric-row">
+            <span class="text-muted">A/D Ratio:</span>
+            <span class="ratio-val mono">2.18x</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card C: 52W Highs vs Lows (col-span-1) -->
+      <div class="bento-card">
+        <div class="bento-card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          <span>New Highs / New Lows</span>
+        </div>
+        <div style="display: flex; flex-direction: column; justify-content: space-between; height: calc(100% - 35px);">
+          <div>
+            <p style="font-size: 0.8rem; color: var(--landing-text-muted); margin-bottom: 12px;">
+              52-week breakout leadership index.
+            </p>
+            
+            <div class="highs-lows-bar-chart">
+              <div class="hl-bar-col">
+                <span class="hl-bar-val mono">145</span>
+                <div class="hl-bar-fill highs" id="highs-bar-fill" style="height: 0px;"></div>
+                <span class="hl-bar-lbl">Highs</span>
+              </div>
+              <div class="hl-bar-col">
+                <span class="hl-bar-val mono">12</span>
+                <div class="hl-bar-fill lows" id="lows-bar-fill" style="height: 0px;"></div>
+                <span class="hl-bar-lbl">Lows</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="ratio-metric-row">
+            <span class="text-muted">Highs/Lows Ratio:</span>
+            <span class="ratio-val mono" style="color: var(--landing-success);">12.1x</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card D: Sector Leadership (col-span-2 or 3 on large screens) -->
+      <div class="bento-card bento-col-span-2">
+        <div class="bento-card-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+            <line x1="4" y1="22" x2="4" y2="15"></line>
+          </svg>
+          <span>Sector Rotation Momentum Leaderboard</span>
+        </div>
+        
+        <p style="font-size: 0.8rem; color: var(--landing-text-muted); margin-bottom: 20px;">
+          RRG (Relative Rotation Graph) momentum rankings showing top leading, improving, and lagging Nifty indices.
+        </p>
+        
+        <div class="sector-list-container">
+          <!-- Sector 1 -->
+          <div class="sector-row-item">
+            <div class="sector-row-left">
+              <span class="sector-bullet" style="background-color: var(--landing-success);"></span>
+              <span class="sector-name-lbl">Nifty Defense & Aerospace</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div class="sector-score-bar-bg">
+                <div class="sector-score-bar-fill" style="background-color: var(--landing-success); width: 0%;"></div>
+              </div>
+              <span class="sector-status-badge leading">Leading</span>
+            </div>
+          </div>
+          
+          <!-- Sector 2 -->
+          <div class="sector-row-item">
+            <div class="sector-row-left">
+              <span class="sector-bullet" style="background-color: var(--landing-success);"></span>
+              <span class="sector-name-lbl">Nifty PSU Banks</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div class="sector-score-bar-bg">
+                <div class="sector-score-bar-fill" style="background-color: var(--landing-success); width: 0%;"></div>
+              </div>
+              <span class="sector-status-badge leading">Leading</span>
+            </div>
+          </div>
+          
+          <!-- Sector 3 -->
+          <div class="sector-row-item">
+            <div class="sector-row-left">
+              <span class="sector-bullet" style="background-color: var(--landing-accent);"></span>
+              <span class="sector-name-lbl">Nifty Metal</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div class="sector-score-bar-bg">
+                <div class="sector-score-bar-fill" style="background-color: var(--landing-accent); width: 0%;"></div>
+              </div>
+              <span class="sector-status-badge improving">Improving</span>
+            </div>
+          </div>
+          
+          <!-- Sector 4 -->
+          <div class="sector-row-item">
+            <div class="sector-row-left">
+              <span class="sector-bullet" style="background-color: var(--landing-accent);"></span>
+              <span class="sector-name-lbl">Nifty Auto</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div class="sector-score-bar-bg">
+                <div class="sector-score-bar-fill" style="background-color: var(--landing-accent); width: 0%;"></div>
+              </div>
+              <span class="sector-status-badge improving">Improving</span>
+            </div>
+          </div>
+          
+          <!-- Sector 5 -->
+          <div class="sector-row-item">
+            <div class="sector-row-left">
+              <span class="sector-bullet" style="background-color: var(--landing-warning);"></span>
+              <span class="sector-name-lbl">Nifty IT Services</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div class="sector-score-bar-bg">
+                <div class="sector-score-bar-fill" style="background-color: var(--landing-warning); width: 0%;"></div>
+              </div>
+              <span class="sector-status-badge weakening">Weakening</span>
+            </div>
+          </div>
+          
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</section>

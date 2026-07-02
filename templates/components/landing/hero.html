@@ -1,0 +1,115 @@
+<section class="hero-section">
+  <div class="container hero-layout">
+    
+    <!-- Hero Copy Area -->
+    <div class="hero-text-area">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        <span class="hero-badge-text">NSE India Breakout Engine</span>
+      </div>
+      <h1 class="hero-title">Spot Breakouts <span class="text-accent">Before the Crowd</span></h1>
+      <p class="hero-desc">
+        MomentumScan aggregates real-time NSE data, breadth internals, and relative rotation trends into high-probability trading setups. Built for serious Indian swing and momentum traders.
+      </p>
+      
+      <!-- Primary and Secondary CTAs -->
+      <div class="hero-ctas">
+        <a href="#waitlist-box" class="btn btn-primary">Get Early Access</a>
+        <a href="/dashboard" class="btn btn-secondary">
+          <span>Explore Screener</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+            <polyline points="12 5 19 12 12 19"></polyline>
+          </svg>
+        </a>
+      </div>
+
+      <!-- Mini metrics row (First-impression punch) -->
+      <div class="hero-mini-metrics mono">
+        <span><strong>2,145+</strong> Stocks Tracked</span>
+        <span class="metrics-separator">•</span>
+        <span><strong>8</strong> Breadth Engines</span>
+        <span class="metrics-separator">•</span>
+        <span><strong>0.8s</strong> Refresh Speed</span>
+      </div>
+    </div>
+
+    <!-- Central Hero Terminal Mockup -->
+    <div class="hero-visual-wrapper">
+      <div class="terminal-container">
+        
+        <!-- Terminal top window controls -->
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <span class="terminal-dot close"></span>
+            <span class="terminal-dot minimize"></span>
+            <span class="terminal-dot expand"></span>
+          </div>
+          <div class="terminal-title">momentum_scan_terminal.sh</div>
+          <div class="terminal-status">
+            <span class="live-pulse-dot"></span>
+            <span class="mono">FEED: ONLINE</span>
+          </div>
+        </div>
+        
+        <!-- Terminal Body -->
+        <div class="terminal-body">
+          <div class="terminal-controls">
+            <!-- Simulated Logs Stream -->
+            <div class="terminal-log-stream mono">
+              <span class="terminal-log-time" id="header-live-time">(Live IST: --:--:--)</span>
+              <span class="terminal-log-msg" id="terminal-log-msg">CRITERIA MET: HAL triggered BREAKOUT READY</span>
+            </div>
+            
+            <!-- Terminal tags -->
+            <div class="terminal-view-filters mono">
+              <span class="terminal-view-badge active">Nifty 500</span>
+              <span class="terminal-view-badge">NSE Equities</span>
+            </div>
+          </div>
+          
+          <!-- Interactive Terminal Stocks Table -->
+          <div class="terminal-table-wrapper">
+            <table class="terminal-table">
+              <thead>
+                <tr>
+                  <th>Ticker / Instrument</th>
+                  <th>LTP (₹)</th>
+                  <th>Change %</th>
+                  <th>Scan Condition</th>
+                  <th>120d Trend</th>
+                </tr>
+              </thead>
+              <tbody id="terminal-stocks-body">
+                <!-- Dynamically populated by JS from landing-data.js -->
+                <tr class="skeleton-row">
+                  <td><div class="skeleton-bar skeleton-ticker"></div></td>
+                  <td><div class="skeleton-bar skeleton-price"></div></td>
+                  <td><div class="skeleton-bar skeleton-change"></div></td>
+                  <td><div class="skeleton-bar skeleton-condition"></div></td>
+                  <td><div class="skeleton-bar skeleton-sparkline"></div></td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td><div class="skeleton-bar skeleton-ticker"></div></td>
+                  <td><div class="skeleton-bar skeleton-price"></div></td>
+                  <td><div class="skeleton-bar skeleton-change"></div></td>
+                  <td><div class="skeleton-bar skeleton-condition"></div></td>
+                  <td><div class="skeleton-bar skeleton-sparkline"></div></td>
+                </tr>
+                <tr class="skeleton-row">
+                  <td><div class="skeleton-bar skeleton-ticker"></div></td>
+                  <td><div class="skeleton-bar skeleton-price"></div></td>
+                  <td><div class="skeleton-bar skeleton-change"></div></td>
+                  <td><div class="skeleton-bar skeleton-condition"></div></td>
+                  <td><div class="skeleton-bar skeleton-sparkline"></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+        </div>
+      </div>
+    </div>
+    
+  </div>
+</section>

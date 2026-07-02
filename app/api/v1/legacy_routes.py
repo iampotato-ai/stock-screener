@@ -651,7 +651,12 @@ def fetch_screener_fundamentals(symbol):
                     parsed_quarters.sort(key=lambda x: x["date_key"])
                     try:
                         latest_date_val = datetime.datetime.strptime(parsed_quarters[-1]["date_key"], "%Y-%m-%d")
-                        if (datetime.datetime.now() - latest_date_val).days < 180:
+                        from flask import current_app
+                        try:
+                            staleness_days = current_app.config.get('EP_STALENESS_DAYS', 180)
+                        except Exception:
+                            staleness_days = 180
+                        if (datetime.datetime.now() - latest_date_val).days < staleness_days:
                             return parsed_quarters
                         print(f"[NSE Ingest] Latest quarter {parsed_quarters[-1]['quarter']} ({parsed_quarters[-1]['date_key']}) for {symbol} is stale. Falling back to Yahoo Finance.")
                     except Exception:

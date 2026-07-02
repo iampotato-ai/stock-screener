@@ -1,11 +1,12 @@
 const AlertEngine = (() => {
+  const safeStorage = window.safeStorage || localStorage;
   const DEDUP_PREFIX = 'alert_fired_';
   let _alertCount = 0;
   const today = () => new Date().toISOString().slice(0, 10);
 
   function _isSettingEnabled(type) {
     try {
-      const settingsStr = localStorage.getItem('alert_settings');
+      const settingsStr = safeStorage.getItem('alert_settings');
       if (!settingsStr) return true;
       const settings = JSON.parse(settingsStr);
       return settings[type] !== false;
@@ -24,7 +25,7 @@ const AlertEngine = (() => {
   }
 
   function filterAlertLogVisibility() {
-    const settingsStr = localStorage.getItem('alert_settings');
+    const settingsStr = safeStorage.getItem('alert_settings');
     let settings = { regime: true, swing: true, kronos: true, deals: true };
     if (settingsStr) {
       try {
@@ -94,6 +95,11 @@ const AlertEngine = (() => {
     `;
 
     logBody.insertBefore(entry, logBody.firstChild);
+
+    // Expand the panel from its collapsed-when-empty state
+    const panel = document.getElementById('alert-log-panel');
+    if (panel) panel.classList.add('has-alerts');
+
     filterAlertLogVisibility();
   }
 
@@ -199,10 +205,13 @@ const AlertEngine = (() => {
     if (countBadge) {
       countBadge.textContent = '0';
     }
+    // Collapse panel back to header-only state
+    const panel = document.getElementById('alert-log-panel');
+    if (panel) panel.classList.remove('has-alerts');
   }
 
   function init() {
-    const settingsStr = localStorage.getItem('alert_settings');
+    const settingsStr = safeStorage.getItem('alert_settings');
     let settings = { regime: true, swing: true, kronos: true, deals: true };
     if (settingsStr) {
       try {
@@ -217,7 +226,7 @@ const AlertEngine = (() => {
         checkbox.checked = settings[t] !== false;
         checkbox.addEventListener('change', () => {
           settings[t] = checkbox.checked;
-          localStorage.setItem('alert_settings', JSON.stringify(settings));
+          safeStorage.setItem('alert_settings', JSON.stringify(settings));
           filterAlertLogVisibility();
         });
       }

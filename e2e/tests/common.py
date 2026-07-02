@@ -8,6 +8,11 @@ def get_base_url():
     return os.getenv("PLAYWRIGHT_BASE_URL", "http://127.0.0.1:5000")
 
 
+def get_dashboard_url():
+    """Return the dashboard URL for the stock screener application."""
+    return get_base_url() + "/dashboard"
+
+
 def launch_browser(playwright_inst):
     """Launch the browser using environment configurations.
     Supports PLAYWRIGHT_HEADLESS (default True) and PLAYWRIGHT_CHANNEL (e.g. 'chrome').

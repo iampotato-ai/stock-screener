@@ -49,6 +49,10 @@ def create_app(config_name=None, overrides=None):
     # Register frontend root route
     from flask import render_template
     @app.route('/')
+    def landing():
+        return render_template('landing.html')
+
+    @app.route('/dashboard')
     def index():
         return render_template('index.html')
 

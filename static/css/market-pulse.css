@@ -37,13 +37,13 @@
 }
 
 .market-pulse-label {
-  font-family: var(--font-display);
+  font-family: var(--font-mono) !important;
   font-size: 0.55rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text-muted, #64748B);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: -2px;
+  letter-spacing: 0.12em;
+  margin-bottom: -1px;
 }
 
 .market-pulse-score {
@@ -79,11 +79,11 @@
 }
 
 .market-pulse-band {
-  font-family: var(--font-display);
-  font-size: 0.65rem;
+  font-family: var(--font-mono) !important;
+  font-size: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
   color: var(--color-accent);
   margin-top: 1px;
 }

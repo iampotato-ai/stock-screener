@@ -1,0 +1,40 @@
+/* Polishing overrides for MomentumScan UI */
+
+/* Focus-visible styles for interactive elements */
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-icon:focus-visible,
+.search-box input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* Drawer slide animation (watchlist column) */
+.dashboard-grid .watchlist-column {
+  transition: transform 250ms ease-out, opacity 250ms ease-out;
+  transform: translateX(0);
+  opacity: 1;
+}
+.dashboard-grid.watchlist-collapsed .watchlist-column {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Signal popover accessibility – show on focus */
+.signal-strip:focus .signal-popover,
+.signal-strip:focus-within .signal-popover {
+  display: block;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
