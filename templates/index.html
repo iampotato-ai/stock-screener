@@ -1817,18 +1817,18 @@
                 <table class="screener-table" id="bull-snort-table" style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr>
-                            <th>Symbol</th>
-                            <th class="text-right">Close</th>
-                            <th class="text-right">Change %</th>
-                            <th class="text-right">Vol Ratio</th>
-                            <th class="text-right">Close Pos</th>
-                            <th class="text-right">200 DMA</th>
-                            <th class="text-right">Gap Now</th>
-                            <th class="text-right">Max Gap 6mo</th>
-                            <th class="text-center">Vol Pivots</th>
-                            <th class="text-center">Vol Surges</th>
-                            <th class="text-right">Accum Score</th>
-                            <th class="text-right">Final Score</th>
+                            <th data-sort="symbol" onclick="window.sortBullSnort('symbol')">Symbol</th>
+                            <th class="text-right" data-sort="close" onclick="window.sortBullSnort('close')">Close</th>
+                            <th class="text-right" data-sort="pct_change" onclick="window.sortBullSnort('pct_change')">Change %</th>
+                            <th class="text-right" data-sort="vol_ratio" onclick="window.sortBullSnort('vol_ratio')">Vol Ratio</th>
+                            <th class="text-right" data-sort="close_position" onclick="window.sortBullSnort('close_position')">Close Pos</th>
+                            <th class="text-right" data-sort="dma200" onclick="window.sortBullSnort('dma200')">200 DMA</th>
+                            <th class="text-right" data-sort="current_gap_pct" onclick="window.sortBullSnort('current_gap_pct')">Gap Now</th>
+                            <th class="text-right" data-sort="max_gap_6mo_pct" onclick="window.sortBullSnort('max_gap_6mo_pct')">Max Gap 6mo</th>
+                            <th class="text-center" data-sort="n_vol_pivots" onclick="window.sortBullSnort('n_vol_pivots')">Vol Pivots</th>
+                            <th class="text-center" data-sort="n_vol_surges" onclick="window.sortBullSnort('n_vol_surges')">Vol Surges</th>
+                            <th class="text-right" data-sort="accumulation_score" onclick="window.sortBullSnort('accumulation_score')">Accum Score</th>
+                            <th class="text-right" data-sort="final_score" onclick="window.sortBullSnort('final_score')">Final Score</th>
                         </tr>
                     </thead>
                     <tbody id="bull-snort-tbody">

@@ -13440,65 +13440,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(`API returned status ${res.status}`);
                 }
                 const json = await res.json();
-                const data = json.data || [];
+                window.bullSnortData = json.data || [];
 
-                countLabel.textContent = `🐂 ${data.length} Bull Snort signals found`;
-                tbody.innerHTML = '';
-
-                if (data.length === 0) {
-                    tbody.innerHTML = `
-                        <tr>
-                            <td colspan="12" style="padding: 2rem; text-align: center; color: var(--color-text-muted); font-style: italic;">
-                                No stocks qualified for Bull Snort breakout today.
-                            </td>
-                        </tr>
-                    `;
-                    return;
-                }
-
-                data.forEach(row => {
-                    const scoreColor = row.final_score >= 75 ? '#22c55e' : row.final_score >= 50 ? '#f59e0b' : '#ef4444';
-                    const accumColor = row.accumulation_score >= 70 ? '#22c55e'
-                                     : row.accumulation_score >= 40 ? '#f59e0b' : '#94a3b8';
-                    const changeColor = row.pct_change >= 0 ? '#22c55e' : '#ef4444';
-
-                    // Formatting values
-                    const closeVal = row.close !== undefined ? `₹${row.close.toFixed(2)}` : 'N/A';
-                    const changeVal = row.pct_change !== undefined ? `${row.pct_change > 0 ? '+' : ''}${row.pct_change.toFixed(2)}%` : 'N/A';
-                    const volRatioVal = row.vol_ratio !== undefined ? `${row.vol_ratio.toFixed(2)}x` : 'N/A';
-                    const closePosVal = row.close_position !== undefined ? `${(row.close_position * 100).toFixed(1)}%` : 'N/A';
-                    const dmaVal = row.dma200 !== undefined ? `₹${row.dma200.toFixed(2)}` : 'N/A';
-                    const gapNowVal = row.current_gap_pct !== undefined ? `${row.current_gap_pct.toFixed(2)}%` : 'N/A';
-                    const gapMaxVal = row.max_gap_6mo_pct !== undefined ? `${row.max_gap_6mo_pct.toFixed(2)}%` : 'N/A';
-                    const pivotsVal = row.n_vol_pivots !== undefined ? row.n_vol_pivots : 'N/A';
-                    const surgesVal = row.n_vol_surges !== undefined ? row.n_vol_surges : 'N/A';
-                    const accumScoreVal = row.accumulation_score !== undefined ? row.accumulation_score.toFixed(1) : 'N/A';
-                    const finalScoreVal = row.final_score !== undefined ? row.final_score.toFixed(1) : 'N/A';
-
-                    tbody.innerHTML += `
-                        <tr onclick="if(!event.target.closest('.ticker-box') && !event.target.closest('button') && typeof openDrawer === 'function') openDrawer('${row.symbol}')">
-                            <td>
-                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
-                                    <span class="ticker-box" style="cursor: pointer;" onclick="event.stopPropagation(); openTradingView('${row.symbol}.NS')">${row.symbol}</span>
-                                    <button class="table-action-icon-btn" onclick="event.stopPropagation(); addToWatchlist('${row.symbol}', event)" title="Add to Watchlist">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                                    </button>
-                                </div>
-                            </td>
-                            <td class="text-right">${closeVal}</td>
-                            <td class="text-right" style="color: ${changeColor}; font-weight: 500;">${changeVal}</td>
-                            <td class="text-right">${volRatioVal}</td>
-                            <td class="text-right">${closePosVal}</td>
-                            <td class="text-right">${dmaVal}</td>
-                            <td class="text-right">${gapNowVal}</td>
-                            <td class="text-right">${gapMaxVal}</td>
-                            <td class="text-center">${pivotsVal}</td>
-                            <td class="text-center">${surgesVal}</td>
-                            <td class="text-right" style="color: ${accumColor}; font-weight: 600;">${accumScoreVal}</td>
-                            <td class="text-right" style="color: ${scoreColor}; font-weight: 700;">${finalScoreVal}</td>
-                        </tr>
-                    `;
-                });
+                countLabel.textContent = `🐂 ${window.bullSnortData.length} Bull Snort signals found`;
+                
+                sortBullSnortData();
+                updateBullSnortSortUI();
+                renderBullSnortTable();
             } catch (err) {
                 console.error(err);
                 tbody.innerHTML = `
@@ -13515,6 +13463,122 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Bull Snort Sorting Logic
+window.bullSnortData = [];
+window.bullSnortSortField = 'final_score';
+window.bullSnortSortAsc = false;
+
+window.sortBullSnort = function(field) {
+    if (window.bullSnortSortField === field) {
+        window.bullSnortSortAsc = !window.bullSnortSortAsc;
+    } else {
+        window.bullSnortSortField = field;
+        if (field === 'symbol') {
+            window.bullSnortSortAsc = true;
+        } else {
+            window.bullSnortSortAsc = false;
+        }
+    }
+    sortBullSnortData();
+    updateBullSnortSortUI();
+    renderBullSnortTable();
+};
+
+function sortBullSnortData() {
+    if (!window.bullSnortData || window.bullSnortData.length === 0) return;
+    
+    window.bullSnortData.sort((a, b) => {
+        let valA = a[window.bullSnortSortField];
+        let valB = b[window.bullSnortSortField];
+        
+        if (valA === undefined || valA === null) return 1;
+        if (valB === undefined || valB === null) return -1;
+        
+        if (typeof valA === 'string') {
+            return window.bullSnortSortAsc
+                ? valA.localeCompare(valB)
+                : valB.localeCompare(valA);
+        } else {
+            return window.bullSnortSortAsc
+                ? valA - valB
+                : valB - valA;
+        }
+    });
+}
+
+function updateBullSnortSortUI() {
+    const headers = document.querySelectorAll('#bull-snort-table thead th[data-sort]');
+    headers.forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        const field = th.getAttribute('data-sort');
+        if (field === window.bullSnortSortField) {
+            th.classList.add(window.bullSnortSortAsc ? 'sort-asc' : 'sort-desc');
+        }
+    });
+}
+
+function renderBullSnortTable() {
+    const tbody = document.getElementById('bull-snort-tbody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    const data = window.bullSnortData || [];
+    
+    if (data.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="12" style="padding: 2rem; text-align: center; color: var(--color-text-muted); font-style: italic;">
+                    No stocks qualified for Bull Snort breakout today.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    data.forEach(row => {
+        const scoreColor = row.final_score >= 75 ? '#22c55e' : row.final_score >= 50 ? '#f59e0b' : '#ef4444';
+        const accumColor = row.accumulation_score >= 70 ? '#22c55e'
+                         : row.accumulation_score >= 40 ? '#f59e0b' : '#94a3b8';
+        const changeColor = row.pct_change >= 0 ? '#22c55e' : '#ef4444';
+
+        const closeVal = row.close !== undefined ? `₹${row.close.toFixed(2)}` : 'N/A';
+        const changeVal = row.pct_change !== undefined ? `${row.pct_change > 0 ? '+' : ''}${row.pct_change.toFixed(2)}%` : 'N/A';
+        const volRatioVal = row.vol_ratio !== undefined ? `${row.vol_ratio.toFixed(2)}x` : 'N/A';
+        const closePosVal = row.close_position !== undefined ? `${(row.close_position * 100).toFixed(1)}%` : 'N/A';
+        const dmaVal = row.dma200 !== undefined ? `₹${row.dma200.toFixed(2)}` : 'N/A';
+        const gapNowVal = row.current_gap_pct !== undefined ? `${row.current_gap_pct.toFixed(2)}%` : 'N/A';
+        const gapMaxVal = row.max_gap_6mo_pct !== undefined ? `${row.max_gap_6mo_pct.toFixed(2)}%` : 'N/A';
+        const pivotsVal = row.n_vol_pivots !== undefined ? row.n_vol_pivots : 'N/A';
+        const surgesVal = row.n_vol_surges !== undefined ? row.n_vol_surges : 'N/A';
+        const accumScoreVal = row.accumulation_score !== undefined ? row.accumulation_score.toFixed(1) : 'N/A';
+        const finalScoreVal = row.final_score !== undefined ? row.final_score.toFixed(1) : 'N/A';
+
+        tbody.innerHTML += `
+            <tr onclick="if(!event.target.closest('.ticker-box') && !event.target.closest('button') && typeof openDrawer === 'function') openDrawer('${row.symbol}')">
+                <td>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                        <span class="ticker-box" style="cursor: pointer;" onclick="event.stopPropagation(); openTradingView('${row.symbol}.NS')">${row.symbol}</span>
+                        <button class="table-action-icon-btn" onclick="event.stopPropagation(); addToWatchlist('${row.symbol}', event)" title="Add to Watchlist">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                    </div>
+                </td>
+                <td class="text-right">${closeVal}</td>
+                <td class="text-right" style="color: ${changeColor}; font-weight: 500;">${changeVal}</td>
+                <td class="text-right">${volRatioVal}</td>
+                <td class="text-right">${closePosVal}</td>
+                <td class="text-right">${dmaVal}</td>
+                <td class="text-right">${gapNowVal}</td>
+                <td class="text-right">${gapMaxVal}</td>
+                <td class="text-center">${pivotsVal}</td>
+                <td class="text-center">${surgesVal}</td>
+                <td class="text-right" style="color: ${accumColor}; font-weight: 600;">${accumScoreVal}</td>
+                <td class="text-right" style="color: ${scoreColor}; font-weight: 700;">${finalScoreVal}</td>
+            </tr>
+        `;
+    });
+}
 
 // ── Floating Bulk Actions Bar & Selection State ──
 window.selectedTickers = new Set();
