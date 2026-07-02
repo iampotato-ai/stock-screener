@@ -212,18 +212,7 @@
         <header class="main-header">
             <div class="logo-area" style="cursor: pointer;" onclick="if(typeof switchWorkspace === 'function') switchWorkspace('dashboard')">
                 <div class="logo-icon">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <defs>
-                            <linearGradient id="logo-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-                                <stop offset="0%" stop-color="#3b82f6" />
-                                <stop offset="100%" stop-color="#06b6d4" />
-                            </linearGradient>
-                        </defs>
-                        <path d="M3 20h18" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" stroke-linecap="round"/>
-                        <path d="M3 18L9 12L13 15L21 6" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M16 6h5v5" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <circle cx="21" cy="6" r="2.5" fill="#10b981" />
-                    </svg>
+                    <img src="{{ url_for('static', filename='img/logo_icon.png') }}" alt="Logo" style="width: 38px; height: 38px; object-fit: contain; display: block;" />
                 </div>
                 <div class="logo-text">
                     <h1>Momentum<span>Scan</span><span class="logo-badge">Live</span></h1>
@@ -1817,18 +1806,18 @@
                 <table class="screener-table" id="bull-snort-table" style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead>
                         <tr>
-                            <th>Symbol</th>
-                            <th class="text-right">Close</th>
-                            <th class="text-right">Change %</th>
-                            <th class="text-right">Vol Ratio</th>
-                            <th class="text-right">Close Pos</th>
-                            <th class="text-right">200 DMA</th>
-                            <th class="text-right">Gap Now</th>
-                            <th class="text-right">Max Gap 6mo</th>
-                            <th class="text-center">Vol Pivots</th>
-                            <th class="text-center">Vol Surges</th>
-                            <th class="text-right">Accum Score</th>
-                            <th class="text-right">Final Score</th>
+                            <th data-sort="symbol" onclick="window.sortBullSnort('symbol')">Symbol</th>
+                            <th class="text-right" data-sort="close" onclick="window.sortBullSnort('close')">Close</th>
+                            <th class="text-right" data-sort="pct_change" onclick="window.sortBullSnort('pct_change')">Change %</th>
+                            <th class="text-right" data-sort="vol_ratio" onclick="window.sortBullSnort('vol_ratio')">Vol Ratio</th>
+                            <th class="text-right" data-sort="close_position" onclick="window.sortBullSnort('close_position')">Close Pos</th>
+                            <th class="text-right" data-sort="dma200" onclick="window.sortBullSnort('dma200')">200 DMA</th>
+                            <th class="text-right" data-sort="current_gap_pct" onclick="window.sortBullSnort('current_gap_pct')">Gap Now</th>
+                            <th class="text-right" data-sort="max_gap_6mo_pct" onclick="window.sortBullSnort('max_gap_6mo_pct')">Max Gap 6mo</th>
+                            <th class="text-center" data-sort="n_vol_pivots" onclick="window.sortBullSnort('n_vol_pivots')">Vol Pivots</th>
+                            <th class="text-center" data-sort="n_vol_surges" onclick="window.sortBullSnort('n_vol_surges')">Vol Surges</th>
+                            <th class="text-right" data-sort="accumulation_score" onclick="window.sortBullSnort('accumulation_score')">Accum Score</th>
+                            <th class="text-right" data-sort="final_score" onclick="window.sortBullSnort('final_score')">Final Score</th>
                         </tr>
                     </thead>
                     <tbody id="bull-snort-tbody">
