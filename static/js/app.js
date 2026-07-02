@@ -8431,12 +8431,135 @@ document.addEventListener('DOMContentLoaded', () => {
 // TRADE JOURNAL LOGIC
 // ==========================================
 
+window.journalSortField = 'date'; // Default to sort by date
+window.journalSortAsc = false;   // Default to descending (newest first)
+
+function getJournalSortValue(trade, field) {
+    if (!trade) return null;
+    switch(field) {
+        case 'date':
+            return trade.date || '';
+        case 'ticker':
+            return trade.ticker || '';
+        case 'currentPrice': {
+            const currentStock = stocksData.find(s => s.clean_ticker === trade.ticker);
+            if (currentStock && currentStock.close) {
+                return parseFloat(currentStock.close);
+            }
+            return trade.exitPrice ? parseFloat(trade.exitPrice) : 0;
+        }
+        case 'setup':
+            return trade.setupLabel || '';
+        case 'entry':
+            return parseFloat(trade.entry) || 0;
+        case 'stop':
+            return parseFloat(trade.stop) || 0;
+        case 'qty':
+            return parseInt(trade.qty) || 0;
+        case 'risk':
+            return parseFloat(trade.riskAmount) || 0;
+        case 'status':
+            return trade.status || '';
+        case 'pnl': {
+            let pnl = trade.pnl;
+            if (trade.status === 'open') {
+                const currentStock = stocksData.find(s => s.clean_ticker === trade.ticker);
+                if (currentStock && currentStock.close) {
+                    pnl = (parseFloat(currentStock.close) - trade.entry) * trade.qty;
+                }
+            }
+            return pnl !== null ? parseFloat(pnl) : -Infinity;
+        }
+        case 'rAchieved': {
+            let r = trade.rAchieved;
+            if (trade.status === 'open') {
+                const currentStock = stocksData.find(s => s.clean_ticker === trade.ticker);
+                if (currentStock && currentStock.close) {
+                    const riskPerShare = trade.entry - trade.stop;
+                    if (riskPerShare > 0) {
+                        r = (parseFloat(currentStock.close) - trade.entry) / riskPerShare;
+                    }
+                }
+            }
+            return r !== null ? parseFloat(r) : -Infinity;
+        }
+        case 'notes':
+            return trade.notes || '';
+        default:
+            return null;
+    }
+}
+
 function getJournalData() {
-    return journalData || [];
+    let data = [...(journalData || [])];
+    if (window.journalSortField) {
+        data.sort((a, b) => {
+            let valA = getJournalSortValue(a, window.journalSortField);
+            let valB = getJournalSortValue(b, window.journalSortField);
+            
+            // Handle null/undefined/empty string values - push to bottom regardless of order
+            if ((valA === null || valA === undefined || valA === '') && (valB === null || valB === undefined || valB === '')) return 0;
+            if (valA === null || valA === undefined || valA === '') return 1;
+            if (valB === null || valB === undefined || valB === '') return -1;
+            
+            let compare = 0;
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                compare = valA.localeCompare(valB, undefined, {numeric: true, sensitivity: 'base'});
+            } else {
+                let numA = parseFloat(valA);
+                let numB = parseFloat(valB);
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    compare = numA < numB ? -1 : (numA > numB ? 1 : 0);
+                } else {
+                    compare = String(valA).localeCompare(String(valB), undefined, {numeric: true, sensitivity: 'base'});
+                }
+            }
+            return window.journalSortAsc ? compare : -compare;
+        });
+    }
+    return data;
 }
 
 function setJournalData(data) {
     journalData = data || [];
+}
+
+window.sortJournal = function(field) {
+    if (window.journalSortField === field) {
+        window.journalSortAsc = !window.journalSortAsc;
+    } else {
+        window.journalSortField = field;
+        if (field === 'date' || field === 'pnl' || field === 'rAchieved' || field === 'currentPrice') {
+            window.journalSortAsc = false;
+        } else {
+            window.journalSortAsc = true;
+        }
+    }
+    updateJournalSortUI();
+    renderJournal();
+};
+
+function updateJournalSortUI() {
+    const headers = document.querySelectorAll('.journal-table th.sortable');
+    headers.forEach(th => {
+        const indicator = th.querySelector('.sort-indicator');
+        if (!indicator) return;
+        
+        const onclickAttr = th.getAttribute('onclick') || '';
+        const match = onclickAttr.match(/window\.sortJournal\('([^']+)'\)/);
+        if (match && match[1]) {
+            const field = match[1];
+            if (field === window.journalSortField) {
+                indicator.innerHTML = window.journalSortAsc ? ' ▲' : ' ▼';
+                indicator.style.opacity = '1';
+                th.classList.add('sorted');
+            } else {
+                indicator.innerHTML = '';
+                indicator.style.opacity = '0.3';
+                th.classList.remove('sorted');
+            }
+        }
+    });
 }
 
 window.saveTradeToJournal = function() {
@@ -8501,6 +8624,7 @@ window.saveTradeToJournal = function() {
 }
 
 function renderJournal() {
+    updateJournalSortUI();
     const journal = getJournalData();
     const tbody = document.getElementById('journal-table-body');
     

@@ -8992,6 +8992,35 @@ font-family: var(--font-display);
     text-align: left;
 }
 
+.journal-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.2s ease, border-bottom-color 0.2s ease;
+}
+
+.journal-table th.sortable:hover {
+    color: var(--color-text-primary);
+    border-bottom-color: rgba(59, 130, 246, 0.5);
+}
+
+.journal-table th.sortable.sorted {
+    color: var(--color-text-primary);
+    border-bottom-color: var(--accent-blue, #3b82f6);
+}
+
+.journal-table th.sortable .sort-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.65rem;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+    vertical-align: middle;
+}
+
+.journal-table th.sortable:hover .sort-indicator {
+    opacity: 1;
+}
+
 .journal-table tbody tr {
 background: rgba(15, 23, 42, 0.45);
     transition: all 0.2s ease;
@@ -9036,6 +9065,50 @@ border-left: 1px solid rgba(255, 255, 255, 0.03);
 border-right: 1px solid rgba(255, 255, 255, 0.03);
     border-top-right-radius: var(--radius-md, 8px);
     border-bottom-right-radius: var(--radius-md, 8px);
+}
+
+/* Sticky Date & Ticker Columns in Journal Table */
+.journal-table th:nth-child(1),
+.journal-table td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
+    background-color: #11131c; /* Solid blended dark background */
+}
+
+.journal-table th:nth-child(2),
+.journal-table td:nth-child(2) {
+    position: sticky;
+    left: 100px;
+    z-index: 10;
+    width: 100px;
+    min-width: 100px;
+    max-width: 100px;
+    background-color: #11131c; /* Solid blended dark background */
+    box-shadow: 2px 0 5px -1px rgba(0, 0, 0, 0.4); /* Divider shadow on right edge */
+}
+
+/* Row Hovers in Dark Theme */
+.journal-table tbody tr:hover td:nth-child(1),
+.journal-table tbody tr:hover td:nth-child(2) {
+    background-color: #1a2233; /* Blended hover background */
+}
+
+/* Sticky Headers in Dark Theme */
+.journal-table th:nth-child(1) {
+    z-index: 11;
+    background-color: #1a1a1a; /* Solid panel background */
+    border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+}
+
+.journal-table th:nth-child(2) {
+    z-index: 11;
+    background-color: #1a1a1a; /* Solid panel background */
+    border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 2px 0 5px -1px rgba(0, 0, 0, 0.4);
 }
 
 /* Custom Row highlighting for recent entries */
@@ -9203,6 +9276,25 @@ border-right-color: rgba(59, 130, 246, 0.35) !important;
 
 body[data-theme="light"] .journal-table th {
 border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Light theme sticky overrides */
+body[data-theme="light"] .journal-table th:nth-child(1),
+body[data-theme="light"] .journal-table td:nth-child(1),
+body[data-theme="light"] .journal-table th:nth-child(2),
+body[data-theme="light"] .journal-table td:nth-child(2) {
+    background-color: hsl(220, 20%, 97%);
+}
+
+body[data-theme="light"] .journal-table tbody tr:hover td:nth-child(1),
+body[data-theme="light"] .journal-table tbody tr:hover td:nth-child(2) {
+    background-color: hsl(220, 20%, 94%);
+}
+
+body[data-theme="light"] .journal-table th:nth-child(1),
+body[data-theme="light"] .journal-table th:nth-child(2) {
+    background-color: hsl(220, 20%, 95%);
+    border-bottom: 2px solid rgba(0, 0, 0, 0.05);
 }
 
 body[data-theme="light"] .journal-target-badge {

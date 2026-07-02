@@ -950,19 +950,19 @@
                         <table class="journal-table">
                             <thead>
                                 <tr>
-                                    <th class="text-left">Date</th>
-                                    <th class="text-left">Ticker</th>
-                                    <th class="text-right">Current Price</th>
-                                    <th class="text-left">Setup</th>
-                                    <th class="text-right">Entry</th>
-                                    <th class="text-right">Stop</th>
+                                    <th class="text-left sortable" onclick="window.sortJournal('date')">Date<span class="sort-indicator"></span></th>
+                                    <th class="text-left sortable" onclick="window.sortJournal('ticker')">Ticker<span class="sort-indicator"></span></th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('currentPrice')">Current Price<span class="sort-indicator"></span></th>
+                                    <th class="text-left sortable" onclick="window.sortJournal('setup')">Setup<span class="sort-indicator"></span></th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('entry')">Entry<span class="sort-indicator"></span></th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('stop')">Stop<span class="sort-indicator"></span></th>
                                     <th class="text-left">Targets</th>
-                                    <th class="text-right">Qty</th>
-                                    <th class="text-right">₹Risk</th>
-                                    <th class="text-center">Status</th>
-                                    <th class="text-right">PnL</th>
-                                    <th class="text-right">R-achieved</th>
-                                    <th class="text-left">Notes</th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('qty')">Qty<span class="sort-indicator"></span></th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('risk')">₹Risk<span class="sort-indicator"></span></th>
+                                    <th class="text-center sortable" onclick="window.sortJournal('status')">Status<span class="sort-indicator"></span></th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('pnl')">PnL<span class="sort-indicator"></span></th>
+                                    <th class="text-right sortable" onclick="window.sortJournal('rAchieved')">R-achieved<span class="sort-indicator"></span></th>
+                                    <th class="text-left sortable" onclick="window.sortJournal('notes')">Notes<span class="sort-indicator"></span></th>
                                     <th class="text-center">Action</th>
                                 </tr>
                             </thead>
