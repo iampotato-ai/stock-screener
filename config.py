@@ -1,4 +1,5 @@
 import os
+import json
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -17,6 +18,46 @@ if os.path.exists(env_path):
                     os.environ[key.strip()] = val_str
     except Exception as e:
         print(f"Warning: could not parse .env file: {e}")
+
+# Momentum Confidence Score weights configuration
+MOMENTUM_SCORE_WEIGHTS_FILE = os.path.join(basedir, 'momentum_score_weights.json')
+
+def load_momentum_score_weights():
+    """Load momentum score weights from JSON file, return defaults if file not found."""
+    default_weights = {
+        "technical_strength": 30,
+        "fundamental_quality": 25,
+        "momentum": 20,
+        "institutional_confidence": 15,
+        "risk_liquidity": 10
+    }
+
+    try:
+        if os.path.exists(MOMENTUM_SCORE_WEIGHTS_FILE):
+            with open(MOMENTUM_SCORE_WEIGHTS_FILE, 'r') as f:
+                weights = json.load(f)
+                # Validate that all required keys are present
+                for key in default_weights:
+                    if key not in weights:
+                        weights[key] = default_weights[key]
+                return weights
+        else:
+            # Create default weights file if it doesn't exist
+            save_momentum_score_weights(default_weights)
+            return default_weights
+    except Exception as e:
+        print(f"Warning: could not load momentum score weights: {e}")
+        return default_weights
+
+def save_momentum_score_weights(weights):
+    """Save momentum score weights to JSON file."""
+    try:
+        with open(MOMENTUM_SCORE_WEIGHTS_FILE, 'w') as f:
+            json.dump(weights, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"Warning: could not save momentum score weights: {e}")
+        return False
 
 
 class Config:
@@ -58,6 +99,9 @@ class Config:
     EP_CONFIDENCE_MEDIUM = float(os.environ.get('EP_CONFIDENCE_MEDIUM', '0.55'))
     EP_MODEL_TRAIN_HOUR = int(os.environ.get('EP_MODEL_TRAIN_HOUR', '16'))
     EP_MODEL_TRAIN_MINUTE = int(os.environ.get('EP_MODEL_TRAIN_MINUTE', '0'))
+    # Daily Momentum Confidence Score calculation schedule (default 16:30 IST)
+    DAILY_SCORE_HOUR = int(os.environ.get('DAILY_SCORE_HOUR', '16'))
+    DAILY_SCORE_MINUTE = int(os.environ.get('DAILY_SCORE_MINUTE', '30'))
     EP_MODEL_TRAINING_ENABLED = os.environ.get('EP_MODEL_TRAINING_ENABLED', 'False').lower() == 'true'
     EP_MODEL_TRAINING_DRY_RUN = os.environ.get('EP_MODEL_TRAINING_DRY_RUN', 'True').lower() == 'true'
     EP_STALENESS_DAYS = int(os.environ.get('EP_STALENESS_DAYS', '180'))

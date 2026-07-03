@@ -11,6 +11,7 @@ import json
 import time
 from flask import Flask
 from app.services.model_training_service import run_ep_model_training
+from app.tasks.score_calculator import calculate_all_scores
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,19 @@ def init_scheduler(app: Flask):
             replace_existing=True,
             args=[app]
         )
+
+    # Add Daily Momentum Confidence Score calculation job - runs after market close
+    scheduler.add_job(
+        func=calculate_all_scores,
+        trigger='cron',
+        hour=app.config.get('DAILY_SCORE_HOUR', 16),
+        minute=app.config.get('DAILY_SCORE_MINUTE', 30),
+        timezone='Asia/Kolkata',
+        id='daily_momentum_score_job',
+        name='Daily Momentum Confidence Score calculation',
+        replace_existing=True,
+        args=[app]
+    )
 
     # Add market cap refresh job - runs daily at configured hour (gated behind feature flag)
     if app.config.get('ENABLE_MARKET_CAP_CACHE', True):
