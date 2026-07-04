@@ -35,7 +35,9 @@ def get_stock_score(symbol):
             )
 
         if score_data.get('success', False):
-            return jsonify(score_data), 200
+            # Remove internal fields before returning to client
+            clean_data = {k: v for k, v in score_data.items() if k not in ('success', 'error')}
+            return jsonify(clean_data), 200
         else:
             return jsonify({
                 'error': score_data.get('error', 'Failed to calculate score'),

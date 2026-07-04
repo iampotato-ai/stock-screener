@@ -100,6 +100,7 @@ class Config:
     EP_MODEL_TRAIN_HOUR = int(os.environ.get('EP_MODEL_TRAIN_HOUR', '16'))
     EP_MODEL_TRAIN_MINUTE = int(os.environ.get('EP_MODEL_TRAIN_MINUTE', '0'))
     # Daily Momentum Confidence Score calculation schedule (default 16:30 IST)
+    DAILY_SCORE_BATCH_SIZE = int(os.environ.get('DAILY_SCORE_BATCH_SIZE', '200'))
     DAILY_SCORE_HOUR = int(os.environ.get('DAILY_SCORE_HOUR', '16'))
     DAILY_SCORE_MINUTE = int(os.environ.get('DAILY_SCORE_MINUTE', '30'))
     EP_MODEL_TRAINING_ENABLED = os.environ.get('EP_MODEL_TRAINING_ENABLED', 'False').lower() == 'true'
