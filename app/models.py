@@ -435,3 +435,55 @@ class ScanPriceLog(BaseModel):
     setupLabel = db.Column(db.String(100))
 
     __table_args__ = (db.PrimaryKeyConstraint('date', 'ticker', name='_date_ticker_pk'),)
+
+
+class MomentumScore(BaseModel):
+    """Model for storing daily Momentum Confidence Scores for stocks."""
+    __tablename__ = 'momentum_scores'
+
+    # Composite primary key: one score per stock per exchange per date
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False, index=True)
+    exchange = db.Column(db.String(10), nullable=False, default='NSE', index=True)
+    date = db.Column(db.Date, nullable=False, index=True)
+
+    # Total score (0-100)
+    total_score = db.Column(db.Integer, nullable=False)
+
+    # Pillar scores
+    technical_score = db.Column(db.Integer, nullable=False)  # 0-30
+    fundamental_score = db.Column(db.Integer, nullable=False)  # 0-25
+    momentum_score = db.Column(db.Integer, nullable=False)  # 0-20
+    institutional_score = db.Column(db.Integer, nullable=False)  # 0-15
+    risk_liquidity_score = db.Column(db.Integer, nullable=False)  # 0-10
+
+    # Badges (stored as JSON array of strings)
+    badges = db.Column(db.JSON, nullable=False)
+
+    # Calculation timestamp
+    calculated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Unique constraint to prevent duplicate scores for same stock/date
+    __table_args__ = (
+        db.UniqueConstraint('symbol', 'exchange', 'date', name='_symbol_exchange_date_uc'),
+        db.Index('idx_momentum_scores_date', 'date'),
+        db.Index('idx_momentum_scores_score', 'total_score'),
+    )
+
+    def to_dict(self):
+        """Convert model instance to dictionary."""
+        res = {
+            'id': self.id,
+            'symbol': self.symbol,
+            'exchange': self.exchange,
+            'date': self.date.isoformat() if self.date else None,
+            'total_score': self.total_score,
+            'technical_score': self.technical_score,
+            'fundamental_score': self.fundamental_score,
+            'momentum_score': self.momentum_score,
+            'institutional_score': self.institutional_score,
+            'risk_liquidity_score': self.risk_liquidity_score,
+            'badges': self.badges,
+            'calculated_at': self.calculated_at.isoformat() if self.calculated_at else None
+        }
+        return res

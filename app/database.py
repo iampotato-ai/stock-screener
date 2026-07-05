@@ -582,6 +582,26 @@ def _create_tables(conn):
             is_active       INTEGER DEFAULT 1
         )
     ''')
+    # Momentum Confidence Score™ table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS momentum_scores (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol              TEXT    NOT NULL,
+            exchange            TEXT    NOT NULL DEFAULT 'NSE',
+            date                DATE    NOT NULL,
+            total_score         INTEGER NOT NULL,
+            technical_score     INTEGER NOT NULL,
+            fundamental_score   INTEGER NOT NULL,
+            momentum_score      INTEGER NOT NULL,
+            institutional_score INTEGER NOT NULL,
+            risk_liquidity_score INTEGER NOT NULL,
+            badges              TEXT    NOT NULL DEFAULT '[]',   -- JSON array
+            calculated_at       DATETIME NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (symbol, exchange, date)
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_momentum_scores_date ON momentum_scores (date)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_momentum_scores_score ON momentum_scores (total_score DESC)')
     # Alter corporate_events for NLP Enhancement
     nlp_columns = [
         ("nlp_sentiment_score", "REAL"),
@@ -675,12 +695,8 @@ def get_latest_scan_results(limit=50):
     query = '''
         SELECT s.ticker, s.date, s.close, s.swingband, s.setupLabel
         FROM scan_price_log s
-        INNER JOIN (
-            SELECT ticker, MAX(date) as max_date
-            FROM scan_history
-            GROUP BY ticker
-        ) latest ON s.ticker = latest.ticker AND s.date = latest.max_date
-        ORDER BY s.date DESC
+        WHERE s.date = (SELECT MAX(date) FROM scan_history)
+        ORDER BY s.ticker ASC
         LIMIT ?
     '''
     return fetch_all(query, (limit,))
