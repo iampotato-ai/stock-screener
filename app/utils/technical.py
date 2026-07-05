@@ -484,6 +484,18 @@ def classify_technical_pattern(history):
                     "description": f"{desc} Sideways consolidation. Price has drifted to the upper base resistance."
                 }
 
+    # 5. Resistance / New High Breakout (Multi-month breakout / 52-week breakout)
+    if len(closes) >= 50:
+        prev_50_high = max(highs[-50:-2])
+        if current_close >= prev_50_high * 0.99 and vol_ratio >= 1.5:
+            max_52w_high = max(highs[-250:]) if len(highs) >= 250 else max(highs)
+            if current_close >= max_52w_high * 0.96:
+                return {
+                    "pattern": "Resistance Breakout",
+                    "grade": "A",
+                    "description": f"Multi-month resistance breakout zone above {prev_50_high:.2f} confirmed on strong volume ({vol_ratio:.1f}x avg)."
+                }
+
     return {
         "pattern": "Trend Continuation",
         "grade": "B",

@@ -15,9 +15,9 @@ import logging
 
 from app.services.scoring.fetcher_utils import (
     compute_ema, compute_macd, compute_adx, compute_supertrend,
-    compute_volatility, compute_yoy_growth, compute_rsi,
-    classify_technical_pattern
+    compute_volatility, compute_yoy_growth, compute_rsi
 )
+from app.utils.technical import classify_technical_pattern
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,10 @@ class StockDataFetcher:
             # Layer 4: Database fallback for price (if needed)
             # This would be implemented if we had direct DB access for price history
 
+            # Calculate golden cross (50 EMA > 200 EMA) after merging all layers
+            if result.get('ema_50') and result.get('ema_200'):
+                result['golden_cross'] = float(result['ema_50']) > float(result['ema_200'])
+
             # Apply any missing field defaults
             result = self._apply_missing_defaults(result, symbol, exchange)
 
@@ -106,7 +110,9 @@ class StockDataFetcher:
         try:
             # Prepare TradingView payload
             # Format symbols for TradingView (NSE:RELIANCE format)
-            tv_symbols = [f"NSE:{sym}" for sym in symbols]
+            # Remove any existing exchange prefix to prevent double-prefixing (e.g. NSE:NSE:RELIANCE)
+            cleaned_symbols = [sym.replace('NSE:', '').replace('BSE:', '').replace('BO:', '') for sym in symbols]
+            tv_symbols = [f"NSE:{sym}" for sym in cleaned_symbols]
 
             payload = {
                 "symbols": {
@@ -140,24 +146,49 @@ class StockDataFetcher:
             tv_data = {}
             if 'data' in result_data:
                 for item in result_data['data']:
-                    if isinstance(item, list) and len(item) >= 10:
-                        sym = item[0]  # Symbol
-                        # Remove NSE: prefix for our internal representation
-                        clean_sym = sym.replace('NSE:', '')
-                        tv_data[clean_sym] = {
-                            'close': item[1] if len(item) > 1 else None,
-                            'market_cap_basic': item[2] if len(item) > 2 else None,
-                            'price_52_week_high': item[3] if len(item) > 3 else None,
-                            'price_52_week_low': item[4] if len(item) > 4 else None,
-                            'RSI': item[5] if len(item) > 5 else None,
-                            'EMA50': item[6] if len(item) > 6 else None,
-                            'Perf.W': item[7] if len(item) > 7 else None,
-                            'Perf.1M': item[8] if len(item) > 8 else None,
-                            'Perf.3M': item[9] if len(item) > 9 else None,
-                            'volume': item[10] if len(item) > 10 else None,
-                            'average_volume_10d_calc': item[11] if len(item) > 11 else None,
-                            'average_volume_30d_calc': item[12] if len(item) > 12 else None
-                        }
+                    clean_sym = None
+                    cols = []
+                    
+                    if isinstance(item, dict):
+                        raw_ticker = item.get('s', '')
+                        clean_sym = raw_ticker.replace('NSE:', '').replace('BSE:', '')
+                        cols = item.get('d', [])
+                        # In the real TV response dict format, cols matches columns list:
+                        # cols[0] = name, cols[1] = close, cols[2] = market_cap_basic, etc.
+                        if clean_sym and cols:
+                            tv_data[clean_sym] = {
+                                'close': cols[1] if len(cols) > 1 else None,
+                                'market_cap_basic': cols[2] if len(cols) > 2 else None,
+                                'price_52_week_high': cols[3] if len(cols) > 3 else None,
+                                'price_52_week_low': cols[4] if len(cols) > 4 else None,
+                                'RSI': cols[5] if len(cols) > 5 else None,
+                                'EMA50': cols[6] if len(cols) > 6 else None,
+                                'Perf.W': cols[7] if len(cols) > 7 else None,
+                                'Perf.1M': cols[8] if len(cols) > 8 else None,
+                                'Perf.3M': cols[9] if len(cols) > 9 else None,
+                                'volume': cols[10] if len(cols) > 10 else None,
+                                'average_volume_10d_calc': cols[11] if len(cols) > 11 else None,
+                                'average_volume_30d_calc': cols[12] if len(cols) > 12 else None
+                            }
+                    elif isinstance(item, list) and len(item) > 0:
+                        sym = item[0]
+                        clean_sym = sym.replace('NSE:', '').replace('BSE:', '')
+                        # In the list format (used in tests), item[0] = symbol, item[1] = close, etc.
+                        if clean_sym:
+                            tv_data[clean_sym] = {
+                                'close': item[1] if len(item) > 1 else None,
+                                'market_cap_basic': item[2] if len(item) > 2 else None,
+                                'price_52_week_high': item[3] if len(item) > 3 else None,
+                                'price_52_week_low': item[4] if len(item) > 4 else None,
+                                'RSI': item[5] if len(item) > 5 else None,
+                                'EMA50': item[6] if len(item) > 6 else None,
+                                'Perf.W': item[7] if len(item) > 7 else None,
+                                'Perf.1M': item[8] if len(item) > 8 else None,
+                                'Perf.3M': item[9] if len(item) > 9 else None,
+                                'volume': item[10] if len(item) > 10 else None,
+                                'average_volume_10d_calc': item[11] if len(item) > 11 else None,
+                                'average_volume_30d_calc': item[12] if len(item) > 12 else None
+                            }
 
             logger.info(f"Fetched isolated TradingView data for {len(tv_data)} symbols")
             return tv_data
@@ -178,6 +209,10 @@ class StockDataFetcher:
     def _fetch_yahoo_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch fundamental data from Yahoo Finance."""
         try:
+            # Respect rate limit
+            if self.rate_limit_delay > 0:
+                time.sleep(self.rate_limit_delay)
+
             # Yahoo Finance expects .NS suffix for NSE stocks
             yahoo_symbol = f"{symbol}.NS"
             url = f"{self.yahoo_finance_base}/{yahoo_symbol}?modules=financialData,defaultKeyStatistics,incomeStatementHistory"
@@ -199,6 +234,10 @@ class StockDataFetcher:
     def _fetch_yahoo_ohlcv(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch OHLCV data from Yahoo Finance for technical indicators."""
         try:
+            # Respect rate limit
+            if self.rate_limit_delay > 0:
+                time.sleep(self.rate_limit_delay)
+
             # Yahoo Finance expects .NS suffix for NSE stocks
             yahoo_symbol = f"{symbol}.NS"
             # Get 1 year of daily data
@@ -280,7 +319,7 @@ class StockDataFetcher:
             # ROCE (use ROE as proxy if not available)
             roce_data = financial_data.get('returnOnCapitalEmployed', {})
             if roce_data and 'raw' in roce_data:
-                result['roce'] = float(roe_data['raw'])
+                result['roce'] = float(roce_data['raw'])
             elif 'roe' in result:
                 result['roce'] = result['roe']  # Proxy
 
@@ -355,22 +394,37 @@ class StockDataFetcher:
         indicators = chart_result.get('indicators', {})
         quote = indicators.get('quote', [{}])[0] if indicators.get('quote') else {}
 
-        closes = quote.get('close', [])
-        highs = quote.get('high', [])
-        lows = quote.get('low', [])
-        volumes = quote.get('volume', [])
+        raw_opens = quote.get('open', [])
+        raw_highs = quote.get('high', [])
+        raw_lows = quote.get('low', [])
+        raw_closes = quote.get('close', [])
+        raw_volumes = quote.get('volume', [])
 
-        if not closes or len(closes) < 2:
+        min_len = min(len(raw_opens), len(raw_highs), len(raw_lows), len(raw_closes), len(raw_volumes))
+        history_list = []
+        for i in range(min_len):
+            o = raw_opens[i]
+            h = raw_highs[i]
+            l = raw_lows[i]
+            c = raw_closes[i]
+            v = raw_volumes[i]
+            if o is not None and h is not None and l is not None and c is not None and v is not None:
+                history_list.append({
+                    'open': float(o),
+                    'high': float(h),
+                    'low': float(l),
+                    'close': float(c),
+                    'volume': float(v)
+                })
+
+        if len(history_list) < 2:
             return result
 
-        # Filter out None values
-        closes = [c for c in closes if c is not None]
-        highs = [h for h in highs if h is not None]
-        lows = [l for l in lows if l is not None]
-        volumes = [v for v in volumes if v is not None]
-
-        if len(closes) < 2:
-            return result
+        opens = [day['open'] for day in history_list]
+        closes = [day['close'] for day in history_list]
+        highs = [day['high'] for day in history_list]
+        lows = [day['low'] for day in history_list]
+        volumes = [day['volume'] for day in history_list]
 
         # Calculate EMA20, EMA100, EMA200
         if len(closes) >= 20:
@@ -445,20 +499,31 @@ class StockDataFetcher:
             if min(recent_lows) > min(previous_lows):
                 result['higher_lows'] = True
 
-        # Golden cross (50 EMA > 200 EMA)
-        if 'ema_50' in result and 'ema_200' in result:
-            result['golden_cross'] = result['ema_50'] > result['ema_200']
-
         # VCP pattern and breakout detection
-        history_dict = {
-            'highs': highs,
-            'lows': lows,
-            'closes': closes,
-            'volumes': volumes
-        }
-        pattern_result = classify_technical_pattern(history_dict)
+        pattern_result = classify_technical_pattern(history_list)
         result['has_vcp_pattern'] = pattern_result['pattern'].startswith('VCP')
-        result['is_breakout'] = pattern_result['pattern'] == 'BREAKOUT'
+        
+        BREAKOUT_PATTERNS = {
+            'High Tight Flag Breakout',
+            'VCP Breakout (3T)',
+            'Cup & Handle Breakout',
+            'Long Base Breakout',
+            'Resistance Breakout'
+        }
+        is_pattern_breakout = pattern_result.get('pattern', '') in BREAKOUT_PATTERNS
+        
+        # Safeguard: a fresh breakout day should not be a significant down day (e.g. <-2.5%)
+        # This handles cases where a pattern is classified as breakout but the price had a heavy pullback on the day.
+        is_breakout_confirmed = False
+        if is_pattern_breakout:
+            if len(closes) >= 2:
+                day_change_pct = ((closes[-1] - closes[-2]) / closes[-2]) * 100.0
+                if day_change_pct >= -2.5:
+                    is_breakout_confirmed = True
+            else:
+                is_breakout_confirmed = True
+                
+        result['is_breakout'] = is_breakout_confirmed
 
         # Relative strength rating (simplified - vs median of universe)
         # In a real implementation, this would compare against the peer universe

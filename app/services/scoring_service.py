@@ -110,7 +110,7 @@ class MomentumConfidenceScoreService:
                 raise Exception("One or more required analyzers are not available")
 
             # Fetch real stock data using TradingView and Yahoo Finance
-            stock_data = self._get_mock_stock_data(symbol, exchange)
+            stock_data = self._fetch_stock_data(symbol, exchange, isolated_tv_data=isolated_tv_data)
 
             # Calculate scores for each pillar
             technical_result = self.technical_analyzer.analyze(stock_data)
@@ -187,7 +187,8 @@ class MomentumConfidenceScoreService:
 
         return result
 
-    def _get_mock_stock_data(self, symbol: str, exchange: str) -> Dict[str, Any]:
+    def _fetch_stock_data(self, symbol: str, exchange: str,
+                          isolated_tv_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Get stock data for a symbol using real data fetching.
         This replaces the mock data implementation with real data from TradingView and Yahoo Finance.
@@ -195,7 +196,7 @@ class MomentumConfidenceScoreService:
         from app.services.scoring.fetcher import fetch_stock_data
 
         # Fetch real stock data
-        stock_data = fetch_stock_data(symbol, exchange)
+        stock_data = fetch_stock_data(symbol, exchange, isolated_tv_data=isolated_tv_data)
 
         logger.info(f"Fetched real data for {symbol}.{exchange}: price={stock_data.get('price', 0)}")
 

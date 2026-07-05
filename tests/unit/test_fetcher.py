@@ -76,6 +76,25 @@ class TestStockDataFetcher:
         assert rel_data['market_cap_basic'] == 1500000.0
 
     @patch('app.services.scoring.fetcher.urllib.request.urlopen')
+    def test_fetch_isolated_tv_data_dict_format(self, mock_urlopen):
+        """Test successful isolated TradingView data fetch with dictionary format (production)."""
+        # Mock response data in dict format: {"s": "NSE:RELIANCE", "d": [name, close, market_cap, ...]}
+        mock_response = Mock()
+        mock_response.read.return_value = b'{"data": [{"s": "NSE:RELIANCE", "d": ["Reliance Industries", 2500.50, 1500000.0, 2600.0, 2400.0, 65.5, 2450.30, 2.5, 15.0, 8.0, 1000000, 900000, 950000]}]}'
+        mock_response.__enter__ = Mock(return_value=mock_response)
+        mock_response.__exit__ = Mock(return_value=None)
+        mock_urlopen.return_value = mock_response
+
+        result = self.fetcher.fetch_isolated_tv_data(['RELIANCE'])
+
+        assert 'RELIANCE' in result
+        rel_data = result['RELIANCE']
+        assert rel_data['close'] == 2500.50
+        assert rel_data['RSI'] == 65.5
+        assert rel_data['EMA50'] == 2450.30
+        assert rel_data['market_cap_basic'] == 1500000.0
+
+    @patch('app.services.scoring.fetcher.urllib.request.urlopen')
     def test_fetch_isolated_tv_data_empty(self, mock_urlopen):
         """Test handling of empty response from TradingView."""
         # Mock empty response

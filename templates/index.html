@@ -268,6 +268,19 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                     <span style="color: #fbbf24; font-weight: 700; text-shadow: 0 0 8px rgba(251, 191, 36, 0.25);">Bull Snort</span>
                 </button>
+                <button class="workspace-tab" data-view="momentum-score" id="tab-momentum-score">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                        <polyline points="16 7 22 7 22 13"></polyline>
+                    </svg>
+                    <span>MCS™</span>
+                    <span id="mcs-top-badge" class="badge"
+                          style="display:none; background:#a855f7; color:#fff; border-radius:50%;
+                                 padding:var(--space-1) var(--space-2); font-size:0.7rem;
+                                 margin-left:var(--space-2); font-weight:bold;
+                                 box-shadow:0 0 8px rgba(168,85,247,0.6);">0</span>
+                </button>
                 <div class="workspace-sliding-cap"></div>
             </div>
         </nav>
@@ -1831,6 +1844,179 @@
             </div>
         </div>
     </div>
+    <!-- Workspace View: Momentum Confidence Score™ -->
+    <div class="workspace-view" id="view-momentum-score">
+        <style>
+            #mcs-table th.sortable {
+                cursor: pointer;
+                user-select: none;
+                transition: color 150ms ease;
+            }
+            #mcs-table th.sortable:hover {
+                color: var(--color-text-primary) !important;
+            }
+            .mcs-watchlist-btn {
+                border: none !important;
+                background: none !important;
+                color: var(--color-text-muted) !important;
+                padding: 4px !important;
+                cursor: pointer;
+                transition: color 150ms ease, transform 150ms ease;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .mcs-watchlist-btn:hover {
+                color: #c084fc !important;
+                transform: scale(1.18);
+            }
+            .mcs-ticker-link {
+                color: #3b82f6 !important;
+                text-decoration: none !important;
+                font-weight: 700;
+                transition: color 150ms ease, text-shadow 150ms ease;
+                cursor: pointer;
+            }
+            .mcs-ticker-link:hover {
+                color: #60a5fa !important;
+                text-decoration: underline !important;
+                text-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+            }
+            .mcs-close-btn {
+                transition: color 150ms ease, transform 150ms ease;
+            }
+            .mcs-close-btn:hover {
+                color: var(--color-text-primary) !important;
+                transform: scale(1.1);
+            }
+            #btn-calculate-all-mcs {
+                transition: box-shadow 200ms ease, transform 150ms ease;
+            }
+            #btn-calculate-all-mcs:hover {
+                box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+                transform: translateY(-1px);
+            }
+            #btn-calculate-all-mcs:active {
+                transform: translateY(0);
+            }
+            #btn-export-mcs {
+                transition: background-color 200ms ease, border-color 200ms ease, transform 150ms ease;
+            }
+            #btn-export-mcs:hover {
+                background: rgba(255, 255, 255, 0.08) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
+                transform: translateY(-1px);
+            }
+            #btn-export-mcs:active {
+                transform: translateY(0);
+            }
+            .mcs-summary-card {
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid var(--glass-border);
+                border-radius: 10px;
+                padding: 0.75rem 1.25rem;
+                min-width: 120px;
+                cursor: pointer;
+                transition: background-color 200ms ease, border-color 200ms ease, transform 150ms ease, box-shadow 200ms ease;
+                user-select: none;
+            }
+            .mcs-summary-card:hover {
+                background: rgba(255, 255, 255, 0.07);
+                border-color: rgba(255, 255, 255, 0.2);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            }
+            .mcs-summary-card.active {
+                background: rgba(168, 85, 247, 0.08) !important;
+                border-color: #a855f7 !important;
+                box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+            }
+        </style>
+        <div class="bull-snort-workspace-wrapper glass-panel">
+
+            <!-- Header -->
+            <div class="bull-snort-header-section">
+                <div>
+                    <div class="bull-snort-header-title">
+                        <span>📊 Momentum Confidence Score™</span>
+                    </div>
+                    <div class="bull-snort-header-subtitle">
+                        Daily composite score (0–100) across 5 pillars: Technical · Fundamental ·
+                        Momentum · Institutional · Risk & Liquidity. Updated after market close.
+                    </div>
+                </div>
+                <div style="margin-left:auto; display:flex; align-items:center; gap:0.75rem;">
+                    <select id="mcs-filter-min-score" class="bull-snort-select">
+                         <option value="0" selected>All scores</option>
+                         <option value="60">≥ 60</option>
+                         <option value="75">≥ 75</option>
+                         <option value="85">≥ 85</option>
+                    </select>
+                    <button id="btn-calculate-all-mcs" class="bull-snort-run-btn" style="background:#a855f7; color:#fff; border-color:#a855f7;">
+                        <span class="btn-spinner hidden" id="mcs-calc-spinner"></span>
+                        <span class="btn-text">⚡ Calculate All</span>
+                    </button>
+                    <button id="btn-export-mcs" class="bull-snort-run-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--color-text-primary);">
+                        <span>📤 Export CSV</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Progress Bar Container -->
+            <div id="mcs-progress-container" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:1rem; margin:0.5rem 0 1rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; font-size:0.85rem;">
+                    <span id="mcs-progress-label" style="font-weight:600; color:var(--color-text-primary);">Calculating scores...</span>
+                    <span id="mcs-progress-text" style="font-weight:700; color:#a855f7;">0/0 completed</span>
+                </div>
+                <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:10px; overflow:hidden;">
+                    <div id="mcs-progress-bar" style="width:0%; height:100%; background:#a855f7; border-radius:6px; transition:width 300ms ease;"></div>
+                </div>
+            </div>
+
+            <!-- Summary cards -->
+            <div id="mcs-summary-cards"
+                 style="display:flex; gap:1rem; margin:0.75rem 0; flex-wrap:wrap;">
+                <!-- Filled by JS: Total scored, Avg score, Elite count, Fresh breakouts -->
+            </div>
+
+            <div id="mcs-results-count"
+                  style="font-weight:600; font-size:0.9rem;
+                         color:var(--color-text-secondary); margin-bottom:0.25rem;"></div>
+
+            <!-- Leaderboard table -->
+            <div class="table-container"
+                  style="overflow-x:auto; max-height:520px; margin-top:var(--space-2);">
+                <table class="screener-table" id="mcs-table"
+                       style="width:100%; border-collapse:collapse; text-align:left;">
+                    <thead>
+                        <tr>
+                            <th data-sort="symbol"       onclick="window.sortMCS('symbol')" class="sortable">Symbol</th>
+                            <th data-sort="total_score"  onclick="window.sortMCS('total_score')"   class="sortable text-right">Score</th>
+                            <th data-sort="technical_score"    onclick="window.sortMCS('technical_score')"    class="sortable text-right">Technical</th>
+                            <th data-sort="fundamental_score"  onclick="window.sortMCS('fundamental_score')"  class="sortable text-right">Fundamental</th>
+                            <th data-sort="momentum_score"     onclick="window.sortMCS('momentum_score')"     class="sortable text-right">Momentum</th>
+                            <th data-sort="institutional_score" onclick="window.sortMCS('institutional_score')" class="sortable text-right">Institutional</th>
+                            <th data-sort="risk_liquidity_score" onclick="window.sortMCS('risk_liquidity_score')" class="sortable text-right">Risk</th>
+                            <th class="text-left">Badges</th>
+                            <th data-sort="date"         onclick="window.sortMCS('date')"          class="sortable text-right">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mcs-tbody">
+                        <tr>
+                            <td colspan="9"
+                                style="padding:2rem; text-align:center;
+                                       color:var(--color-text-muted); font-style:italic;">
+                                Loading scores…
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+
+
+    </div>
 
 
 
@@ -2560,9 +2746,625 @@
             </div>
         </div>
 
+    <!-- MCS Detail side drawer (Direct child of body, positioned next to trade-drawer for viewport positioning) -->
+    <div id="mcs-drawer"
+         style="position:fixed; top:0; right:-400px; width:400px; max-width:90vw; height:100vh;
+                visibility:hidden;
+                background:rgba(13, 17, 29, 0.94); border-left:1px solid var(--panel-border, rgba(255, 255, 255, 0.08));
+                backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+                box-shadow:-10px 0 40px rgba(0, 0, 0, 0.6); z-index:9999;
+                transition:right 400ms cubic-bezier(0.16,1,0.3,1);
+                display:flex; flex-direction:column; overflow-y:auto;">
+        <div style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--panel-border, rgba(255,255,255,0.08));
+                    display:flex; align-items:center; justify-content:space-between;">
+            <div>
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span id="mcs-drawer-symbol" style="font-size:1.2rem; font-weight:800; color:var(--color-text-primary);"></span>
+                    <button id="btn-mcs-drawer-add-watchlist" class="btn-add-watchlist-table" style="cursor:pointer; padding:2px; display:inline-flex; align-items:center; justify-content:center; background:none; border:1px solid var(--glass-border); border-radius:4px; color:var(--color-text-secondary);" title="Add to Watchlist">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                </div>
+                <div id="mcs-drawer-date"
+                     style="font-size:0.75rem; color:var(--color-text-muted); margin-top:2px;"></div>
+            </div>
+            <button id="mcs-drawer-close"
+                    style="background:none; border:none; cursor:pointer;
+                           color:var(--color-text-muted); padding:4px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Total score ring -->
+        <div id="mcs-drawer-score-ring"
+              style="text-align:center; padding:1.5rem 0 0.5rem;"></div>
+
+        <!-- Pillar breakdown bars -->
+        <div id="mcs-drawer-pillars" style="padding:0 1.5rem 1rem;"></div>
+
+        <!-- Badges section -->
+        <div id="mcs-drawer-badges" style="padding:0 1.5rem 1.5rem;"></div>
+    </div>
+    <!-- MCS Drawer overlay (Direct child of body, positioned next to trade-drawer-overlay) -->
+    <div id="mcs-drawer-overlay"
+         style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+                z-index:9998;" onclick="window.closeMCSDrawer()"></div>
+
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.55"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.68"></script>
+    <script>
+    // ─── Momentum Confidence Score™ Tab Logic ───────────────────────────────────
+    (function () {
+        'use strict';
+
+        let mcsData = [];
+        let mcsSortKey = 'total_score';
+        let mcsSortDir = -1; // -1 = descending
+        let mcsLastFetch = 0;
+        let mcsActiveCardFilter = null;
+        const MCS_TTL = 5 * 60 * 1000; // 5 minutes
+
+        // Pillar max values for percentage bars
+        const PILLAR_MAX = {
+            technical_score: 30,
+            fundamental_score: 25,
+            momentum_score: 20,
+            institutional_score: 15,
+            risk_liquidity_score: 10
+        };
+        const PILLAR_LABELS = {
+            technical_score: 'Technical',
+            fundamental_score: 'Fundamental',
+            momentum_score: 'Momentum',
+            institutional_score: 'Institutional',
+            risk_liquidity_score: 'Risk & Liquidity'
+        };
+
+        // ── Colour helpers ──────────────────────────────────────────────────────
+        function scoreColour(score) {
+            if (score >= 85) return '#a855f7';   // purple – Elite
+            if (score >= 75) return '#22c55e';   // green  – Strong
+            if (score >= 60) return '#f59e0b';   // amber  – Moderate
+            return '#6b7280';                    // grey   – Weak
+        }
+
+        function scoreLabel(score) {
+            if (score >= 85) return 'Elite';
+            if (score >= 75) return 'Strong';
+            if (score >= 60) return 'Moderate';
+            return 'Weak';
+        }
+
+        async function fetchMCSData() {
+            try {
+                const res  = await fetch(`/api/v1/scores?limit=300`);
+                const json = await res.json();
+                const stocks = json.stocks || [];
+
+                mcsData = stocks;
+                mcsLastFetch = Date.now();
+                renderMCSTable();
+                renderMCSSummaryCards();
+                updateMCSBadge();
+            } catch (err) {
+                document.getElementById('mcs-tbody').innerHTML =
+                    `<tr><td colspan="9" style="padding:2rem;text-align:center;color:#ef4444;">
+                        Failed to load scores: ${err.message}
+                    </td></tr>`;
+            }
+        }
+
+        // ── Render table rows ───────────────────────────────────────────────────
+        function renderMCSTable() {
+            const minScoreVal = parseInt(document.getElementById('mcs-filter-min-score')?.value || '0', 10);
+            
+            let filtered = [...mcsData];
+            
+            // 1. Dropdown min-score filter
+            if (minScoreVal > 0) {
+                filtered = filtered.filter(s => s.total_score !== null && s.total_score >= minScoreVal);
+            }
+            
+            // 2. Summary Card filter
+            if (mcsActiveCardFilter === 'scored') {
+                filtered = filtered.filter(s => s.total_score !== null && s.total_score !== undefined);
+            } else if (mcsActiveCardFilter === 'pending') {
+                filtered = filtered.filter(s => s.total_score === null || s.total_score === undefined);
+            } else if (mcsActiveCardFilter === 'elite') {
+                filtered = filtered.filter(s => s.total_score !== null && s.total_score >= 85);
+            } else if (mcsActiveCardFilter === 'breakouts') {
+                filtered = filtered.filter(s => s.total_score !== null && (s.badges || []).some(b => b.includes('Breakout')));
+            }
+
+            const sorted = filtered.sort((a, b) => {
+                let va = a[mcsSortKey];
+                let vb = b[mcsSortKey];
+
+                // Sort null/undefined (Pending) to the bottom
+                if (va === null || va === undefined) va = -999;
+                if (vb === null || vb === undefined) vb = -999;
+
+                return mcsSortDir * (va > vb ? 1 : va < vb ? -1 : 0);
+            });
+
+            const tbody = document.getElementById('mcs-tbody');
+            const countEl = document.getElementById('mcs-results-count');
+            countEl.textContent = `${sorted.length} stock${sorted.length !== 1 ? 's' : ''} found`;
+
+            if (!sorted.length) {
+                tbody.innerHTML = `<tr><td colspan="9"
+                    style="padding:2rem;text-align:center;
+                           color:var(--color-text-muted);font-style:italic;">
+                No stocks match this filter. Enable ENABLE_MOMENTUM_SCORE_CALCULATION
+                or trigger main screener scan.
+            </td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = sorted.map(s => {
+                const hasScore = s.total_score !== null && s.total_score !== undefined;
+                const col    = hasScore ? scoreColour(s.total_score) : '#6b7280';
+                const label  = hasScore ? scoreLabel(s.total_score) : 'Pending';
+                const scoreText = hasScore ? s.total_score : '—';
+                const badges = (s.badges || []).map(b =>
+                    `<span style="font-size:0.7rem; padding:2px 6px; border-radius:20px;
+                              background:rgba(168,85,247,0.15); color:#c084fc;
+                              white-space:nowrap; margin:1px; border: 1px solid rgba(168,85,247,0.2);">${b}</span>`
+                ).join('');
+
+                return `
+            <tr style="cursor:pointer;" onclick="window.openMCSDrawer('${s.symbol}', '${s.exchange || 'NSE'}')">
+                <td>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; max-width: 140px;">
+                        <span class="mcs-ticker-link" 
+                              onclick="event.stopPropagation(); openTradingView('${s.symbol}.NS')" 
+                              title="Open Chart in TradingView">${s.symbol}</span>
+                        <button class="mcs-watchlist-btn"
+                                onclick="event.stopPropagation(); addToWatchlist('${s.symbol}', event)" 
+                                title="Add to Watchlist">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                    </div>
+                </td>
+                <td class="text-right">
+                    <span style="background:${col}22; color:${col};
+                                 padding:2px 8px; border-radius:6px;
+                                 font-weight:700;">${scoreText}</span>
+                    <span style="font-size:0.7rem; color:${col}; margin-left:4px;">${label}</span>
+                </td>
+                <td class="text-right">${s.technical_score ?? '—'}</td>
+                <td class="text-right">${s.fundamental_score ?? '—'}</td>
+                <td class="text-right">${s.momentum_score ?? '—'}</td>
+                <td class="text-right">${s.institutional_score ?? '—'}</td>
+                <td class="text-right">${s.risk_liquidity_score ?? '—'}</td>
+                <td style="max-width:220px;">${badges || '<span style="color:var(--color-text-muted);font-size:0.75rem;">—</span>'}</td>
+                <td class="text-right" style="color:var(--color-text-muted); font-size:0.8rem;">${s.date ?? '—'}</td>
+            </tr>`;
+            }).join('');
+
+            updateMCSSortUI();
+        }
+
+        // ── Update table header sorting indicators ──────────────────────────────
+        function updateMCSSortUI() {
+            const headers = document.querySelectorAll('#mcs-table th[data-sort]');
+            headers.forEach(th => {
+                let indicator = th.querySelector('.sort-indicator');
+                if (!indicator) {
+                    indicator = document.createElement('span');
+                    indicator.className = 'sort-indicator';
+                    indicator.style.marginLeft = '4px';
+                    indicator.style.fontSize = '0.65rem';
+                    th.appendChild(indicator);
+                }
+                const field = th.getAttribute('data-sort');
+                if (field === mcsSortKey) {
+                    indicator.innerHTML = mcsSortDir === 1 ? ' ▲' : ' ▼';
+                    indicator.style.opacity = '1';
+                    th.classList.add('sorted');
+                } else {
+                    indicator.innerHTML = '';
+                    indicator.style.opacity = '0.3';
+                    th.classList.remove('sorted');
+                }
+            });
+        }
+
+        // ── Summary stat cards ──────────────────────────────────────────────────
+        function renderMCSSummaryCards() {
+            const el = document.getElementById('mcs-summary-cards');
+            if (!mcsData.length) { el.innerHTML = ''; return; }
+
+            const scoredStocks = mcsData.filter(x => x.total_score !== null && x.total_score !== undefined);
+            const totalScored  = scoredStocks.length;
+            const totalPending = mcsData.length - totalScored;
+            const avg    = totalScored > 0 ? Math.round(scoredStocks.reduce((s, x) => s + x.total_score, 0) / totalScored) : 0;
+            const elite  = scoredStocks.filter(x => x.total_score >= 85).length;
+            const breakouts = scoredStocks.filter(x =>
+                (x.badges || []).some(b => b.includes('Breakout'))).length;
+
+            const card = (filterType, label, value, colour, isClickable = true) => {
+                const isActive = mcsActiveCardFilter === filterType;
+                const activeClass = isActive ? 'active' : '';
+                const clickHandler = isClickable ? `onclick="window.toggleMCSCardFilter('${filterType}')"` : '';
+                return `
+                <div class="mcs-summary-card ${activeClass}" ${clickHandler}>
+                    <div style="font-size:1.5rem; font-weight:800; color:${colour};">${value}</div>
+                    <div style="font-size:0.72rem; color:var(--color-text-muted); margin-top:2px;">${label}</div>
+                </div>`;
+            };
+
+            el.innerHTML =
+                card('scored',    'Total Scored',    totalScored,  '#a855f7') +
+                card('pending',   'Pending Calcs',   totalPending, '#6b7280') +
+                card('',          'Avg Score',       totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#6b7280', false) +
+                card('elite',     'Elite (≥85)',     elite,        '#a855f7') +
+                card('breakouts', 'Fresh Breakouts', breakouts,    '#22c55e');
+        }
+
+        // Toggle card filter
+        window.toggleMCSCardFilter = function(filterType) {
+            if (mcsActiveCardFilter === filterType) {
+                mcsActiveCardFilter = null; // Clear filter
+            } else {
+                mcsActiveCardFilter = filterType;
+            }
+            renderMCSSummaryCards();
+            renderMCSTable();
+        };
+
+        // ── Nav badge (purple pill) ─────────────────────────────────────────────
+        function updateMCSBadge() {
+            const el = document.getElementById('mcs-top-badge');
+            if (!el) return;
+            const high = mcsData.filter(s => s.total_score >= 80).length;
+            if (high > 0) {
+                el.textContent = high;
+                el.style.display = '';
+            } else {
+                el.style.display = 'none';
+            }
+        }
+
+        // ── Sort ─────────────────────────────────────────────────────────────────
+        window.sortMCS = function (key) {
+            if (mcsSortKey === key) mcsSortDir *= -1;
+            else { mcsSortKey = key; mcsSortDir = -1; }
+            renderMCSTable();
+        };
+
+        // Expandable pillar details accordion toggler
+        window.toggleMcsPillarDetail = function (pillarKey) {
+            const detailEl = document.getElementById(`mcs-pillar-detail-${pillarKey}`);
+            const arrowEl = document.querySelector(`.mcs-accordion-arrow-${pillarKey}`);
+            if (!detailEl) return;
+            if (detailEl.style.display === 'none') {
+                detailEl.style.display = 'block';
+                if (arrowEl) arrowEl.style.transform = 'rotate(90deg)';
+            } else {
+                detailEl.style.display = 'none';
+                if (arrowEl) arrowEl.style.transform = 'rotate(0deg)';
+            }
+        };
+
+        // ── Side drawer ──────────────────────────────────────────────────────────
+        window.openMCSDrawer = async function (symbol, exchange) {
+            try {
+                const res  = await fetch(`/api/v1/score/${symbol}?exchange=${exchange}`);
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                const data = await res.json();
+
+                // Update the local mcsData with the newly calculated score!
+                const stockIdx = mcsData.findIndex(s => s.symbol === symbol);
+                if (stockIdx !== -1) {
+                    mcsData[stockIdx] = {
+                        ...mcsData[stockIdx],
+                        total_score: data.total_score,
+                        technical_score: data.technical_score,
+                        fundamental_score: data.fundamental_score,
+                        momentum_score: data.momentum_score,
+                        institutional_score: data.institutional_score,
+                        risk_liquidity_score: data.risk_liquidity_score,
+                        badges: data.badges,
+                        date: data.date
+                    };
+                    renderMCSTable();
+                    renderMCSSummaryCards();
+                    updateMCSBadge();
+                }
+
+                document.getElementById('mcs-drawer-symbol').textContent = symbol;
+                document.getElementById('mcs-drawer-date').textContent   = `As of ${data.date || '—'}`;
+
+                // Score ring (simple coloured number)
+                const col = scoreColour(data.total_score);
+                document.getElementById('mcs-drawer-score-ring').innerHTML = `
+                <div style="display:inline-flex; flex-direction:column; align-items:center;
+                            background:${col}18; border:3px solid ${col};
+                            box-shadow: 0 0 20px ${col}33, inset 0 0 15px ${col}11;
+                            border-radius:50%; width:110px; height:110px;
+                            justify-content:center; transition: all 300ms ease;">
+                    <span style="font-size:2.2rem; font-weight:900; color:${col}; line-height:1.1;">${data.total_score}</span>
+                    <span style="font-size:0.6rem; color:${col}; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-top:2px;">${scoreLabel(data.total_score)}</span>
+                </div>`;
+
+                // Pillar bars
+                const pillars = ['technical_score','fundamental_score','momentum_score',
+                                 'institutional_score','risk_liquidity_score'];
+                const detailsKeyMap = {
+                    technical_score: 'technical_details',
+                    fundamental_score: 'fundamental_details',
+                    momentum_score: 'momentum_details',
+                    institutional_score: 'institutional_details',
+                    risk_liquidity_score: 'risk_details'
+                };
+                document.getElementById('mcs-drawer-pillars').innerHTML = pillars.map(p => {
+                    const val = data[p] ?? data.pillar_scores?.[p.replace('_score', '')] ?? 0;
+                    const pct = Math.round((val / PILLAR_MAX[p]) * 100);
+
+                    const detailsKey = detailsKeyMap[p];
+                    const detailsObj = data[detailsKey] || {};
+                    const met = detailsObj.criteria_met || [];
+                    const unmet = detailsObj.criteria_not_met || [];
+
+                    let detailsHtml = '';
+                    if (met.length || unmet.length) {
+                        detailsHtml = `
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                ${met.map(m => `
+                                    <div style="display:flex; align-items:flex-start; gap:6px; color:#22c55e; text-align:left;">
+                                        <span style="font-weight:700; line-height:1.2;">✓</span>
+                                        <span style="line-height:1.2;">${m}</span>
+                                    </div>`).join('')}
+                                ${unmet.map(u => `
+                                    <div style="display:flex; align-items:flex-start; gap:6px; color:var(--color-text-muted); opacity:0.65; text-align:left;">
+                                        <span style="font-weight:700; line-height:1.2;">•</span>
+                                        <span style="line-height:1.2;">${u}</span>
+                                    </div>`).join('')}
+                            </div>
+                        `;
+                    } else {
+                        detailsHtml = `<div style="font-style:italic; color:var(--color-text-muted); text-align:center; padding:0.25rem 0;">No metric checklist details available.</div>`;
+                    }
+
+                    return `
+                <div class="mcs-pillar-accordion" style="margin-bottom:0.8rem; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:0.6rem;">
+                    <div onclick="window.toggleMcsPillarDetail('${p}')" 
+                         style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-size:0.75rem; margin-bottom:5px; user-select:none;">
+                        <span style="color:var(--color-text-secondary); font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                            <svg class="mcs-accordion-arrow-${p}" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform: rotate(0deg); transition: transform 200ms ease;">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                            ${PILLAR_LABELS[p]}
+                        </span>
+                        <span style="font-weight:700; color:var(--color-text-primary);">${val}/${PILLAR_MAX[p]}</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.08); border-radius:4px; height:6px; overflow:hidden; cursor:pointer; margin-bottom:2px;"
+                         onclick="window.toggleMcsPillarDetail('${p}')">
+                        <div style="width:${pct}%; height:100%; background:${scoreColour(pct)};
+                                    border-radius:4px; transition:width 400ms ease;"></div>
+                    </div>
+                    <div id="mcs-pillar-detail-${p}" style="display:none; margin-top:0.5rem; font-size:0.72rem; color:var(--color-text-muted); background:rgba(255,255,255,0.02); border-radius:6px; padding:0.5rem 0.75rem; border:1px solid rgba(255,255,255,0.04);">
+                        ${detailsHtml}
+                    </div>
+                </div>`;
+                }).join('');
+
+                // Badges
+                const badges = data.badges || [];
+                document.getElementById('mcs-drawer-badges').innerHTML = badges.length
+                    ? `<div style="font-size:0.75rem; font-weight:600;
+                               color:var(--color-text-muted); margin-bottom:8px; letter-spacing:0.5px;">BADGES</div>
+                       ${badges.map(b =>
+                    `<span style="display:inline-block; margin:3px; padding:4px 10px;
+                                  border-radius:20px; background:rgba(168,85,247,0.15);
+                                  color:#c084fc; font-size:0.78rem; font-weight:600; border:1px solid rgba(168,85,247,0.2);">${b}</span>`
+                   ).join('')}`
+                    : `<div style="font-size:0.75rem; font-weight:600;
+                               color:var(--color-text-muted); margin-bottom:8px; letter-spacing:0.5px;">BADGES</div>
+                       <span style="font-size:0.8rem; color:var(--color-text-muted); font-style:italic;">No badges awarded for this period</span>`;
+
+                // Wire watchlist button in drawer
+                const watchBtn = document.getElementById('btn-mcs-drawer-add-watchlist');
+                if (watchBtn) {
+                    watchBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        addToWatchlist(symbol, e);
+                    };
+                }
+
+                // Show drawer
+                const drawer = document.getElementById('mcs-drawer');
+                if (drawer) {
+                    drawer.style.visibility = 'visible';
+                    drawer.style.right = '0';
+                }
+                document.getElementById('mcs-drawer-overlay').style.display = 'block';
+            } catch (err) {
+                console.error('MCS drawer error:', err);
+                document.getElementById('mcs-drawer-symbol').textContent = symbol;
+                document.getElementById('mcs-drawer-date').textContent   = '';
+                document.getElementById('mcs-drawer-score-ring').innerHTML = `
+                    <div style="color:#ef4444; font-size:0.85rem; padding:1.5rem; text-align:center;">
+                        Failed to load details: ${err.message}
+                    </div>`;
+                document.getElementById('mcs-drawer-pillars').innerHTML = '';
+                document.getElementById('mcs-drawer-badges').innerHTML = '';
+
+                // Show drawer anyway to display error
+                const drawer = document.getElementById('mcs-drawer');
+                if (drawer) {
+                    drawer.style.visibility = 'visible';
+                    drawer.style.right = '0';
+                }
+                document.getElementById('mcs-drawer-overlay').style.display = 'block';
+            }
+        };
+
+        window.closeMCSDrawer = function () {
+            const drawer = document.getElementById('mcs-drawer');
+            if (drawer) {
+                drawer.style.right = '-400px';
+                setTimeout(() => {
+                    if (drawer.style.right === '-400px') {
+                        drawer.style.visibility = 'hidden';
+                    }
+                }, 300);
+            }
+            document.getElementById('mcs-drawer-overlay').style.display = 'none';
+        };
+        document.getElementById('mcs-drawer-close')
+            ?.addEventListener('click', window.closeMCSDrawer);
+
+        let pollingInterval = null;
+
+        async function pollMCSJobStatus() {
+            try {
+                const res = await fetch('/api/v1/score/job_status');
+                if (!res.ok) return;
+                const json = await res.json();
+                if (json.success && json.data) {
+                    const statusData = json.data;
+                    const container = document.getElementById('mcs-progress-container');
+                    const progressBar = document.getElementById('mcs-progress-bar');
+                    const progressText = document.getElementById('mcs-progress-text');
+                    const calcBtn = document.getElementById('btn-calculate-all-mcs');
+                    const spinner = document.getElementById('mcs-calc-spinner');
+
+                    if (statusData.status === 'running') {
+                        container.style.display = 'block';
+                        if (calcBtn) calcBtn.disabled = true;
+                        if (spinner) spinner.classList.remove('hidden');
+
+                        const completed = statusData.completed || 0;
+                        const total = statusData.total || 0;
+                        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+                        if (progressBar) progressBar.style.width = `${pct}%`;
+                        if (progressText) progressText.textContent = `${completed}/${total} completed (${pct}%)`;
+
+                        // Start polling if not already doing so
+                        if (!pollingInterval) {
+                            pollingInterval = setInterval(pollMCSJobStatus, 2000);
+                        }
+                    } else {
+                        // Not running
+                        if (statusData.status === 'completed' || statusData.status === 'failed') {
+                            if (statusData.status === 'completed') {
+                                if (progressBar) progressBar.style.width = '100%';
+                                if (progressText) progressText.textContent = 'Calculation complete!';
+                                fetchMCSData();
+                            } else {
+                                if (progressText) progressText.textContent = `Failed: ${statusData.error || 'Unknown error'}`;
+                            }
+                            setTimeout(() => {
+                                container.style.display = 'none';
+                            }, 3000);
+                        }
+                        if (calcBtn) calcBtn.disabled = false;
+                        if (spinner) spinner.classList.add('hidden');
+                        if (pollingInterval) {
+                            clearInterval(pollingInterval);
+                            pollingInterval = null;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Error polling scoring job status:', err);
+            }
+        }
+
+        async function triggerMCSCalculateAll() {
+            const calcBtn = document.getElementById('btn-calculate-all-mcs');
+            const spinner = document.getElementById('mcs-calc-spinner');
+            if (calcBtn) calcBtn.disabled = true;
+            if (spinner) spinner.classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/v1/score/calculate_all', { method: 'POST' });
+                const json = res.ok ? await res.json() : null;
+                if (json && json.success) {
+                    pollMCSJobStatus();
+                } else {
+                    const errText = json ? json.error : 'Job failed to start';
+                    alert(`Failed to start calculation: ${errText}`);
+                    if (calcBtn) calcBtn.disabled = false;
+                    if (spinner) spinner.classList.add('hidden');
+                }
+            } catch (err) {
+                alert(`Error starting calculation: ${err.message}`);
+                if (calcBtn) calcBtn.disabled = false;
+                if (spinner) spinner.classList.add('hidden');
+            }
+        }
+
+        function exportMCSToCSV() {
+            if (!mcsData.length) {
+                alert("No scoring data available to export.");
+                return;
+            }
+            let csv = "Symbol,Score,Technical,Fundamental,Momentum,Institutional,Risk,Badges,Date\n";
+            mcsData.forEach(s => {
+                const totalScore = s.total_score !== null && s.total_score !== undefined ? s.total_score : "—";
+                const technical = s.technical_score !== null && s.technical_score !== undefined ? s.technical_score : "—";
+                const fundamental = s.fundamental_score !== null && s.fundamental_score !== undefined ? s.fundamental_score : "—";
+                const momentum = s.momentum_score !== null && s.momentum_score !== undefined ? s.momentum_score : "—";
+                const institutional = s.institutional_score !== null && s.institutional_score !== undefined ? s.institutional_score : "—";
+                const risk = s.risk_liquidity_score !== null && s.risk_liquidity_score !== undefined ? s.risk_liquidity_score : "—";
+                const badgesList = (s.badges || []).join("; ");
+                const dateVal = s.date || "—";
+                
+                csv += `"${s.symbol}",${totalScore},${technical},${fundamental},${momentum},${institutional},${risk},"${badgesList}","${dateVal}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `mcs_momentum_scores_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ── Tab activation ──────────────────────────────────────────────────────
+        // Piggyback on the existing workspace-tab click handler
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.workspace-tab[data-view="momentum-score"]');
+            if (!btn) return;
+            // Load data once per tab-open (debounce: only if >5 min old or empty)
+            if (!mcsData.length || (Date.now() - mcsLastFetch > MCS_TTL)) fetchMCSData();
+            // Check status immediately on tab open to restore progress bar if running
+            pollMCSJobStatus();
+        });
+
+        // Filter change
+        document.getElementById('mcs-filter-min-score')
+            ?.addEventListener('change', renderMCSTable);
+
+
+
+        // Manual calculate all button
+        document.getElementById('btn-calculate-all-mcs')
+            ?.addEventListener('click', triggerMCSCalculateAll);
+
+        // Export button
+        document.getElementById('btn-export-mcs')
+            ?.addEventListener('click', exportMCSToCSV);
+
+        // Initialize status check on page load
+        pollMCSJobStatus();
+
+    }());
+// ─── End MCS Tab ─────────────────────────────────────────────────────────────
+    </script>
 </body>
 </html>

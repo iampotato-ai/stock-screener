@@ -12,11 +12,28 @@ from typing import List
 from flask import Flask
 
 
-def calculate_all_scores(app: Flask) -> None:
+from datetime import datetime
+
+# Global status tracking for the Momentum Confidence Score calculation job
+_mcs_job_status = {
+    "status": "idle",       # "idle", "running", "completed", "failed"
+    "completed": 0,
+    "total": 0,
+    "success_count": 0,
+    "fail_count": 0,
+    "last_run": None,
+    "error": None
+}
+
+def get_mcs_job_status() -> dict:
+    """Return the current progress/status of the scoring job."""
+    return _mcs_job_status
+
+def calculate_all_scores(app: Flask, force: bool = False) -> None:
     """Calculate and store Momentum Confidence Scores for active screener symbols.
 
-    This function is intended to be scheduled as a daily background job. It:
-    1. Checks the ENABLE_MOMENTUM_SCORE_CALCULATION feature flag; exits early if disabled.
+    This function is intended to be scheduled as a daily background job or run manually. It:
+    1. Checks the ENABLE_MOMENTUM_SCORE_CALCULATION feature flag unless force=True.
     2. Retrieves the active list of symbols from the screener service.
     3. Fetches isolated TradingView data for all symbols in batch.
     4. Instantiates MomentumConfidenceScoreService.
@@ -27,17 +44,27 @@ def calculate_all_scores(app: Flask) -> None:
     Args:
         app: The Flask application instance – required for DB access and
             configuration context.
+        force: If True, bypasses the ENABLE_MOMENTUM_SCORE_CALCULATION check.
     """
     logger = logging.getLogger(__name__)
+    global _mcs_job_status
 
-    # Guard: do not run until real data fetching is wired up.
+    # Guard: do not run until real data fetching is wired up (unless forced).
     # Set ENABLE_MOMENTUM_SCORE_CALCULATION=true to enable.
-    if not os.getenv('ENABLE_MOMENTUM_SCORE_CALCULATION', 'false').lower() == 'true':
+    if not force and not os.getenv('ENABLE_MOMENTUM_SCORE_CALCULATION', 'false').lower() == 'true':
         logger.info(
             "Momentum score calculation is disabled "
             "(ENABLE_MOMENTUM_SCORE_CALCULATION != 'true'). Skipping."
         )
         return
+
+    # Initialize status
+    _mcs_job_status["status"] = "running"
+    _mcs_job_status["completed"] = 0
+    _mcs_job_status["total"] = 0
+    _mcs_job_status["success_count"] = 0
+    _mcs_job_status["fail_count"] = 0
+    _mcs_job_status["error"] = None
 
     try:
         with app.app_context():
@@ -49,7 +76,7 @@ def calculate_all_scores(app: Flask) -> None:
 
             # Get active symbols from screener (limited to 300 as per spec)
             scan_results = screener_service.get_scan_results(limit=300)
-            symbols: List[str] = [s['ticker'] for s in scan_results if s.get('ticker')]
+            symbols: List[str] = [s['ticker'].replace("NSE:", "").replace("BSE:", "") for s in scan_results if s.get('ticker')]
             total = len(symbols)
 
             logger.info(f"Starting daily Momentum Confidence Score calculation for {total} symbols from screener")
@@ -58,10 +85,23 @@ def calculate_all_scores(app: Flask) -> None:
                 logger.warning("No symbols found from screener, falling back to getting NSE symbols")
                 # Fallback to getting NSE symbols from database
                 from app.database import get_nse_symbols
-                symbols = [s['ticker'] for s in get_nse_symbols()]
+                raw_symbols = get_nse_symbols()
+                symbols = []
+                for s in raw_symbols:
+                    if isinstance(s, dict):
+                        symbols.append(s.get('ticker') or '')
+                    elif isinstance(s, str):
+                        symbols.append(s)
+                    else:
+                        try:
+                            symbols.append(s['ticker'])
+                        except (TypeError, KeyError):
+                            symbols.append(str(s))
+                symbols = [sym.replace("NSE:", "").replace("BSE:", "") for sym in symbols if sym]
                 total = len(symbols)
                 logger.info(f"Retrieved {total} symbols from database")
 
+            _mcs_job_status["total"] = total
             success_count = 0
             fail_count = 0
             batch_size = int(os.getenv('DAILY_SCORE_BATCH_SIZE', '200'))
@@ -100,12 +140,21 @@ def calculate_all_scores(app: Flask) -> None:
                     except Exception as exc:
                         fail_count += 1
                         logger.error(f"Exception calculating score for {symbol}: {exc}")
+                    
+                    _mcs_job_status["completed"] = idx
+                    _mcs_job_status["success_count"] = success_count
+                    _mcs_job_status["fail_count"] = fail_count
+
                 logger.info(f"Processed symbols {start + 1}-{min(start + batch_size, total)} of {total}")
                 time.sleep(1)  # Delay between batches to prevent overwhelming resources
 
+            _mcs_job_status["status"] = "completed"
+            _mcs_job_status["last_run"] = datetime.now().isoformat()
             logger.info(
                 f"Daily Momentum Confidence Score calculation completed: "
                 f"{success_count} succeeded, {fail_count} failed out of {total} total."
             )
     except Exception as outer_exc:
         logger.error(f"Error in daily score calculation job: {outer_exc}")
+        _mcs_job_status["status"] = "failed"
+        _mcs_job_status["error"] = str(outer_exc)
