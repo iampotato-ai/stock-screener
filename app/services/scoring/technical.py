@@ -129,16 +129,18 @@ class TechnicalAnalyzer:
                 details['criteria_not_met'].append(f'RSI too low (RSI: {rsi:.1f})')
                 details['points_breakdown']['healthy_rsi'] = 0
 
-            # 9. ATR Stability (+2 points)
-            # This would typically check if ATR is stable/contracting
-            # For simplicity, we'll assume it's stable if ADX > 20 (trending market)
+            # Trend Stability proxy (+2 points)
+            # NOTE: ADX > 20 is used as a proxy for a trending (non-choppy) market.
+            # This is a placeholder for true ATR-based volatility contraction scoring;
+            # do not confuse with ATR magnitude. Real implementation should compare
+            # current ATR against its own N-period average.
             adx = stock_data.get('adx', 0)
             if adx > 20:
                 score += 2
-                details['criteria_met'].append('ATR Stable (trending market)')
+                details['criteria_met'].append('Trending Market (ADX > 20 proxy for stability)')
                 details['points_breakdown']['atr_stable'] = 2
             else:
-                details['criteria_not_met'].append('ATR not stable (weak trend)')
+                details['criteria_not_met'].append('Weak/Choppy Market (ADX <= 20)')
                 details['points_breakdown']['atr_stable'] = 0
 
             # Ensure score doesn't exceed maximum

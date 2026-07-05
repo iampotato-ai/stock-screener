@@ -83,6 +83,10 @@ class Config:
     ENABLE_TELEGRAM_ALERTS = os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() == 'true'
     ENABLE_NLP_ENRICHMENT = os.environ.get('ENABLE_NLP_ENRICHMENT', 'True').lower() == 'true'
     ENABLE_BULL_SNORT = os.environ.get('ENABLE_BULL_SNORT', 'False').lower() == 'true'
+    # Momentum Confidence Score daily calculation job.
+    # Defaults to False until real data fetching is wired up; set to 'true' in production
+    # only when the scoring pipeline is connected to live stock data.
+    ENABLE_MOMENTUM_SCORE_CALCULATION = os.environ.get('ENABLE_MOMENTUM_SCORE_CALCULATION', 'False').lower() == 'true'
 
     # Bull Snort Configuration defaults
     BULL_SNORT_VOL_AVG_PERIOD = int(os.environ.get('BULL_SNORT_VOL_AVG_PERIOD', '20'))
@@ -140,6 +144,7 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False
     DATABASE = os.environ.get('DATABASE') or ':memory:'
     ENABLE_BACKGROUND_TASKS = False
+    ENABLE_MOMENTUM_SCORE_CALCULATION = False
     EP_STALENESS_DAYS = 9999
 
 
@@ -149,6 +154,7 @@ class PytestConfig(Config):
     WTF_CSRF_ENABLED = False
     DATABASE = ':memory:'
     ENABLE_BACKGROUND_TASKS = False
+    ENABLE_MOMENTUM_SCORE_CALCULATION = False
     EP_STALENESS_DAYS = 9999
 
 

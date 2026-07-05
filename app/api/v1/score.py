@@ -5,8 +5,18 @@ from flask import jsonify, request
 from app.api.v1 import api_bp
 from app.services.scoring_service import MomentumConfidenceScoreService
 
-# Initialize scoring service
-scoring_service = MomentumConfidenceScoreService()
+# Lazy-initialize the service inside the request context, not at import time.
+# This prevents "Working outside of application context" errors if __init__
+# ever accesses db in the future.
+_scoring_service = None
+
+
+def _get_scoring_service():
+    """Return the module-level MomentumConfidenceScoreService, creating it on first use."""
+    global _scoring_service
+    if _scoring_service is None:
+        _scoring_service = MomentumConfidenceScoreService()
+    return _scoring_service
 
 @api_bp.route('/score/<string:symbol>', methods=['GET'])
 def get_stock_score(symbol):
@@ -25,22 +35,25 @@ def get_stock_score(symbol):
     exchange = request.args.get('exchange', 'NSE')
 
     try:
-        # Get latest score from database
-        score_data = scoring_service.get_latest_score(symbol.upper(), exchange)
+        service = _get_scoring_service()
 
-        if score_data is None:
-            # If no score exists, calculate it
-            score_data = scoring_service.calculate_score_for_stock(
-                symbol.upper(), exchange
-            )
+        # Try the database cache first.
+        score_data = service.get_latest_score(symbol.upper(), exchange)
 
-        if score_data.get('success', False):
-            # Remove internal fields before returning to client
-            clean_data = {k: v for k, v in score_data.items() if k not in ('success', 'error')}
+        if score_data is not None:
+            # to_dict() records have no 'success' / 'error' keys — they are
+            # always valid if they exist in the DB.
+            return jsonify(score_data), 200
+
+        # No cached record found: calculate on-demand.
+        calc_result = service.calculate_score_for_stock(symbol.upper(), exchange)
+        if calc_result.get('success', False):
+            # Strip internal-only fields before sending to client.
+            clean_data = {k: v for k, v in calc_result.items() if k not in ('success', 'error')}
             return jsonify(clean_data), 200
         else:
             return jsonify({
-                'error': score_data.get('error', 'Failed to calculate score'),
+                'error': calc_result.get('error', 'Failed to calculate score'),
                 'symbol': symbol,
                 'exchange': exchange
             }), 500
@@ -65,10 +78,11 @@ def get_top_scores():
         JSON list of top stocks by score
     """
     try:
+        service = _get_scoring_service()
         limit = min(int(request.args.get('limit', 50)), 100)  # Cap at 100
         exchange = request.args.get('exchange', 'NSE')
 
-        top_stocks = scoring_service.get_top_stocks(limit, exchange)
+        top_stocks = service.get_top_stocks(limit, exchange)
 
         return jsonify({
             'stocks': top_stocks,

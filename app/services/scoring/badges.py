@@ -95,18 +95,3 @@ class BadgeAwarder:
         except Exception as e:
             logger.error(f"Error awarding badges: {e}")
             return []
-
-
-# Convenience function for external use
-def award_badges(score_data: Dict[str, Any]) -> List[str]:
-    """
-    Convenience function to award badges.
-
-    Args:
-        score_data: Dictionary containing complete score analysis
-
-    Returns:
-        List of badge names awarded
-    """
-    awarder = BadgeAwarder()
-    return awarder.award_badges(score_data)

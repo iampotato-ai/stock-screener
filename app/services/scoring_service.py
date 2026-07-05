@@ -56,7 +56,8 @@ class MomentumConfidenceScoreService:
         logger.info(f"MomentumConfidenceScoreService initialized with weights: {self.weights}")
 
     def calculate_score_for_stock(self, symbol: str, exchange: str = 'NSE',
-                                calculation_date: Optional[date] = None) -> Dict[str, Any]:
+                              calculation_date: Optional[date] = None,
+                              isolated_tv_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Calculate Momentum Confidence Score for a single stock.
 
@@ -64,6 +65,7 @@ class MomentumConfidenceScoreService:
             symbol: Stock symbol (e.g., 'RELIANCE')
             exchange: Stock exchange (default: 'NSE')
             calculation_date: Date for calculation (default: today)
+            isolated_tv_data: Pre-fetched TradingView data for this symbol (optional)
 
         Returns:
             Dictionary containing score breakdown, badges, explanation, and metadata
@@ -107,8 +109,7 @@ class MomentumConfidenceScoreService:
                        self.risk_analyzer]):
                 raise Exception("One or more required analyzers are not available")
 
-            # TODO: In a real implementation, we would fetch actual stock data here
-            # For now, we'll use placeholder/mock data to demonstrate the flow
+            # Fetch real stock data using TradingView and Yahoo Finance
             stock_data = self._get_mock_stock_data(symbol, exchange)
 
             # Calculate scores for each pillar
@@ -188,69 +189,22 @@ class MomentumConfidenceScoreService:
 
     def _get_mock_stock_data(self, symbol: str, exchange: str) -> Dict[str, Any]:
         """
-        Get mock stock data for demonstration purposes.
-        In a real implementation, this would fetch actual data from databases/APIs.
+        Get stock data for a symbol using real data fetching.
+        This replaces the mock data implementation with real data from TradingView and Yahoo Finance.
         """
-        # This is placeholder data - in reality, we'd query our databases
-        # for daily bars, fundamentals, corporate events, etc.
-        return {
-            'symbol': symbol,
-            'exchange': exchange,
-            # Technical data
-            'price': 2500.50,
-            'ema_20': 2450.30,
-            'ema_50': 2400.80,
-            'ema_100': 2350.20,
-            'ema_200': 2300.10,
-            'rsi': 65.5,
-            'macd': 12.5,
-            'macd_signal': 10.2,
-            'adx': 28.0,
-            'supertrend': 2480.0,
-            'supertrend_direction': 1,  # 1 for uptrend, -1 for downtrend
-            'price_vs_52w_high': 0.85,  # 85% of 52-week high
-            'higher_highs': True,
-            'higher_lows': True,
-            'golden_cross': True,  # 50 EMA > 200 EMA
-            # Fundamental data
-            'revenue_growth_yoy': 0.18,  # 18%
-            'profit_growth_yoy': 0.22,   # 22%
-            'roe': 0.25,                 # 25%
-            'roce': 0.28,                # 28%
-            'debt_to_equity': 0.15,      # 0.15
-            'operating_margin': 0.18,    # 18%
-            'net_margin': 0.12,          # 12%
-            'positive_cash_flow': True,
-            'promoter_holding': 0.58,    # 58%
-            'promoter_pledge': 0.0,      # 0%
-            # Momentum data
-            'relative_strength': 78.0,   # RS rating
-            'volume_ratio': 2.5,         # 2.5x average volume
-            'price_vs_52w_high_pct': 85.0,  # 85% of 52-week high
-            'vcp_pattern': False,        # Volatility Contraction Pattern
-            'breakout_detected': True,
-            'momentum_acceleration': 0.15, # 15% acceleration
-            # Institutional data
-            'mf_buying': True,           # Mutual Fund buying
-            'fii_buying': True,          # FII buying
-            'dii_buying': False,         # DII buying
-            'promoter_increase': False,  # Promoter holding increase
-            'bulk_deals': 2,             # Number of bulk deals
-            'block_deals': 1,            # Number of block deals
-            # Risk & Liquidity data
-            'avg_volume_30d': 1500000,   # 1.5M shares
-            'market_cap_cr': 50000,      # Rs. 50,000 crores
-            'bid_ask_spread': 0.05,      # 0.05%
-            'volatility_30d': 0.25,      # 25% annualized
-            'circuit_history': 0,        # No circuit hits in last year
-            'operator_risk': 'low'       # Low operator risk
-        }
+        from app.services.scoring.fetcher import fetch_stock_data
+
+        # Fetch real stock data
+        stock_data = fetch_stock_data(symbol, exchange)
+
+        logger.info(f"Fetched real data for {symbol}.{exchange}: price={stock_data.get('price', 0)}")
+
+        return stock_data
 
     def _save_score_to_db(self, score_data: Dict[str, Any]) -> None:
         """Save the calculated score to the database."""
         try:
             # Check if score already exists for this stock/date
-            from datetime import datetime
             calculation_date = datetime.strptime(score_data['date'], '%Y-%m-%d').date()
             existing = MomentumScore.query.filter_by(
                 symbol=score_data['symbol'],

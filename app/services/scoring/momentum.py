@@ -61,7 +61,7 @@ class MomentumAnalyzer:
             else:
                 score += 1  # Even low RS gets 1 point for having some strength
                 details['criteria_met'].append(f'Low Relative Strength (RS: {rs_rating})')
-                details['points_breakdown']['relative_strength'] = 2
+                details['points_breakdown']['relative_strength'] = 1  # matches score += 1
 
             # 2. Volume Breakout (+4 points)
             # Volume ratio compared to average
