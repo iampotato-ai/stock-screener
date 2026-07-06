@@ -75,7 +75,7 @@ def calculate_all_scores(app: Flask, force: bool = False) -> None:
             service = MomentumConfidenceScoreService()
 
             # Get active symbols from screener (limited to 300 as per spec)
-            scan_results = screener_service.get_scan_results(limit=300)
+            scan_results = screener_service.get_scan_results(limit=300, live=True)
             symbols: List[str] = [s['ticker'].replace("NSE:", "").replace("BSE:", "") for s in scan_results if s.get('ticker')]
             total = len(symbols)
 

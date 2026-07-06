@@ -108,49 +108,45 @@ class TestStockDataFetcher:
 
         assert result == {}
 
-    @patch('app.services.scoring.fetcher.urllib.request.urlopen')
-    def test_fetch_yahoo_fundamentals_success(self, mock_urlopen):
+    @patch('yfinance.Ticker')
+    def test_fetch_yahoo_fundamentals_success(self, mock_ticker_class):
         """Test successful Yahoo Finance fundamentals fetch."""
-        # Mock response data
-        mock_data = {
-            'quoteSummary': {
-                'result': [{
-                    'financialData': {
-                        'returnOnEquity': {'raw': 0.18},
-                        'debtToEquity': {'raw': 0.5},
-                        'operatingMargins': {'raw': 0.20},
-                        'profitMargins': {'raw': 0.15},
-                        'operatingCashflow': {'raw': 5000000000}  # 5000 crore
-                    },
-                    'defaultKeyStatistics': {
-                        'heldPercentInstitutions': {'raw': 45.0}
-                    },
-                    'incomeStatementHistory': {
-                        'incomeStatementHistory': [
-                            {'totalRevenue': {'raw': 100000000000}, 'netIncome': {'raw': 15000000000}},
-                            {'totalRevenue': {'raw': 90000000000}, 'netIncome': {'raw': 12000000000}}
-                        ]
-                    }
-                }]
-            }
+        mock_ticker = MagicMock()
+        mock_ticker_class.return_value = mock_ticker
+        
+        mock_ticker.info = {
+            'returnOnEquity': 0.18,
+            'returnOnAssets': 0.18,
+            'debtToEquity': 0.5,
+            'operatingMargins': 0.20,
+            'profitMargins': 0.15,
+            'operatingCashflow': 5000000000,
+            'heldPercentInstitutions': 0.45
         }
-
-        mock_response = Mock()
-        mock_response.read.return_value = json.dumps(mock_data).encode('utf-8')
-        mock_response.__enter__ = Mock(return_value=mock_response)
-        mock_response.__exit__ = Mock(return_value=None)
-        mock_urlopen.return_value = mock_response
+        
+        import pandas as pd
+        mock_ticker.income_stmt = pd.DataFrame(
+            {
+                '2026-03-31': {
+                    'Total Revenue': 100000000000,
+                    'Net Income': 15000000000
+                },
+                '2025-03-31': {
+                    'Total Revenue': 90000000000,
+                    'Net Income': 12000000000
+                }
+            }
+        )
 
         result = self.fetcher._fetch_yahoo_fundamentals('RELIANCE')
 
         assert result is not None
         assert result['quoteSummary']['result'][0]['financialData']['returnOnEquity']['raw'] == 0.18
 
-    @patch('app.services.scoring.fetcher.urllib.request.urlopen')
-    def test_fetch_yahoo_fundamentals_failure(self, mock_urlopen):
+    @patch('yfinance.Ticker')
+    def test_fetch_yahoo_fundamentals_failure(self, mock_ticker_class):
         """Test handling of Yahoo Finance failure."""
-        # Mock HTTP error
-        mock_urlopen.side_effect = Exception("Network error")
+        mock_ticker_class.side_effect = Exception("Network error")
 
         result = self.fetcher._fetch_yahoo_fundamentals('INVALID')
 
@@ -220,10 +216,10 @@ class TestStockDataFetcher:
         assert result['price'] == 2500.50
         assert result['ema_50'] == 2450.30
         assert result['rsi'] == 65.5
-        assert result['roe'] == 0.18
+        assert result['roe'] == 18.0
         assert result['debt_to_equity'] == 0.5
         assert result['market_cap_cr'] == 150.0  # 1500000.0 / 1e7
-        assert result['operating_margin'] == 0.20
+        assert result['operating_margin'] == 20.0
         assert not math.isnan(result['volatility_30d'])
 
     @patch('app.services.scoring.fetcher.StockDataFetcher.fetch_isolated_tv_data')

@@ -1847,40 +1847,197 @@
     <!-- Workspace View: Momentum Confidence Score™ -->
     <div class="workspace-view" id="view-momentum-score">
         <style>
+            /* ── MCS Design System ─────────────────────────────────── */
+            #view-momentum-score {
+                font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+            }
+            /* Monospace for all numbers in the score table */
+            #mcs-table td {
+                font-variant-numeric: tabular-nums;
+                font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+                font-size: 0.78rem;
+            }
+            #mcs-table td.symbol-col {
+                font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+                font-size: 0.82rem;
+            }
+            #mcs-table th {
+                font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+                font-size: 0.68rem;
+                font-weight: 700;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: var(--color-text-muted);
+                padding: 10px 8px;
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+            }
             #mcs-table th.sortable {
                 cursor: pointer;
                 user-select: none;
-                transition: color 150ms ease;
+                transition: color 150ms ease, background-color 150ms ease;
             }
             #mcs-table th.sortable:hover {
                 color: var(--color-text-primary) !important;
             }
+            #mcs-table th.sortable:focus-visible {
+                outline: none;
+                color: var(--color-text-primary) !important;
+                background: rgba(255,255,255,0.05);
+                border-radius: 4px;
+            }
+            #mcs-table th.sorted {
+                color: var(--color-text-primary) !important;
+            }
+            #mcs-table tr {
+                transition: background-color 120ms ease;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+            }
+            #mcs-table tbody tr:hover {
+                background: rgba(255,255,255,0.04);
+            }
+
+            /* ── Toggle Pill ─────────────────────────────────────── */
+            #mcs-mode-toggle {
+                display: flex;
+                background: rgba(255,255,255,0.04);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                padding: 3px;
+                gap: 2px;
+            }
+            .mcs-mode-btn {
+                padding: 5px 16px;
+                border: none;
+                border-radius: 7px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                font-family: 'Outfit', system-ui, sans-serif;
+                cursor: pointer;
+                transition: background 200ms cubic-bezier(0.16,1,0.3,1),
+                            color 200ms ease,
+                            box-shadow 150ms ease,
+                            transform 100ms ease;
+                letter-spacing: 0.02em;
+            }
+            .mcs-mode-btn:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 2px rgba(168,85,247,0.4);
+            }
+            .mcs-mode-btn:active { transform: scale(0.96); }
+            .mcs-mode-btn.classic-active {
+                background: rgba(100,116,139,0.25);
+                color: #e2e8f0;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+            }
+            .mcs-mode-btn.swing-active {
+                background: rgba(245,158,11,0.18);
+                color: #fbbf24;
+                box-shadow: inset 0 1px 0 rgba(251,191,36,0.15);
+            }
+            .mcs-mode-btn:not(.classic-active):not(.swing-active) {
+                background: transparent;
+                color: var(--color-text-muted);
+            }
+
+            /* ── Action Buttons ──────────────────────────────────── */
+            #btn-calculate-all-mcs {
+                transition: box-shadow 200ms ease, transform 100ms ease,
+                            background 150ms ease;
+            }
+            #btn-calculate-all-mcs:hover {
+                box-shadow: 0 4px 16px rgba(168,85,247,0.25),
+                            inset 0 1px 0 rgba(255,255,255,0.15);
+                transform: translateY(-1px);
+            }
+            #btn-calculate-all-mcs:active { transform: translateY(0) scale(0.98); }
+            #btn-export-mcs {
+                transition: background 200ms ease, border-color 200ms ease,
+                            transform 100ms ease;
+            }
+            #btn-export-mcs:hover {
+                background: rgba(255,255,255,0.08) !important;
+                border-color: rgba(255,255,255,0.18) !important;
+                transform: translateY(-1px);
+            }
+            #btn-export-mcs:active { transform: translateY(0) scale(0.98); }
+
+            /* ── Stat Row (no boxy cards) ────────────────────────── */
+            .mcs-stat-row {
+                display: flex;
+                gap: 0;
+                margin: 1rem 0 0.5rem;
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 10px;
+                overflow: hidden;
+                flex-wrap: wrap;
+            }
+            .mcs-stat-item {
+                flex: 1;
+                min-width: 100px;
+                padding: 0.8rem 1rem;
+                cursor: pointer;
+                user-select: none;
+                transition: background 200ms cubic-bezier(0.16,1,0.3,1);
+                border-right: 1px solid rgba(255,255,255,0.05);
+                position: relative;
+            }
+            .mcs-stat-item:last-child { border-right: none; }
+            .mcs-stat-item:hover { background: rgba(255,255,255,0.04); }
+            .mcs-stat-item.active {
+                background: rgba(168,85,247,0.08);
+            }
+            .mcs-stat-item.active::after {
+                content: '';
+                position: absolute;
+                bottom: 0; left: 0; right: 0;
+                height: 2px;
+                background: #a855f7;
+            }
+            .mcs-stat-value {
+                font-size: 1.4rem;
+                font-weight: 800;
+                font-family: 'JetBrains Mono', 'Fira Code', monospace;
+                font-variant-numeric: tabular-nums;
+                line-height: 1;
+                margin-bottom: 3px;
+            }
+            .mcs-stat-label {
+                font-size: 0.65rem;
+                font-weight: 600;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+                color: var(--color-text-muted);
+            }
+
+            /* ── Watchlist & Ticker ──────────────────────────────── */
             .mcs-watchlist-btn {
                 border: none !important;
                 background: none !important;
                 color: var(--color-text-muted) !important;
-                padding: 4px !important;
+                padding: 3px !important;
                 cursor: pointer;
                 transition: color 150ms ease, transform 150ms ease;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
+                border-radius: 4px;
             }
             .mcs-watchlist-btn:hover {
-                color: #c084fc !important;
-                transform: scale(1.18);
+                color: #94a3b8 !important;
+                transform: scale(1.2);
             }
             .mcs-ticker-link {
-                color: #3b82f6 !important;
+                color: #60a5fa !important;
                 text-decoration: none !important;
                 font-weight: 700;
-                transition: color 150ms ease, text-shadow 150ms ease;
+                transition: color 150ms ease;
                 cursor: pointer;
+                font-family: 'Outfit', system-ui, sans-serif;
+                font-size: 0.83rem;
             }
             .mcs-ticker-link:hover {
-                color: #60a5fa !important;
+                color: #93c5fd !important;
                 text-decoration: underline !important;
-                text-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
             }
             .mcs-close-btn {
                 transition: color 150ms ease, transform 150ms ease;
@@ -1889,94 +2046,95 @@
                 color: var(--color-text-primary) !important;
                 transform: scale(1.1);
             }
-            #btn-calculate-all-mcs {
-                transition: box-shadow 200ms ease, transform 150ms ease;
+
+            /* ── Skeleton shimmer loader ────────────────────────── */
+            @keyframes mcs-shimmer {
+                0%   { background-position: -600px 0; }
+                100% { background-position: 600px 0; }
             }
-            #btn-calculate-all-mcs:hover {
-                box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
-                transform: translateY(-1px);
+            .mcs-skeleton-row td {
+                padding: 10px 8px;
             }
-            #btn-calculate-all-mcs:active {
-                transform: translateY(0);
+            .mcs-skeleton-cell {
+                height: 14px;
+                border-radius: 4px;
+                background: linear-gradient(90deg,
+                    rgba(255,255,255,0.04) 25%,
+                    rgba(255,255,255,0.09) 50%,
+                    rgba(255,255,255,0.04) 75%);
+                background-size: 600px 100%;
+                animation: mcs-shimmer 1.4s infinite;
             }
-            #btn-export-mcs {
-                transition: background-color 200ms ease, border-color 200ms ease, transform 150ms ease;
+
+            /* ── Badge chips ─────────────────────────────────────── */
+            .mcs-badge-chip {
+                display: inline-block;
+                font-size: 0.65rem;
+                font-weight: 600;
+                padding: 2px 7px;
+                border-radius: 20px;
+                margin: 1px;
+                white-space: nowrap;
+                border: 1px solid rgba(168,85,247,0.2);
+                background: rgba(168,85,247,0.1);
+                color: #c084fc;
+                letter-spacing: 0.01em;
             }
-            #btn-export-mcs:hover {
-                background: rgba(255, 255, 255, 0.08) !important;
-                border-color: rgba(255, 255, 255, 0.2) !important;
-                transform: translateY(-1px);
-            }
-            #btn-export-mcs:active {
-                transform: translateY(0);
-            }
-            .mcs-summary-card {
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid var(--glass-border);
-                border-radius: 10px;
-                padding: 0.75rem 1.25rem;
-                min-width: 120px;
-                cursor: pointer;
-                transition: background-color 200ms ease, border-color 200ms ease, transform 150ms ease, box-shadow 200ms ease;
-                user-select: none;
-            }
-            .mcs-summary-card:hover {
-                background: rgba(255, 255, 255, 0.07);
-                border-color: rgba(255, 255, 255, 0.2);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            }
-            .mcs-summary-card.active {
-                background: rgba(168, 85, 247, 0.08) !important;
-                border-color: #a855f7 !important;
-                box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+            .mcs-badge-chip.swing {
+                border-color: rgba(245,158,11,0.2);
+                background: rgba(245,158,11,0.1);
+                color: #fbbf24;
             }
         </style>
         <div class="bull-snort-workspace-wrapper glass-panel">
 
             <!-- Header -->
-            <div class="bull-snort-header-section">
-                <div>
-                    <div class="bull-snort-header-title">
-                        <span>📊 Momentum Confidence Score™</span>
+            <div class="bull-snort-header-section" style="flex-wrap: wrap; gap: 0.75rem; align-items: flex-start;">
+                <div style="flex: 1; min-width: 200px;">
+                    <div class="bull-snort-header-title" style="display:flex; align-items:center; gap:0.6rem;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        <span>Momentum Confidence Score&#8482;</span>
                     </div>
-                    <div class="bull-snort-header-subtitle">
-                        Daily composite score (0–100) across 5 pillars: Technical · Fundamental ·
-                        Momentum · Institutional · Risk & Liquidity. Updated after market close.
+                    <div class="bull-snort-header-subtitle" style="margin-top: 2px;">
+                        Composite score 0&#8211;100 across 5 pillars &#xb7; Technical &#xb7; Fundamental &#xb7; Momentum &#xb7; Institutional &#xb7; Risk
                     </div>
                 </div>
-                <div style="margin-left:auto; display:flex; align-items:center; gap:0.75rem;">
+                <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+                    <!-- Classic / Swing mode toggle -->
+                    <div id="mcs-mode-toggle">
+                        <button id="mcs-mode-classic" class="mcs-mode-btn" onclick="window.setMCSMode('classic')">Classic</button>
+                        <button id="mcs-mode-swing"   class="mcs-mode-btn" onclick="window.setMCSMode('swing')">&#9889; Swing</button>
+                    </div>
                     <select id="mcs-filter-min-score" class="bull-snort-select">
                          <option value="0" selected>All scores</option>
-                         <option value="60">≥ 60</option>
-                         <option value="75">≥ 75</option>
-                         <option value="85">≥ 85</option>
+                         <option value="60">&#8805; 60</option>
+                         <option value="75">&#8805; 75</option>
+                         <option value="85">&#8805; 85</option>
                     </select>
-                    <button id="btn-calculate-all-mcs" class="bull-snort-run-btn" style="background:#a855f7; color:#fff; border-color:#a855f7;">
+                    <button id="btn-calculate-all-mcs" class="bull-snort-run-btn" style="background:#7c3aed; color:#fff; border-color:#7c3aed;">
                         <span class="btn-spinner hidden" id="mcs-calc-spinner"></span>
-                        <span class="btn-text">⚡ Calculate All</span>
+                        <span class="btn-text">Calculate All</span>
                     </button>
                     <button id="btn-export-mcs" class="bull-snort-run-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--color-text-primary);">
-                        <span>📤 Export CSV</span>
+                        <span>Export CSV</span>
                     </button>
                 </div>
             </div>
 
             <!-- Progress Bar Container -->
-            <div id="mcs-progress-container" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:1rem; margin:0.5rem 0 1rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; font-size:0.85rem;">
+            <div id="mcs-progress-container" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:1rem; margin:0.5rem 0 0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; font-size:0.8rem;">
                     <span id="mcs-progress-label" style="font-weight:600; color:var(--color-text-primary);">Calculating scores...</span>
-                    <span id="mcs-progress-text" style="font-weight:700; color:#a855f7;">0/0 completed</span>
+                    <span id="mcs-progress-text" style="font-weight:700; color:#a855f7; font-family: monospace;">0/0 completed</span>
                 </div>
-                <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:10px; overflow:hidden;">
-                    <div id="mcs-progress-bar" style="width:0%; height:100%; background:#a855f7; border-radius:6px; transition:width 300ms ease;"></div>
+                <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:6px; overflow:hidden;">
+                    <div id="mcs-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg,#7c3aed,#a855f7); border-radius:6px; transition:width 300ms ease;"></div>
                 </div>
             </div>
 
-            <!-- Summary cards -->
-            <div id="mcs-summary-cards"
-                 style="display:flex; gap:1rem; margin:0.75rem 0; flex-wrap:wrap;">
-                <!-- Filled by JS: Total scored, Avg score, Elite count, Fresh breakouts -->
+            <!-- Stat Row (replaces boxy summary cards) -->
+            <div id="mcs-summary-cards" class="mcs-stat-row">
+                <!-- Filled by JS -->
             </div>
 
             <div id="mcs-results-count"
@@ -1990,24 +2148,54 @@
                        style="width:100%; border-collapse:collapse; text-align:left;">
                     <thead>
                         <tr>
-                            <th data-sort="symbol"       onclick="window.sortMCS('symbol')" class="sortable">Symbol</th>
-                            <th data-sort="total_score"  onclick="window.sortMCS('total_score')"   class="sortable text-right">Score</th>
-                            <th data-sort="technical_score"    onclick="window.sortMCS('technical_score')"    class="sortable text-right">Technical</th>
-                            <th data-sort="fundamental_score"  onclick="window.sortMCS('fundamental_score')"  class="sortable text-right">Fundamental</th>
-                            <th data-sort="momentum_score"     onclick="window.sortMCS('momentum_score')"     class="sortable text-right">Momentum</th>
-                            <th data-sort="institutional_score" onclick="window.sortMCS('institutional_score')" class="sortable text-right">Institutional</th>
-                            <th data-sort="risk_liquidity_score" onclick="window.sortMCS('risk_liquidity_score')" class="sortable text-right">Risk</th>
+                            <th data-sort="date"         onclick="window.sortMCS('date')"          class="sortable text-left" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('date');event.preventDefault();}">Date</th>
+                            <th data-sort="symbol"       onclick="window.sortMCS('symbol')" class="sortable" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('symbol');event.preventDefault();}">Symbol</th>
+                            <th data-sort="total_score"  onclick="window.sortMCS('total_score')"   class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('total_score');event.preventDefault();}">Score</th>
+                            <th data-sort="swing_score"  onclick="window.sortMCS('swing_score')"   class="sortable text-right" title="Swing Velocity Score: Technical 45% + Momentum 45% + Risk 10%" style="color:#f59e0b;" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('swing_score');event.preventDefault();}">⚡ Swing</th>
+                            <th data-sort="technical_score"    onclick="window.sortMCS('technical_score')"    class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('technical_score');event.preventDefault();}">Technical</th>
+                            <th data-sort="fundamental_score"  onclick="window.sortMCS('fundamental_score')"  class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('fundamental_score');event.preventDefault();}">Fundamental</th>
+                            <th data-sort="momentum_score"     onclick="window.sortMCS('momentum_score')"     class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('momentum_score');event.preventDefault();}">Momentum</th>
+                            <th data-sort="institutional_score" onclick="window.sortMCS('institutional_score')" class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('institutional_score');event.preventDefault();}">Institutional</th>
+                            <th data-sort="risk_liquidity_score" onclick="window.sortMCS('risk_liquidity_score')" class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('risk_liquidity_score');event.preventDefault();}">Risk</th>
                             <th class="text-left">Badges</th>
-                            <th data-sort="date"         onclick="window.sortMCS('date')"          class="sortable text-right">Date</th>
                         </tr>
                     </thead>
                     <tbody id="mcs-tbody">
-                        <tr>
-                            <td colspan="9"
-                                style="padding:2rem; text-align:center;
-                                       color:var(--color-text-muted); font-style:italic;">
-                                Loading scores…
-                            </td>
+                        <tr class="mcs-skeleton-row">
+                            <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 80px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 130px;"></div></td>
+                        </tr>
+                        <tr class="mcs-skeleton-row">
+                            <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 100px;"></div></td>
+                        </tr>
+                        <tr class="mcs-skeleton-row">
+                            <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 90px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 120px;"></div></td>
                         </tr>
                     </tbody>
                 </table>
@@ -2810,6 +2998,38 @@
         let mcsActiveCardFilter = null;
         const MCS_TTL = 5 * 60 * 1000; // 5 minutes
 
+        // ── Swing Mode state (persisted in localStorage) ────────────────────────
+        let mcsMode = (safeStorage.getItem('mcs_scoring_mode') || 'classic');
+
+        function applyMCSModeUI() {
+            const classicBtn = document.getElementById('mcs-mode-classic');
+            const swingBtn   = document.getElementById('mcs-mode-swing');
+            if (!classicBtn || !swingBtn) return;
+            // Use CSS classes instead of inline styles
+            if (mcsMode === 'swing') {
+                swingBtn.classList.add('swing-active');
+                swingBtn.classList.remove('classic-active');
+                classicBtn.classList.remove('classic-active', 'swing-active');
+            } else {
+                classicBtn.classList.add('classic-active');
+                classicBtn.classList.remove('swing-active');
+                swingBtn.classList.remove('classic-active', 'swing-active');
+            }
+        }
+
+        window.setMCSMode = function (mode) {
+            mcsMode = mode;
+            safeStorage.setItem('mcs_scoring_mode', mode);
+            // When switching to swing mode auto-sort by swing_score
+            if (mode === 'swing') { mcsSortKey = 'swing_score'; mcsSortDir = -1; }
+            else                  { mcsSortKey = 'total_score'; mcsSortDir = -1; }
+            applyMCSModeUI();
+            renderMCSTable();
+        };
+
+        // Initialise button state once DOM is ready
+        document.addEventListener('DOMContentLoaded', applyMCSModeUI);
+
         // Pillar max values for percentage bars
         const PILLAR_MAX = {
             technical_score: 30,
@@ -2843,7 +3063,7 @@
 
         async function fetchMCSData() {
             try {
-                const res  = await fetch(`/api/v1/scores?limit=300`);
+                const res  = await fetch(`/api/v1/scores?limit=300&_=${Date.now()}`, { cache: 'no-store' });
                 const json = await res.json();
                 const stocks = json.stocks || [];
 
@@ -2854,7 +3074,7 @@
                 updateMCSBadge();
             } catch (err) {
                 document.getElementById('mcs-tbody').innerHTML =
-                    `<tr><td colspan="9" style="padding:2rem;text-align:center;color:#ef4444;">
+                    `<tr><td colspan="10" style="padding:2rem;text-align:center;color:#ef4444;">
                         Failed to load scores: ${err.message}
                     </td></tr>`;
             }
@@ -2866,20 +3086,23 @@
             
             let filtered = [...mcsData];
             
+            // Determine active score field based on mode
+            const scoreField = mcsMode === 'swing' ? 'swing_score' : 'total_score';
+            
             // 1. Dropdown min-score filter
             if (minScoreVal > 0) {
-                filtered = filtered.filter(s => s.total_score !== null && s.total_score >= minScoreVal);
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined && s[scoreField] >= minScoreVal);
             }
             
             // 2. Summary Card filter
             if (mcsActiveCardFilter === 'scored') {
-                filtered = filtered.filter(s => s.total_score !== null && s.total_score !== undefined);
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined);
             } else if (mcsActiveCardFilter === 'pending') {
-                filtered = filtered.filter(s => s.total_score === null || s.total_score === undefined);
+                filtered = filtered.filter(s => s[scoreField] === null || s[scoreField] === undefined);
             } else if (mcsActiveCardFilter === 'elite') {
-                filtered = filtered.filter(s => s.total_score !== null && s.total_score >= 85);
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined && s[scoreField] >= 85);
             } else if (mcsActiveCardFilter === 'breakouts') {
-                filtered = filtered.filter(s => s.total_score !== null && (s.badges || []).some(b => b.includes('Breakout')));
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined && (s.badges || []).some(b => b.includes('Breakout')));
             }
 
             const sorted = filtered.sort((a, b) => {
@@ -2898,12 +3121,18 @@
             countEl.textContent = `${sorted.length} stock${sorted.length !== 1 ? 's' : ''} found`;
 
             if (!sorted.length) {
-                tbody.innerHTML = `<tr><td colspan="9"
-                    style="padding:2rem;text-align:center;
-                           color:var(--color-text-muted);font-style:italic;">
-                No stocks match this filter. Enable ENABLE_MOMENTUM_SCORE_CALCULATION
-                or trigger main screener scan.
-            </td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" style="padding: 4rem 2rem; text-align: center;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem; justify-content: center;">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5;">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <div style="font-weight: 700; font-size: 0.95rem; color: var(--color-text-primary);">No Stocks Found</div>
+                        <div style="font-size: 0.78rem; color: var(--color-text-muted); max-width: 280px; margin: 0 auto; line-height: 1.45;">
+                            No items match your active filters. Try clearing card filters or running a scan calculation.
+                        </div>
+                    </div>
+                </td></tr>`;
                 return;
             }
 
@@ -2912,15 +3141,23 @@
                 const col    = hasScore ? scoreColour(s.total_score) : '#6b7280';
                 const label  = hasScore ? scoreLabel(s.total_score) : 'Pending';
                 const scoreText = hasScore ? s.total_score : '—';
+
+                // Swing score cell
+                const hasSwing   = s.swing_score !== null && s.swing_score !== undefined;
+                const swingCol   = hasSwing ? scoreColour(s.swing_score) : '#6b7280';
+                const swingText  = hasSwing ? s.swing_score : '—';
+                const swingHighlight = (mcsMode === 'swing' && hasSwing)
+                    ? `background:${swingCol}22; color:${swingCol}; padding:2px 8px; border-radius:6px; font-weight:700;`
+                    : `color:${swingCol}; font-weight:600;`;
+
                 const badges = (s.badges || []).map(b =>
-                    `<span style="font-size:0.7rem; padding:2px 6px; border-radius:20px;
-                              background:rgba(168,85,247,0.15); color:#c084fc;
-                              white-space:nowrap; margin:1px; border: 1px solid rgba(168,85,247,0.2);">${b}</span>`
+                    `<span class="mcs-badge-chip">${b}</span>`
                 ).join('');
 
                 return `
             <tr style="cursor:pointer;" onclick="window.openMCSDrawer('${s.symbol}', '${s.exchange || 'NSE'}')">
-                <td>
+                <td style="color:var(--color-text-muted); font-size:0.8rem; text-align:left;">${s.date ?? '—'}</td>
+                <td class="symbol-col">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; max-width: 140px;">
                         <span class="mcs-ticker-link" 
                               onclick="event.stopPropagation(); openTradingView('${s.symbol}.NS')" 
@@ -2938,13 +3175,13 @@
                                  font-weight:700;">${scoreText}</span>
                     <span style="font-size:0.7rem; color:${col}; margin-left:4px;">${label}</span>
                 </td>
+                <td class="text-right"><span style="${swingHighlight}">${swingText}</span></td>
                 <td class="text-right">${s.technical_score ?? '—'}</td>
                 <td class="text-right">${s.fundamental_score ?? '—'}</td>
                 <td class="text-right">${s.momentum_score ?? '—'}</td>
                 <td class="text-right">${s.institutional_score ?? '—'}</td>
                 <td class="text-right">${s.risk_liquidity_score ?? '—'}</td>
                 <td style="max-width:220px;">${badges || '<span style="color:var(--color-text-muted);font-size:0.75rem;">—</span>'}</td>
-                <td class="text-right" style="color:var(--color-text-muted); font-size:0.8rem;">${s.date ?? '—'}</td>
             </tr>`;
             }).join('');
 
@@ -2981,31 +3218,36 @@
             const el = document.getElementById('mcs-summary-cards');
             if (!mcsData.length) { el.innerHTML = ''; return; }
 
-            const scoredStocks = mcsData.filter(x => x.total_score !== null && x.total_score !== undefined);
+            const scoreField = mcsMode === 'swing' ? 'swing_score' : 'total_score';
+
+            const scoredStocks = mcsData.filter(x => x[scoreField] !== null && x[scoreField] !== undefined);
             const totalScored  = scoredStocks.length;
             const totalPending = mcsData.length - totalScored;
-            const avg    = totalScored > 0 ? Math.round(scoredStocks.reduce((s, x) => s + x.total_score, 0) / totalScored) : 0;
-            const elite  = scoredStocks.filter(x => x.total_score >= 85).length;
+            const avg    = totalScored > 0 ? Math.round(scoredStocks.reduce((s, x) => s + (x.total_score || 0), 0) / totalScored) : 0;
+            const elite  = scoredStocks.filter(x => x[scoreField] >= 85).length;
             const breakouts = scoredStocks.filter(x =>
                 (x.badges || []).some(b => b.includes('Breakout'))).length;
+            const swingStocks = mcsData.filter(x => x.swing_score !== null && x.swing_score !== undefined);
+            const avgSwing = swingStocks.length > 0 ? Math.round(swingStocks.reduce((s, x) => s + x.swing_score, 0) / swingStocks.length) : 0;
 
-            const card = (filterType, label, value, colour, isClickable = true) => {
+            const item = (filterType, label, value, colour, isClickable = true) => {
                 const isActive = mcsActiveCardFilter === filterType;
                 const activeClass = isActive ? 'active' : '';
                 const clickHandler = isClickable ? `onclick="window.toggleMCSCardFilter('${filterType}')"` : '';
                 return `
-                <div class="mcs-summary-card ${activeClass}" ${clickHandler}>
-                    <div style="font-size:1.5rem; font-weight:800; color:${colour};">${value}</div>
-                    <div style="font-size:0.72rem; color:var(--color-text-muted); margin-top:2px;">${label}</div>
+                <div class="mcs-stat-item ${activeClass}" ${clickHandler}>
+                    <div class="mcs-stat-value" style="color:${colour};">${value}</div>
+                    <div class="mcs-stat-label">${label}</div>
                 </div>`;
             };
 
             el.innerHTML =
-                card('scored',    'Total Scored',    totalScored,  '#a855f7') +
-                card('pending',   'Pending Calcs',   totalPending, '#6b7280') +
-                card('',          'Avg Score',       totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#6b7280', false) +
-                card('elite',     'Elite (≥85)',     elite,        '#a855f7') +
-                card('breakouts', 'Fresh Breakouts', breakouts,    '#22c55e');
+                item('scored',    'Total Scored',   totalScored,  '#c084fc') +
+                item('pending',   'Pending',        totalPending, '#64748b') +
+                item('',          'Avg Classic',    totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#64748b', false) +
+                item('',          'Avg Swing',      swingStocks.length > 0 ? avgSwing : '—', swingStocks.length > 0 ? scoreColour(avgSwing) : '#64748b', false) +
+                item('elite',     'Elite &#8805;85', elite,       '#a855f7') +
+                item('breakouts', 'Breakouts',      breakouts,    '#22c55e');
         }
 
         // Toggle card filter
@@ -3056,7 +3298,7 @@
         // ── Side drawer ──────────────────────────────────────────────────────────
         window.openMCSDrawer = async function (symbol, exchange) {
             try {
-                const res  = await fetch(`/api/v1/score/${symbol}?exchange=${exchange}`);
+                const res  = await fetch(`/api/v1/score/${symbol}?exchange=${exchange}&_=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) {
                     throw new Error(`HTTP error! status: ${res.status}`);
                 }
@@ -3068,6 +3310,7 @@
                     mcsData[stockIdx] = {
                         ...mcsData[stockIdx],
                         total_score: data.total_score,
+                        swing_score: data.swing_score,
                         technical_score: data.technical_score,
                         fundamental_score: data.fundamental_score,
                         momentum_score: data.momentum_score,
@@ -3084,16 +3327,27 @@
                 document.getElementById('mcs-drawer-symbol').textContent = symbol;
                 document.getElementById('mcs-drawer-date').textContent   = `As of ${data.date || '—'}`;
 
-                // Score ring (simple coloured number)
-                const col = scoreColour(data.total_score);
+                // Score ring — shows swing_score ring when swing mode is active
+                const isSwingMode = (mcsMode === 'swing');
+                const ringScore = isSwingMode && data.swing_score != null ? data.swing_score : data.total_score;
+                const ringLabel = isSwingMode && data.swing_score != null ? '⚡ SWING' : scoreLabel(ringScore);
+                const col = scoreColour(ringScore);
+                const swingNote = isSwingMode && data.swing_score != null
+                    ? `<div style="font-size:0.65rem; color:var(--color-text-muted); margin-top:6px; text-align:center;">Classic: ${data.total_score ?? '—'}</div>`
+                    : data.swing_score != null
+                        ? `<div style="font-size:0.65rem; color:#f59e0b; margin-top:6px; text-align:center;">⚡ Swing: ${data.swing_score}</div>`
+                        : '';
                 document.getElementById('mcs-drawer-score-ring').innerHTML = `
-                <div style="display:inline-flex; flex-direction:column; align-items:center;
-                            background:${col}18; border:3px solid ${col};
-                            box-shadow: 0 0 20px ${col}33, inset 0 0 15px ${col}11;
-                            border-radius:50%; width:110px; height:110px;
-                            justify-content:center; transition: all 300ms ease;">
-                    <span style="font-size:2.2rem; font-weight:900; color:${col}; line-height:1.1;">${data.total_score}</span>
-                    <span style="font-size:0.6rem; color:${col}; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-top:2px;">${scoreLabel(data.total_score)}</span>
+                <div style="display:inline-flex; flex-direction:column; align-items:center;">
+                    <div style="display:inline-flex; flex-direction:column; align-items:center;
+                                background:${col}18; border:3px solid ${col};
+                                box-shadow: 0 0 20px ${col}33, inset 0 0 15px ${col}11;
+                                border-radius:50%; width:110px; height:110px;
+                                justify-content:center; transition: all 300ms ease;">
+                        <span style="font-size:2.2rem; font-weight:900; color:${col}; line-height:1.1;">${ringScore}</span>
+                        <span style="font-size:0.6rem; color:${col}; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-top:2px;">${ringLabel}</span>
+                    </div>
+                    ${swingNote}
                 </div>`;
 
                 // Pillar bars
@@ -3228,7 +3482,7 @@
 
         async function pollMCSJobStatus() {
             try {
-                const res = await fetch('/api/v1/score/job_status');
+                const res = await fetch(`/api/v1/score/job_status?_=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) return;
                 const json = await res.json();
                 if (json.success && json.data) {
@@ -3344,6 +3598,8 @@
             if (!mcsData.length || (Date.now() - mcsLastFetch > MCS_TTL)) fetchMCSData();
             // Check status immediately on tab open to restore progress bar if running
             pollMCSJobStatus();
+            // Restore toggle button highlight
+            applyMCSModeUI();
         });
 
         // Filter change

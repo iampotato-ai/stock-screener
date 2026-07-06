@@ -64,22 +64,34 @@ class InstitutionalAnalyzer:
             fii_holding_pct = stock_data.get('fii_holding_pct', 0)  # FII holding percentage
             if fii_net_buy_cr > 100 or fii_holding_pct > 25:
                 score += 4
-                details['criteria_met'].append(f'Strong FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                if fii_net_buy_cr > 100:
+                    details['criteria_met'].append(f'Strong FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                else:
+                    details['criteria_met'].append(f'Strong FII Presence (Holding: {fii_holding_pct:.1f}%)')
                 details['points_breakdown']['fii_buying'] = 4
             elif fii_net_buy_cr > 50 or fii_holding_pct > 20:
                 score += 3
-                details['criteria_met'].append(f'Moderate FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                if fii_net_buy_cr > 50:
+                    details['criteria_met'].append(f'Moderate FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                else:
+                    details['criteria_met'].append(f'Moderate FII Presence (Holding: {fii_holding_pct:.1f}%)')
                 details['points_breakdown']['fii_buying'] = 3
             elif fii_net_buy_cr > 10 or fii_holding_pct > 15:
                 score += 2
-                details['criteria_met'].append(f'Some FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                if fii_net_buy_cr > 10:
+                    details['criteria_met'].append(f'Some FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                else:
+                    details['criteria_met'].append(f'Some FII Presence (Holding: {fii_holding_pct:.1f}%)')
                 details['points_breakdown']['fii_buying'] = 2
             elif fii_net_buy_cr > 0 or fii_holding_pct > 10:
                 score += 1
-                details['criteria_met'].append(f'Minimal FII Presence (₹{fii_net_buy_cr:.0f}Cr net)')
+                if fii_net_buy_cr > 0:
+                    details['criteria_met'].append(f'Minimal FII Buying (₹{fii_net_buy_cr:.0f}Cr net)')
+                else:
+                    details['criteria_met'].append(f'Minimal FII Presence (Holding: {fii_holding_pct:.1f}%)')
                 details['points_breakdown']['fii_buying'] = 1
             else:
-                details['criteria_not_met'].append(f'FII Selling or Negligible (₹{fii_net_buy_cr:.0f}Cr net)')
+                details['criteria_not_met'].append(f'FII Selling or Negligible (Holding: {fii_holding_pct:.1f}%)')
                 details['points_breakdown']['fii_buying'] = 0
 
             # 3. Promoter Buying (+3 points)
