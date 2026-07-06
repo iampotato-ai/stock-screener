@@ -67,5 +67,13 @@
 
   <!-- Javascript Logic files (ES Modules) -->
   <script type="module" src="{{ url_for('static', filename='js/landing-motion.js') }}?v=1.0.0"></script>
+  <script src="https://unpkg.com/lucide@0.418.0/dist/umd/lucide.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    });
+  </script>
 </body>
 </html>
