@@ -70,6 +70,33 @@ class StockDataFetcher:
             if yahoo_fundamentals:
                 result.update(self._extract_fundamentals_from_yahoo(yahoo_fundamentals))
 
+            # Layer 2.5: NSE Bulk and Block Deals
+            try:
+                # Check if we are in testing mode to avoid network calls
+                is_testing = False
+                try:
+                    from flask import current_app
+                    is_testing = current_app.config.get('TESTING', False)
+                except RuntimeError:
+                    pass
+                
+                if not is_testing:
+                    from app.api.v1.legacy_routes import fetch_nse_block_deals
+                    raw_deals = fetch_nse_block_deals() or {}
+                    block_deals = raw_deals.get("BLOCK_DEALS_DATA", []) or []
+                    bulk_deals = raw_deals.get("BULK_DEALS_DATA", []) or []
+                    all_deals = block_deals + bulk_deals
+                    sym_deals = [d for d in all_deals if d.get("symbol", "").upper().strip() == symbol.upper().strip()]
+                    if sym_deals:
+                        result['block_deal_count'] = len(sym_deals)
+                        buy_deals = [d for d in sym_deals if d.get("buySell", "").upper().strip() == "BUY"]
+                        result['block_deal_buy_ratio'] = len(buy_deals) / len(sym_deals)
+                    else:
+                        result['block_deal_count'] = 0
+                        result['block_deal_buy_ratio'] = 0.0
+            except Exception as e:
+                logger.warning(f"Error fetching bulk/block deals for {symbol}: {e}")
+
             # Layer 3: Yahoo Finance OHLCV for technical indicators
             yahoo_ohlcv = self._fetch_yahoo_ohlcv(symbol)
             if yahoo_ohlcv:
@@ -207,24 +234,68 @@ class StockDataFetcher:
             return None
 
     def _fetch_yahoo_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Fetch fundamental data from Yahoo Finance."""
+        """Fetch fundamental data from Yahoo Finance using yfinance to avoid HTTP 401 Crumb errors."""
         try:
             # Respect rate limit
             if self.rate_limit_delay > 0:
                 time.sleep(self.rate_limit_delay)
 
-            # Yahoo Finance expects .NS suffix for NSE stocks
-            yahoo_symbol = f"{symbol}.NS"
-            url = f"{self.yahoo_finance_base}/{yahoo_symbol}?modules=financialData,defaultKeyStatistics,incomeStatementHistory"
+            import yfinance as yf
+            ticker = yf.Ticker(f"{symbol}.NS")
+            info = ticker.info or {}
+            
+            # Fetch and format income statement history
+            income_stmt_history = []
+            try:
+                df = ticker.income_stmt
+                if df is not None and not df.empty:
+                    for col in df.columns:
+                        col_data = df[col]
+                        rev_val = None
+                        for k in ['Total Revenue', 'TotalRevenue', 'Operating Revenue', 'OperatingRevenue']:
+                            if k in col_data:
+                                rev_val = col_data[k]
+                                break
+                        net_inc_val = None
+                        for k in ['Net Income', 'NetIncome', 'Net Income Common Stockholders', 'NetIncomeCommonStockholders']:
+                            if k in col_data:
+                                net_inc_val = col_data[k]
+                                break
+                        
+                        if rev_val is not None and math.isnan(rev_val):
+                            rev_val = None
+                        if net_inc_val is not None and math.isnan(net_inc_val):
+                            net_inc_val = None
+                            
+                        if rev_val is not None or net_inc_val is not None:
+                            income_stmt_history.append({
+                                'totalRevenue': {'raw': rev_val},
+                                'netIncome': {'raw': net_inc_val}
+                            })
+            except Exception as e:
+                logger.warning(f"Error parsing income statement for {symbol}: {e}")
 
-            req = urllib.request.Request(
-                url,
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            )
-
-            with urllib.request.urlopen(req, timeout=self.request_timeout) as response:
-                data = json.loads(response.read().decode('utf-8'))
-
+            data = {
+                'quoteSummary': {
+                    'result': [{
+                        'financialData': {
+                            'returnOnEquity': {'raw': info.get('returnOnEquity')},
+                            'returnOnCapitalEmployed': {'raw': info.get('returnOnAssets')}, # Proxy
+                            'debtToEquity': {'raw': info.get('debtToEquity')},
+                            'operatingMargins': {'raw': info.get('operatingMargins')},
+                            'profitMargins': {'raw': info.get('profitMargins')},
+                            'operatingCashflow': {'raw': info.get('operatingCashflow')}
+                        },
+                        'defaultKeyStatistics': {
+                            'heldPercentInstitutions': {'raw': info.get('heldPercentInstitutions')},
+                            'heldPercentInsiders': {'raw': info.get('heldPercentInsiders')}
+                        },
+                        'incomeStatementHistory': {
+                            'incomeStatementHistory': income_stmt_history
+                        }
+                    }]
+                }
+            }
             return data
 
         except Exception as e:
@@ -297,7 +368,7 @@ class StockDataFetcher:
         return result
 
     def _extract_fundamentals_from_yahoo(self, yahoo_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract fundamental fields from Yahoo Finance data."""
+        """Extract fundamental fields from Yahoo Finance data, scaling them to correct formats."""
         result = {}
 
         if not yahoo_data or 'quoteSummary' not in yahoo_data:
@@ -313,45 +384,63 @@ class StockDataFetcher:
         if financial_data:
             # ROE
             roe_data = financial_data.get('returnOnEquity', {})
-            if roe_data and 'raw' in roe_data:
-                result['roe'] = float(roe_data['raw'])
+            if roe_data and 'raw' in roe_data and roe_data['raw'] is not None:
+                val = float(roe_data['raw'])
+                # If raw value is decimal (e.g., 0.18), scale to percent (18.0)
+                result['roe'] = val * 100.0 if abs(val) <= 1.0 else val
 
             # ROCE (use ROE as proxy if not available)
             roce_data = financial_data.get('returnOnCapitalEmployed', {})
-            if roce_data and 'raw' in roce_data:
-                result['roce'] = float(roce_data['raw'])
+            if roce_data and 'raw' in roce_data and roce_data['raw'] is not None:
+                val = float(roce_data['raw'])
+                result['roce'] = val * 100.0 if abs(val) <= 1.0 else val
             elif 'roe' in result:
                 result['roce'] = result['roe']  # Proxy
 
             # Debt to Equity
             debt_eq_data = financial_data.get('debtToEquity', {})
-            if debt_eq_data and 'raw' in debt_eq_data:
-                # Yahoo provides debt-to-equity as decimal ratio
-                result['debt_to_equity'] = float(debt_eq_data['raw'])
+            if debt_eq_data and 'raw' in debt_eq_data and debt_eq_data['raw'] is not None:
+                val = float(debt_eq_data['raw'])
+                # If val is in percent format (e.g., 50.0 representing 0.5), divide by 100.0
+                result['debt_to_equity'] = val / 100.0 if val > 10.0 else val
 
             # Operating Margin
             op_margin_data = financial_data.get('operatingMargins', {})
-            if op_margin_data and 'raw' in op_margin_data:
-                result['operating_margin'] = float(op_margin_data['raw'])
+            if op_margin_data and 'raw' in op_margin_data and op_margin_data['raw'] is not None:
+                val = float(op_margin_data['raw'])
+                result['operating_margin'] = val * 100.0 if abs(val) <= 1.0 else val
 
             # Net Margin
             net_margin_data = financial_data.get('profitMargins', {})
-            if net_margin_data and 'raw' in net_margin_data:
-                result['net_margin'] = float(net_margin_data['raw'])
+            if net_margin_data and 'raw' in net_margin_data and net_margin_data['raw'] is not None:
+                val = float(net_margin_data['raw'])
+                result['net_margin'] = val * 100.0 if abs(val) <= 1.0 else val
 
             # Operating Cash Flow (convert to crores)
             ocf_data = financial_data.get('operatingCashflow', {})
-            if ocf_data and 'raw' in ocf_data:
+            if ocf_data and 'raw' in ocf_data and ocf_data['raw'] is not None:
                 result['operating_cash_flow'] = float(ocf_data['raw']) / 1e7  # Convert to crores
 
         # Extract defaultKeyStatistics
         default_stats = result_data.get('defaultKeyStatistics', {})
         if default_stats:
-            # Held percent institutions (proxy for promoter holding)
+            # Check heldPercentInsiders first as a direct proxy for promoter holding
+            held_insiders = default_stats.get('heldPercentInsiders', {})
+            if held_insiders and 'raw' in held_insiders and held_insiders['raw'] is not None:
+                ins_val = float(held_insiders['raw'])
+                result['promoter_holding_pct'] = ins_val * 100.0 if ins_val <= 1.0 else ins_val
+            else:
+                # Fallback to heldPercentInstitutions
+                held_institutions = default_stats.get('heldPercentInstitutions', {})
+                if held_institutions and 'raw' in held_institutions and held_institutions['raw'] is not None:
+                    inst_val = float(held_institutions['raw'])
+                    result['promoter_holding_pct'] = (1.0 - inst_val) * 100.0 if inst_val <= 1.0 else 100.0 - inst_val
+
+            # Extract FII holding percentage proxy from heldPercentInstitutions
             held_institutions = default_stats.get('heldPercentInstitutions', {})
-            if held_institutions and 'raw' in held_institutions:
-                # Promoter holding % = (100 - institutional %) approximately
-                result['promoter_holding_pct'] = (100.0 - float(held_institutions['raw']))
+            if held_institutions and 'raw' in held_institutions and held_institutions['raw'] is not None:
+                inst_val = float(held_institutions['raw'])
+                result['fii_holding_pct'] = inst_val * 100.0 if inst_val <= 1.0 else inst_val
 
         # Extract incomeStatementHistory for YoY growth
         income_stmt = result_data.get('incomeStatementHistory', {})
@@ -372,9 +461,10 @@ class StockDataFetcher:
 
                 # Calculate YoY growth
                 if len(revenues) >= 2:
-                    result['revenue_growth_yoy'] = compute_yoy_growth(revenues)
+                    # YoY growth is returned as decimal, scale to percent
+                    result['revenue_growth_yoy'] = compute_yoy_growth(revenues) * 100.0
                 if len(profits) >= 2:
-                    result['profit_growth_yoy'] = compute_yoy_growth(profits)
+                    result['profit_growth_yoy'] = compute_yoy_growth(profits) * 100.0
 
         return result
 

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Momentum Scan - Indian Stock Screener</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_icon.png') }}">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -163,6 +164,7 @@
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.418.0/dist/umd/lucide.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.68">
 </head>
 <body>
@@ -230,50 +232,44 @@
             </div>
         </header>
 
-        <!-- Main Workspace Navigation Segmented Control -->
         <nav class="workspace-nav-bar" id="workspace-nav">
             <div class="workspace-tabs-container glass-panel">
                 <button class="workspace-tab active" data-view="dashboard">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                    <i data-lucide="layout-dashboard" style="width: 14px; height: 14px;"></i>
                     <span>Dashboard</span>
                 </button>
                 <button class="workspace-tab" data-view="screener">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>
+                    <i data-lucide="crosshair" style="width: 14px; height: 14px;"></i>
                     <span>Screener</span>
                 </button>
                 <button class="workspace-tab" data-view="watchlist">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <i data-lucide="bookmark" style="width: 14px; height: 14px;"></i>
                     <span>Watchlist & Journal</span>
                 </button>
                 <button class="workspace-tab" data-view="rrg">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                    <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
                     <span>RRG Rotation</span>
                 </button>
                 <button class="workspace-tab" data-view="intraday">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <i data-lucide="activity" style="width: 14px; height: 14px;"></i>
                     <span>Intraday Pro</span>
                 </button>
                 <button class="workspace-tab" data-view="ipo" id="tab-ipo">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                    <i data-lucide="zap" style="width: 14px; height: 14px;"></i>
                     <span>IPO Momentum</span>
                     <span id="ipo-hot-count" class="badge" style="display: none; background: #ff4d4d; color: white; border-radius: 50%; padding: var(--space-1) var(--space-2); font-size: 0.7rem; margin-left: var(--space-2); font-weight: bold; box-shadow: 0 0 8px rgba(255, 77, 77, 0.6);">0</span>
                 </button>
-
                 <button class="workspace-tab" data-view="ep" id="tab-ep">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                    <i data-lucide="layers" style="width: 14px; height: 14px;"></i>
                     <span>EP Screener</span>
                     <span id="ep-high-count" class="badge" style="display: none; background: #3b82f6; color: white; border-radius: 50%; padding: var(--space-1) var(--space-2); font-size: 0.7rem; margin-left: var(--space-2); font-weight: bold; box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);">0</span>
                 </button>
                 <button class="workspace-tab" data-view="bull-snort" id="tab-bull-snort" style="color: #fbbf24; transition: all 180ms cubic-bezier(0.16,1,0.3,1);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                    <i data-lucide="star" style="width: 14px; height: 14px; color: #fbbf24; fill: #fbbf24;"></i>
                     <span style="color: #fbbf24; font-weight: 700; text-shadow: 0 0 8px rgba(251, 191, 36, 0.25);">Bull Snort</span>
                 </button>
                 <button class="workspace-tab" data-view="momentum-score" id="tab-momentum-score">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
-                        <polyline points="16 7 22 7 22 13"></polyline>
-                    </svg>
+                    <i data-lucide="trending-up" style="width: 14px; height: 14px;"></i>
                     <span>MCS™</span>
                     <span id="mcs-top-badge" class="badge"
                           style="display:none; background:#a855f7; color:#fff; border-radius:50%;
@@ -441,13 +437,13 @@
                     <div id="alert-log-panel" class="glass-panel alert-log-panel">
                         <div class="alert-log-header">
                             <div class="alert-log-header-title">
-                                <span style="font-size: 1.1rem;" aria-hidden="true">🔔</span>
+                                <i data-lucide="bell" style="width: 16px; height: 16px; color: var(--color-text-secondary); margin-right: 6px;"></i>
                                 <h3 class="alert-log-title">Alert Log</h3>
                                 <span id="alert-log-count" class="alert-log-count-badge">0</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <button id="btn-alert-settings" class="btn-ghost btn-xs" title="Alert Settings" style="background: none; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: var(--space-2); border-radius: 4px; transition: var(--transition-smooth);">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                                    <i data-lucide="settings" style="width: 14px; height: 14px;"></i>
                                 </button>
                                 <button id="btn-clear-alerts" class="btn-ghost btn-xs" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--color-text-secondary); cursor: pointer; border-radius: 4px; padding: var(--space-1) var(--space-2); font-size: 0.75rem;">Clear</button>
                             </div>
@@ -456,8 +452,8 @@
                         <!-- Alert Settings Panel -->
                         <div id="alert-settings-panel" class="alert-settings-panel hidden">
                             <div style="font-weight: 600; color: #fff; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 4px; display:flex; justify-content:space-between; align-items:center;">
-                                <span><span aria-hidden="true">⚙️</span> Alert Settings</span>
-                                <button id="btn-close-alert-settings" style="background:none; border:none; color:var(--color-text-muted); cursor:pointer; font-size:0.9rem;">✕</button>
+                                <span style="display: inline-flex; align-items: center; gap: 6px;"><i data-lucide="settings" style="width: 14px; height: 14px;"></i> Alert Settings</span>
+                                <button id="btn-close-alert-settings" style="background:none; border:none; color:var(--color-text-muted); cursor:pointer; display: flex; align-items: center; justify-content: center; padding: 2px;"><i data-lucide="x" style="width: 14px; height: 14px;"></i></button>
                             </div>
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                                 <input type="checkbox" id="alert-set-regime" checked style="cursor: pointer;">
@@ -529,13 +525,13 @@
                 <div class="screener-header-primary">
                     <div class="screener-header-primary-left">
                         <div class="search-box">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            <i data-lucide="search" style="width: 18px; height: 18px; color: var(--color-text-secondary);"></i>
                             <input type="text" id="search-input" placeholder="Search by ticker or company name...">
                         </div>
                         <div class="custom-select-wrapper" id="sector-select-wrapper">
                             <button class="btn btn-secondary select-trigger" id="btn-sectors" title="Filter by sector">
                                 <span id="selected-sector-label">All Sectors</span>
-                                <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                <i data-lucide="chevron-down" class="select-arrow" style="width: 12px; height: 12px;"></i>
                             </button>
                             <div class="select-dropdown glass-panel hidden" id="sectors-dropdown">
                                 <!-- Sector options will be dynamically rendered here in JS -->
@@ -545,7 +541,7 @@
                         <div class="custom-select-wrapper" id="preset-select-wrapper">
                             <button class="btn btn-secondary select-trigger" id="btn-presets" title="Load Filter Preset">
                                 <span id="selected-preset-label">Load Preset...</span>
-                                <svg class="select-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                <i data-lucide="chevron-down" class="select-arrow" style="width: 16px; height: 16px;"></i>
                             </button>
                             <div class="select-dropdown glass-panel hidden" id="preset-dropdown">
                                 <!-- populated via JS -->
@@ -563,7 +559,7 @@
                     <div class="screener-header-secondary-left">
                         <div class="column-selector-wrapper">
                             <button class="btn btn-secondary" id="btn-columns" title="Manage table columns">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+                                <i data-lucide="columns" style="width: 16px; height: 16px;"></i>
                                 <span class="btn-label">Columns</span>
                             </button>
                             <div class="column-dropdown glass-panel hidden" id="column-dropdown">
@@ -578,7 +574,7 @@
                         </div>
         
                         <button class="btn btn-secondary" id="btn-toggle-density" title="Toggle Compact / Comfortable View">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+                            <i data-lucide="rows" style="width: 16px; height: 16px;"></i>
                             <span id="density-label" class="btn-label">Compact</span>
                         </button>
                     </div>
@@ -594,11 +590,11 @@
                         </div>
 
                         <button class="btn btn-secondary" id="btn-export" title="Export all tabs to a multi-sheet Excel file">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <i data-lucide="download" style="width: 16px; height: 16px;"></i>
                             <span class="btn-label">Export Excel</span>
                         </button>
                         <button class="btn btn-secondary" id="btn-save-snapshot" title="Save current base scan to history for metric tracking">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                            <i data-lucide="save" style="width: 16px; height: 16px;"></i>
                             <span class="btn-label">Snapshot</span>
                         </button>
                     </div>
@@ -609,13 +605,13 @@
         <section class="range-filters-panel glass-panel" id="range-filters-panel">
             <div class="range-filter-header-bar" id="range-filter-toggle" style="cursor: pointer; width: 100%; display: flex; justify-content: space-between; align-items: center; user-select: none;">
                 <div class="range-filter-title" style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 700; color: var(--color-text-primary);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-text-secondary);"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
+                    <i data-lucide="sliders" style="width: 14px; height: 14px; color: var(--color-text-secondary);"></i>
                     <span>Range & Advanced Filters</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
                     <span id="active-filters-count" class="badge" style="background: var(--accent-blue, #3b82f6); color: #fff; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; display: none;">0 active</span>
                     <button id="btn-clear-all-filters" class="btn btn-secondary" style="font-size: 0.7rem; padding: 2px 8px; height: 22px; line-height: 1; border-radius: 4px; display: none; background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);" onclick="clearAllFilters()">Clear Filters</button>
-                    <span class="filter-toggle-chevron" style="font-size: 0.8rem; color: var(--color-text-muted); transition: transform 0.25s ease; cursor: pointer;" onclick="document.getElementById('range-filter-toggle').click()">▼</span>
+                    <i data-lucide="chevron-down" class="filter-toggle-chevron" style="width: 14px; height: 14px; color: var(--color-text-muted); transition: transform 0.25s ease; cursor: pointer;" onclick="document.getElementById('range-filter-toggle').click()"></i>
                 </div>
             </div>
             
@@ -684,7 +680,7 @@
                     <div class="custom-select-wrapper" id="ims-select-wrapper">
                         <button class="btn btn-secondary select-trigger" id="btn-ims" style="min-width: 140px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Intraday Momentum Score">
                             <span id="selected-ims-label">All Scores</span>
-                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            <i data-lucide="chevron-down" class="select-arrow" style="width: 12px; height: 12px;"></i>
                         </button>
                         <div class="select-dropdown glass-panel hidden" id="ims-dropdown" style="min-width: 160px; top: calc(100% + 4px);">
                             <div class="select-dropdown-item active" data-value="all">All Scores</div>
@@ -702,7 +698,7 @@
                     <div class="custom-select-wrapper" id="swing-select-wrapper">
                         <button class="btn btn-secondary select-trigger" id="btn-swing" style="min-width: 140px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Swing Score">
                             <span id="selected-swing-label">All Scores</span>
-                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            <i data-lucide="chevron-down" class="select-arrow" style="width: 12px; height: 12px;"></i>
                         </button>
                         <div class="select-dropdown glass-panel hidden" id="swing-dropdown" style="min-width: 160px; top: calc(100% + 4px);">
                             <div class="select-dropdown-item active" data-value="all">All Scores</div>
@@ -720,7 +716,7 @@
                     <div class="custom-select-wrapper" id="candle-select-wrapper">
                         <button class="btn btn-secondary select-trigger" id="btn-candle" style="min-width: 150px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Candlestick Pattern">
                             <span id="selected-candle-label">All Patterns</span>
-                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            <i data-lucide="chevron-down" class="select-arrow" style="width: 12px; height: 12px;"></i>
                         </button>
                         <div class="select-dropdown glass-panel hidden" id="candle-dropdown" style="min-width: 170px; top: calc(100% + 4px); z-index: 10;">
                             <div class="select-dropdown-item active" data-value="all">All Patterns</div>
@@ -742,7 +738,7 @@
                     <div class="custom-select-wrapper" id="volume-select-wrapper">
                         <button class="btn btn-secondary select-trigger" id="btn-volume-filter" style="min-width: 150px; height: 32px; padding: 0 var(--space-3); font-size: 0.75rem; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;" title="Filter by Volume Alert Status">
                             <span id="selected-volume-filter-label">All Volume</span>
-                            <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            <i data-lucide="chevron-down" class="select-arrow" style="width: 12px; height: 12px;"></i>
                         </button>
                         <div class="select-dropdown glass-panel hidden" id="volume-filter-dropdown" style="min-width: 175px; top: calc(100% + 4px); z-index: 10; padding: 6px 0;">
                             <div class="select-dropdown-item" data-value="ppv" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -766,19 +762,19 @@
                 <div class="range-filter-actions-row">
                     <!-- Quick Sort Swing Button -->
                     <button class="btn btn-primary" id="btn-quick-swing" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem; background: var(--accent-blue); border-color: var(--accent-blue); color: #fff;" title="Sort by Swing Score then 1W Perf">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                        <i data-lucide="target" style="width: 14px; height: 14px; margin-right: 2px;"></i>
                         Best Swing Setups
                     </button>
 
                     <!-- Save Preset Button -->
                     <button class="btn btn-secondary" id="btn-save-preset" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem;" title="Save current filters as a preset">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        <i data-lucide="save" style="width: 14px; height: 14px; margin-right: 2px;"></i>
                         Save
                     </button>
 
                     <!-- Clear Button -->
                     <button class="btn btn-secondary" id="btn-clear-range-filters" style="height: 32px; padding: 0 1rem; font-size: 0.75rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.3rem;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <i data-lucide="trash-2" style="width: 14px; height: 14px; margin-right: 2px;"></i>
                         Clear
                     </button>
                 </div>
@@ -795,18 +791,18 @@
                 <!-- Screener Tab Bar (Removed RRG and Journal) -->
                 <div class="screener-tabs" id="screener-tabs">
                     <button class="tab-btn active" data-tab="overview">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                        <i data-lucide="trending-up" style="width: 14px; height: 14px; margin-right: 2px;"></i>
                         Overview
                     </button>
                     <button class="tab-btn" data-tab="rr-setups">
-                        ⚖️ R:R Setups
+                        <span style="display: inline-flex; align-items: center; gap: 4px;"><i data-lucide="scale" style="width: 14px; height: 14px;"></i> R:R Setups</span>
                         <span id="rr-setups-count" class="badge badge-sm" style="display:none;">0</span>
                     </button>
                 </div>
 
 
                 <div id="growth-disclaimer">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"></svg>
+                    <i data-lucide="alert-triangle" style="width: 14px; height: 14px; flex-shrink:0; margin-right: 6px;"></i>
                     <span><strong>Simulated Growth Metrics Disclaimer:</strong> QoQ/YoY growth, 3-Year revenue/EBITDA/EPS CAGRs, segment growth breakdown, and order-book metrics are generated for visual simulation purposes and should not be used as real financial data for trading decisions.</span>
                 </div>
 
@@ -916,16 +912,20 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
                         <h2 style="margin: 0;">Trade Journal</h2>
                         <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" id="btn-toggle-watchlist-sidebar" title="Toggle Watchlist Sidebar">
+                                <i data-lucide="sidebar" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+                                <span id="sidebar-toggle-text">Hide Watchlist</span>
+                            </button>
                             <button class="btn btn-secondary" onclick="window.updateJournalLivePrices(event)">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                                <i data-lucide="refresh-cw" style="width: 14px; height: 14px; margin-right: 6px;"></i>
                                 Refresh Prices
                             </button>
                             <button class="btn btn-primary" onclick="window.openManualTradeModal()">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <i data-lucide="plus" style="width: 14px; height: 14px; margin-right: 6px;"></i>
                                 Add Trade
                             </button>
                             <button class="btn btn-secondary" onclick="exportJournalToExcel()">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                                <i data-lucide="download" style="width: 14px; height: 14px; margin-right: 6px;"></i>
                                 Export Journal
                             </button>
                         </div>
@@ -988,14 +988,14 @@
                     </div>
                     <div class="watchlist-actions" style="display: flex; gap: 0.4rem; align-items: center;">
                         <button class="btn-icon" id="btn-kronos-column-toggle" title="Toggle AI Forecast Columns" aria-label="Toggle AI Forecast Columns" style="color: var(--color-text-secondary);">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            <i data-lucide="eye" style="width: 18px; height: 18px;"></i>
                         </button>
                         <button class="btn-icon" id="btn-kronos-batch-sort" title="Kronos AI Momentum Sort" aria-label="Kronos AI Momentum Sort" style="color: #f59e0b;" disabled>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                            <i data-lucide="zap" style="width: 18px; height: 18px;"></i>
                         </button>
                         <span id="kronos-sort-error-badge" style="display:none; font-size:0.72rem; color:#ef4444; margin-left:0.5rem;"></span>
                         <button class="btn-icon" id="btn-add-watchlist-manual" title="Add Ticker Manually" aria-label="Add Ticker Manually">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <i data-lucide="plus" style="width: 18px; height: 18px;"></i>
                         </button>
                     </div>
                 </div>
@@ -1016,7 +1016,7 @@
                 <!-- Watchlist Section Actions -->
                 <div class="watchlist-section-controls" style="margin-top: var(--space-1); display: flex; flex-direction: column; gap: 0.5rem;">
                     <button class="btn btn-secondary" id="btn-add-section-global" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: var(--space-2); font-size: 0.8rem; padding: 0.5rem 1rem;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
                         <span>Add Section</span>
                     </button>
                     <div class="global-add-section-box hidden" id="global-add-section-box" style="display: flex; gap: var(--space-2); padding: 0.5rem; background: rgba(0, 0, 0, 0.15); border: 1px solid var(--panel-border); border-radius: var(--radius-md);">
@@ -1042,7 +1042,7 @@
                     </div>
                     <div class="announcements-feed-container" id="announcements-feed">
                         <div class="news-placeholder">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="M12 6v6l4 2"></path></svg>
+                            <i data-lucide="clock" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem;"></i>
                             <p>No news available.</p>
                             <p style="font-size:0.75rem; color:var(--color-text-muted); margin-top:0.2rem;">Add stocks to your watchlist to view dynamic announcements.</p>
                         </div>
@@ -1058,7 +1058,7 @@
             <div class="intraday-header-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2); flex-wrap: wrap; gap: 1rem;">
                 <div style="font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: #fff; display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span aria-hidden="true">⚡</span> Intraday Pro Cockpit
+                        <i data-lucide="zap" style="width: 16px; height: 16px; color: #fbbf24; fill: #fbbf24;"></i> Intraday Pro Cockpit
                     </div>
                     <div style="font-size: 0.8rem; color: var(--color-text-secondary); font-weight: normal;">
                         Currently viewing: <span id="intraday-active-preset-label" style="font-weight: 600; color: var(--accent-blue);">All Presets</span>
@@ -1066,7 +1066,7 @@
                 </div>
                 <!-- Delay Disclaimer -->
                 <div class="intraday-delay-disclaimer" style="display: flex; align-items: center; gap: 6px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem;">
-                    <span>⚠️</span> Note: Intraday charts and indicators refresh on a 2-minute interval.
+                    <i data-lucide="alert-triangle" style="width: 14px; height: 14px;"></i> Note: Intraday charts and indicators refresh on a 2-minute interval.
                 </div>
             </div>
 
@@ -1088,7 +1088,7 @@
                             <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot gap-go"></span>Gap and Go</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-gap-go">0</span>
-                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                                <i data-lucide="chevron-down" class="widget-toggle-icon" style="width: 12px; height: 12px; opacity: 0.7; transition: transform 0.2s; display: inline-block;"></i>
                             </div>
                         </div>
                         <div class="widget-content" id="widget-gap-go"></div>
@@ -1098,7 +1098,7 @@
                             <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot vwap"></span>VWAP Reclaim</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-vwap">0</span>
-                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                                <i data-lucide="chevron-down" class="widget-toggle-icon" style="width: 12px; height: 12px; opacity: 0.7; transition: transform 0.2s; display: inline-block;"></i>
                             </div>
                         </div>
                         <div class="widget-content" id="widget-vwap"></div>
@@ -1108,7 +1108,7 @@
                             <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot rvol"></span>High RVOL Movers</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-rvol">0</span>
-                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                                <i data-lucide="chevron-down" class="widget-toggle-icon" style="width: 12px; height: 12px; opacity: 0.7; transition: transform 0.2s; display: inline-block;"></i>
                             </div>
                         </div>
                         <div class="widget-content" id="widget-rvol"></div>
@@ -1118,7 +1118,7 @@
                             <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot confluence"></span>IMS + Swing Overlap</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-confluence">0</span>
-                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                                <i data-lucide="chevron-down" class="widget-toggle-icon" style="width: 12px; height: 12px; opacity: 0.7; transition: transform 0.2s; display: inline-block;"></i>
                             </div>
                         </div>
                         <div class="widget-content" id="widget-confluence"></div>
@@ -1128,7 +1128,7 @@
                             <span style="display: flex; align-items: center; gap: 0.5rem;"><span class="header-indicator-dot focus"></span>Intraday Confluence Focus</span>
                             <div style="display: flex; align-items: center; gap: var(--space-2);">
                                 <span class="widget-count" id="count-focus">0</span>
-                                <span class="widget-toggle-icon" style="font-size: 0.75rem; opacity: 0.7;">▼</span>
+                                <i data-lucide="chevron-down" class="widget-toggle-icon" style="width: 12px; height: 12px; opacity: 0.7; transition: transform 0.2s; display: inline-block;"></i>
                             </div>
                         </div>
                         <div class="widget-content" id="widget-focus"></div>
@@ -1154,13 +1154,13 @@
                 <div id="rrg-timeline-bar" class="rrg-timeline-bar" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 1rem; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: var(--radius-md, 8px); margin-bottom: var(--space-4); flex-wrap: wrap;">
                     <div class="rrg-timeline-controls" style="display: flex; gap: var(--space-2);">
                         <button id="btn-rrg-play" class="btn-icon" title="Play animation" aria-label="Play animation">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                            <i data-lucide="play" style="width: 14px; height: 14px;"></i>
                         </button>
                         <button id="btn-rrg-pause" class="btn-icon hidden" title="Pause" aria-label="Pause">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                            <i data-lucide="pause" style="width: 14px; height: 14px;"></i>
                         </button>
                         <button id="btn-rrg-reset" class="btn-icon" title="Reset to start" aria-label="Reset to start">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+                            <i data-lucide="skip-back" style="width: 14px; height: 14px;"></i>
                         </button>
                     </div>
 
@@ -1175,8 +1175,8 @@
                             <option value="12" selected>12 weeks</option>
                             <option value="26">26 weeks</option>
                         </select>
-                        <button id="btn-rrg-snapshot-now" class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; height: auto;" title="Save this week's snapshot manually">
-                            📸 Snap
+                        <button id="btn-rrg-snapshot-now" class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; height: auto; display: inline-flex; align-items: center; gap: 4px;" title="Save this week's snapshot manually">
+                            <i data-lucide="camera" style="width: 14px; height: 14px;"></i> Snap
                         </button>
                     </div>
                 </div>
@@ -1184,7 +1184,7 @@
                 <!-- RRG Sector Filter Label (shown when sector heatmap card is clicked) -->
                 <div id="rrg-sector-label-bar" style="display: none; align-items: center; gap: 0.75rem; padding: 0.4rem 1rem; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); border-radius: 6px; margin-bottom: 0.75rem;">
                     <span id="rrg-sector-label" style="font-size: 0.85rem; font-weight: 600; color: #a5b4fc;"></span>
-                    <button onclick="clearRRGSectorFilter()" style="margin-left: auto; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 4px; color: #a5b4fc; font-size: 0.75rem; padding: 2px 8px; cursor: pointer;">✕ Show All</button>
+                    <button onclick="clearRRGSectorFilter()" style="margin-left: auto; background: rgba(99,102,241,0.2); border: 1px solid rgba(99,102,241,0.4); border-radius: 4px; color: #a5b4fc; font-size: 0.75rem; padding: 2px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"><i data-lucide="x" style="width: 14px; height: 14px;"></i> Show All</button>
                 </div>
 
                 <div class="rrg-layout-wrapper" style="display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: var(--space-4);">
@@ -1229,8 +1229,8 @@
         <div class="ipo-workspace-wrapper glass-panel">
             <div class="ipo-header">
                 <div class="ipo-title-container">
-                    <div class="ipo-title">
-                        <span>🚀 IPO Momentum</span>
+                    <div class="ipo-title" style="display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="rocket" style="width: 18px; height: 18px; color: var(--accent-blue);"></i> <span>IPO Momentum</span>
                     </div>
                     <div class="ipo-subtitle">
                         Track post-listing momentum, swing scores, and patterns of listings from the past 18 months.
@@ -1238,7 +1238,7 @@
                 </div>
                 <div>
                     <button class="ipo-sync-button" id="ipo-sync-btn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                        <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
                         <span>Sync Prices</span>
                     </button>
                 </div>
@@ -1312,7 +1312,7 @@
                         <div class="custom-select-wrapper" id="ipo-volume-select-wrapper">
                             <button class="ipo-volume-select" id="btn-ipo-volume-filter" title="Filter by Volume Alert Status">
                                 <span id="selected-ipo-volume-filter-label">All Volume</span>
-                                <svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                <i data-lucide="chevron-down" class="select-arrow" style="width: 12px; height: 12px;"></i>
                             </button>
                             <div class="ipo-volume-dropdown hidden" id="ipo-volume-filter-dropdown">
                                 <div class="select-dropdown-item" data-value="ppv">
@@ -1384,8 +1384,8 @@
         <div class="ep-workspace-wrapper glass-panel">
             <div class="ep-header-section">
                 <div>
-                    <div class="ep-header-title">
-                        <span>🚀 Episodic Pivot Screener</span>
+                    <div class="ep-header-title" style="display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="zap" style="width: 18px; height: 18px; color: var(--accent-blue);"></i> <span>Episodic Pivot Screener</span>
                     </div>
                     <div class="ep-header-subtitle">
                         Identify neglected stocks receiving catalysts with rapid EOD repricing (Growth, Turnaround, Story, and Volume EPs).
@@ -1393,7 +1393,7 @@
                 </div>
                 <div>
                     <button class="ep-scan-button" id="ep-refresh-btn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                        <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
                         <span>Scan EPs</span>
                     </button>
                 </div>
@@ -1418,7 +1418,7 @@
                             <div class="ep-custom-select" id="ep-type-select-wrap" style="position: relative;">
                                 <button class="ep-select-btn" id="ep-type-select-btn" onclick="window.toggleEpDropdown('ep-type-select')">
                                     <span id="ep-type-label">All Types</span>
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    <i data-lucide="chevron-down" style="width: 10px; height: 10px; opacity:0.5; flex-shrink:0;"></i>
                                 </button>
                                 <div class="ep-select-menu" id="ep-type-select-menu" style="display:none;">
                                     <div style="padding:0.3rem;">
@@ -1462,7 +1462,7 @@
                             <div class="ep-custom-select" id="ep-conf-select-wrap" style="position: relative;">
                                 <button class="ep-select-btn" id="ep-conf-select-btn" onclick="window.toggleEpDropdown('ep-conf-select')">
                                     <span id="ep-conf-label">All Levels</span>
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; flex-shrink:0;"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    <i data-lucide="chevron-down" style="width: 10px; height: 10px; opacity:0.5; flex-shrink:0;"></i>
                                 </button>
                                 <div class="ep-select-menu" id="ep-conf-select-menu" style="display:none;">
                                     <div style="padding:0.3rem;">
@@ -1847,40 +1847,195 @@
     <!-- Workspace View: Momentum Confidence Score™ -->
     <div class="workspace-view" id="view-momentum-score">
         <style>
+            /* ── MCS Design System ─────────────────────────────────── */
+            /* Monospace numeric alignments in score table */
+            #mcs-table td {
+                font-variant-numeric: tabular-nums;
+            }
+            #mcs-table th {
+                border-bottom: 1px solid rgba(255,255,255,0.06);
+            }
             #mcs-table th.sortable {
                 cursor: pointer;
                 user-select: none;
-                transition: color 150ms ease;
+                transition: color 150ms ease, background-color 150ms ease;
             }
             #mcs-table th.sortable:hover {
                 color: var(--color-text-primary) !important;
             }
+            #mcs-table th.sortable:focus-visible {
+                outline: none;
+                color: var(--color-text-primary) !important;
+                background: rgba(255,255,255,0.05);
+                border-radius: 4px;
+            }
+            #mcs-table th.sorted {
+                color: var(--color-text-primary) !important;
+            }
+            #mcs-table tr {
+                transition: background-color 120ms ease;
+                border-bottom: 1px solid rgba(255,255,255,0.04);
+            }
+            #mcs-table tbody tr:hover {
+                background: rgba(255,255,255,0.04);
+            }
+
+            /* ── Toggle Pill ─────────────────────────────────────── */
+            #mcs-mode-toggle {
+                display: flex;
+                background: rgba(255,255,255,0.04);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 10px;
+                padding: 3px;
+                gap: 2px;
+            }
+            .mcs-mode-btn {
+                padding: 5px 16px;
+                border: none;
+                border-radius: 7px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                font-family: 'Outfit', system-ui, sans-serif;
+                cursor: pointer;
+                transition: background 200ms cubic-bezier(0.16,1,0.3,1),
+                            color 200ms ease,
+                            box-shadow 150ms ease,
+                            transform 100ms ease;
+                letter-spacing: 0.02em;
+            }
+            .mcs-mode-btn:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 2px rgba(168,85,247,0.4);
+            }
+            .mcs-mode-btn:active { transform: scale(0.96); }
+            .mcs-mode-btn.classic-active {
+                background: rgba(100,116,139,0.25);
+                color: #e2e8f0;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+            }
+            .mcs-mode-btn.swing-active {
+                background: rgba(245,158,11,0.18);
+                color: #fbbf24;
+                box-shadow: inset 0 1px 0 rgba(251,191,36,0.15);
+            }
+            .mcs-mode-btn:not(.classic-active):not(.swing-active) {
+                background: transparent;
+                color: var(--color-text-muted);
+            }
+
+            /* ── Action Buttons ──────────────────────────────────── */
+            #btn-calculate-all-mcs {
+                transition: box-shadow 200ms ease, transform 100ms ease,
+                            background 150ms ease;
+            }
+            #btn-calculate-all-mcs:hover {
+                box-shadow: 0 4px 16px rgba(168,85,247,0.25),
+                            inset 0 1px 0 rgba(255,255,255,0.15);
+                transform: translateY(-1px);
+            }
+            #btn-calculate-all-mcs:active { transform: translateY(0) scale(0.98); }
+            #btn-export-mcs {
+                transition: background 200ms ease, border-color 200ms ease,
+                            transform 100ms ease;
+            }
+            #btn-export-mcs:hover {
+                background: rgba(255,255,255,0.08) !important;
+                border-color: rgba(255,255,255,0.18) !important;
+                transform: translateY(-1px);
+            }
+            #btn-export-mcs:active { transform: translateY(0) scale(0.98); }
+
+            /* ── MCS Stat Cards (Boxy style matching main screener) ────────────────── */
+            .mcs-stat-card {
+                flex: 1;
+                min-width: 140px;
+                cursor: pointer;
+            }
+            .stat-card--mcs-scored {
+                border-color: rgba(192, 132, 252, 0.15); /* #c084fc */
+                background: linear-gradient(180deg, rgba(192, 132, 252, 0.03) 0%, rgba(192, 132, 252, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-scored:hover, .stat-card--mcs-scored.active {
+                border-color: rgba(192, 132, 252, 0.5) !important;
+                background: rgba(192, 132, 252, 0.06) !important;
+            }
+            .stat-card--mcs-pending {
+                border-color: rgba(100, 116, 139, 0.15); /* #64748b */
+                background: linear-gradient(180deg, rgba(100, 116, 139, 0.03) 0%, rgba(100, 116, 139, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-pending:hover, .stat-card--mcs-pending.active {
+                border-color: rgba(100, 116, 139, 0.5) !important;
+                background: rgba(100, 116, 139, 0.06) !important;
+            }
+            .stat-card--mcs-classic {
+                border-color: rgba(124, 58, 237, 0.15); /* #7c3aed */
+                background: linear-gradient(180deg, rgba(124, 58, 237, 0.03) 0%, rgba(124, 58, 237, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-classic:hover, .stat-card--mcs-classic.active {
+                border-color: rgba(124, 58, 237, 0.5) !important;
+                background: rgba(124, 58, 237, 0.06) !important;
+            }
+            .stat-card--mcs-swing {
+                border-color: rgba(245, 158, 11, 0.15); /* #f59e0b */
+                background: linear-gradient(180deg, rgba(245, 158, 11, 0.03) 0%, rgba(245, 158, 11, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-swing:hover, .stat-card--mcs-swing.active {
+                border-color: rgba(245, 158, 11, 0.5) !important;
+                background: rgba(245, 158, 11, 0.06) !important;
+            }
+            .stat-card--mcs-elite {
+                border-color: rgba(168, 85, 247, 0.15); /* #a855f7 */
+                background: linear-gradient(180deg, rgba(168, 85, 247, 0.03) 0%, rgba(168, 85, 247, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-elite:hover, .stat-card--mcs-elite.active {
+                border-color: rgba(168, 85, 247, 0.5) !important;
+                background: rgba(168, 85, 247, 0.06) !important;
+            }
+            .stat-card--mcs-breakout {
+                border-color: rgba(34, 197, 94, 0.15); /* #22c55e */
+                background: linear-gradient(180deg, rgba(34, 197, 94, 0.03) 0%, rgba(34, 197, 94, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-breakout:hover, .stat-card--mcs-breakout.active {
+                border-color: rgba(34, 197, 94, 0.5) !important;
+                background: rgba(34, 197, 94, 0.06) !important;
+            }
+
+            /* ── Watchlist & Ticker ──────────────────────────────── */
             .mcs-watchlist-btn {
                 border: none !important;
                 background: none !important;
                 color: var(--color-text-muted) !important;
-                padding: 4px !important;
+                padding: 3px !important;
                 cursor: pointer;
                 transition: color 150ms ease, transform 150ms ease;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
+                border-radius: 4px;
             }
             .mcs-watchlist-btn:hover {
-                color: #c084fc !important;
-                transform: scale(1.18);
+                color: #94a3b8 !important;
+                transform: scale(1.2);
             }
             .mcs-ticker-link {
-                color: #3b82f6 !important;
-                text-decoration: none !important;
+                display: inline-block;
+                background: rgba(59, 130, 246, 0.1);
+                color: var(--accent-blue) !important;
+                padding: 0.2rem 0.5rem;
+                border-radius: var(--radius-md);
+                font-family: var(--font-display);
+                font-size: 0.8rem;
+                border: 1px solid rgba(59, 130, 246, 0.15);
                 font-weight: 700;
-                transition: color 150ms ease, text-shadow 150ms ease;
+                transition: all 150ms ease;
                 cursor: pointer;
+                text-decoration: none !important;
             }
             .mcs-ticker-link:hover {
-                color: #60a5fa !important;
-                text-decoration: underline !important;
-                text-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+                background: rgba(59, 130, 246, 0.18);
+                color: #93c5fd !important;
+                border-color: rgba(59, 130, 246, 0.3);
+                text-decoration: none !important;
             }
             .mcs-close-btn {
                 transition: color 150ms ease, transform 150ms ease;
@@ -1889,94 +2044,95 @@
                 color: var(--color-text-primary) !important;
                 transform: scale(1.1);
             }
-            #btn-calculate-all-mcs {
-                transition: box-shadow 200ms ease, transform 150ms ease;
+
+            /* ── Skeleton shimmer loader ────────────────────────── */
+            @keyframes mcs-shimmer {
+                0%   { background-position: -600px 0; }
+                100% { background-position: 600px 0; }
             }
-            #btn-calculate-all-mcs:hover {
-                box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
-                transform: translateY(-1px);
+            .mcs-skeleton-row td {
+                padding: 10px 8px;
             }
-            #btn-calculate-all-mcs:active {
-                transform: translateY(0);
+            .mcs-skeleton-cell {
+                height: 14px;
+                border-radius: 4px;
+                background: linear-gradient(90deg,
+                    rgba(255,255,255,0.04) 25%,
+                    rgba(255,255,255,0.09) 50%,
+                    rgba(255,255,255,0.04) 75%);
+                background-size: 600px 100%;
+                animation: mcs-shimmer 1.4s infinite;
             }
-            #btn-export-mcs {
-                transition: background-color 200ms ease, border-color 200ms ease, transform 150ms ease;
+
+            /* ── Badge chips ─────────────────────────────────────── */
+            .mcs-badge-chip {
+                display: inline-block;
+                font-size: 0.65rem;
+                font-weight: 600;
+                padding: 2px 7px;
+                border-radius: 20px;
+                margin: 1px;
+                white-space: nowrap;
+                border: 1px solid rgba(168,85,247,0.2);
+                background: rgba(168,85,247,0.1);
+                color: #c084fc;
+                letter-spacing: 0.01em;
             }
-            #btn-export-mcs:hover {
-                background: rgba(255, 255, 255, 0.08) !important;
-                border-color: rgba(255, 255, 255, 0.2) !important;
-                transform: translateY(-1px);
-            }
-            #btn-export-mcs:active {
-                transform: translateY(0);
-            }
-            .mcs-summary-card {
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid var(--glass-border);
-                border-radius: 10px;
-                padding: 0.75rem 1.25rem;
-                min-width: 120px;
-                cursor: pointer;
-                transition: background-color 200ms ease, border-color 200ms ease, transform 150ms ease, box-shadow 200ms ease;
-                user-select: none;
-            }
-            .mcs-summary-card:hover {
-                background: rgba(255, 255, 255, 0.07);
-                border-color: rgba(255, 255, 255, 0.2);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            }
-            .mcs-summary-card.active {
-                background: rgba(168, 85, 247, 0.08) !important;
-                border-color: #a855f7 !important;
-                box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+            .mcs-badge-chip.swing {
+                border-color: rgba(245,158,11,0.2);
+                background: rgba(245,158,11,0.1);
+                color: #fbbf24;
             }
         </style>
         <div class="bull-snort-workspace-wrapper glass-panel">
 
             <!-- Header -->
-            <div class="bull-snort-header-section">
-                <div>
-                    <div class="bull-snort-header-title">
-                        <span>📊 Momentum Confidence Score™</span>
+            <div class="bull-snort-header-section" style="flex-wrap: wrap; gap: 0.75rem; align-items: flex-start;">
+                <div style="flex: 1; min-width: 200px;">
+                    <div class="bull-snort-header-title" style="display:flex; align-items:center; gap:0.6rem;">
+                        <i data-lucide="activity" style="width: 18px; height: 18px; color: #a855f7;"></i>
+                        <span>Momentum Confidence Score&#8482;</span>
                     </div>
-                    <div class="bull-snort-header-subtitle">
-                        Daily composite score (0–100) across 5 pillars: Technical · Fundamental ·
-                        Momentum · Institutional · Risk & Liquidity. Updated after market close.
+                    <div class="bull-snort-header-subtitle" style="margin-top: 2px;">
+                        Composite score 0&#8211;100 across 5 pillars &#xb7; Technical &#xb7; Fundamental &#xb7; Momentum &#xb7; Institutional &#xb7; Risk
                     </div>
                 </div>
-                <div style="margin-left:auto; display:flex; align-items:center; gap:0.75rem;">
+                <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+                    <!-- Classic / Swing mode toggle -->
+                    <div id="mcs-mode-toggle">
+                        <button id="mcs-mode-classic" class="mcs-mode-btn" onclick="window.setMCSMode('classic')">Classic</button>
+                        <button id="mcs-mode-swing"   class="mcs-mode-btn" onclick="window.setMCSMode('swing')">&#9889; Swing</button>
+                    </div>
                     <select id="mcs-filter-min-score" class="bull-snort-select">
                          <option value="0" selected>All scores</option>
-                         <option value="60">≥ 60</option>
-                         <option value="75">≥ 75</option>
-                         <option value="85">≥ 85</option>
+                         <option value="60">&#8805; 60</option>
+                         <option value="75">&#8805; 75</option>
+                         <option value="85">&#8805; 85</option>
                     </select>
-                    <button id="btn-calculate-all-mcs" class="bull-snort-run-btn" style="background:#a855f7; color:#fff; border-color:#a855f7;">
+                    <button id="btn-calculate-all-mcs" class="bull-snort-run-btn" style="background:#7c3aed; color:#fff; border-color:#7c3aed;">
                         <span class="btn-spinner hidden" id="mcs-calc-spinner"></span>
-                        <span class="btn-text">⚡ Calculate All</span>
+                        <span class="btn-text">Calculate All</span>
                     </button>
                     <button id="btn-export-mcs" class="bull-snort-run-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--color-text-primary);">
-                        <span>📤 Export CSV</span>
+                        <span>Export CSV</span>
                     </button>
                 </div>
             </div>
 
             <!-- Progress Bar Container -->
-            <div id="mcs-progress-container" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:1rem; margin:0.5rem 0 1rem;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; font-size:0.85rem;">
+            <div id="mcs-progress-container" style="display:none; background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:1rem; margin:0.5rem 0 0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; font-size:0.8rem;">
                     <span id="mcs-progress-label" style="font-weight:600; color:var(--color-text-primary);">Calculating scores...</span>
-                    <span id="mcs-progress-text" style="font-weight:700; color:#a855f7;">0/0 completed</span>
+                    <span id="mcs-progress-text" style="font-weight:700; color:#a855f7; font-family: monospace;">0/0 completed</span>
                 </div>
-                <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:10px; overflow:hidden;">
-                    <div id="mcs-progress-bar" style="width:0%; height:100%; background:#a855f7; border-radius:6px; transition:width 300ms ease;"></div>
+                <div style="background:rgba(255,255,255,0.08); border-radius:6px; height:6px; overflow:hidden;">
+                    <div id="mcs-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg,#7c3aed,#a855f7); border-radius:6px; transition:width 300ms ease;"></div>
                 </div>
             </div>
 
-            <!-- Summary cards -->
-            <div id="mcs-summary-cards"
-                 style="display:flex; gap:1rem; margin:0.75rem 0; flex-wrap:wrap;">
-                <!-- Filled by JS: Total scored, Avg score, Elite count, Fresh breakouts -->
+            <!-- Stat Row (replaces boxy summary cards) -->
+            <div id="mcs-summary-cards" class="stat-cards-row" style="margin-top: 1rem;">
+                <!-- Filled by JS -->
             </div>
 
             <div id="mcs-results-count"
@@ -1990,24 +2146,54 @@
                        style="width:100%; border-collapse:collapse; text-align:left;">
                     <thead>
                         <tr>
-                            <th data-sort="symbol"       onclick="window.sortMCS('symbol')" class="sortable">Symbol</th>
-                            <th data-sort="total_score"  onclick="window.sortMCS('total_score')"   class="sortable text-right">Score</th>
-                            <th data-sort="technical_score"    onclick="window.sortMCS('technical_score')"    class="sortable text-right">Technical</th>
-                            <th data-sort="fundamental_score"  onclick="window.sortMCS('fundamental_score')"  class="sortable text-right">Fundamental</th>
-                            <th data-sort="momentum_score"     onclick="window.sortMCS('momentum_score')"     class="sortable text-right">Momentum</th>
-                            <th data-sort="institutional_score" onclick="window.sortMCS('institutional_score')" class="sortable text-right">Institutional</th>
-                            <th data-sort="risk_liquidity_score" onclick="window.sortMCS('risk_liquidity_score')" class="sortable text-right">Risk</th>
+                            <th data-sort="date"         onclick="window.sortMCS('date')"          class="sortable text-left" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('date');event.preventDefault();}">Date</th>
+                            <th data-sort="symbol"       onclick="window.sortMCS('symbol')" class="sortable" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('symbol');event.preventDefault();}">Symbol</th>
+                            <th data-sort="total_score"  onclick="window.sortMCS('total_score')"   class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('total_score');event.preventDefault();}">Score</th>
+                            <th data-sort="swing_score"  onclick="window.sortMCS('swing_score')"   class="sortable text-right" title="Swing Velocity Score: Technical 45% + Momentum 45% + Risk 10%" style="color:#f59e0b;" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('swing_score');event.preventDefault();}">⚡ Swing</th>
+                            <th data-sort="technical_score"    onclick="window.sortMCS('technical_score')"    class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('technical_score');event.preventDefault();}">Technical</th>
+                            <th data-sort="fundamental_score"  onclick="window.sortMCS('fundamental_score')"  class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('fundamental_score');event.preventDefault();}">Fundamental</th>
+                            <th data-sort="momentum_score"     onclick="window.sortMCS('momentum_score')"     class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('momentum_score');event.preventDefault();}">Momentum</th>
+                            <th data-sort="institutional_score" onclick="window.sortMCS('institutional_score')" class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('institutional_score');event.preventDefault();}">Institutional</th>
+                            <th data-sort="risk_liquidity_score" onclick="window.sortMCS('risk_liquidity_score')" class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('risk_liquidity_score');event.preventDefault();}">Risk</th>
                             <th class="text-left">Badges</th>
-                            <th data-sort="date"         onclick="window.sortMCS('date')"          class="sortable text-right">Date</th>
                         </tr>
                     </thead>
                     <tbody id="mcs-tbody">
-                        <tr>
-                            <td colspan="9"
-                                style="padding:2rem; text-align:center;
-                                       color:var(--color-text-muted); font-style:italic;">
-                                Loading scores…
-                            </td>
+                        <tr class="mcs-skeleton-row">
+                            <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 80px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 130px;"></div></td>
+                        </tr>
+                        <tr class="mcs-skeleton-row">
+                            <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 100px;"></div></td>
+                        </tr>
+                        <tr class="mcs-skeleton-row">
+                            <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
+                            <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 90px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 120px;"></div></td>
                         </tr>
                     </tbody>
                 </table>
@@ -2031,7 +2217,7 @@
                         <p><span id="source-modal-ticker" style="font-weight: 700; color: var(--accent-blue);"></span> | <span id="source-modal-date" style="color: var(--color-text-secondary);"></span></p>
                     </div>
                     <button class="modal-close-btn" id="btn-close-source-modal" data-modal-close title="Close Modal">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <i data-lucide="x" style="width: 20px; height: 20px;"></i>
                     </button>
                 </div>
                 <div class="modal-body" style="padding: 1.5rem; overflow-y: auto; background: rgba(0, 0, 0, 0.4); display: block;">
@@ -2080,7 +2266,7 @@
                 <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 1rem 1.5rem;">
                     <div class="modal-title-area">
                         <h3 style="margin: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; color: var(--color-text-primary);">
-                            <span>📊</span> Sentiment Explanation
+                            <i data-lucide="bar-chart-3" style="width: 18px; height: 18px; color: var(--accent-blue);"></i> Sentiment Explanation
                         </h3>
                         <p style="margin: 0.2rem 0 0 0; font-size: 0.75rem; color: var(--color-text-muted);">
                             <span id="sent-modal-ticker" style="font-weight: 700; color: var(--accent-blue);"></span> | 
@@ -2088,7 +2274,7 @@
                         </p>
                     </div>
                     <button class="modal-close-btn" id="btn-close-sent-modal" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                     </button>
                 </div>
                 <div class="modal-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2);">
@@ -2132,14 +2318,14 @@
                     </p>
                 </div>
                 <button class="modal-close-btn" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                 </button>
             </div>
             <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 60vh;">
                 <!-- Section: Price Chart -->
                 <div>
                     <h4 style="margin: 0 0 var(--space-3) 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: var(--space-2);">
-                        <span>📈</span> Price History Chart
+                        <i data-lucide="trending-up" style="width: 16px; height: 16px; color: var(--accent-blue);"></i> Price History Chart
                     </h4>
                     <div id="ep-detail-chart" style="width: 100%; height: 260px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px;"></div>
                 </div>
@@ -2219,11 +2405,11 @@
                 </div>
                 <div style="display: flex; align-items: center; margin-left: auto;">
                     <button id="btn-export-regime-csv" style="padding: 0.35rem var(--space-3); font-size: 0.72rem; height: auto; margin-right: 0.8rem; border-radius: 4px; display: flex; align-items: center; gap: 4px; cursor: pointer; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); color: var(--color-text-primary); transition: var(--transition-smooth);" title="Export history to Excel/CSV">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                        <i data-lucide="download" style="width: 12px; height: 12px; margin-right: 2px;"></i>
                         Export Excel
                     </button>
                     <button class="modal-close-btn" id="close-regime-history" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                     </button>
                 </div>
             </div>
@@ -2243,7 +2429,7 @@
                     </h3>
                 </div>
                 <button class="modal-close-btn" id="close-chart-modal" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                 </button>
             </div>
             <div class="modal-body" id="chart-overlay-body" style="padding: 1.5rem; display: block; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 500px;">
@@ -2259,10 +2445,10 @@
         <div class="modal" id="preset-modal" style="max-width: 400px; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: var(--radius-md);">
             <div class="modal-header">
                 <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span>💾</span> Save Filter Preset
+                    <i data-lucide="save" style="width: 16px; height: 16px; color: var(--accent-blue);"></i> Save Filter Preset
                 </div>
                 <button class="modal-close-btn" id="btn-close-preset-modal" data-modal-close title="Cancel">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                 </button>
             </div>
             <div class="modal-body" style="padding: 1.5rem;">
@@ -2282,14 +2468,14 @@
             <!-- Header -->
             <div style="display:flex; align-items:center; justify-content:space-between; padding: 1.1rem 1.4rem; border-bottom: 1px solid rgba(255,255,255,0.06); background: linear-gradient(180deg, rgba(59,130,246,0.04) 0%, transparent 100%);">
                 <div style="display:flex; align-items:center; gap:0.7rem;">
-                    <span style="width:32px; height:32px; background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.08)); border: 1px solid rgba(245,158,11,0.25); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:15px;">📋</span>
+                    <span style="width:32px; height:32px; background: linear-gradient(135deg, rgba(245,158,11,0.2), rgba(245,158,11,0.08)); border: 1px solid rgba(245,158,11,0.25); border-radius:8px; display:flex; align-items:center; justify-content:center; color: #f59e0b;"><i data-lucide="file-text" style="width: 16px; height: 16px;"></i></span>
                     <div>
                         <div style="font-size:0.95rem; font-weight:700; color:var(--color-text-primary); line-height:1.2;">Add Manual Trade</div>
                         <div style="font-size:0.7rem; color:var(--color-text-muted);">Log a new trade to your journal</div>
                     </div>
                 </div>
                 <button onclick="window.closeManualTradeModal()" data-modal-close class="modal-close-btn">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <i data-lucide="x" style="width: 12px; height: 12px;"></i>
                 </button>
             </div>
 
@@ -2372,7 +2558,7 @@
                 <div style="display:flex; justify-content:flex-end; gap:0.6rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.05);">
                     <button onclick="window.closeManualTradeModal()" data-modal-close class="modal-cancel-btn">Cancel</button>
                     <button onclick="window.saveManualTrade()" id="btn-add-manual-trade" class="modal-save-btn">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <i data-lucide="plus" style="width: 13px; height: 13px;"></i>
                         Add Trade
                     </button>
                 </div>
@@ -2386,10 +2572,10 @@
         <div class="modal" id="edit-trade-modal" style="max-width: 500px; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: var(--radius-md);">
             <div class="modal-header">
                 <div class="modal-title" style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span>✏️</span> Edit Trade Entry
+                    <i data-lucide="edit-2" style="width: 16px; height: 16px; color: var(--accent-blue);"></i> Edit Trade Entry
                 </div>
                 <button class="modal-close-btn" onclick="window.closeEditTradeModal()" data-modal-close title="Cancel">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
                 </button>
             </div>
             <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
@@ -2461,7 +2647,7 @@
         </span>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
             <button class="btn btn-primary" style="font-size: 0.78rem; padding: 0.4rem 0.85rem; height: 32px; border-radius: var(--radius-sm, 6px); display: flex; align-items: center; gap: 4px;" onclick="addSelectedToWatchlist(event)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
                 Add Selected to Watchlist
             </button>
             <button class="btn btn-secondary" style="font-size: 0.78rem; padding: 0.4rem 0.85rem; height: 32px; border-radius: var(--radius-sm, 6px); background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08);" onclick="clearTickerSelection()">
@@ -2481,7 +2667,7 @@
                     <div class="drawer-subtitle" id="drawer-name">Company Name</div>
                 </div>
                 <button class="btn-icon" id="btn-close-drawer" title="Close" aria-label="Close drawer">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <i data-lucide="x" style="width: 24px; height: 24px;"></i>
                 </button>
             </div>
             <div class="drawer-header-badges">
@@ -2732,15 +2918,15 @@
 
             <div class="drawer-actions-sticky">
                 <button class="btn btn-primary" id="btn-drawer-chart" style="flex: 1;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    <i data-lucide="external-link" style="width: 16px; height: 16px;"></i>
                     Open Chart
                 </button>
                 <button class="btn btn-secondary" id="btn-drawer-watchlist" style="flex: 1;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <i data-lucide="plus" style="width: 16px; height: 16px;"></i>
                     Add to Watchlist
                 </button>
                 <button class="btn btn-primary" id="btn-save-journal" onclick="saveTradeToJournal()" style="flex: 1;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    <i data-lucide="save" style="width: 16px; height: 16px;"></i>
                     Save to Journal
                 </button>
             </div>
@@ -2761,7 +2947,7 @@
                 <div style="display:flex; align-items:center; gap:0.5rem;">
                     <span id="mcs-drawer-symbol" style="font-size:1.2rem; font-weight:800; color:var(--color-text-primary);"></span>
                     <button id="btn-mcs-drawer-add-watchlist" class="btn-add-watchlist-table" style="cursor:pointer; padding:2px; display:inline-flex; align-items:center; justify-content:center; background:none; border:1px solid var(--glass-border); border-radius:4px; color:var(--color-text-secondary);" title="Add to Watchlist">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
                     </button>
                 </div>
                 <div id="mcs-drawer-date"
@@ -2770,12 +2956,7 @@
             <button id="mcs-drawer-close"
                     style="background:none; border:none; cursor:pointer;
                            color:var(--color-text-muted); padding:4px;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
             </button>
         </div>
 
@@ -2810,6 +2991,38 @@
         let mcsActiveCardFilter = null;
         const MCS_TTL = 5 * 60 * 1000; // 5 minutes
 
+        // ── Swing Mode state (persisted in localStorage) ────────────────────────
+        let mcsMode = (safeStorage.getItem('mcs_scoring_mode') || 'classic');
+
+        function applyMCSModeUI() {
+            const classicBtn = document.getElementById('mcs-mode-classic');
+            const swingBtn   = document.getElementById('mcs-mode-swing');
+            if (!classicBtn || !swingBtn) return;
+            // Use CSS classes instead of inline styles
+            if (mcsMode === 'swing') {
+                swingBtn.classList.add('swing-active');
+                swingBtn.classList.remove('classic-active');
+                classicBtn.classList.remove('classic-active', 'swing-active');
+            } else {
+                classicBtn.classList.add('classic-active');
+                classicBtn.classList.remove('swing-active');
+                swingBtn.classList.remove('classic-active', 'swing-active');
+            }
+        }
+
+        window.setMCSMode = function (mode) {
+            mcsMode = mode;
+            safeStorage.setItem('mcs_scoring_mode', mode);
+            // When switching to swing mode auto-sort by swing_score
+            if (mode === 'swing') { mcsSortKey = 'swing_score'; mcsSortDir = -1; }
+            else                  { mcsSortKey = 'total_score'; mcsSortDir = -1; }
+            applyMCSModeUI();
+            renderMCSTable();
+        };
+
+        // Initialise button state once DOM is ready
+        document.addEventListener('DOMContentLoaded', applyMCSModeUI);
+
         // Pillar max values for percentage bars
         const PILLAR_MAX = {
             technical_score: 30,
@@ -2843,7 +3056,7 @@
 
         async function fetchMCSData() {
             try {
-                const res  = await fetch(`/api/v1/scores?limit=300`);
+                const res  = await fetch(`/api/v1/scores?limit=300&_=${Date.now()}`, { cache: 'no-store' });
                 const json = await res.json();
                 const stocks = json.stocks || [];
 
@@ -2854,7 +3067,7 @@
                 updateMCSBadge();
             } catch (err) {
                 document.getElementById('mcs-tbody').innerHTML =
-                    `<tr><td colspan="9" style="padding:2rem;text-align:center;color:#ef4444;">
+                    `<tr><td colspan="10" style="padding:2rem;text-align:center;color:#ef4444;">
                         Failed to load scores: ${err.message}
                     </td></tr>`;
             }
@@ -2866,20 +3079,23 @@
             
             let filtered = [...mcsData];
             
+            // Determine active score field based on mode
+            const scoreField = mcsMode === 'swing' ? 'swing_score' : 'total_score';
+            
             // 1. Dropdown min-score filter
             if (minScoreVal > 0) {
-                filtered = filtered.filter(s => s.total_score !== null && s.total_score >= minScoreVal);
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined && s[scoreField] >= minScoreVal);
             }
             
             // 2. Summary Card filter
             if (mcsActiveCardFilter === 'scored') {
-                filtered = filtered.filter(s => s.total_score !== null && s.total_score !== undefined);
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined);
             } else if (mcsActiveCardFilter === 'pending') {
-                filtered = filtered.filter(s => s.total_score === null || s.total_score === undefined);
+                filtered = filtered.filter(s => s[scoreField] === null || s[scoreField] === undefined);
             } else if (mcsActiveCardFilter === 'elite') {
-                filtered = filtered.filter(s => s.total_score !== null && s.total_score >= 85);
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined && s[scoreField] >= 85);
             } else if (mcsActiveCardFilter === 'breakouts') {
-                filtered = filtered.filter(s => s.total_score !== null && (s.badges || []).some(b => b.includes('Breakout')));
+                filtered = filtered.filter(s => s[scoreField] !== null && s[scoreField] !== undefined && (s.badges || []).some(b => b.includes('Breakout')));
             }
 
             const sorted = filtered.sort((a, b) => {
@@ -2898,12 +3114,16 @@
             countEl.textContent = `${sorted.length} stock${sorted.length !== 1 ? 's' : ''} found`;
 
             if (!sorted.length) {
-                tbody.innerHTML = `<tr><td colspan="9"
-                    style="padding:2rem;text-align:center;
-                           color:var(--color-text-muted);font-style:italic;">
-                No stocks match this filter. Enable ENABLE_MOMENTUM_SCORE_CALCULATION
-                or trigger main screener scan.
-            </td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="10" style="padding: 4rem 2rem; text-align: center;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem; justify-content: center;">
+                        <i data-lucide="search" style="width: 32px; height: 32px; opacity: 0.5; color: var(--color-text-muted);"></i>
+                        <div style="font-weight: 700; font-size: 0.95rem; color: var(--color-text-primary);">No Stocks Found</div>
+                        <div style="font-size: 0.78rem; color: var(--color-text-muted); max-width: 280px; margin: 0 auto; line-height: 1.45;">
+                            No items match your active filters. Try clearing card filters or running a scan calculation.
+                        </div>
+                    </div>
+                </td></tr>`;
+                window.initIcons(tbody);
                 return;
             }
 
@@ -2912,15 +3132,23 @@
                 const col    = hasScore ? scoreColour(s.total_score) : '#6b7280';
                 const label  = hasScore ? scoreLabel(s.total_score) : 'Pending';
                 const scoreText = hasScore ? s.total_score : '—';
+
+                // Swing score cell
+                const hasSwing   = s.swing_score !== null && s.swing_score !== undefined;
+                const swingCol   = hasSwing ? scoreColour(s.swing_score) : '#6b7280';
+                const swingText  = hasSwing ? s.swing_score : '—';
+                const swingHighlight = (mcsMode === 'swing' && hasSwing)
+                    ? `background:${swingCol}22; color:${swingCol}; padding:2px 8px; border-radius:6px; font-weight:700;`
+                    : `color:${swingCol}; font-weight:600;`;
+
                 const badges = (s.badges || []).map(b =>
-                    `<span style="font-size:0.7rem; padding:2px 6px; border-radius:20px;
-                              background:rgba(168,85,247,0.15); color:#c084fc;
-                              white-space:nowrap; margin:1px; border: 1px solid rgba(168,85,247,0.2);">${b}</span>`
+                    `<span class="mcs-badge-chip">${b}</span>`
                 ).join('');
 
                 return `
             <tr style="cursor:pointer;" onclick="window.openMCSDrawer('${s.symbol}', '${s.exchange || 'NSE'}')">
-                <td>
+                <td style="color:var(--color-text-muted); font-size:0.8rem; text-align:left;">${s.date ?? '—'}</td>
+                <td class="symbol-col">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; max-width: 140px;">
                         <span class="mcs-ticker-link" 
                               onclick="event.stopPropagation(); openTradingView('${s.symbol}.NS')" 
@@ -2928,7 +3156,7 @@
                         <button class="mcs-watchlist-btn"
                                 onclick="event.stopPropagation(); addToWatchlist('${s.symbol}', event)" 
                                 title="Add to Watchlist">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <i data-lucide="plus" style="width: 13px; height: 13px;"></i>
                         </button>
                     </div>
                 </td>
@@ -2938,16 +3166,17 @@
                                  font-weight:700;">${scoreText}</span>
                     <span style="font-size:0.7rem; color:${col}; margin-left:4px;">${label}</span>
                 </td>
+                <td class="text-right"><span style="${swingHighlight}">${swingText}</span></td>
                 <td class="text-right">${s.technical_score ?? '—'}</td>
                 <td class="text-right">${s.fundamental_score ?? '—'}</td>
                 <td class="text-right">${s.momentum_score ?? '—'}</td>
                 <td class="text-right">${s.institutional_score ?? '—'}</td>
                 <td class="text-right">${s.risk_liquidity_score ?? '—'}</td>
                 <td style="max-width:220px;">${badges || '<span style="color:var(--color-text-muted);font-size:0.75rem;">—</span>'}</td>
-                <td class="text-right" style="color:var(--color-text-muted); font-size:0.8rem;">${s.date ?? '—'}</td>
             </tr>`;
             }).join('');
 
+            window.initIcons(tbody);
             updateMCSSortUI();
         }
 
@@ -2981,31 +3210,45 @@
             const el = document.getElementById('mcs-summary-cards');
             if (!mcsData.length) { el.innerHTML = ''; return; }
 
-            const scoredStocks = mcsData.filter(x => x.total_score !== null && x.total_score !== undefined);
+            const scoreField = mcsMode === 'swing' ? 'swing_score' : 'total_score';
+
+            const scoredStocks = mcsData.filter(x => x[scoreField] !== null && x[scoreField] !== undefined);
             const totalScored  = scoredStocks.length;
             const totalPending = mcsData.length - totalScored;
-            const avg    = totalScored > 0 ? Math.round(scoredStocks.reduce((s, x) => s + x.total_score, 0) / totalScored) : 0;
-            const elite  = scoredStocks.filter(x => x.total_score >= 85).length;
+            const avg    = totalScored > 0 ? Math.round(scoredStocks.reduce((s, x) => s + (x.total_score || 0), 0) / totalScored) : 0;
+            const elite  = scoredStocks.filter(x => x[scoreField] >= 85).length;
             const breakouts = scoredStocks.filter(x =>
                 (x.badges || []).some(b => b.includes('Breakout'))).length;
+            const swingStocks = mcsData.filter(x => x.swing_score !== null && x.swing_score !== undefined);
+            const avgSwing = swingStocks.length > 0 ? Math.round(swingStocks.reduce((s, x) => s + x.swing_score, 0) / swingStocks.length) : 0;
 
-            const card = (filterType, label, value, colour, isClickable = true) => {
+            const item = (filterType, label, value, colour, progressPct, modifierClass, isClickable = true) => {
                 const isActive = mcsActiveCardFilter === filterType;
                 const activeClass = isActive ? 'active' : '';
                 const clickHandler = isClickable ? `onclick="window.toggleMCSCardFilter('${filterType}')"` : '';
+                const cursorStyle = isClickable ? 'cursor: pointer;' : 'cursor: default;';
+                
+                const progressHtml = progressPct !== null && progressPct !== undefined ? `
+                    <div class="stat-card-progress-wrapper">
+                        <div class="stat-card-progress" style="width: ${progressPct}%; background: ${colour};"></div>
+                    </div>` : '';
+
                 return `
-                <div class="mcs-summary-card ${activeClass}" ${clickHandler}>
-                    <div style="font-size:1.5rem; font-weight:800; color:${colour};">${value}</div>
-                    <div style="font-size:0.72rem; color:var(--color-text-muted); margin-top:2px;">${label}</div>
+                <div class="stat-card mcs-stat-card ${modifierClass} ${activeClass}" ${clickHandler} style="${cursorStyle}">
+                    <span class="stat-card-value">${value}</span>
+                    <span class="stat-card-label">${label}</span>
+                    ${progressHtml}
                 </div>`;
             };
 
+            const totalCount = mcsData.length || 1;
             el.innerHTML =
-                card('scored',    'Total Scored',    totalScored,  '#a855f7') +
-                card('pending',   'Pending Calcs',   totalPending, '#6b7280') +
-                card('',          'Avg Score',       totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#6b7280', false) +
-                card('elite',     'Elite (≥85)',     elite,        '#a855f7') +
-                card('breakouts', 'Fresh Breakouts', breakouts,    '#22c55e');
+                item('scored',    'Total Scored',   totalScored,  '#c084fc', Math.round((totalScored / totalCount) * 100), 'stat-card--mcs-scored') +
+                item('pending',   'Pending',        totalPending, '#64748b', Math.round((totalPending / totalCount) * 100), 'stat-card--mcs-pending') +
+                item('',          'Avg Classic',    totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#64748b', totalScored > 0 ? avg : 0, 'stat-card--mcs-classic', false) +
+                item('',          'Avg Swing',      swingStocks.length > 0 ? avgSwing : '—', swingStocks.length > 0 ? scoreColour(avgSwing) : '#64748b', swingStocks.length > 0 ? avgSwing : 0, 'stat-card--mcs-swing', false) +
+                item('elite',     'Elite &#8805;85', elite,       '#a855f7', totalScored > 0 ? Math.round((elite / totalScored) * 100) : 0, 'stat-card--mcs-elite') +
+                item('breakouts', 'Breakouts',      breakouts,    '#22c55e', totalScored > 0 ? Math.round((breakouts / totalScored) * 100) : 0, 'stat-card--mcs-breakout');
         }
 
         // Toggle card filter
@@ -3029,6 +3272,9 @@
                 el.style.display = '';
             } else {
                 el.style.display = 'none';
+            }
+            if (typeof window.recalculateActiveTabHighlight === 'function') {
+                window.recalculateActiveTabHighlight();
             }
         }
 
@@ -3056,7 +3302,7 @@
         // ── Side drawer ──────────────────────────────────────────────────────────
         window.openMCSDrawer = async function (symbol, exchange) {
             try {
-                const res  = await fetch(`/api/v1/score/${symbol}?exchange=${exchange}`);
+                const res  = await fetch(`/api/v1/score/${symbol}?exchange=${exchange}&_=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) {
                     throw new Error(`HTTP error! status: ${res.status}`);
                 }
@@ -3068,6 +3314,7 @@
                     mcsData[stockIdx] = {
                         ...mcsData[stockIdx],
                         total_score: data.total_score,
+                        swing_score: data.swing_score,
                         technical_score: data.technical_score,
                         fundamental_score: data.fundamental_score,
                         momentum_score: data.momentum_score,
@@ -3084,16 +3331,27 @@
                 document.getElementById('mcs-drawer-symbol').textContent = symbol;
                 document.getElementById('mcs-drawer-date').textContent   = `As of ${data.date || '—'}`;
 
-                // Score ring (simple coloured number)
-                const col = scoreColour(data.total_score);
+                // Score ring — shows swing_score ring when swing mode is active
+                const isSwingMode = (mcsMode === 'swing');
+                const ringScore = isSwingMode && data.swing_score != null ? data.swing_score : data.total_score;
+                const ringLabel = isSwingMode && data.swing_score != null ? '⚡ SWING' : scoreLabel(ringScore);
+                const col = scoreColour(ringScore);
+                const swingNote = isSwingMode && data.swing_score != null
+                    ? `<div style="font-size:0.65rem; color:var(--color-text-muted); margin-top:6px; text-align:center;">Classic: ${data.total_score ?? '—'}</div>`
+                    : data.swing_score != null
+                        ? `<div style="font-size:0.65rem; color:#f59e0b; margin-top:6px; text-align:center;">⚡ Swing: ${data.swing_score}</div>`
+                        : '';
                 document.getElementById('mcs-drawer-score-ring').innerHTML = `
-                <div style="display:inline-flex; flex-direction:column; align-items:center;
-                            background:${col}18; border:3px solid ${col};
-                            box-shadow: 0 0 20px ${col}33, inset 0 0 15px ${col}11;
-                            border-radius:50%; width:110px; height:110px;
-                            justify-content:center; transition: all 300ms ease;">
-                    <span style="font-size:2.2rem; font-weight:900; color:${col}; line-height:1.1;">${data.total_score}</span>
-                    <span style="font-size:0.6rem; color:${col}; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-top:2px;">${scoreLabel(data.total_score)}</span>
+                <div style="display:inline-flex; flex-direction:column; align-items:center;">
+                    <div style="display:inline-flex; flex-direction:column; align-items:center;
+                                background:${col}18; border:3px solid ${col};
+                                box-shadow: 0 0 20px ${col}33, inset 0 0 15px ${col}11;
+                                border-radius:50%; width:110px; height:110px;
+                                justify-content:center; transition: all 300ms ease;">
+                        <span style="font-size:2.2rem; font-weight:900; color:${col}; line-height:1.1;">${ringScore}</span>
+                        <span style="font-size:0.6rem; color:${col}; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; margin-top:2px;">${ringLabel}</span>
+                    </div>
+                    ${swingNote}
                 </div>`;
 
                 // Pillar bars
@@ -3140,9 +3398,7 @@
                     <div onclick="window.toggleMcsPillarDetail('${p}')" 
                          style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-size:0.75rem; margin-bottom:5px; user-select:none;">
                         <span style="color:var(--color-text-secondary); font-weight:600; display:inline-flex; align-items:center; gap:6px;">
-                            <svg class="mcs-accordion-arrow-${p}" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform: rotate(0deg); transition: transform 200ms ease;">
-                                <polyline points="9 18 15 12 9 6"></polyline>
-                            </svg>
+                            <i class="mcs-accordion-arrow-${p}" data-lucide="chevron-right" style="width: 8px; height: 8px; transform: rotate(0deg); transition: transform 200ms ease; display: inline-block;"></i>
                             ${PILLAR_LABELS[p]}
                         </span>
                         <span style="font-weight:700; color:var(--color-text-primary);">${val}/${PILLAR_MAX[p]}</span>
@@ -3158,6 +3414,8 @@
                 </div>`;
                 }).join('');
 
+                window.initIcons(document.getElementById('mcs-drawer-pillars'));
+
                 // Badges
                 const badges = data.badges || [];
                 document.getElementById('mcs-drawer-badges').innerHTML = badges.length
@@ -3171,6 +3429,8 @@
                     : `<div style="font-size:0.75rem; font-weight:600;
                                color:var(--color-text-muted); margin-bottom:8px; letter-spacing:0.5px;">BADGES</div>
                        <span style="font-size:0.8rem; color:var(--color-text-muted); font-style:italic;">No badges awarded for this period</span>`;
+
+                window.initIcons(document.getElementById('mcs-drawer-badges'));
 
                 // Wire watchlist button in drawer
                 const watchBtn = document.getElementById('btn-mcs-drawer-add-watchlist');
@@ -3228,7 +3488,7 @@
 
         async function pollMCSJobStatus() {
             try {
-                const res = await fetch('/api/v1/score/job_status');
+                const res = await fetch(`/api/v1/score/job_status?_=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) return;
                 const json = await res.json();
                 if (json.success && json.data) {
@@ -3344,6 +3604,8 @@
             if (!mcsData.length || (Date.now() - mcsLastFetch > MCS_TTL)) fetchMCSData();
             // Check status immediately on tab open to restore progress bar if running
             pollMCSJobStatus();
+            // Restore toggle button highlight
+            applyMCSModeUI();
         });
 
         // Filter change

@@ -157,6 +157,14 @@ class MomentumConfidenceScoreService:
                 result['weighted_scores']['risk_liquidity']
             )
 
+            # Swing Velocity Score — Technical 45%, Momentum 45%, Risk 10%
+            # Fundamentals and Institutional contribute 0 in swing mode
+            result['swing_score'] = min(100, round(
+                result['pillar_scores']['technical']      * (45.0 / 30.0) +
+                result['pillar_scores']['momentum']       * (45.0 / 20.0) +
+                result['pillar_scores']['risk_liquidity'] * (10.0 / 10.0)
+            ))
+
             # Collect details for explanation
             result['technical_details'] = technical_result.get('details', {})
             result['fundamental_details'] = fundamental_result.get('details', {})

@@ -14,6 +14,11 @@ from app.services.scoring_service import MomentumConfidenceScoreService
 SYMBOLS = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'TATAMOTORS']
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        # Fallback for Python versions that don't support reconfigure
+        pass
     app = create_app('development')
     results = []
     with app.app_context():

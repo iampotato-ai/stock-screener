@@ -225,13 +225,12 @@ def refresh_market_cap_cache(app: Flask):
             symbols = get_nse_symbols()
             logger.info(f"Fetching market cap for {len(symbols)} symbols")
             inserted = 0
+            import yfinance as yf
             for sym in symbols:
                 try:
-                    url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{sym}.NS?modules=summaryDetail"
-                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        data = json.loads(resp.read())
-                    mkt_cap_raw = data['quoteSummary']['result'][0]['summaryDetail'].get('marketCap', {}).get('raw', 0)
+                    ticker = yf.Ticker(f"{sym}.NS")
+                    info = ticker.info or {}
+                    mkt_cap_raw = info.get('marketCap', 0)
                     # Convert USD to INR using configurable rate (default 83.0)
                     INR_PER_USD = app.config.get('INR_PER_USD', 83.0)
                     market_cap_inr = int(mkt_cap_raw * INR_PER_USD)

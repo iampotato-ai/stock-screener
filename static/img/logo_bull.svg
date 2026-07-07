@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <defs>
+    <!-- Brand Electric Teal-to-Green Gradient -->
+    <linearGradient id="bull-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981" /> <!-- Emerald Green -->
+      <stop offset="100%" stop-color="#06b6d4" /> <!-- Cyan/Teal -->
+    </linearGradient>
+    <!-- High-Contrast Accent/Breakout Glow -->
+    <linearGradient id="arrow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" /> <!-- Blue -->
+      <stop offset="100%" stop-color="#60a5fa" /> <!-- Light Blue -->
+    </linearGradient>
+  </defs>
+
+  <!-- Group with subtle hover drop-shadow styling compatibility -->
+  <g class="logo-group">
+    <!-- Stylized Charging Bull Shape (Geometric/Asymmetric) -->
+    <!-- Powerful shoulder hump, lowered head, horns pointing forward -->
+    <path d="M 45 42 
+             C 41 38, 32 37, 26 42 
+             C 21 46, 17 55, 19 64 
+             C 21 72, 28 75, 34 73 
+             C 40 71, 44 63, 46 56 
+             L 51 68 
+             C 53 72, 59 74, 64 73 
+             C 70 72, 73 66, 72 58 
+             C 71 50, 64 45, 56 46 
+             Z" 
+          fill="url(#bull-gradient)" />
+    
+    <!-- Forward-pointing powerful Horns -->
+    <path d="M 28 41 
+             C 28 32, 23 23, 15 20 
+             C 22 26, 25 34, 25 41 
+             Z" 
+          fill="url(#bull-gradient)" />
+    <path d="M 33 40 
+             C 34 29, 31 18, 22 13 
+             C 28 20, 31 29, 30 40 
+             Z" 
+          fill="url(#bull-gradient)" />
+
+    <!-- Sharp Head / Snout pointing down -->
+    <polygon points="19,53 25,41 29,48 23,56" fill="url(#bull-gradient)" />
+
+    <!-- Rising Momentum/Breakout Arrow piercing upwards -->
+    <!-- Symbolizes the trendline and the breakout engine -->
+    <path d="M 12 85 
+             L 52 45 
+             L 46 39 
+             L 68 37 
+             L 66 59 
+             L 60 53 
+             L 20 93 
+             Z" 
+          fill="url(#arrow-gradient)" />
+  </g>
+</svg>

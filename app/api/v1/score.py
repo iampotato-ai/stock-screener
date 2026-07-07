@@ -48,6 +48,8 @@ def get_stock_score(symbol):
                 clean_data['momentum_score'] = clean_data.get('pillar_scores', {}).get('momentum', 0)
                 clean_data['institutional_score'] = clean_data.get('pillar_scores', {}).get('institutional', 0)
                 clean_data['risk_liquidity_score'] = clean_data.get('pillar_scores', {}).get('risk_liquidity', 0)
+                # swing_score is already a root-level key from the service
+                clean_data.setdefault('swing_score', None)
                 return jsonify(clean_data), 200
             else:
                 current_app.logger.warning(f"On-demand score calculation failed for {symbol}: {calc_result.get('error')}. Falling back to cache.")
@@ -91,7 +93,7 @@ def get_top_scores():
 
         # Get active screener symbols
         from app.services.screener_service import screener_service
-        scan_results = screener_service.get_scan_results(limit=limit)
+        scan_results = screener_service.get_scan_results(limit=limit, live=True)
         tickers = [s['ticker'].replace("NSE:", "").replace("BSE:", "") for s in scan_results if s.get('ticker')]
 
         if tickers:
@@ -134,6 +136,7 @@ def get_top_scores():
                         'exchange': exchange,
                         'date': None,
                         'total_score': None,
+                        'swing_score': None,
                         'technical_score': None,
                         'fundamental_score': None,
                         'momentum_score': None,

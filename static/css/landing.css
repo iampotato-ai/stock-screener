@@ -29,10 +29,29 @@
 
 body.landing-page-body {
   background-color: var(--landing-bg);
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.07) 0%, transparent 40%);
+  background-size: 200% 200%;
+  background-attachment: fixed;
+  animation: meshGlow 20s infinite alternate ease-in-out;
   color: var(--landing-text);
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   overflow-x: hidden;
   line-height: 1.6;
+}
+
+@keyframes meshGlow {
+  0% {
+    background-position: 0% 0%, 100% 100%, 50% 50%;
+  }
+  50% {
+    background-position: 50% 100%, 0% 50%, 100% 0%;
+  }
+  100% {
+    background-position: 100% 0%, 50% 100%, 0% 50%;
+  }
 }
 
 h1, h2, h3, h4 {
@@ -182,7 +201,7 @@ h1, h2, h3, h4 {
 
 /* Click/active feedback */
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.98) translateY(1px);
 }
 
 /* Disabled states */
@@ -199,12 +218,43 @@ h1, h2, h3, h4 {
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: skewX(-25deg);
+  transition: none;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .btn-primary:hover {
   background-color: #2563eb;
   transform: translateY(-0.5px);
   box-shadow: 0 4px 8px rgba(59, 130, 246, 0.25);
+}
+
+.btn-primary:hover::before {
+  animation: btnShimmer 1.2s infinite;
+}
+
+@keyframes btnShimmer {
+  0% { left: -75%; }
+  100% { left: 125%; }
 }
 
 .btn-secondary {
@@ -369,13 +419,15 @@ body.page-loaded .hero-visual-wrapper {
 }
 
 .terminal-container {
-  background: var(--landing-surface);
-  border: 1px solid var(--landing-border);
+  background: rgba(13, 17, 29, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (min-width: 1024px) {
@@ -409,6 +461,11 @@ body.page-loaded .hero-visual-wrapper {
   .terminal-container {
     transform: perspective(1200px) rotateY(-5deg) rotateX(2deg);
     transform-origin: left center;
+  }
+
+  .terminal-container:hover {
+    transform: perspective(1200px) rotateY(0deg) rotateX(0deg) scale(1.02);
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 }
 
@@ -1463,6 +1520,60 @@ body.page-loaded .hero-visual-wrapper {
   to {
     stroke-dashoffset: 0;
   }
+}
+
+/* Live Index Ticker Marquee styles */
+.market-ticker-bar {
+  background: rgba(15, 23, 42, 0.4);
+  border-bottom: 1px solid var(--landing-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 10px 0;
+  width: 100%;
+}
+
+.ticker-content {
+  width: 100%;
+  display: flex;
+}
+
+.ticker-track {
+  display: inline-flex;
+  animation: tickerSlide 25s linear infinite;
+  gap: 3.5rem;
+  padding-left: 1.75rem;
+}
+
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.ticker-name {
+  font-weight: 700;
+  color: var(--landing-text);
+  letter-spacing: 0.05em;
+}
+
+.ticker-val {
+  color: var(--landing-text-muted);
+}
+
+.ticker-chg.up {
+  color: var(--landing-success);
+}
+
+.ticker-chg.down {
+  color: var(--landing-danger);
+}
+
+@keyframes tickerSlide {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 /* ACCESSIBILITY: Reduced Motion override */

@@ -472,12 +472,25 @@ class MomentumScore(BaseModel):
 
     def to_dict(self):
         """Convert model instance to dictionary."""
+        # Compute swing_score from stored pillars — no DB migration needed.
+        # Formula: Technical×(45/30) + Momentum×(45/20) + Risk×(10/10), capped 100.
+        swing_score = None
+        if (self.technical_score is not None and
+                self.momentum_score is not None and
+                self.risk_liquidity_score is not None):
+            swing_score = min(100, round(
+                self.technical_score * (45.0 / 30.0) +
+                self.momentum_score  * (45.0 / 20.0) +
+                self.risk_liquidity_score * (10.0 / 10.0)
+            ))
+
         res = {
             'id': self.id,
             'symbol': self.symbol,
             'exchange': self.exchange,
             'date': self.date.isoformat() if self.date else None,
             'total_score': self.total_score,
+            'swing_score': swing_score,
             'technical_score': self.technical_score,
             'fundamental_score': self.fundamental_score,
             'momentum_score': self.momentum_score,

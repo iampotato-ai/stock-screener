@@ -1,5 +1,14 @@
 var safeStorage = window.safeStorage || localStorage;
 
+// Helper to safely initialize Lucide Icons on a container or document
+window.initIcons = function(container) {
+    if (window.lucide) {
+        window.lucide.createIcons({
+            root: container || document
+        });
+    }
+};
+
 // App state variables
 let previousScanMap = {};
 let stocksData = [];
@@ -398,8 +407,30 @@ window.openUpgradeModal = window.openUpgradeModal || function() {
     alert("Upgrade modal coming soon!");
 };
 
+// Global helper to reset all screener filters
+window.resetScreenerFilters = function() {
+    if (searchInput) searchInput.value = '';
+    
+    // Reset range filter input fields
+    const rangeIds = [
+        'filter-rvol-min', 'filter-rvol-max',
+        'filter-change-min', 'filter-change-max',
+        'filter-pe-min', 'filter-pe-max'
+    ];
+    rangeIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    
+    // Clear select/active tags and reset sector selection
+    if (typeof selectSector === 'function') {
+        selectSector('all');
+    }
+};
+
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    window.initIcons();
     // Fetch trading holidays dynamically
     fetch('/api/nse-holidays')
         .then(res => res.json())
@@ -440,6 +471,16 @@ document.addEventListener('DOMContentLoaded', () => {
         slidingCap.style.left = `${activeTab.offsetLeft}px`;
         slidingCap.style.width = `${activeTab.offsetWidth}px`;
     }
+
+    window.recalculateActiveTabHighlight = function() {
+        setTimeout(() => {
+            const activeTab = document.querySelector('.workspace-tab.active');
+            if (activeTab && slidingCap) {
+                slidingCap.style.left = `${activeTab.offsetLeft}px`;
+                slidingCap.style.width = `${activeTab.offsetWidth}px`;
+            }
+        }, 50);
+    };
 
     function switchWorkspace(viewName) {
         workspaceTabs.forEach(tab => {
@@ -1004,6 +1045,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const cachedDensity = safeStorage.getItem('momentum_table_density') === 'compact';
         applyDensity(cachedDensity);
     }
+    
+    // Collapsible Watchlist Sidebar Handler
+    const sidebarBtn = document.getElementById('btn-toggle-watchlist-sidebar');
+    const sidebarToggleText = document.getElementById('sidebar-toggle-text');
+    const workspaceGrid = document.querySelector('.watchlist-workspace-grid');
+    
+    function applySidebarState(isCollapsed) {
+        if (!workspaceGrid) return;
+        if (isCollapsed) {
+            workspaceGrid.classList.add('sidebar-collapsed');
+            if (sidebarToggleText) sidebarToggleText.textContent = 'Show Watchlist';
+        } else {
+            workspaceGrid.classList.remove('sidebar-collapsed');
+            if (sidebarToggleText) sidebarToggleText.textContent = 'Hide Watchlist';
+        }
+        safeStorage.setItem('watchlist_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+    }
+    
+    if (sidebarBtn) {
+        sidebarBtn.addEventListener('click', () => {
+            const isCurrentlyCollapsed = workspaceGrid && workspaceGrid.classList.contains('sidebar-collapsed');
+            applySidebarState(!isCurrentlyCollapsed);
+        });
+        
+        // Restore cached sidebar preference
+        const cachedSidebar = safeStorage.getItem('watchlist_sidebar_collapsed') === 'true';
+        applySidebarState(cachedSidebar);
+    }
+
     
     // Column preferences and reordering setup
     initColumns();
@@ -2580,12 +2650,13 @@ function showErrorState(message) {
         tableBody.innerHTML = `
             <tr>
                 <td colspan="${visibleCount + 1}" class="table-empty-state">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="hsl(350, 80%, 55%)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <i data-lucide="alert-circle" style="width: 40px; height: 40px; color: hsl(350, 80%, 55%); margin-bottom: 1rem;"></i>
                     <p style="color:var(--accent-red); font-weight:600;">Scan Failed</p>
                     <p style="font-size:0.85rem; max-width:500px; margin:0.5rem auto 0 auto;">${message}</p>
                 </td>
             </tr>
         `;
+        window.initIcons(tableBody);
     }
     if (showingText) showingText.textContent = "Scan failed";
 }
@@ -2951,13 +3022,19 @@ function renderTable() {
         if (tableBody) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="${visibleCount + 1}" class="table-empty-state">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:1rem;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <p>No matching stocks found</p>
-                        <p style="font-size:0.8rem;">Try adjusting your search criteria or choosing a different sector.</p>
+                    <td colspan="${visibleCount + 1}">
+                        <div class="empty-state-card">
+                            <div class="empty-state-icon">
+                                <i data-lucide="search" style="width: 48px; height: 48px;"></i>
+                            </div>
+                            <div class="empty-state-title">No matching instruments found</div>
+                            <div class="empty-state-desc">We couldn't find any stocks meeting your active filters. Try broadening your criteria (e.g., lower the minimum relative volume or clear the search filters).</div>
+                            <button class="btn btn-secondary empty-state-action" onclick="window.resetScreenerFilters()">Reset Filters</button>
+                        </div>
                     </td>
                 </tr>
             `;
+            window.initIcons(tableBody);
         }
         showingText.textContent = "Showing 0 stocks";
         const pagControls = document.getElementById('pagination-controls');
@@ -3061,10 +3138,10 @@ function renderTable() {
                             <span class="ticker-box">${stock.clean_ticker}${sectorDotHtml}${high52wDotHtml}${popoverHtml}</span>
                             <div style="display: flex; gap: 0.25rem;">
                                 <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); openTradingView('${stock.clean_ticker}')" title="Open Chart">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                                    <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
                                 </button>
                                 <button class="btn-add-watchlist-table" onclick="event.stopPropagation(); addToWatchlist('${stock.clean_ticker}', event)" title="Add to Watchlist">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
                                 </button>
                             </div>
                         </div>
@@ -3368,7 +3445,7 @@ function renderTable() {
                     
                     if (diffDays >= 0 && diffDays <= 5) {
                         // High risk - 5 days or less
-                        html += `<td data-column="${col.id}" class="text-center"><span class="badge" style="background-color: rgba(232, 175, 52, 0.2); color: #e8af34; border: 1px solid rgba(232, 175, 52, 0.4);" title="Earnings in ${diffDays} days — consider waiting for post-earnings setup">⚠️ ${formatted}</span></td>`;
+                        html += `<td data-column="${col.id}" class="text-center"><span class="badge" style="background-color: rgba(232, 175, 52, 0.2); color: #e8af34; border: 1px solid rgba(232, 175, 52, 0.4);" title="Earnings in ${diffDays} days — consider waiting for post-earnings setup"><i data-lucide="alert-triangle" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 2px;"></i> ${formatted}</span></td>`;
                     } else if (diffDays > 5 && diffDays <= 10) {
                         // Upcoming - 10 days or less
                         html += `<td data-column="${col.id}" class="text-center"><span class="badge badge-earnings-soon" title="Earnings in ${diffDays} day(s)">${formatted}</span></td>`;
@@ -3380,7 +3457,7 @@ function renderTable() {
                 html += `
                     <td data-column="action" class="text-center" onclick="event.stopPropagation();">
                         <button class="btn-table-chart" onclick="openTradingView('${stock.clean_ticker}')">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                            <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
                             TradingView
                         </button>
                     </td>
@@ -3391,7 +3468,10 @@ function renderTable() {
         html += `</tr>`;
     });
     
-    if (tableBody) tableBody.innerHTML = html;
+    if (tableBody) {
+        tableBody.innerHTML = html;
+        window.initIcons(tableBody);
+    }
     if (showingText) showingText.textContent = `Showing ${startIndex + 1}-${endIndex} of ${filteredStocks.length} matching stocks`;
     renderPagination(totalPages);
 }
@@ -3407,13 +3487,14 @@ function renderPagination(totalPages) {
     
     container.innerHTML = `
         <button class="pagination-btn" id="btn-page-prev" ${currentPage === 1 ? 'disabled' : ''} title="Previous Page">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <i data-lucide="chevron-left" style="width: 14px; height: 14px;"></i>
         </button>
         <span class="pagination-info">Page ${currentPage} / ${totalPages}</span>
         <button class="pagination-btn" id="btn-page-next" ${currentPage === totalPages ? 'disabled' : ''} title="Next Page">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <i data-lucide="chevron-right" style="width: 14px; height: 14px;"></i>
         </button>
     `;
+    window.initIcons(container);
     
     document.getElementById('btn-page-prev').addEventListener('click', () => {
         if (currentPage > 1) {
@@ -3616,7 +3697,7 @@ function renderColumnDropdown() {
         
         dragItem.innerHTML = `
             <span class="drag-handle" title="Drag to reorder column">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1.5"></circle><circle cx="9" cy="5" r="1.5"></circle><circle cx="9" cy="19" r="1.5"></circle><circle cx="15" cy="12" r="1.5"></circle><circle cx="15" cy="5" r="1.5"></circle><circle cx="15" cy="19" r="1.5"></circle></svg>
+                <i data-lucide="grip-vertical" style="width: 12px; height: 12px; cursor: grab;"></i>
             </span>
             <label style="display:flex; align-items:center; gap:0.6rem; font-size:0.85rem; font-weight:500; cursor:pointer; width:100%;">
                 <input type="checkbox" data-column-toggle="${col.id}" ${col.isVisible ? 'checked' : ''} style="margin:0;">
@@ -3644,6 +3725,7 @@ function renderColumnDropdown() {
         
         container.appendChild(dragItem);
     });
+    window.initIcons(container);
 }
 
 // Dropdown Drag Event Handlers
@@ -4678,7 +4760,7 @@ function renderWatchlist() {
         
         const toggleBtn = document.createElement('span');
         toggleBtn.className = `section-toggle-btn ${section.collapsed ? 'collapsed' : ''}`;
-        toggleBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+        toggleBtn.innerHTML = `<i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>`;
         
         const titleSpan = document.createElement('span');
         titleSpan.className = 'section-name';
@@ -4703,7 +4785,7 @@ function renderWatchlist() {
         const btnAdd = document.createElement('button');
         btnAdd.className = 'section-act-btn btn-add-to-section';
         btnAdd.title = "Add Stock";
-        btnAdd.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+        btnAdd.innerHTML = `<i data-lucide="plus" style="width: 14px; height: 14px;"></i>`;
         btnAdd.addEventListener('click', (e) => {
             e.stopPropagation();
             const addBox = secCard.querySelector('.section-add-box');
@@ -4718,7 +4800,7 @@ function renderWatchlist() {
         const btnRename = document.createElement('button');
         btnRename.className = 'section-act-btn btn-rename-section';
         btnRename.title = "Rename Section";
-        btnRename.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>`;
+        btnRename.innerHTML = `<i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>`;
         btnRename.addEventListener('click', (e) => {
             e.stopPropagation();
             startRenameSection(section.id, titleSpan);
@@ -4727,7 +4809,7 @@ function renderWatchlist() {
         const btnUp = document.createElement('button');
         btnUp.className = 'section-act-btn btn-move-sec-up';
         btnUp.title = "Move Up";
-        btnUp.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+        btnUp.innerHTML = `<i data-lucide="chevron-up" style="width: 14px; height: 14px;"></i>`;
         if (secIdx === 0) btnUp.style.opacity = '0.35';
         btnUp.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -4737,7 +4819,7 @@ function renderWatchlist() {
         const btnDown = document.createElement('button');
         btnDown.className = 'section-act-btn btn-move-sec-down';
         btnDown.title = "Move Down";
-        btnDown.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+        btnDown.innerHTML = `<i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>`;
         if (secIdx === watchlistSections.length - 1) btnDown.style.opacity = '0.35';
         btnDown.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -4747,7 +4829,7 @@ function renderWatchlist() {
         const btnDel = document.createElement('button');
         btnDel.className = 'section-act-btn btn-del-section';
         btnDel.title = "Delete Section";
-        btnDel.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+        btnDel.innerHTML = `<i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>`;
         btnDel.addEventListener('click', (e) => {
             e.stopPropagation();
             deleteSection(section.id);
@@ -5046,7 +5128,7 @@ function renderWatchlist() {
                             <td class="watchlist-cell-right ${changeClass}">${changeSign}${stock.change.toFixed(2)}%</td>
                             <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
                                 <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                                 </button>
                             </td>
                         `;
@@ -5061,7 +5143,7 @@ function renderWatchlist() {
                             <td class="watchlist-cell-right" style="color:var(--color-text-secondary);">${volumeFormatted}</td>
                             <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
                                 <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                                 </button>
                             </td>
                         `;
@@ -5141,7 +5223,7 @@ function renderWatchlist() {
                             <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
                             <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
                                 <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                                 </button>
                             </td>
                         `;
@@ -5153,7 +5235,7 @@ function renderWatchlist() {
                             <td class="watchlist-cell-right" style="color:var(--color-text-muted);">-</td>
                             <td class="text-center" onclick="if(window.event) window.event.stopPropagation();">
                                 <button class="watchlist-remove-btn" onclick="removeStockFromSection('${section.id}', '${symbol}')" title="Remove from Section">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                                 </button>
                             </td>
                         `;
@@ -5172,6 +5254,7 @@ function renderWatchlist() {
     
     // Wire drag & drop
     addDragAndDropListeners();
+    window.initIcons(sectionsContainer);
 }
 
 function selectWatchlistStock(ticker) {
@@ -5578,9 +5661,10 @@ function renderAnnouncementsHtml() {
     if (!eventsHtml && !dealsHtml && filteredNews.length === 0) {
         feed.innerHTML = `
             <div class="news-placeholder">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <i data-lucide="alert-circle" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem; display: inline-block;"></i>
                 <p>No announcements found${activeNewsFilter !== 'all' ? ` for ${activeNewsFilter}` : ''}.</p>
             </div>`;
+        window.initIcons(feed);
         return;
     }
 
@@ -5607,6 +5691,7 @@ function renderAnnouncementsHtml() {
             </div>`;
     });
     feed.innerHTML = html;
+    window.initIcons(feed);
 }
 
 async function renderAnnouncements(forceFetch = false) {
@@ -5642,11 +5727,12 @@ async function renderAnnouncements(forceFetch = false) {
                     } else {
                         feed.innerHTML = `
                             <div class="news-placeholder">
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path d="M12 6v6l4 2"></path></svg>
+                                <i data-lucide="clock" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem; display: inline-block;"></i>
                                 <p>Your watchlist is empty.</p>
                                 <p style="font-size:0.75rem; color:var(--color-text-muted); margin-top:0.2rem;">Add stocks to your watchlist to view dynamic announcements.</p>
                             </div>
                         `;
+                        window.initIcons(feed);
                     }
                 });
             }
@@ -5947,7 +6033,8 @@ async function saveSnapshot() {
         return;
     }
     
-    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg> <span>Saving...</span>`;
+    btn.innerHTML = `<i data-lucide="loader" style="width: 16px; height: 16px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 4px;"></i> <span>Saving...</span>`;
+    window.initIcons(btn);
     btn.disabled = true;
     
     const items = filteredStocks.map(s => ({
@@ -7939,7 +8026,7 @@ function renderPresetsDropdown() {
                 <div class="select-dropdown-item preset-item-row" data-value="${p.id}" style="display: flex; justify-content: space-between; align-items: center;">
                     <span>${p.name}</span>
                     <button class="btn-delete-preset" data-id="${p.id}" style="background: none; border: none; color: var(--color-text-muted); cursor: pointer; padding: 2px;" title="Delete Preset">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                     </button>
                 </div>
             `;
@@ -7947,6 +8034,7 @@ function renderPresetsDropdown() {
     }
     
     dropdown.innerHTML = html;
+    window.initIcons(dropdown);
     
     // Re-attach event listeners for dropdown items
     dropdown.querySelectorAll('.select-dropdown-item').forEach(item => {
@@ -8245,7 +8333,7 @@ function renderIntradayWorkspace() {
             html += `
                 <div class="intraday-item" onclick="openTradeDrawer('${s.clean_ticker || s.ticker}')">
                     <button class="intraday-chart-btn" onclick="event.stopPropagation(); openTradingView('${s.clean_ticker || s.ticker}')" title="Open in TradingView">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path></svg>
+                        <i data-lucide="trending-up" style="width: 12px; height: 12px;"></i>
                     </button>
                     <span class="intraday-item-ticker" style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${s.clean_ticker || s.ticker}</span>
                     <span style="font-size: 0.75rem; color: ${changeColor}; width: 60px; flex-shrink: 0; text-align: right;">${changeSign}${change.toFixed(2)}%</span>
@@ -8265,6 +8353,7 @@ function renderIntradayWorkspace() {
                     <p style="margin:0; opacity: 0.8; font-size: 0.75rem;">No candidates match right now.</p>
                 </div>
             `;
+            window.initIcons(contentEl);
         }
         if (countEl) countEl.textContent = items.length;
     });
@@ -8341,10 +8430,10 @@ window.toggleIntradayWidget = function(headerEl) {
     const isCollapsed = content.style.display === 'none';
     if (isCollapsed) {
         content.style.display = '';
-        if (toggleIcon) toggleIcon.textContent = '▼';
+        if (toggleIcon) toggleIcon.style.transform = 'rotate(0deg)';
     } else {
         content.style.display = 'none';
-        if (toggleIcon) toggleIcon.textContent = '▶';
+        if (toggleIcon) toggleIcon.style.transform = 'rotate(-90deg)';
     }
 };
 
@@ -8705,10 +8794,10 @@ function renderJournal() {
             <td class="text-center">
                 <div style="display: flex; gap: 0.35rem; align-items: center; justify-content: center; min-width: 70px;">
                     <button class="journal-action-btn btn-edit" onclick="window.openEditTradeModal('${trade.id}')" title="Edit Entry">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                        <i data-lucide="edit-2" style="width: 12px; height: 12px;"></i>
                     </button>
                     <button class="journal-action-btn btn-delete" onclick="window.removeTradeFromJournal('${trade.id}')" title="Remove Entry">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
                     </button>
                 </div>
             </td>
@@ -8716,6 +8805,7 @@ function renderJournal() {
     });
     
     tbody.innerHTML = html;
+    window.initIcons(tbody);
     updateJournalStats(journal);
 }
 
@@ -11369,10 +11459,10 @@ function renderIPOTable() {
                         <span class="ticker-box" onclick="openTradingView('${item.ticker}'); event.stopPropagation();">${cleanTicker}</span>
                         <div style="display: flex; gap: 0.25rem; flex-shrink: 0;">
                             <button class="table-action-icon-btn" onclick="event.stopPropagation(); openTradingView('${item.ticker}')" title="Open Chart">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path><line x1="16" y1="5" x2="22" y2="5"></line><line x1="19" y1="2" x2="19" y2="8"></line><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                                <i data-lucide="external-link" style="width: 12px; height: 12px;"></i>
                             </button>
                             <button class="table-action-icon-btn" onclick="event.stopPropagation(); quickAddIPOTowatchlist('${item.ticker}', event)" title="Add to Watchlist">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
                             </button>
                         </div>
                     </div>
@@ -11399,6 +11489,7 @@ function renderIPOTable() {
             </tr>
         `;
     }).join('');
+    window.initIcons(tbody);
 }
 
 window.quickAddIPOTowatchlist = function(ticker, event) {
@@ -11873,6 +11964,9 @@ function fetchEPListings(loadMore = false) {
             if (badge) {
                 badge.innerText = highCount;
                 badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                if (typeof window.recalculateActiveTabHighlight === 'function') {
+                    window.recalculateActiveTabHighlight();
+                }
             }
             
             renderEPListingsTable();
@@ -12298,7 +12392,7 @@ function renderEPListingsTable() {
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
                         <span class="ticker-box" style="cursor: pointer;" onclick="event.stopPropagation(); openTradingView('${item.symbol}.NS')">${item.symbol}</span>
                         <button class="table-action-icon-btn" onclick="event.stopPropagation(); addToWatchlist('${item.symbol}', event)" title="Add to Watchlist">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
                         </button>
                     </div>
                 </td>
@@ -12323,6 +12417,7 @@ function renderEPListingsTable() {
             </tr>
         `;
     }).join('');
+    window.initIcons(tbody);
 }
 
 function removeFromEPWatchlist(symbol) {
@@ -12664,6 +12759,9 @@ function triggerEPRefresh() {
                                     if (badge) {
                                         badge.innerText = highCount;
                                         badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                                        if (typeof window.recalculateActiveTabHighlight === 'function') {
+                                            window.recalculateActiveTabHighlight();
+                                        }
                                     }
                                     
                                     renderEPListingsTable();
@@ -13560,7 +13658,7 @@ function renderBullSnortTable() {
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
                         <span class="ticker-box" style="cursor: pointer;" onclick="event.stopPropagation(); openTradingView('${row.symbol}.NS')">${row.symbol}</span>
                         <button class="table-action-icon-btn" onclick="event.stopPropagation(); addToWatchlist('${row.symbol}', event)" title="Add to Watchlist">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
                         </button>
                     </div>
                 </td>
@@ -13578,6 +13676,7 @@ function renderBullSnortTable() {
             </tr>
         `;
     });
+    window.initIcons(tbody);
 }
 
 // ── Floating Bulk Actions Bar & Selection State ──

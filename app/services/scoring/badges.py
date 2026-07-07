@@ -64,6 +64,32 @@ class BadgeAwarder:
                     data.get('pillar_scores', {}).get('institutional', 0) >= 12 and
                     data.get('total_score', 0) >= 85
                 )
+            },
+            # ── Swing-trader badges ─────────────────────────────────────────────
+            'high_vol_breakout': {
+                'name': '⚡ High-Vol Breakout',
+                'description': 'Fresh 52W-high breakout with RVOL ≥ 2×',
+                'condition': lambda data: (
+                    data.get('momentum_details', {}).get('points_breakdown', {}).get('fresh_breakout', 0) >= 2 and
+                    data.get('momentum_details', {}).get('points_breakdown', {}).get('volume_breakout', 0) >= 3
+                )
+            },
+            'trend_aligned': {
+                'name': '📈 Trend Aligned',
+                'description': 'Price riding above EMA20 > EMA50 > EMA200',
+                'condition': lambda data: (
+                    data.get('technical_details', {}).get('points_breakdown', {}).get('above_200_ema', 0) >= 1 and
+                    data.get('technical_details', {}).get('points_breakdown', {}).get('above_50_ema', 0) >= 1 and
+                    data.get('technical_details', {}).get('points_breakdown', {}).get('golden_cross', 0) >= 1
+                )
+            },
+            'velocity_accelerating': {
+                'name': '🔥 Velocity Accelerating',
+                'description': 'ADX > 25 with positive momentum acceleration',
+                'condition': lambda data: (
+                    data.get('technical_details', {}).get('points_breakdown', {}).get('adx_gt_25', 0) >= 1 and
+                    data.get('momentum_details', {}).get('points_breakdown', {}).get('momentum_acceleration', 0) >= 1
+                )
             }
         }
 

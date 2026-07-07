@@ -6,6 +6,7 @@
   
   <!-- SEO Best Practices -->
   <title>MomentumScan - Premium Indian Stock Screener & Breakout Engine</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_icon.png') }}">
   <meta name="description" content="Identify stock breakouts, momentum rotations, and market breadth regimes early. Institutional-grade screener for Nifty & active NSE India traders.">
   <meta name="keywords" content="MomentumScan, NSE India, stock screener, breakout stocks, swing trading, Nifty breadth, RRG rotation, Indian stock market, TradingView">
   
@@ -44,6 +45,24 @@
   <!-- 1. Header -->
   {% include 'components/landing/header.html' %}
 
+  <!-- Live Market Index Ticker -->
+  <div class="market-ticker-bar">
+    <div class="ticker-content mono">
+      <div class="ticker-track">
+        <span class="ticker-item"><span class="ticker-name">NIFTY 50</span> <span class="ticker-val">24,302.15</span> <span class="ticker-chg up">+184.20 (+0.76%)</span></span>
+        <span class="ticker-item"><span class="ticker-name">BANKNIFTY</span> <span class="ticker-val">52,810.90</span> <span class="ticker-chg down">-112.45 (-0.21%)</span></span>
+        <span class="ticker-item"><span class="ticker-name">NIFTY NEXT 50</span> <span class="ticker-val">72,408.35</span> <span class="ticker-chg up">+594.10 (+0.83%)</span></span>
+        <span class="ticker-item"><span class="ticker-name">MIDCPNIFTY</span> <span class="ticker-val">12,684.50</span> <span class="ticker-chg up">+112.15 (+0.89%)</span></span>
+        
+        <!-- Duplicate for seamless loop -->
+        <span class="ticker-item"><span class="ticker-name">NIFTY 50</span> <span class="ticker-val">24,302.15</span> <span class="ticker-chg up">+184.20 (+0.76%)</span></span>
+        <span class="ticker-item"><span class="ticker-name">BANKNIFTY</span> <span class="ticker-val">52,810.90</span> <span class="ticker-chg down">-112.45 (-0.21%)</span></span>
+        <span class="ticker-item"><span class="ticker-name">NIFTY NEXT 50</span> <span class="ticker-val">72,408.35</span> <span class="ticker-chg up">+594.10 (+0.83%)</span></span>
+        <span class="ticker-item"><span class="ticker-name">MIDCPNIFTY</span> <span class="ticker-val">12,684.50</span> <span class="ticker-chg up">+112.15 (+0.89%)</span></span>
+      </div>
+    </div>
+  </div>
+
   <!-- 2. Hero Section -->
   {% include 'components/landing/hero.html' %}
 
@@ -67,5 +86,13 @@
 
   <!-- Javascript Logic files (ES Modules) -->
   <script type="module" src="{{ url_for('static', filename='js/landing-motion.js') }}?v=1.0.0"></script>
+  <script src="https://unpkg.com/lucide@0.418.0/dist/umd/lucide.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    });
+  </script>
 </body>
 </html>
