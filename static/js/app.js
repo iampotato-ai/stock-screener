@@ -407,6 +407,27 @@ window.openUpgradeModal = window.openUpgradeModal || function() {
     alert("Upgrade modal coming soon!");
 };
 
+// Global helper to reset all screener filters
+window.resetScreenerFilters = function() {
+    if (searchInput) searchInput.value = '';
+    
+    // Reset range filter input fields
+    const rangeIds = [
+        'filter-rvol-min', 'filter-rvol-max',
+        'filter-change-min', 'filter-change-max',
+        'filter-pe-min', 'filter-pe-max'
+    ];
+    rangeIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    
+    // Clear select/active tags and reset sector selection
+    if (typeof selectSector === 'function') {
+        selectSector('all');
+    }
+};
+
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', () => {
     window.initIcons();
@@ -450,6 +471,16 @@ document.addEventListener('DOMContentLoaded', () => {
         slidingCap.style.left = `${activeTab.offsetLeft}px`;
         slidingCap.style.width = `${activeTab.offsetWidth}px`;
     }
+
+    window.recalculateActiveTabHighlight = function() {
+        setTimeout(() => {
+            const activeTab = document.querySelector('.workspace-tab.active');
+            if (activeTab && slidingCap) {
+                slidingCap.style.left = `${activeTab.offsetLeft}px`;
+                slidingCap.style.width = `${activeTab.offsetWidth}px`;
+            }
+        }, 50);
+    };
 
     function switchWorkspace(viewName) {
         workspaceTabs.forEach(tab => {
@@ -1014,6 +1045,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const cachedDensity = safeStorage.getItem('momentum_table_density') === 'compact';
         applyDensity(cachedDensity);
     }
+    
+    // Collapsible Watchlist Sidebar Handler
+    const sidebarBtn = document.getElementById('btn-toggle-watchlist-sidebar');
+    const sidebarToggleText = document.getElementById('sidebar-toggle-text');
+    const workspaceGrid = document.querySelector('.watchlist-workspace-grid');
+    
+    function applySidebarState(isCollapsed) {
+        if (!workspaceGrid) return;
+        if (isCollapsed) {
+            workspaceGrid.classList.add('sidebar-collapsed');
+            if (sidebarToggleText) sidebarToggleText.textContent = 'Show Watchlist';
+        } else {
+            workspaceGrid.classList.remove('sidebar-collapsed');
+            if (sidebarToggleText) sidebarToggleText.textContent = 'Hide Watchlist';
+        }
+        safeStorage.setItem('watchlist_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+    }
+    
+    if (sidebarBtn) {
+        sidebarBtn.addEventListener('click', () => {
+            const isCurrentlyCollapsed = workspaceGrid && workspaceGrid.classList.contains('sidebar-collapsed');
+            applySidebarState(!isCurrentlyCollapsed);
+        });
+        
+        // Restore cached sidebar preference
+        const cachedSidebar = safeStorage.getItem('watchlist_sidebar_collapsed') === 'true';
+        applySidebarState(cachedSidebar);
+    }
+
     
     // Column preferences and reordering setup
     initColumns();
@@ -2962,10 +3022,15 @@ function renderTable() {
         if (tableBody) {
             tableBody.innerHTML = `
                 <tr>
-                    <td colspan="${visibleCount + 1}" class="table-empty-state">
-                        <i data-lucide="search" style="width: 40px; height: 40px; color: var(--color-text-muted); margin-bottom: 1rem;"></i>
-                        <p>No matching stocks found</p>
-                        <p style="font-size:0.8rem;">Try adjusting your search criteria or choosing a different sector.</p>
+                    <td colspan="${visibleCount + 1}">
+                        <div class="empty-state-card">
+                            <div class="empty-state-icon">
+                                <i data-lucide="search" style="width: 48px; height: 48px;"></i>
+                            </div>
+                            <div class="empty-state-title">No matching instruments found</div>
+                            <div class="empty-state-desc">We couldn't find any stocks meeting your active filters. Try broadening your criteria (e.g., lower the minimum relative volume or clear the search filters).</div>
+                            <button class="btn btn-secondary empty-state-action" onclick="window.resetScreenerFilters()">Reset Filters</button>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -11899,6 +11964,9 @@ function fetchEPListings(loadMore = false) {
             if (badge) {
                 badge.innerText = highCount;
                 badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                if (typeof window.recalculateActiveTabHighlight === 'function') {
+                    window.recalculateActiveTabHighlight();
+                }
             }
             
             renderEPListingsTable();
@@ -12691,6 +12759,9 @@ function triggerEPRefresh() {
                                     if (badge) {
                                         badge.innerText = highCount;
                                         badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                                        if (typeof window.recalculateActiveTabHighlight === 'function') {
+                                            window.recalculateActiveTabHighlight();
+                                        }
                                     }
                                     
                                     renderEPListingsTable();

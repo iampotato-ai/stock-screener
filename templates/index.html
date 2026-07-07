@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Momentum Scan - Indian Stock Screener</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/logo_icon.png') }}">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -911,6 +912,10 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4);">
                         <h2 style="margin: 0;">Trade Journal</h2>
                         <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" id="btn-toggle-watchlist-sidebar" title="Toggle Watchlist Sidebar">
+                                <i data-lucide="sidebar" style="width: 14px; height: 14px; margin-right: 6px;"></i>
+                                <span id="sidebar-toggle-text">Hide Watchlist</span>
+                            </button>
                             <button class="btn btn-secondary" onclick="window.updateJournalLivePrices(event)">
                                 <i data-lucide="refresh-cw" style="width: 14px; height: 14px; margin-right: 6px;"></i>
                                 Refresh Prices
@@ -1843,27 +1848,11 @@
     <div class="workspace-view" id="view-momentum-score">
         <style>
             /* ── MCS Design System ─────────────────────────────────── */
-            #view-momentum-score {
-                font-family: 'Outfit', 'Inter', system-ui, sans-serif;
-            }
-            /* Monospace for all numbers in the score table */
+            /* Monospace numeric alignments in score table */
             #mcs-table td {
                 font-variant-numeric: tabular-nums;
-                font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-                font-size: 0.78rem;
-            }
-            #mcs-table td.symbol-col {
-                font-family: 'Outfit', 'Inter', system-ui, sans-serif;
-                font-size: 0.82rem;
             }
             #mcs-table th {
-                font-family: 'Outfit', 'Inter', system-ui, sans-serif;
-                font-size: 0.68rem;
-                font-weight: 700;
-                letter-spacing: 0.06em;
-                text-transform: uppercase;
-                color: var(--color-text-muted);
-                padding: 10px 8px;
                 border-bottom: 1px solid rgba(255,255,255,0.06);
             }
             #mcs-table th.sortable {
@@ -1956,52 +1945,59 @@
             }
             #btn-export-mcs:active { transform: translateY(0) scale(0.98); }
 
-            /* ── Stat Row (no boxy cards) ────────────────────────── */
-            .mcs-stat-row {
-                display: flex;
-                gap: 0;
-                margin: 1rem 0 0.5rem;
-                border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 10px;
-                overflow: hidden;
-                flex-wrap: wrap;
-            }
-            .mcs-stat-item {
+            /* ── MCS Stat Cards (Boxy style matching main screener) ────────────────── */
+            .mcs-stat-card {
                 flex: 1;
-                min-width: 100px;
-                padding: 0.8rem 1rem;
+                min-width: 140px;
                 cursor: pointer;
-                user-select: none;
-                transition: background 200ms cubic-bezier(0.16,1,0.3,1);
-                border-right: 1px solid rgba(255,255,255,0.05);
-                position: relative;
             }
-            .mcs-stat-item:last-child { border-right: none; }
-            .mcs-stat-item:hover { background: rgba(255,255,255,0.04); }
-            .mcs-stat-item.active {
-                background: rgba(168,85,247,0.08);
+            .stat-card--mcs-scored {
+                border-color: rgba(192, 132, 252, 0.15); /* #c084fc */
+                background: linear-gradient(180deg, rgba(192, 132, 252, 0.03) 0%, rgba(192, 132, 252, 0.01) 100%), var(--panel-bg);
             }
-            .mcs-stat-item.active::after {
-                content: '';
-                position: absolute;
-                bottom: 0; left: 0; right: 0;
-                height: 2px;
-                background: #a855f7;
+            .stat-card--mcs-scored:hover, .stat-card--mcs-scored.active {
+                border-color: rgba(192, 132, 252, 0.5) !important;
+                background: rgba(192, 132, 252, 0.06) !important;
             }
-            .mcs-stat-value {
-                font-size: 1.4rem;
-                font-weight: 800;
-                font-family: 'JetBrains Mono', 'Fira Code', monospace;
-                font-variant-numeric: tabular-nums;
-                line-height: 1;
-                margin-bottom: 3px;
+            .stat-card--mcs-pending {
+                border-color: rgba(100, 116, 139, 0.15); /* #64748b */
+                background: linear-gradient(180deg, rgba(100, 116, 139, 0.03) 0%, rgba(100, 116, 139, 0.01) 100%), var(--panel-bg);
             }
-            .mcs-stat-label {
-                font-size: 0.65rem;
-                font-weight: 600;
-                letter-spacing: 0.07em;
-                text-transform: uppercase;
-                color: var(--color-text-muted);
+            .stat-card--mcs-pending:hover, .stat-card--mcs-pending.active {
+                border-color: rgba(100, 116, 139, 0.5) !important;
+                background: rgba(100, 116, 139, 0.06) !important;
+            }
+            .stat-card--mcs-classic {
+                border-color: rgba(124, 58, 237, 0.15); /* #7c3aed */
+                background: linear-gradient(180deg, rgba(124, 58, 237, 0.03) 0%, rgba(124, 58, 237, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-classic:hover, .stat-card--mcs-classic.active {
+                border-color: rgba(124, 58, 237, 0.5) !important;
+                background: rgba(124, 58, 237, 0.06) !important;
+            }
+            .stat-card--mcs-swing {
+                border-color: rgba(245, 158, 11, 0.15); /* #f59e0b */
+                background: linear-gradient(180deg, rgba(245, 158, 11, 0.03) 0%, rgba(245, 158, 11, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-swing:hover, .stat-card--mcs-swing.active {
+                border-color: rgba(245, 158, 11, 0.5) !important;
+                background: rgba(245, 158, 11, 0.06) !important;
+            }
+            .stat-card--mcs-elite {
+                border-color: rgba(168, 85, 247, 0.15); /* #a855f7 */
+                background: linear-gradient(180deg, rgba(168, 85, 247, 0.03) 0%, rgba(168, 85, 247, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-elite:hover, .stat-card--mcs-elite.active {
+                border-color: rgba(168, 85, 247, 0.5) !important;
+                background: rgba(168, 85, 247, 0.06) !important;
+            }
+            .stat-card--mcs-breakout {
+                border-color: rgba(34, 197, 94, 0.15); /* #22c55e */
+                background: linear-gradient(180deg, rgba(34, 197, 94, 0.03) 0%, rgba(34, 197, 94, 0.01) 100%), var(--panel-bg);
+            }
+            .stat-card--mcs-breakout:hover, .stat-card--mcs-breakout.active {
+                border-color: rgba(34, 197, 94, 0.5) !important;
+                background: rgba(34, 197, 94, 0.06) !important;
             }
 
             /* ── Watchlist & Ticker ──────────────────────────────── */
@@ -2022,17 +2018,24 @@
                 transform: scale(1.2);
             }
             .mcs-ticker-link {
-                color: #60a5fa !important;
-                text-decoration: none !important;
+                display: inline-block;
+                background: rgba(59, 130, 246, 0.1);
+                color: var(--accent-blue) !important;
+                padding: 0.2rem 0.5rem;
+                border-radius: var(--radius-md);
+                font-family: var(--font-display);
+                font-size: 0.8rem;
+                border: 1px solid rgba(59, 130, 246, 0.15);
                 font-weight: 700;
-                transition: color 150ms ease;
+                transition: all 150ms ease;
                 cursor: pointer;
-                font-family: 'Outfit', system-ui, sans-serif;
-                font-size: 0.83rem;
+                text-decoration: none !important;
             }
             .mcs-ticker-link:hover {
+                background: rgba(59, 130, 246, 0.18);
                 color: #93c5fd !important;
-                text-decoration: underline !important;
+                border-color: rgba(59, 130, 246, 0.3);
+                text-decoration: none !important;
             }
             .mcs-close-btn {
                 transition: color 150ms ease, transform 150ms ease;
@@ -2128,7 +2131,7 @@
             </div>
 
             <!-- Stat Row (replaces boxy summary cards) -->
-            <div id="mcs-summary-cards" class="mcs-stat-row">
+            <div id="mcs-summary-cards" class="stat-cards-row" style="margin-top: 1rem;">
                 <!-- Filled by JS -->
             </div>
 
@@ -3219,24 +3222,33 @@
             const swingStocks = mcsData.filter(x => x.swing_score !== null && x.swing_score !== undefined);
             const avgSwing = swingStocks.length > 0 ? Math.round(swingStocks.reduce((s, x) => s + x.swing_score, 0) / swingStocks.length) : 0;
 
-            const item = (filterType, label, value, colour, isClickable = true) => {
+            const item = (filterType, label, value, colour, progressPct, modifierClass, isClickable = true) => {
                 const isActive = mcsActiveCardFilter === filterType;
                 const activeClass = isActive ? 'active' : '';
                 const clickHandler = isClickable ? `onclick="window.toggleMCSCardFilter('${filterType}')"` : '';
+                const cursorStyle = isClickable ? 'cursor: pointer;' : 'cursor: default;';
+                
+                const progressHtml = progressPct !== null && progressPct !== undefined ? `
+                    <div class="stat-card-progress-wrapper">
+                        <div class="stat-card-progress" style="width: ${progressPct}%; background: ${colour};"></div>
+                    </div>` : '';
+
                 return `
-                <div class="mcs-stat-item ${activeClass}" ${clickHandler}>
-                    <div class="mcs-stat-value" style="color:${colour};">${value}</div>
-                    <div class="mcs-stat-label">${label}</div>
+                <div class="stat-card mcs-stat-card ${modifierClass} ${activeClass}" ${clickHandler} style="${cursorStyle}">
+                    <span class="stat-card-value">${value}</span>
+                    <span class="stat-card-label">${label}</span>
+                    ${progressHtml}
                 </div>`;
             };
 
+            const totalCount = mcsData.length || 1;
             el.innerHTML =
-                item('scored',    'Total Scored',   totalScored,  '#c084fc') +
-                item('pending',   'Pending',        totalPending, '#64748b') +
-                item('',          'Avg Classic',    totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#64748b', false) +
-                item('',          'Avg Swing',      swingStocks.length > 0 ? avgSwing : '—', swingStocks.length > 0 ? scoreColour(avgSwing) : '#64748b', false) +
-                item('elite',     'Elite &#8805;85', elite,       '#a855f7') +
-                item('breakouts', 'Breakouts',      breakouts,    '#22c55e');
+                item('scored',    'Total Scored',   totalScored,  '#c084fc', Math.round((totalScored / totalCount) * 100), 'stat-card--mcs-scored') +
+                item('pending',   'Pending',        totalPending, '#64748b', Math.round((totalPending / totalCount) * 100), 'stat-card--mcs-pending') +
+                item('',          'Avg Classic',    totalScored > 0 ? avg : '—', totalScored > 0 ? scoreColour(avg) : '#64748b', totalScored > 0 ? avg : 0, 'stat-card--mcs-classic', false) +
+                item('',          'Avg Swing',      swingStocks.length > 0 ? avgSwing : '—', swingStocks.length > 0 ? scoreColour(avgSwing) : '#64748b', swingStocks.length > 0 ? avgSwing : 0, 'stat-card--mcs-swing', false) +
+                item('elite',     'Elite &#8805;85', elite,       '#a855f7', totalScored > 0 ? Math.round((elite / totalScored) * 100) : 0, 'stat-card--mcs-elite') +
+                item('breakouts', 'Breakouts',      breakouts,    '#22c55e', totalScored > 0 ? Math.round((breakouts / totalScored) * 100) : 0, 'stat-card--mcs-breakout');
         }
 
         // Toggle card filter
@@ -3260,6 +3272,9 @@
                 el.style.display = '';
             } else {
                 el.style.display = 'none';
+            }
+            if (typeof window.recalculateActiveTabHighlight === 'function') {
+                window.recalculateActiveTabHighlight();
             }
         }
 

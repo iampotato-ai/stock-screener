@@ -1142,8 +1142,6 @@ color: var(--color-text-muted);
     font-weight: 400;
 }
 
-/* Loading state, Empty State */
-
 .table-loading-state, .table-empty-state {
 padding: 5rem 0 !important;
     text-align: center;
@@ -1155,6 +1153,52 @@ font-size: 1rem;
     font-weight: 500;
     margin-top: 1rem;
 }
+
+/* Premium Empty State Layouts */
+.empty-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.empty-state-icon {
+  margin-bottom: 1.25rem;
+  color: var(--color-text-muted);
+  opacity: 0.45;
+  transition: color 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.empty-state-card:hover .empty-state-icon {
+  color: var(--accent-blue, #3b82f6);
+  opacity: 0.8;
+  transform: scale(1.08) rotate(5deg);
+}
+
+.empty-state-title {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-primary);
+}
+
+.empty-state-desc {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.empty-state-action {
+  font-size: 0.8rem;
+  padding: 0.45rem 1rem;
+}
+
 
 /* Loading pulse bubble animations */
 
@@ -6668,19 +6712,28 @@ width: 100%;
 /* Watchlist & Journal Dedicated Split Workspace Grid */
 
 .watchlist-workspace-grid {
-display: grid;
+  display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 1.5rem;
   align-items: start;
   width: 100%;
+  transition: grid-template-columns 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (max-width: 1100px) {
-.watchlist-workspace-grid {
+  .watchlist-workspace-grid {
     grid-template-columns: 1fr;
+  }
 }
 
+.watchlist-workspace-grid.sidebar-collapsed {
+  grid-template-columns: 1fr;
 }
+
+.watchlist-workspace-grid.sidebar-collapsed aside.watchlist-column {
+  display: none !important;
+}
+
 
 .journal-workspace-column {
 padding: 1.25rem;
@@ -6728,8 +6781,46 @@ font-size: 1.15rem;
 }
 
 .compact-mode .stat-card-label {
-font-size: 0.68rem;
+  font-size: 0.68rem;
 }
+
+/* Journal Compact Mode Styles */
+.compact-mode .journal-container {
+  padding: 0.5rem !important;
+}
+
+.compact-mode .journal-stats-container {
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
+}
+
+.compact-mode .journal-stat-card {
+  padding: 0.5rem 0.75rem;
+  gap: 0.1rem;
+}
+
+.compact-mode .journal-stat-label {
+  font-size: 0.62rem;
+}
+
+.compact-mode .journal-stat-value {
+  font-size: 1.1rem;
+}
+
+.compact-mode .journal-table {
+  border-spacing: 0 3px;
+  font-size: 0.7rem;
+}
+
+.compact-mode .journal-table th {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.65rem;
+}
+
+.compact-mode .journal-table td {
+  padding: 0.25rem 0.5rem;
+}
+
 
 /* Skeleton Shimmer Loaders */
 
@@ -10559,4 +10650,171 @@ opacity: 1;
 .bm-sector-list {
   gap: 3px !important;
 }
+
+/* -------------------------------------------------------------
+ * PREMIUM ANIMATIONS & HOVER INTERACTIONS
+ * ------------------------------------------------------------- */
+
+/* Spring-like ease curves on cards & buttons */
+.stat-card, .journal-stat-card, .watch-section {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.stat-card:hover, .journal-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.btn, .action-btn, .tab-btn {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn:active, .action-btn:active, .tab-btn:active {
+  transform: scale(0.97) translateY(1px);
+}
+
+/* Staggered Row Waterfall Loading Animation */
+.screener-table tbody tr {
+  opacity: 0;
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.screener-table tbody tr:nth-child(1) { animation-delay: 30ms; }
+.screener-table tbody tr:nth-child(2) { animation-delay: 60ms; }
+.screener-table tbody tr:nth-child(3) { animation-delay: 90ms; }
+.screener-table tbody tr:nth-child(4) { animation-delay: 120ms; }
+.screener-table tbody tr:nth-child(5) { animation-delay: 150ms; }
+.screener-table tbody tr:nth-child(6) { animation-delay: 180ms; }
+.screener-table tbody tr:nth-child(7) { animation-delay: 210ms; }
+.screener-table tbody tr:nth-child(8) { animation-delay: 240ms; }
+.screener-table tbody tr:nth-child(9) { animation-delay: 270ms; }
+.screener-table tbody tr:nth-child(10) { animation-delay: 300ms; }
+
+/* Keep elements loaded beyond index 10 immediate */
+.screener-table tbody tr:nth-child(n+11) {
+  opacity: 1;
+  animation: none;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* -------------------------------------------------------------
+ * MOBILE RESPONSIVE LAYOUT OVERRIDES (Table-to-Card Collapse)
+ * ------------------------------------------------------------- */
+@media (max-width: 768px) {
+  /* Workspace columns grid collapse */
+  .watchlist-workspace-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+  
+  /* Table layout to Block layout transformation */
+  .screener-table, .journal-table,
+  .screener-table thead, .journal-table thead,
+  .screener-table tbody, .journal-table tbody,
+  .screener-table tr, .journal-table tr,
+  .screener-table td, .journal-table td {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  
+  /* Hide standard table headers & bulk checkboxes on mobile */
+  .screener-table thead, .journal-table thead,
+  .screener-table td.select-col, .screener-table th.select-col {
+    display: none !important;
+  }
+  
+  /* Format table rows as premium floating cards */
+  .screener-table tbody tr, .journal-table tbody tr {
+    background: rgba(30, 41, 59, 0.25) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 8px !important;
+    margin-bottom: 0.75rem !important;
+    padding: 14px 16px !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    position: relative;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+  }
+  
+  .screener-table tbody tr:hover, .journal-table tbody tr:hover {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    transform: translateY(-2px);
+  }
+  
+  /* Flex aligned table cells with labels on mobile */
+  .screener-table td, .journal-table td {
+    padding: 6px 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+    text-align: right !important;
+    font-size: 0.85rem !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+  }
+  
+  .screener-table td:last-child, .journal-table td:last-child {
+    border-bottom: none !important;
+  }
+  
+  /* Make the first cell (Ticker) prominent as card header */
+  .screener-table td:first-child, .journal-table td:nth-child(2) {
+    font-weight: 700 !important;
+    font-size: 1.05rem !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding-bottom: 8px !important;
+    color: #ffffff !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+  }
+  
+  /* Dynamic label bindings using data-attributes for screener */
+  .screener-table td[data-column="ticker"]::before { content: "Ticker" !important; }
+  .screener-table td[data-column="sector"]::before { content: "Sector" !important; }
+  .screener-table td[data-column="setupLabel"]::before { content: "Setup Setup" !important; }
+  .screener-table td[data-column="mtfScore"]::before { content: "MTF Score" !important; }
+  .screener-table td[data-column="description"]::before { content: "Name" !important; }
+  .screener-table td[data-column="close"]::before { content: "Price" !important; }
+  .screener-table td[data-column="change"]::before { content: "Day Chg %" !important; }
+  .screener-table td[data-column="day_range"]::before { content: "Day Range" !important; }
+  .screener-table td[data-column="volume"]::before { content: "Volume" !important; }
+  .screener-table td[data-column="perf_w"]::before { content: "1W Perf %" !important; }
+  .screener-table td[data-column="perf_m"]::before { content: "1M Perf %" !important; }
+  
+  /* Dynamic label bindings using positional child indices for journal */
+  .journal-table td:nth-child(1)::before { content: "Date" !important; }
+  .journal-table td:nth-child(2)::before { content: "Ticker" !important; }
+  .journal-table td:nth-child(3)::before { content: "Current/Exit" !important; }
+  .journal-table td:nth-child(4)::before { content: "Setup" !important; }
+  .journal-table td:nth-child(5)::before { content: "Entry" !important; }
+  .journal-table td:nth-child(6)::before { content: "Stop Loss" !important; }
+  .journal-table td:nth-child(7)::before { content: "Targets" !important; }
+  .journal-table td:nth-child(8)::before { content: "Quantity" !important; }
+  .journal-table td:nth-child(9)::before { content: "Risk Amount" !important; }
+  .journal-table td:nth-child(10)::before { content: "Status" !important; }
+  .journal-table td:nth-child(11)::before { content: "P&L PNL" !important; }
+  .journal-table td:nth-child(12)::before { content: "R Achieved" !important; }
+  .journal-table td:nth-child(13)::before { content: "Notes" !important; }
+  .journal-table td:nth-child(14)::before { content: "Actions" !important; }
+
+  /* Hide labels on header elements */
+  .screener-table td:first-child::before, .journal-table td:nth-child(2)::before {
+    content: "" !important;
+  }
+}
+
+
 
