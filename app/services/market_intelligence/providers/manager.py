@@ -1,6 +1,6 @@
 import time
 import logging
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Any
 from urllib.error import HTTPError
 from .base import BaseDataProvider
 from .marketaux import MarketauxProvider
@@ -29,6 +29,11 @@ class ProviderManager:
         # Health tracking state
         self.failure_counts: Dict[str, int] = {}
         self.disabled_until: Dict[str, float] = {}
+        self.provider_stats: Dict[str, Dict[str, Union[int, list, float, None]]] = {
+            "Marketaux": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None},
+            "GoogleRSS": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None},
+            "NSERSS": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None}
+        }
 
     def fetch_news(self, symbol: str) -> List[NormalizedArticle]:
         """Fetch news articles from healthy providers, falling back sequentially on error."""
@@ -118,6 +123,22 @@ class ProviderManager:
                     break
 
         latency_ms = int((time.time() - start_time) * 1000)
+        
+        # Track provider stats in memory
+        p_name = provider.name
+        if p_name in self.provider_stats:
+            stats = self.provider_stats[p_name]
+            if status == "SUCCESS":
+                stats["successes"] = stats["successes"] + 1
+                stats["last_success_at"] = time.time()
+                # Rolling list of last 10 latencies
+                stats["latencies"].append(latency_ms)
+                if len(stats["latencies"]) > 10:
+                    stats["latencies"].pop(0)
+            else:
+                stats["failures"] = stats["failures"] + 1
+                stats["last_failure_at"] = time.time()
+
         self._log_fetch_to_db(provider.name, symbol, status, latency_ms, error_msg, len(results))
 
         if status == "ERROR" and error_msg:
@@ -142,3 +163,24 @@ class ProviderManager:
                 db.session.commit()
         except Exception as e:
             logger.error(f"Failed to log provider fetch details: {e}")
+
+    def get_provider_health(self) -> Dict[str, Dict[str, Any]]:
+        """Return formatted health metrics summary for all registered providers."""
+        health = {}
+        for p_name, stats in self.provider_stats.items():
+            total = stats["successes"] + stats["failures"]
+            success_rate = (stats["successes"] / total) if total > 0 else 1.0
+            avg_latency = (sum(stats["latencies"]) / len(stats["latencies"])) if stats["latencies"] else 0.0
+            
+            # check if currently disabled
+            is_healthy = self._is_provider_healthy(p_name)
+            
+            health[p_name] = {
+                "success_rate": round(success_rate, 2),
+                "average_latency_ms": round(avg_latency, 2),
+                "last_success_at": stats["last_success_at"],
+                "last_failure_at": stats["last_failure_at"],
+                "consecutive_failures": self.failure_counts.get(p_name, 0),
+                "is_healthy": is_healthy
+            }
+        return health

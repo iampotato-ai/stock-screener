@@ -13,8 +13,13 @@ class TimelineService:
         self.event_repository = EventRepository()
 
     def get_timeline_for_symbol(
-        self, symbol: str, event_types: Optional[List[str]] = None, limit: int = 20
-    ) -> Dict[str, List[Dict[str, Any]]]:
+        self,
+        symbol: str,
+        event_types: Optional[List[str]] = None,
+        limit: int = 20,
+        grouping: str = 'date_bracket',
+        sentiment_filter: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Retrieves, merges, and groups both news articles and corporate events.
         
@@ -22,9 +27,11 @@ class TimelineService:
             symbol: Ticker symbol (e.g. RELIANCE, or ALL, or RELIANCE,INFY)
             event_types: Filter list of event types (e.g. ['news', 'dividend'])
             limit: Limit of entries to pull from DB
+            grouping: Chronological grouping format ('date_bracket', 'latest', 'importance', 'sentiment')
+            sentiment_filter: Optional filter for positive, negative, or neutral sentiment
             
         Returns:
-            Dict containing timeline brackets (today, yesterday, last_week, earlier).
+            Dict containing timeline brackets or grouped items.
         """
         # Resolve symbols to fetch
         symbol_list = []
@@ -113,7 +120,55 @@ class TimelineService:
         merged_list.sort(key=lambda x: x['datetime_sort'], reverse=True)
         merged_list = merged_list[:limit]
 
-        # Group into time brackets
+        # Filter by sentiment if sentiment_filter is specified
+        if sentiment_filter:
+            sf = sentiment_filter.strip().lower()
+            merged_list = [item for item in merged_list if item['sentiment'].lower() == sf]
+
+        # Process grouping
+        if grouping == 'latest':
+            for item in merged_list:
+                item_date = item['date']
+                item.pop('datetime_sort', None)
+                item['date'] = item_date.isoformat()
+            return {'latest': merged_list}
+
+        if grouping == 'importance':
+            timeline = {
+                'critical': [],
+                'high': [],
+                'medium': [],
+                'low': []
+            }
+            for item in merged_list:
+                item_date = item['date']
+                item.pop('datetime_sort', None)
+                item['date'] = item_date.isoformat()
+                imp = item['importance'].lower()
+                if imp in timeline:
+                    timeline[imp].append(item)
+                else:
+                    timeline['medium'].append(item)
+            return timeline
+
+        if grouping == 'sentiment':
+            timeline = {
+                'positive': [],
+                'negative': [],
+                'neutral': []
+            }
+            for item in merged_list:
+                item_date = item['date']
+                item.pop('datetime_sort', None)
+                item['date'] = item_date.isoformat()
+                sent = item['sentiment'].lower()
+                if sent in timeline:
+                    timeline[sent].append(item)
+                else:
+                    timeline['neutral'].append(item)
+            return timeline
+
+        # default date_bracket grouping
         today_date = datetime.date.today()
         yesterday_date = today_date - datetime.timedelta(days=1)
         one_week_ago = today_date - datetime.timedelta(days=7)

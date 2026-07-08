@@ -517,6 +517,7 @@ class NewsArticle(BaseModel):
     sentiment_confidence = db.Column(db.Float)    # Confidence percentage (0-100)
     importance = db.Column(db.String(20))         # Low, Medium, High, Critical
     why_it_matters = db.Column(db.Text)           # AI explanation
+    ai_version = db.Column(db.String(20), default='v1')
     published_at = db.Column(db.DateTime, nullable=False, index=True)
     inserted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -543,6 +544,7 @@ class MarketEvent(BaseModel):
     importance = db.Column(db.String(20))         # Low, Medium, High, Critical
     catalyst_score = db.Column(db.Float)           # Score between -10 and +10
     why_it_matters = db.Column(db.Text)           # AI explanation
+    ai_version = db.Column(db.String(20), default='v1')
     unique_hash = db.Column(db.String(64), unique=True, nullable=False)  # Ingestion deduplication key
     source = db.Column(db.String(50), default='NSE')  # Ingestion source (NSE, BSE, etc.)
     inserted_at = db.Column(db.DateTime, default=datetime.utcnow)

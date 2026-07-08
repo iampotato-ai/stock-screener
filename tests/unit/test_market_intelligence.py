@@ -401,3 +401,205 @@ def test_provider_manager_and_ingestion(mi_app):
             saved = NewsArticle.query.filter_by(symbol="WIPRO").all()
             assert len(saved) == 1
             assert saved[0].title == "Wipro Expands Operations"
+
+
+def test_nlp_mapper():
+    """Test NLPMapper translations, rounding, and investor-friendly summary generation."""
+    from app.services.market_intelligence.ai.mapper import NLPMapper
+    
+    # Sentiment mappings
+    assert NLPMapper.map_sentiment("sent-positive") == "Positive"
+    assert NLPMapper.map_sentiment("sent-negative") == "Negative"
+    assert NLPMapper.map_sentiment("sent-neutral") == "Neutral"
+    assert NLPMapper.map_sentiment(None) == "Neutral"
+
+    # Confidence rounding
+    assert NLPMapper.map_confidence(0.8543) == 85.43
+    assert NLPMapper.map_confidence(-0.5) == 50.0
+    assert NLPMapper.map_confidence(None) == 100.0
+
+    # Importance mappings
+    assert NLPMapper.map_importance("high") == "High"
+    assert NLPMapper.map_importance("critical") == "Critical"
+    assert NLPMapper.map_importance(None) == "Medium"
+
+    # Explanations
+    assert "dividend" in NLPMapper.generate_explanation("DIVIDEND", "Positive").lower()
+    assert "liquidity" in NLPMapper.generate_explanation("SPLIT", "Neutral").lower()
+    assert "earnings" in NLPMapper.generate_explanation("EARNINGS", "Positive").lower()
+    assert "structural restructuring" in NLPMapper.generate_explanation("NEWS", "Positive", category="merger").lower()
+    assert "outlook" in NLPMapper.generate_explanation("NEWS", "Positive", reason="Strong Q3").lower()
+
+
+def test_enrichment_worker(mi_app):
+    """Test EnrichmentWorker decoupled NLP extraction and metadata versioning."""
+    from app.services.market_intelligence.ai.worker import EnrichmentWorker
+    
+    with mi_app.app_context():
+        # Insert a raw article and raw event
+        art = NewsArticle(
+            symbol="INFY",
+            external_id="infy-raw-1",
+            title="Infosys announces huge news",
+            url="https://example.com/infy-raw",
+            published_at=datetime.datetime.now()
+        )
+        ev = MarketEvent(
+            symbol="INFY",
+            external_id="infy-raw-ev-1",
+            event_type="DIVIDEND",
+            event_date=datetime.date.today(),
+            title="Infosys massive payout",
+            unique_hash="hash-infy-raw-ev"
+        )
+        db.session.add_all([art, ev])
+        db.session.commit()
+
+        # Mock NLP Service
+        mock_nlp = MagicMock()
+        mock_nlp.process_announcement.return_value = {
+            "sent": "sent-positive",
+            "nlp_sentiment_score": 0.95,
+            "imp": "high",
+            "nlp_category": "catalyst",
+            "reason": "Expanding into cloud sector",
+            "catalyst_score": 8.5
+        }
+
+        # Run worker
+        worker = EnrichmentWorker(session=db.session, nlp=mock_nlp)
+        worker.enrich_article(art.id)
+        worker.enrich_event(ev.id)
+
+        # Refresh from DB
+        db.session.refresh(art)
+        db.session.refresh(ev)
+
+        # Asserts
+        assert art.sentiment == "Positive"
+        assert art.sentiment_confidence == 95.0
+        assert art.importance == "High"
+        assert "confidence" in ev.why_it_matters.lower() # DIVIDEND template description
+        assert art.ai_version == "v1"
+        assert ev.ai_version == "v1"
+        assert ev.catalyst_score == 8.5
+
+
+def test_cache_providers():
+    """Test MemoryCacheProvider, NoCacheProvider, and CacheManager abstraction."""
+    from app.services.market_intelligence.cache.memory import MemoryCacheProvider
+    from app.services.market_intelligence.cache.no_cache import NoCacheProvider
+    from app.services.market_intelligence.cache.manager import CacheManager
+
+    # Memory Cache Provider
+    mem = MemoryCacheProvider()
+    mem.set("test_key", "hello", timeout=1)
+    assert mem.get("test_key") == "hello"
+    
+    # Expiration
+    with patch('time.time', return_value=time.time() + 5):
+        assert mem.get("test_key") is None
+
+    # No Cache Provider
+    no_c = NoCacheProvider()
+    no_c.set("test_key", "hello")
+    assert no_c.get("test_key") is None
+
+    # Cache Manager
+    cm = CacheManager(provider=mem)
+    cm.set("mgr_key", "mgr_val")
+    assert cm.get("mgr_key") == "mgr_val"
+    cm.delete("mgr_key")
+    assert cm.get("mgr_key") is None
+
+
+def test_provider_health_metrics(mi_app):
+    """Test ProviderManager records successes, failures, latencies, and exposes get_provider_health."""
+    with mi_app.app_context(), \
+         patch('app.services.market_intelligence.providers.manager.MarketauxProvider') as mock_marketaux, \
+         patch('app.services.market_intelligence.providers.manager.GoogleRSSProvider') as mock_google:
+         
+         m_inst = mock_marketaux.return_value
+         g_inst = mock_google.return_value
+         m_inst.name = "Marketaux"
+         g_inst.name = "GoogleRSS"
+
+         # Successful fetch
+         m_inst.fetch.return_value = []
+         
+         pm = ProviderManager()
+         # force run fetch inside the retry wrapper
+         pm._fetch_with_retry_and_metrics(m_inst, "RELIANCE")
+
+         # Failed fetch
+         g_inst.fetch.side_effect = Exception("Network Down")
+         try:
+             pm._fetch_with_retry_and_metrics(g_inst, "RELIANCE")
+         except RuntimeError:
+             pass
+         pm._record_failure(g_inst.name)
+
+         health = pm.get_provider_health()
+         
+         # Assert Marketaux is successful
+         assert health["Marketaux"]["success_rate"] == 1.0
+         assert health["Marketaux"]["consecutive_failures"] == 0
+         assert health["Marketaux"]["is_healthy"] is True
+
+         # Assert GoogleRSS has failure
+         assert health["GoogleRSS"]["success_rate"] == 0.0
+         assert health["GoogleRSS"]["consecutive_failures"] == 1
+
+
+def test_timeline_grouping_and_filtering(mi_app):
+    """Test TimelineService custom grouping and sentiment filtering options."""
+    with mi_app.app_context():
+        # Clear
+        NewsArticle.query.delete()
+        MarketEvent.query.delete()
+        db.session.commit()
+
+        # Insert mixed items
+        art1 = NewsArticle(
+            symbol="INFY",
+            external_id="infy-1",
+            title="Infosys Up on Positive Q3",
+            url="https://example.com/infy-1",
+            sentiment="Positive",
+            importance="High",
+            published_at=datetime.datetime.now()
+        )
+        art2 = NewsArticle(
+            symbol="INFY",
+            external_id="infy-2",
+            title="Infosys Down on Layoffs",
+            url="https://example.com/infy-2",
+            sentiment="Negative",
+            importance="Critical",
+            published_at=datetime.datetime.now()
+        )
+        db.session.add_all([art1, art2])
+        db.session.commit()
+
+        ts = TimelineService()
+
+        # Test Sentiment Filtering
+        res_pos = ts.get_timeline_for_symbol("INFY", sentiment_filter="positive")
+        assert len(res_pos["today"]) == 1
+        assert res_pos["today"][0]["title"] == "Infosys Up on Positive Q3"
+
+        res_neg = ts.get_timeline_for_symbol("INFY", sentiment_filter="negative")
+        assert len(res_neg["today"]) == 1
+        assert res_neg["today"][0]["title"] == "Infosys Down on Layoffs"
+
+        # Test Importance Grouping
+        res_imp = ts.get_timeline_for_symbol("INFY", grouping="importance")
+        assert len(res_imp["high"]) == 1
+        assert len(res_imp["critical"]) == 1
+        assert res_imp["critical"][0]["title"] == "Infosys Down on Layoffs"
+
+        # Test Latest Grouping
+        res_latest = ts.get_timeline_for_symbol("INFY", grouping="latest")
+        assert "latest" in res_latest
+        assert len(res_latest["latest"]) == 2
+

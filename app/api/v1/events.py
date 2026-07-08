@@ -36,8 +36,16 @@ def get_market_events():
         event_types = [t.strip().lower() for t in event_types_str.split(',')] if event_types_str else None
 
         limit = request.args.get('limit', 20, type=int)
+        grouping = request.args.get('grouping', 'date_bracket').strip().lower()
+        sentiment_filter = request.args.get('sentiment', '').strip().lower() or None
 
-        timeline = timeline_service.get_timeline_for_symbol(symbol, event_types=event_types, limit=limit)
+        timeline = timeline_service.get_timeline_for_symbol(
+            symbol,
+            event_types=event_types,
+            limit=limit,
+            grouping=grouping,
+            sentiment_filter=sentiment_filter
+        )
 
         return jsonify(
             success=True,

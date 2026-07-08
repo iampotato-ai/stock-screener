@@ -629,6 +629,7 @@ def _create_tables(conn):
             sentiment_confidence REAL,
             importance TEXT,
             why_it_matters TEXT,
+            ai_version TEXT DEFAULT 'v1',
             published_at TEXT NOT NULL,
             inserted_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
@@ -652,6 +653,7 @@ def _create_tables(conn):
             importance TEXT,
             catalyst_score REAL,
             why_it_matters TEXT,
+            ai_version TEXT DEFAULT 'v1',
             unique_hash TEXT UNIQUE NOT NULL,
             source TEXT NOT NULL DEFAULT 'NSE',
             inserted_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -660,6 +662,16 @@ def _create_tables(conn):
     c.execute('CREATE INDEX IF NOT EXISTS idx_market_events_symbol ON market_events (symbol)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_market_events_event_type ON market_events (event_type)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_market_events_event_date ON market_events (event_date)')
+
+    # Run safe migrations to add column if tables already exist
+    try:
+        c.execute("ALTER TABLE news_articles ADD COLUMN ai_version TEXT DEFAULT 'v1'")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE market_events ADD COLUMN ai_version TEXT DEFAULT 'v1'")
+    except sqlite3.OperationalError:
+        pass
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS news_fetch_logs (
