@@ -61,6 +61,13 @@ class EventService:
             except Exception as e:
                 logger.error(f"Failed to persist event '{item.title}': {e}")
 
+        if new_count > 0:
+            try:
+                from ..cache.manager import cache_manager
+                cache_manager.delete_pattern(f"timeline:{symbol.upper()}:")
+            except Exception as e:
+                logger.error(f"Failed to invalidate timeline cache for symbol {symbol}: {e}")
+
         return new_count
 
     def get_events_for_symbol(self, symbol: str, limit: int = 15) -> List[MarketEvent]:

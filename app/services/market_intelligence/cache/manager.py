@@ -18,6 +18,9 @@ class CacheManager:
     def delete(self, key: str):
         self.provider.delete(key)
 
+    def delete_pattern(self, pattern: str):
+        self.provider.delete_pattern(pattern)
+
 
 # Singleton cache manager instance
 cache_manager = CacheManager()

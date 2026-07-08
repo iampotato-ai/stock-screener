@@ -67,3 +67,24 @@ class ThreadedAIEnrichmentExecutor(AIEnrichmentExecutor):
                 self.worker.enrich_event(event_id)
             except Exception as e:
                 logger.error(f"ThreadedAIEnrichmentExecutor: Background event enrichment failed: {e}")
+
+
+class SyncAIEnrichmentExecutor(AIEnrichmentExecutor):
+    """Synchronous executor for executing AI enrichment immediately (useful in testing or sync environments)."""
+
+    def __init__(self, worker: EnrichmentWorker = None):
+        self.worker = worker or EnrichmentWorker()
+
+    def execute_article_enrichment(self, article_id: int):
+        """Immediately enrich the news article synchronously."""
+        try:
+            self.worker.enrich_article(article_id)
+        except Exception as e:
+            logger.error(f"SyncAIEnrichmentExecutor: Article enrichment failed: {e}")
+
+    def execute_event_enrichment(self, event_id: int):
+        """Immediately enrich the corporate event synchronously."""
+        try:
+            self.worker.enrich_event(event_id)
+        except Exception as e:
+            logger.error(f"SyncAIEnrichmentExecutor: Event enrichment failed: {e}")

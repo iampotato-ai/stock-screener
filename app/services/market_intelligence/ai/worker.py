@@ -40,7 +40,7 @@ class EnrichmentWorker:
                 category=nlp_res.get("nlp_category"),
                 reason=nlp_res.get("reason")
             )
-            article.ai_version = "v1"
+            article.ai_version = NLPMapper.AI_VERSION
 
             self.session.commit()
             logger.info(f"EnrichmentWorker: Successfully enriched news article ID {article_id}.")
@@ -72,7 +72,7 @@ class EnrichmentWorker:
                 event_or_category=event.event_type,
                 sentiment=event.sentiment
             )
-            event.ai_version = "v1"
+            event.ai_version = NLPMapper.AI_VERSION
 
             self.session.commit()
             logger.info(f"EnrichmentWorker: Successfully enriched market event ID {event_id}.")

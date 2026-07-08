@@ -13,3 +13,6 @@ class NoCacheProvider(CacheProvider):
 
     def delete(self, key: str):
         pass
+
+    def delete_pattern(self, pattern: str):
+        pass

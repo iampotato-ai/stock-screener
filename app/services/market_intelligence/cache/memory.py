@@ -23,3 +23,8 @@ class MemoryCacheProvider(CacheProvider):
 
     def delete(self, key: str):
         self._cache.pop(key, None)
+
+    def delete_pattern(self, pattern: str):
+        keys_to_del = [k for k in self._cache.keys() if k.startswith(pattern)]
+        for k in keys_to_del:
+            self._cache.pop(k, None)

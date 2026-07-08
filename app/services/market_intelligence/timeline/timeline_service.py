@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from app.models import NewsArticle, MarketEvent
 from ..repositories.news_repository import NewsRepository
 from ..repositories.event_repository import EventRepository
+from ..cache.manager import cache_manager
 
 
 class TimelineService:
@@ -33,6 +34,17 @@ class TimelineService:
         Returns:
             Dict containing timeline brackets or grouped items.
         """
+        # Fall back safely if grouping is unrecognized
+        if grouping not in ('date_bracket', 'latest', 'importance', 'sentiment'):
+            grouping = 'date_bracket'
+
+        # Check cache
+        event_types_str = ",".join(sorted(event_types)) if event_types else "all"
+        cache_key = f"timeline:{symbol.upper()}:{event_types_str}:{limit}:{grouping}:{sentiment_filter or 'none'}"
+        cached_result = cache_manager.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+
         # Resolve symbols to fetch
         symbol_list = []
         symbol = symbol.strip().upper()
@@ -131,9 +143,9 @@ class TimelineService:
                 item_date = item['date']
                 item.pop('datetime_sort', None)
                 item['date'] = item_date.isoformat()
-            return {'latest': merged_list}
+            timeline = {'latest': merged_list}
 
-        if grouping == 'importance':
+        elif grouping == 'importance':
             timeline = {
                 'critical': [],
                 'high': [],
@@ -149,9 +161,8 @@ class TimelineService:
                     timeline[imp].append(item)
                 else:
                     timeline['medium'].append(item)
-            return timeline
 
-        if grouping == 'sentiment':
+        elif grouping == 'sentiment':
             timeline = {
                 'positive': [],
                 'negative': [],
@@ -166,32 +177,33 @@ class TimelineService:
                     timeline[sent].append(item)
                 else:
                     timeline['neutral'].append(item)
-            return timeline
 
-        # default date_bracket grouping
-        today_date = datetime.date.today()
-        yesterday_date = today_date - datetime.timedelta(days=1)
-        one_week_ago = today_date - datetime.timedelta(days=7)
+        else:
+            # default date_bracket grouping
+            today_date = datetime.date.today()
+            yesterday_date = today_date - datetime.timedelta(days=1)
+            one_week_ago = today_date - datetime.timedelta(days=7)
 
-        timeline = {
-            'today': [],
-            'yesterday': [],
-            'last_week': [],
-            'earlier': []
-        }
+            timeline = {
+                'today': [],
+                'yesterday': [],
+                'last_week': [],
+                'earlier': []
+            }
 
-        for item in merged_list:
-            item_date = item['date']
-            item.pop('datetime_sort', None)
-            item['date'] = item_date.isoformat()
+            for item in merged_list:
+                item_date = item['date']
+                item.pop('datetime_sort', None)
+                item['date'] = item_date.isoformat()
 
-            if item_date == today_date:
-                timeline['today'].append(item)
-            elif item_date == yesterday_date:
-                timeline['yesterday'].append(item)
-            elif item_date >= one_week_ago:
-                timeline['last_week'].append(item)
-            else:
-                timeline['earlier'].append(item)
+                if item_date == today_date:
+                    timeline['today'].append(item)
+                elif item_date == yesterday_date:
+                    timeline['yesterday'].append(item)
+                elif item_date >= one_week_ago:
+                    timeline['last_week'].append(item)
+                else:
+                    timeline['earlier'].append(item)
 
+        cache_manager.set(cache_key, timeline, timeout=60)
         return timeline

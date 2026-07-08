@@ -1,4 +1,6 @@
 import logging
+import hashlib
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +26,15 @@ CATEGORY_TEMPLATES = {
     "catalyst": "A key business catalyst or announcement was detected, indicating potential swing momentum."
 }
 
+# Generate a SHA-256 prompt hash of the templates for prompt version traceability
+_template_str = json.dumps({"events": EVENT_TEMPLATES, "categories": CATEGORY_TEMPLATES}, sort_keys=True)
+_prompt_hash = hashlib.sha256(_template_str.encode('utf-8')).hexdigest()[:8]
+
+
 class NLPMapper:
     """Centralizes NLP mapping logic, translations, and templates generation."""
+    PROMPT_HASH = _prompt_hash
+    AI_VERSION = f"v1-{_prompt_hash}"
 
     @staticmethod
     def map_sentiment(nlp_sent: str) -> str:

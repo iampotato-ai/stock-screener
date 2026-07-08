@@ -480,8 +480,9 @@ def test_enrichment_worker(mi_app):
         assert art.sentiment_confidence == 95.0
         assert art.importance == "High"
         assert "confidence" in ev.why_it_matters.lower() # DIVIDEND template description
-        assert art.ai_version == "v1"
-        assert ev.ai_version == "v1"
+        from app.services.market_intelligence.ai.mapper import NLPMapper
+        assert art.ai_version == NLPMapper.AI_VERSION
+        assert ev.ai_version == NLPMapper.AI_VERSION
         assert ev.catalyst_score == 8.5
 
 
@@ -602,4 +603,105 @@ def test_timeline_grouping_and_filtering(mi_app):
         res_latest = ts.get_timeline_for_symbol("INFY", grouping="latest")
         assert "latest" in res_latest
         assert len(res_latest["latest"]) == 2
+
+
+def test_sync_executor_and_config_factory(mi_app):
+    """Test that SyncAIEnrichmentExecutor runs synchronously and factory respects configuration."""
+    from app.services.market_intelligence.ai.ai_enrichment import get_enrichment_executor
+    from app.services.market_intelligence.ai.executor import SyncAIEnrichmentExecutor, ThreadedAIEnrichmentExecutor
+
+    # Default is Threaded
+    with mi_app.app_context():
+        mi_app.config["AI_ENRICHMENT_EXECUTOR"] = "threaded"
+        assert isinstance(get_enrichment_executor(), ThreadedAIEnrichmentExecutor)
+
+        # Swapped to sync
+        mi_app.config["AI_ENRICHMENT_EXECUTOR"] = "sync"
+        assert isinstance(get_enrichment_executor(), SyncAIEnrichmentExecutor)
+
+
+def test_timeline_caching_and_invalidation(mi_app):
+    """Test that TimelineService caches responses and invalidates cache when new events are ingested."""
+    from app.services.market_intelligence.cache.manager import cache_manager
+    from app.services.market_intelligence.services.news_service import NewsService
+
+    with mi_app.app_context():
+        # Set to sync to prevent background thread database locking on Windows
+        mi_app.config["AI_ENRICHMENT_EXECUTOR"] = "sync"
+
+        # Clear database and cache
+        NewsArticle.query.delete()
+        db.session.commit()
+        cache_manager.delete_pattern("timeline:COALINDIA:")
+
+        art = NewsArticle(
+            symbol="COALINDIA",
+            external_id="coal-1",
+            title="Coal India records strong mining levels",
+            url="https://coalindia.com/1",
+            published_at=datetime.datetime.now()
+        )
+        db.session.add(art)
+        db.session.commit()
+
+        ts = TimelineService()
+        
+        # Initial request creates cache
+        res1 = ts.get_timeline_for_symbol("COALINDIA")
+        assert len(res1["today"]) == 1
+
+        # Modify DB directly (without service/cache invalidation)
+        art2 = NewsArticle(
+            symbol="COALINDIA",
+            external_id="coal-2",
+            title="Coal India second news",
+            url="https://coalindia.com/2",
+            published_at=datetime.datetime.now()
+        )
+        db.session.add(art2)
+        db.session.commit()
+
+        # Fetching should hit cache and still return 1 item
+        res2 = ts.get_timeline_for_symbol("COALINDIA")
+        assert len(res2["today"]) == 1
+
+        # Now, ingest news via service to trigger cache invalidation
+        with patch('app.services.market_intelligence.providers.manager.MarketauxProvider') as mock_marketaux:
+            mock_marketaux.return_value.name = "Marketaux"
+            # Return new article
+            mock_marketaux.return_value.fetch.return_value = [
+                NormalizedArticle(
+                    symbol="COALINDIA",
+                    title="Coal India Ingestion Triggered News",
+                    url="https://coalindia.com/3",
+                    summary="summary",
+                    source="reuters",
+                    published_at=datetime.datetime.now(datetime.timezone.utc),
+                    external_id="coal-3"
+                )
+            ]
+            
+            ns = NewsService()
+            ns.ingest_news_for_symbol("COALINDIA")
+
+        # Now fetching timeline should get the new counts (the cache was invalidated)
+        res3 = ts.get_timeline_for_symbol("COALINDIA")
+        assert len(res3["today"]) == 3  # coal-1, coal-2, coal-3
+
+
+def test_prompt_versioning_hash(mi_app):
+    """Test that NLPMapper.AI_VERSION exposes template hashing for auditable prompts."""
+    from app.services.market_intelligence.ai.mapper import NLPMapper
+    assert "-" in NLPMapper.AI_VERSION
+    assert len(NLPMapper.AI_VERSION.split("-")[1]) == 8  # 8 char hash slice
+
+
+def test_invalid_grouping_fallback(mi_app):
+    """Test that invalid timeline grouping values fall back safely to date_bracket grouping."""
+    with mi_app.app_context():
+        ts = TimelineService()
+        res = ts.get_timeline_for_symbol("COALINDIA", grouping="unrecognized_grouping_format")
+        assert "today" in res
+        assert "yesterday" in res
+
 

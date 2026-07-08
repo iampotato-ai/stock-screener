@@ -19,3 +19,8 @@ class CacheProvider(ABC):
     def delete(self, key: str):
         """Remove key from cache store."""
         pass
+
+    @abstractmethod
+    def delete_pattern(self, pattern: str):
+        """Remove all keys starting with pattern prefix."""
+        pass
