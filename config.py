@@ -77,6 +77,9 @@ class Config:
     NEWS_API_KEY = os.environ.get('NEWS_API_KEY')
     YAHOO_FINANCE_URL = os.environ.get('YAHOO_FINANCE_URL', 'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={range_str}')
     GOOGLE_NEWS_URL = os.environ.get('GOOGLE_NEWS_URL', 'https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en')
+    MARKETAUX_API_TOKEN = os.environ.get('MARKETAUX_API_TOKEN')
+    NEWS_REFRESH_MINUTES = int(os.environ.get('NEWS_REFRESH_MINUTES', '60'))
+    EVENT_REFRESH_MINUTES = int(os.environ.get('EVENT_REFRESH_MINUTES', '120'))
 
     # Feature flags
     ENABLE_BACKGROUND_TASKS = os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() == 'true'

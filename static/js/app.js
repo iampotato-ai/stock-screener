@@ -5599,98 +5599,104 @@ function renderEventsSection(filter) {
     </div>`;
 }
 
+let loadedTimeline = { today: [], yesterday: [], last_week: [], earlier: [] };
+let lastFetchedTimelineSymbol = '';
+let isTimelineLoading = false;
+
 async function fetchGoogleNews(ticker) {
-    if (loadedNews[ticker]) return; // Already cached
-    if (isNewsLoading) return;
-    isNewsLoading = true;
+    // Kept for backward compatibility signature if called elsewhere
+    if (!ticker) return;
     try {
         const res = await fetch(`/api/news?symbol=${ticker}`);
         if (res.ok) {
             const data = await res.json();
-            loadedNews[ticker] = (data.data && data.data.news) || data.news || [];
+            return (data.data && data.data.news) || data.news || [];
         }
     } catch (e) {
-        console.error('Error fetching Google News:', e);
-        loadedNews[ticker] = [];
-    } finally {
-        isNewsLoading = false;
+        console.error(e);
     }
+    return [];
 }
 
-function renderNewsSectionHtml() {
-    if (activeNewsFilter === 'all') return ''; 
-    const articles = loadedNews[activeNewsFilter];
-    if (!articles || articles.length === 0) return '';
-
-    let html = `<div class="announcements-divider"><span>Latest News & Insights</span></div>`;
-    articles.forEach(news => {
-        let dateStr = news.pub_date;
-        try {
-            const d = new Date(news.pub_date);
-            if (!isNaN(d)) {
-                dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-            }
-        } catch(e) {}
-        
-        html += `
-            <div class="announcement-item" onclick="window.open('${news.link}', '_blank')" style="cursor: pointer; transition: background 0.2s;">
-                <div class="announcement-meta">
-                    <span class="announcement-source" style="font-weight: 600; color: var(--accent-orange); border: 1px solid rgba(255,165,0,0.3); padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.65rem;">${news.source}</span>
-                    <span style="font-size: 0.65rem; color: var(--color-text-muted);">${dateStr}</span>
-                </div>
-                <div class="announcement-headline" style="color: var(--color-text-primary); margin-top: 0.4rem; font-size: 0.85rem; line-height: 1.3;">${news.title}</div>
-            </div>`;
-    });
-    return html;
-}
-
-function renderAnnouncementsHtml() {
+function renderTimelineHtml() {
     const feed = document.getElementById('announcements-feed');
     if (!feed) return;
 
-    let filteredNews = loadedAnnouncements;
-    if (activeNewsFilter !== 'all') {
-        filteredNews = loadedAnnouncements.filter(n => n.ticker === activeNewsFilter);
-    }
-    // Only show announcements with positive or negative sentiment (skip neutral/routine)
-    filteredNews = filteredNews.filter(n => n.sentiment !== 'sent-neutral');
+    const brackets = [
+        { key: 'today', label: 'Today' },
+        { key: 'yesterday', label: 'Yesterday' },
+        { key: 'last_week', label: 'Last Week' },
+        { key: 'earlier', label: 'Earlier' }
+    ];
 
-    const eventsHtml = renderEventsSection(activeNewsFilter);
-    const dealsHtml = renderDealsSection(); // Always shows all deals
+    let html = '';
+    let totalItems = 0;
 
-    if (!eventsHtml && !dealsHtml && filteredNews.length === 0) {
+    brackets.forEach(bracket => {
+        const items = loadedTimeline[bracket.key] || [];
+        if (items.length === 0) return;
+        
+        totalItems += items.length;
+        html += `<div class="announcements-divider" style="margin-top: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); padding: 0.35rem; border-radius: 4px;"><span style="font-size: 0.7rem; font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.05em; text-transform: uppercase;">${bracket.label}</span></div>`;
+        
+        items.forEach(item => {
+            const isNews = item.type === 'news';
+            
+            // Format badges based on sentiment
+            let sentimentBadgeColor = 'var(--accent-amber)'; // Neutral
+            let sentimentIcon = '🟡';
+            if (item.sentiment === 'Positive') {
+                sentimentBadgeColor = 'var(--accent-green)';
+                sentimentIcon = '🟢';
+            } else if (item.sentiment === 'Negative') {
+                sentimentBadgeColor = 'var(--accent-red)';
+                sentimentIcon = '🔴';
+            }
+
+            // Description or "Why it matters" summary block
+            const desc = item.description || '';
+            const whyItMatters = item.why_it_matters 
+                ? `<div class="event-why-it-matters" style="margin-top: 0.4rem; padding: 0.4rem 0.6rem; background: rgba(255,255,255,0.015); border-left: 2px solid ${sentimentBadgeColor}; font-size: 0.72rem; border-radius: 2px; color: var(--color-text-muted); line-height: 1.35;">
+                     <strong>Why it matters:</strong> ${item.why_it_matters}
+                   </div>`
+                : '';
+
+            // Click action: news opens the url
+            const clickAction = isNews ? `onclick="window.open('${item.url}', '_blank')"` : '';
+            const pointerStyle = isNews ? 'cursor: pointer;' : '';
+
+            // Sub-badge for event type
+            const typeLabel = isNews ? 'News' : item.type;
+            const typeBadgeClass = isNews ? 'event-board' : `event-${item.type.toLowerCase()}`;
+
+            html += `
+                <div class="announcement-item" ${clickAction} style="${pointerStyle} transition: background 0.2s; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                    <div class="announcement-meta" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; color: var(--color-text-muted);">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span class="announcement-ticker" onclick="event.stopPropagation(); openTradingView('${item.symbol}')" style="font-weight: 600; color: var(--accent-blue); cursor: pointer; text-decoration: underline;">${item.symbol}</span>
+                            <span class="announcement-badge ${typeBadgeClass}" style="padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.65rem;">${typeLabel}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-weight: 500; font-size: 0.65rem; color: ${sentimentBadgeColor};">${sentimentIcon} ${item.sentiment} (${item.sentiment_confidence}%)</span>
+                            <span>${item.source}</span>
+                        </div>
+                    </div>
+                    <div class="announcement-headline" style="color: var(--color-text-primary); font-weight: 500; margin-top: 0.4rem; font-size: 0.82rem; line-height: 1.35;">${item.title}</div>
+                    ${desc && !isNews ? `<div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.3rem; line-height: 1.3;">${desc}</div>` : ''}
+                    ${whyItMatters}
+                </div>`;
+        });
+    });
+
+    if (totalItems === 0) {
         feed.innerHTML = `
             <div class="news-placeholder">
                 <i data-lucide="alert-circle" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem; display: inline-block;"></i>
-                <p>No announcements found${activeNewsFilter !== 'all' ? ` for ${activeNewsFilter}` : ''}.</p>
+                <p>No recent timeline events found.</p>
             </div>`;
-        window.initIcons(feed);
-        return;
+    } else {
+        feed.innerHTML = html;
     }
-
-    // Build layout: Events → Deals → News → (divider) → Announcements
-    const newsHtml = renderNewsSectionHtml();
-    let html = eventsHtml + dealsHtml + newsHtml;
-    if ((eventsHtml || dealsHtml || newsHtml) && filteredNews.length > 0) {
-        html += `<div class="announcements-divider"><span>Recent Corporate Filings</span></div>`;
-    }
-    filteredNews.forEach(news => {
-        html += `
-            <div class="announcement-item">
-                <div class="announcement-meta">
-                    <span class="announcement-ticker" onclick="openTradingView('${news.ticker}')" title="Open ${news.ticker} in TradingView">${news.ticker}</span>
-                    <span>${news.date}</span>
-                </div>
-                <div class="announcement-headline">${news.headline}</div>
-                <div class="announcement-badges">
-                    <span class="announcement-badge ${news.category}">${news.categoryName}</span>
-                    <span class="announcement-badge ${news.impact}">${news.impactName}</span>
-                    <span class="sentiment-badge ${news.sentiment}" onclick="showSentimentExplanation('${news.id}')" title="Click to view sentiment analysis details">${news.sentimentName}</span>
-                    <span class="announcement-source-link" onclick="showAnnouncementSource('${news.id}')" title="View Corporate Filings for ${news.ticker}">Filings ↗</span>
-                </div>
-            </div>`;
-    });
-    feed.innerHTML = html;
     window.initIcons(feed);
 }
 
@@ -5700,110 +5706,48 @@ async function renderAnnouncements(forceFetch = false) {
     
     updateNewsFilterOptions();
     
-    // If watchlist is empty, we don't fetch announcements or events, but we still fetch/show block deals!
     if (watchlistStocks.length === 0) {
-        loadedAnnouncements = [];
-        loadedEvents = [];
-        if (forceFetch || dealsTradeDate === '') {
-            if (!isDealsLoading) {
-                feed.innerHTML = `
-                    <div class="news-placeholder">
-                        <div style="border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent-blue); border-radius: 50%; width: 18px; height: 18px; animation: sector-pulse 1s linear infinite; margin-bottom: 0.5rem; display: inline-block;"></div>
-                        <p style="font-size: 0.75rem; color: var(--color-text-muted);">Fetching live bulk & block deals...</p>
-                    </div>
-                `;
-                fetchDeals(forceFetch).then(() => {
-                    renderAnnouncementsHtml();
-                    if (loadedDeals.length > 0) {
-                        const emptyTip = document.createElement('div');
-                        emptyTip.style.padding = '1rem';
-                        emptyTip.style.fontSize = '0.75rem';
-                        emptyTip.style.color = 'var(--color-text-muted)';
-                        emptyTip.style.textAlign = 'center';
-                        emptyTip.style.borderTop = '1px solid var(--panel-border)';
-                        emptyTip.style.marginTop = '1rem';
-                        emptyTip.innerHTML = '💡 Add stocks to your watchlist to view corporate announcements and upcoming events.';
-                        feed.appendChild(emptyTip);
-                    } else {
-                        feed.innerHTML = `
-                            <div class="news-placeholder">
-                                <i data-lucide="clock" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem; display: inline-block;"></i>
-                                <p>Your watchlist is empty.</p>
-                                <p style="font-size:0.75rem; color:var(--color-text-muted); margin-top:0.2rem;">Add stocks to your watchlist to view dynamic announcements.</p>
-                            </div>
-                        `;
-                        window.initIcons(feed);
-                    }
-                });
-            }
-        } else {
-            renderAnnouncementsHtml();
-            if (loadedDeals.length > 0) {
-                const emptyTip = document.createElement('div');
-                emptyTip.style.padding = '1rem';
-                emptyTip.style.fontSize = '0.75rem';
-                emptyTip.style.color = 'var(--color-text-muted)';
-                emptyTip.style.textAlign = 'center';
-                emptyTip.style.borderTop = '1px solid var(--panel-border)';
-                emptyTip.style.marginTop = '1rem';
-                emptyTip.innerHTML = '💡 Add stocks to your watchlist to view corporate announcements and upcoming events.';
-                feed.appendChild(emptyTip);
-            }
-        }
+        feed.innerHTML = `
+            <div class="news-placeholder">
+                <i data-lucide="clock" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem; display: inline-block;"></i>
+                <p>Your watchlist is empty.</p>
+                <p style="font-size:0.75rem; color:var(--color-text-muted); margin-top:0.2rem;">Add stocks to your watchlist to view dynamic announcements.</p>
+            </div>
+        `;
+        window.initIcons(feed);
         return;
     }
+
+    const symbolParam = activeNewsFilter === 'all' ? 'ALL' : activeNewsFilter;
+    const symbolChanged = lastFetchedTimelineSymbol !== symbolParam;
     
-    // Check if watchlist symbol list matches last fetched list
-    const sortedWatchlist = [...watchlistStocks].sort();
-    const sortedLastFetched = [...lastFetchedAnnouncementsSymbols].sort();
-    const symbolsMatch = JSON.stringify(sortedWatchlist) === JSON.stringify(sortedLastFetched);
-    
-    if (forceFetch || !symbolsMatch || loadedAnnouncements.length === 0) {
-        if (isAnnouncementsLoading) return; // Prevent concurrent requests
-        isAnnouncementsLoading = true;
+    if (forceFetch || symbolChanged || isTimelineLoading || Object.values(loadedTimeline).every(arr => arr.length === 0)) {
+        if (isTimelineLoading) return;
+        isTimelineLoading = true;
         
         feed.innerHTML = `
             <div class="news-placeholder">
                 <div style="border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent-blue); border-radius: 50%; width: 18px; height: 18px; animation: sector-pulse 1s linear infinite; margin-bottom: 0.5rem; display: inline-block;"></div>
-                <p style="font-size: 0.75rem; color: var(--color-text-muted);">Fetching live NSE data...</p>
+                <p style="font-size: 0.75rem; color: var(--color-text-muted);">Loading Market Intelligence feed...</p>
             </div>
         `;
         
-        // Fetch announcements, events, and deals concurrently
         try {
-            const [annRes] = await Promise.all([
-                fetch('/api/announcements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ symbols: watchlistStocks })
-                }),
-                fetchEvents(forceFetch),
-                fetchDeals(forceFetch)
-            ]);
-            if (annRes.ok) {
-                const data = await annRes.json();
-                loadedAnnouncements = data.announcements || [];
-                lastFetchedAnnouncementsSymbols = [...watchlistStocks];
-            } else {
-                console.error("Failed to fetch live announcements from backend.");
+            const res = await fetch(`/api/events?symbol=${symbolParam}&limit=30`);
+            if (res.ok) {
+                const result = await res.json();
+                loadedTimeline = result.data || { today: [], yesterday: [], last_week: [], earlier: [] };
+                lastFetchedTimelineSymbol = symbolParam;
             }
         } catch (e) {
-            console.error("Error fetching announcements: ", e);
+            console.error("Error fetching events timeline:", e);
+            loadedTimeline = { today: [], yesterday: [], last_week: [], earlier: [] };
         } finally {
-            isAnnouncementsLoading = false;
+            isTimelineLoading = false;
         }
-    } else {
-        // Announcements are cached — still try to fetch events and deals if needed
-        fetchEvents(forceFetch);
-        fetchDeals(forceFetch).then(() => renderAnnouncementsHtml());
     }
     
-    // Fetch Google news for the active stock
-    if (activeNewsFilter !== 'all') {
-        fetchGoogleNews(activeNewsFilter).then(() => renderAnnouncementsHtml());
-    }
-    
-    renderAnnouncementsHtml();
+    renderTimelineHtml();
 }
 
 function showAnnouncementSource(id) {

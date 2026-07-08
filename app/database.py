@@ -615,6 +615,67 @@ def _create_tables(conn):
         except sqlite3.OperationalError:
             pass  # Column already exists
 
+    # ---------- Market Intelligence Ingestion Engine tables ----------
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS news_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            external_id TEXT UNIQUE,
+            title TEXT NOT NULL,
+            url TEXT UNIQUE NOT NULL,
+            summary TEXT,
+            source TEXT,
+            sentiment TEXT,
+            sentiment_confidence REAL,
+            importance TEXT,
+            why_it_matters TEXT,
+            published_at TEXT NOT NULL,
+            inserted_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_news_symbol_pub ON news_articles (symbol, published_at DESC)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_news_articles_external_id ON news_articles (external_id)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS market_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            external_id TEXT UNIQUE,
+            event_type TEXT NOT NULL,
+            event_date TEXT NOT NULL,
+            title TEXT NOT NULL,
+            details TEXT,
+            ratio TEXT,
+            amount REAL,
+            sentiment TEXT,
+            sentiment_confidence REAL,
+            importance TEXT,
+            catalyst_score REAL,
+            why_it_matters TEXT,
+            unique_hash TEXT UNIQUE NOT NULL,
+            source TEXT NOT NULL DEFAULT 'NSE',
+            inserted_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_market_events_symbol ON market_events (symbol)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_market_events_event_type ON market_events (event_type)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_market_events_event_date ON market_events (event_date)')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS news_fetch_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            status TEXT NOT NULL,
+            latency_ms INTEGER,
+            error_message TEXT,
+            records_count INTEGER DEFAULT 0,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    ''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_news_fetch_logs_timestamp ON news_fetch_logs (timestamp DESC)')
+
+
 
 def close_db(e=None):
     """Close the database connection."""

@@ -123,6 +123,16 @@ def init_scheduler(app: Flask):
             args=[app]
         )
 
+    # Add Market Intelligence Ingestion job
+    scheduler.add_job(
+        func=ingest_market_intelligence_task,
+        trigger=IntervalTrigger(minutes=app.config.get('NEWS_REFRESH_MINUTES', 60)),
+        id='mi_ingest_job',
+        name='Refresh Market Intelligence news and events',
+        replace_existing=True,
+        args=[app]
+    )
+
     # Start the scheduler
     scheduler.start()
     logger.info("Background scheduler started")
@@ -249,6 +259,43 @@ def refresh_market_cap_cache(app: Flask):
             logger.info(f"Market cap cache refresh completed. Inserted/updated {inserted} symbols.")
     except Exception as e:
         logger.error(f"Error in background market cap refresh task: {e}")
+
+
+def ingest_market_intelligence_task(app: Flask):
+    """Background task to fetch news and events for high-priority symbols."""
+    try:
+        with app.app_context():
+            from app.services.market_intelligence.jobs.priority_queue import priority_queue
+            from app.services.market_intelligence.services.news_service import NewsService
+            from app.services.market_intelligence.services.event_service import EventService
+            
+            logger.info("Starting background Market Intelligence ingestion task...")
+            
+            news_service = NewsService()
+            event_service = EventService()
+            
+            # Fetch priority queue symbols
+            symbols = priority_queue.get_all_priority_symbols()
+            
+            # Limit background polling to avoid rate limits
+            limit = 20
+            target_symbols = symbols[:limit]
+            
+            logger.info(f"Priority symbols target for this run: {target_symbols}")
+            
+            for sym in target_symbols:
+                try:
+                    new_news = news_service.ingest_news_for_symbol(sym)
+                    new_events = event_service.ingest_events_for_symbol(sym)
+                    logger.info(f"Ingested {sym}: Added {new_news} news articles, {new_events} corporate events.")
+                    # Gentle sleep to respect rate limits
+                    time.sleep(0.5)
+                except Exception as sym_err:
+                    logger.warning(f"Error fetching data for priority symbol {sym}: {sym_err}")
+                    
+            logger.info("Background Market Intelligence ingestion task completed.")
+    except Exception as e:
+        logger.error(f"Error in background Market Intelligence task: {e}")
 
 
 # For direct execution (testing)

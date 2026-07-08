@@ -23,6 +23,14 @@ from app import (
     refresh_ep_screener
 )
 
+# Shut down background scheduler to prevent test database locking
+if hasattr(flask_app, 'scheduler') and flask_app.scheduler:
+    try:
+        flask_app.scheduler.shutdown(wait=False)
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def patch_sqlite(monkeypatch):
     app.init_db()

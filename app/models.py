@@ -500,3 +500,63 @@ class MomentumScore(BaseModel):
             'calculated_at': self.calculated_at.isoformat() if self.calculated_at else None
         }
         return res
+
+
+class NewsArticle(BaseModel):
+    """SQLAlchemy model for persisted news articles."""
+    __tablename__ = 'news_articles'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False, index=True)
+    external_id = db.Column(db.String(100), unique=True, index=True)  # Provider-native article ID
+    title = db.Column(db.String(500), nullable=False)
+    url = db.Column(db.String(1000), unique=True, nullable=False)
+    summary = db.Column(db.Text)
+    source = db.Column(db.String(100))
+    sentiment = db.Column(db.String(20))          # Positive, Negative, Neutral
+    sentiment_confidence = db.Column(db.Float)    # Confidence percentage (0-100)
+    importance = db.Column(db.String(20))         # Low, Medium, High, Critical
+    why_it_matters = db.Column(db.Text)           # AI explanation
+    published_at = db.Column(db.DateTime, nullable=False, index=True)
+    inserted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('idx_news_symbol_pub', 'symbol', 'published_at'),
+    )
+
+
+class MarketEvent(BaseModel):
+    """SQLAlchemy model for structured market events (Earnings, Dividends, Insider, Deals, etc.)."""
+    __tablename__ = 'market_events'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False, index=True)
+    external_id = db.Column(db.String(100), unique=True, index=True)  # Corporate Action filing ID
+    event_type = db.Column(db.String(50), nullable=False, index=True)  # EARNINGS, DIVIDEND, SPLIT, BULK_DEAL, INSIDER, etc.
+    event_date = db.Column(db.Date, nullable=False, index=True)
+    title = db.Column(db.String(500), nullable=False)
+    details = db.Column(db.Text)
+    ratio = db.Column(db.String(50))               # For splits/bonus (e.g. 1:1)
+    amount = db.Column(db.Float)                   # For dividends
+    sentiment = db.Column(db.String(20))          # Positive, Negative, Neutral
+    sentiment_confidence = db.Column(db.Float)    # Confidence percentage (0-100)
+    importance = db.Column(db.String(20))         # Low, Medium, High, Critical
+    catalyst_score = db.Column(db.Float)           # Score between -10 and +10
+    why_it_matters = db.Column(db.Text)           # AI explanation
+    unique_hash = db.Column(db.String(64), unique=True, nullable=False)  # Ingestion deduplication key
+    source = db.Column(db.String(50), default='NSE')  # Ingestion source (NSE, BSE, etc.)
+    inserted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class NewsFetchLog(BaseModel):
+    """SQLAlchemy model logging fetch metrics and API health."""
+    __tablename__ = 'news_fetch_logs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    provider = db.Column(db.String(50), nullable=False)
+    symbol = db.Column(db.String(20), nullable=False)
+    status = db.Column(db.String(20), nullable=False)  # SUCCESS, ERROR
+    latency_ms = db.Column(db.Integer)
+    error_message = db.Column(db.Text)
+    records_count = db.Column(db.Integer, default=0)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)

@@ -6433,7 +6433,7 @@ def fetch_nse_events(symbols=None):
     return []
 
 
-@api_bp.route("/events", methods=["POST", "GET"])
+@api_bp.route("/legacy-events", methods=["POST", "GET"])
 def get_events():
     from flask import request as flask_request
     try:
