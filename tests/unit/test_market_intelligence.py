@@ -308,9 +308,11 @@ def test_timeline_service(mi_app):
         # Verify timeline brackets
         assert len(timeline["today"]) == 1
         assert timeline["today"][0]["title"] == "Reliance Q1 Profit Up"
+        assert timeline["today"][0]["symbol"] == "RELIANCE"
 
         assert len(timeline["yesterday"]) == 1
         assert timeline["yesterday"][0]["title"] == "Reliance Declares Dividend"
+        assert timeline["yesterday"][0]["symbol"] == "RELIANCE"
 
         assert len(timeline["last_week"]) == 1
         assert timeline["last_week"][0]["title"] == "Reliance Launches New Energy Project"
@@ -703,5 +705,39 @@ def test_invalid_grouping_fallback(mi_app):
         res = ts.get_timeline_for_symbol("COALINDIA", grouping="unrecognized_grouping_format")
         assert "today" in res
         assert "yesterday" in res
+
+
+def test_provider_fallback_on_empty(mi_app):
+    """Test that ProviderManager falls back to GoogleRSS when Marketaux returns 0 articles."""
+    with patch('app.services.market_intelligence.providers.manager.MarketauxProvider') as mock_marketaux, \
+         patch('app.services.market_intelligence.providers.manager.GoogleRSSProvider') as mock_google:
+         
+         m_inst = mock_marketaux.return_value
+         g_inst = mock_google.return_value
+         m_inst.name = "Marketaux"
+         g_inst.name = "GoogleRSS"
+
+         # Primary returns empty list, secondary returns 1 article
+         m_inst.fetch.return_value = []
+         g_inst.fetch.return_value = [
+             NormalizedArticle(
+                 symbol="INFY",
+                 title="Google News Article",
+                 url="https://google.com/news",
+                 summary="summary",
+                 source="Google News",
+                 published_at=datetime.datetime.now(datetime.timezone.utc),
+                 external_id="goog-1"
+             )
+         ]
+
+         pm = ProviderManager()
+         articles = pm.fetch_news("INFY")
+
+         # Verify fallback occurred
+         assert len(articles) == 1
+         assert articles[0].source == "Google News"
+         assert m_inst.fetch.called is True
+         assert g_inst.fetch.called is True
 
 

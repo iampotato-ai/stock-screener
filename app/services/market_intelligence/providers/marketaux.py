@@ -23,6 +23,7 @@ class MarketauxProvider(BaseDataProvider):
         """Fetch news from Marketaux for the given stock symbol."""
         # Strip NSE prefix
         clean_symbol = symbol.split(':')[-1].upper() if ':' in symbol else symbol.upper()
+        marketaux_symbol = f"{clean_symbol}.NS"
         
         # Load API token
         if has_app_context():
@@ -37,7 +38,7 @@ class MarketauxProvider(BaseDataProvider):
         # Marketaux endpoint
         base_url = "https://api.marketaux.com/v1/news/all"
         query_params = {
-            "symbols": clean_symbol,
+            "symbols": marketaux_symbol,
             "filter_entities": "true",
             "api_token": api_token,
             "language": "en"

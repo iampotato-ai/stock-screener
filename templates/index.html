@@ -1387,8 +1387,9 @@
                     <div class="ep-header-title" style="display: flex; align-items: center; gap: 6px;">
                         <i data-lucide="zap" style="width: 18px; height: 18px; color: var(--accent-blue);"></i> <span>Episodic Pivot Screener</span>
                     </div>
-                    <div class="ep-header-subtitle">
-                        Identify neglected stocks receiving catalysts with rapid EOD repricing (Growth, Turnaround, Story, and Volume EPs).
+                    <div class="ep-header-subtitle" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>Identify neglected stocks receiving catalysts with rapid EOD repricing (Growth, Turnaround, Story, and Volume EPs).</span>
+                        <span id="ep-last-run-timestamp" style="font-size: 0.75rem; color: var(--accent-blue, #3b82f6); font-weight: 600;">(Last Run: --)</span>
                     </div>
                 </div>
                 <div>
@@ -1774,8 +1775,9 @@
                     <div class="bull-snort-header-title">
                         <span>🐂 Bull Snort Screener</span>
                     </div>
-                    <div class="bull-snort-header-subtitle">
-                        Identify institutional accumulation (Volume Pivots/Surges) and breakout setups near the 200 DMA.
+                    <div class="bull-snort-header-subtitle" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>Identify institutional accumulation (Volume Pivots/Surges) and breakout setups near the 200 DMA.</span>
+                        <span id="bs-last-run-timestamp" style="font-size: 0.75rem; color: #fbbf24; font-weight: 600;">(Last Run: --)</span>
                     </div>
                 </div>
             </div>
@@ -2093,8 +2095,9 @@
                         <i data-lucide="activity" style="width: 18px; height: 18px; color: #a855f7;"></i>
                         <span>Momentum Confidence Score&#8482;</span>
                     </div>
-                    <div class="bull-snort-header-subtitle" style="margin-top: 2px;">
-                        Composite score 0&#8211;100 across 5 pillars &#xb7; Technical &#xb7; Fundamental &#xb7; Momentum &#xb7; Institutional &#xb7; Risk
+                    <div class="bull-snort-header-subtitle" style="margin-top: 2px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>Composite score 0&#8211;100 across 5 pillars &#xb7; Technical &#xb7; Fundamental &#xb7; Momentum &#xb7; Institutional &#xb7; Risk</span>
+                        <span id="mcs-last-run-timestamp" style="font-size: 0.75rem; color: #a855f7; font-weight: 600;">(Last Run: --)</span>
                     </div>
                 </div>
                 <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
@@ -3493,6 +3496,19 @@
                 const json = await res.json();
                 if (json.success && json.data) {
                     const statusData = json.data;
+                    if (statusData.last_run) {
+                        try {
+                            const d = new Date(statusData.last_run);
+                            if (!isNaN(d.getTime())) {
+                                const dateStr = d.toISOString().split('T')[0];
+                                const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                const mcsTsEl = document.getElementById('mcs-last-run-timestamp');
+                                if (mcsTsEl) mcsTsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
+                            }
+                        } catch (e) {
+                            console.error("Error formatting MCS last_run time:", e);
+                        }
+                    }
                     const container = document.getElementById('mcs-progress-container');
                     const progressBar = document.getElementById('mcs-progress-bar');
                     const progressText = document.getElementById('mcs-progress-text');

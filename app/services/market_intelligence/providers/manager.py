@@ -36,7 +36,7 @@ class ProviderManager:
         }
 
     def fetch_news(self, symbol: str) -> List[NormalizedArticle]:
-        """Fetch news articles from healthy providers, falling back sequentially on error."""
+        """Fetch news articles from healthy providers, falling back sequentially on error or empty results."""
         errors = []
         for provider in self.news_providers:
             if not self._is_provider_healthy(provider.name):
@@ -47,17 +47,19 @@ class ProviderManager:
                 articles = self._fetch_with_retry_and_metrics(provider, symbol)
                 # Success resets failure counter
                 self.failure_counts[provider.name] = 0
-                return articles
+                if articles:
+                    return articles
+                logger.warning(f"Provider {provider.name} returned 0 articles for {symbol}. Trying next provider...")
             except Exception as e:
                 logger.error(f"Provider {provider.name} failed to fetch news for {symbol}: {e}")
                 self._record_failure(provider.name)
                 errors.append(f"{provider.name}: {e}")
 
-        logger.error(f"All news providers failed for symbol {symbol}. Errors: {errors}")
+        logger.error(f"All news providers failed or returned empty results for symbol {symbol}. Errors: {errors}")
         return []
 
     def fetch_events(self, symbol: str) -> List[NormalizedEvent]:
-        """Fetch corporate announcements / actions from event providers."""
+        """Fetch corporate announcements / actions from event providers, falling back if empty."""
         errors = []
         for provider in self.event_providers:
             if not self._is_provider_healthy(provider.name):
@@ -67,7 +69,9 @@ class ProviderManager:
             try:
                 events = self._fetch_with_retry_and_metrics(provider, symbol)
                 self.failure_counts[provider.name] = 0
-                return events
+                if events:
+                    return events
+                logger.warning(f"Provider {provider.name} returned 0 events for {symbol}. Trying next provider...")
             except Exception as e:
                 logger.error(f"Provider {provider.name} failed to fetch events for {symbol}: {e}")
                 self._record_failure(provider.name)

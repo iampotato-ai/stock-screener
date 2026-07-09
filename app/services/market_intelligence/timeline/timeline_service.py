@@ -71,23 +71,36 @@ class TimelineService:
         events = []
 
         if symbol_list:
+            # Sync ingestion on-demand ONLY if querying a specific ticker (not symbol list summary) to avoid HTTP timeouts
+            trigger_sync_ingest = len(symbol_list) == 1
+            try:
+                from flask import current_app
+                if current_app and current_app.config.get('TESTING'):
+                    trigger_sync_ingest = False
+            except Exception:
+                pass
+
             if fetch_news:
-                articles = (
-                    NewsArticle.query.filter(NewsArticle.symbol.in_(symbol_list))
-                    .order_by(NewsArticle.published_at.desc())
-                    .limit(limit)
-                    .all()
-                )
+                from ..services.news_service import NewsService
+                ns = NewsService()
+                for sym in symbol_list:
+                    if trigger_sync_ingest:
+                        articles.extend(ns.get_news_for_symbol(sym, limit=limit))
+                    else:
+                        # Direct DB pull without sync fetch fallback
+                        articles.extend(ns.news_repository.get_by_symbol(sym, limit=limit))
                 
             if fetch_events:
-                query = MarketEvent.query.filter(MarketEvent.symbol.in_(symbol_list))
-                if db_event_types:
-                    query = query.filter(MarketEvent.event_type.in_(db_event_types))
-                events = (
-                    query.order_by(MarketEvent.event_date.desc())
-                    .limit(limit)
-                    .all()
-                )
+                from ..services.event_service import EventService
+                es = EventService()
+                for sym in symbol_list:
+                    if trigger_sync_ingest:
+                        sym_events = es.get_events_for_symbol(sym, limit=limit)
+                    else:
+                        sym_events = es.event_repository.get_by_symbol(sym, limit=limit)
+                    if db_event_types:
+                        sym_events = [e for e in sym_events if e.event_type in db_event_types]
+                    events.extend(sym_events)
 
         merged_list = []
         
@@ -96,6 +109,7 @@ class TimelineService:
             merged_list.append({
                 'id': a.id,
                 'type': 'news',
+                'symbol': a.symbol,
                 'title': a.title,
                 'description': a.summary,
                 'source': a.source or 'News Feed',
@@ -114,6 +128,7 @@ class TimelineService:
             merged_list.append({
                 'id': e.id,
                 'type': e.event_type,  # DIVIDEND, EARNINGS, SPLIT, etc.
+                'symbol': e.symbol,
                 'title': e.title,
                 'description': e.details,
                 'source': e.source or 'NSE',

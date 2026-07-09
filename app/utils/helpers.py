@@ -30,7 +30,7 @@ _NLP_CATEGORY_MAPPINGS = constants._NLP_CATEGORY_MAPPINGS
 def init_nlp_models() -> bool:
     """Initialize NLP models (FinBERT, zero-shot classifier, DistilBART) if available and enabled."""
     global sentiment_analyzer, event_classifier, summarizer
-    if sentiment_analyzer is not None:  # Already initialized
+    if sentiment_analyzer is not None or event_classifier is not None:  # Already initialized
         return True
     # Respect environment toggle
     if os.environ.get('NLP_MODELS_ENABLED', 'True').lower() not in ('1', 'true', 'yes', 'on'):
@@ -38,33 +38,44 @@ def init_nlp_models() -> bool:
     try:
         # Import here to avoid hard dependency if not installed
         from transformers import pipeline
+    except Exception as e:
+        print(f"[NLP Helper] Failed to import transformers: {e}")
+        return False
 
-        # Initialize FinBERT for sentiment
+    # 1. Initialize FinBERT for sentiment
+    try:
         sentiment_analyzer = pipeline(
             "sentiment-analysis",
             model=constants.NLP_MODELS["sentiment"],
             tokenizer=constants.NLP_MODELS["sentiment"],
             return_all_scores=True
         )
+    except Exception as e:
+        print(f"[NLP Helper] Sentiment model not available: {e}")
+        sentiment_analyzer = None
 
-        # Initialize zero-shot classifier for event categories
+    # 2. Initialize zero-shot classifier for event categories
+    try:
         event_classifier = pipeline(
             "zero-shot-classification",
             model=constants.NLP_MODELS["classifier"]
         )
+    except Exception as e:
+        print(f"[NLP Helper] Zero-shot classifier not available: {e}")
+        event_classifier = None
 
-        # Initialize DistilBART for summarization
+    # 3. Initialize DistilBART for summarization (optional)
+    try:
         summarizer = pipeline(
             "summarization",
             model=constants.NLP_MODELS["summarizer"]
         )
-        return True
     except Exception as e:
-        print(f"[NLP Helper] NLP models not available: {e}")
-        sentiment_analyzer = None
-        event_classifier = None
+        print(f"[NLP Helper] Summarizer model not available: {e}")
         summarizer = None
-        return False
+
+    # The initialization is successful if at least sentiment or classification is available
+    return (sentiment_analyzer is not None or event_classifier is not None)
 
 def _prepare_text_for_analysis(desc: str, text: str, attachment_url: str = "") -> str:
     """Combines description and text inputs, optionally fetching full content."""
@@ -99,18 +110,40 @@ def _analyze_sentiment(text: str) -> Dict:
         return {"sentiment_label": "neutral", "nlp_sentiment_score": 0.0}
 
     sentiment_results = sentiment_analyzer(text[:512])  # FinBERT has 512-token limit
+    
+    # Standardize result layout to support various transformers/pipeline versions
+    if sentiment_results and isinstance(sentiment_results[0], list):
+        results_list = sentiment_results[0]
+    elif sentiment_results and isinstance(sentiment_results, list):
+        results_list = sentiment_results
+    else:
+        results_list = []
+
     sentiment_label = "neutral"
     max_score = 0.0
     sentiment_scores = {}
-    for res in sentiment_results[0]:
-        sentiment_scores[res['label']] = res['score']
-        if res['score'] > max_score:
-            max_score = res['score']
-            sentiment_label = res['label']
+    for res in results_list:
+        if isinstance(res, dict) and 'label' in res and 'score' in res:
+            lbl = res['label'].lower()
+            sentiment_scores[lbl] = res['score']
+            if res['score'] > max_score:
+                max_score = res['score']
+                sentiment_label = lbl
 
     pos_score = sentiment_scores.get('positive', 0.0)
     neg_score = sentiment_scores.get('negative', 0.0)
-    nlp_sentiment_score = pos_score - neg_score
+    
+    # If the pipeline returned only the top class, compute score from top category
+    if 'positive' not in sentiment_scores and 'negative' not in sentiment_scores:
+        if sentiment_label == 'positive':
+            nlp_sentiment_score = max_score
+        elif sentiment_label == 'negative':
+            nlp_sentiment_score = -max_score
+        else:
+            nlp_sentiment_score = 0.0
+    else:
+        nlp_sentiment_score = pos_score - neg_score
+
     return {
         "sentiment_label": sentiment_label,
         "nlp_sentiment_score": nlp_sentiment_score
@@ -238,7 +271,7 @@ def classify_announcement(desc: str, text: str) -> Tuple[str, str, str, str, str
             reason = "Financial results show positive revenue/profit growth and margin expansion, with no indicators of declining performance, signaling strong operational momentum."
 
     # 3. Order Win
-    elif any(x in desc_l or x in text_l for x in ["order", "contract", "bagged", "secured", "won", "award"]):
+    elif any(x in desc_l or x in text_l for x in ["order", "contract", "bagged", "bags", "secured", "secures", "won", "wins", "win", "award", "deal"]):
         cat = "cat-order-win"
         cat_name = "Order Win"
         imp = "imp-order-book"

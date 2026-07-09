@@ -11913,6 +11913,24 @@ function fetchEPListings(loadMore = false) {
                 }
             }
             
+            try {
+                const tsEl = document.getElementById('ep-last-run-timestamp');
+                if (tsEl) {
+                    if (data.last_run_time) {
+                        const d = new Date(data.last_run_time);
+                        if (!isNaN(d.getTime())) {
+                            const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            tsEl.textContent = `(Last Run: ${data.latest_date || d.toISOString().split('T')[0]} ${timeStr})`;
+                        } else {
+                            tsEl.textContent = `(Last Run: ${data.latest_date})`;
+                        }
+                    } else if (data.latest_date) {
+                        tsEl.textContent = `(Last Run: ${data.latest_date})`;
+                    }
+                }
+            } catch (e) {
+                console.error("Error setting EP last run date:", e);
+            }
             renderEPListingsTable();
         })
         .catch(err => {
@@ -12710,6 +12728,15 @@ function triggerEPRefresh() {
                                     
                                     renderEPListingsTable();
                                     resetEPBtn();
+                                    try {
+                                        const now = new Date();
+                                        const dateStr = now.toISOString().split('T')[0];
+                                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                        const tsEl = document.getElementById('ep-last-run-timestamp');
+                                        if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
+                                    } catch (e) {
+                                        console.error("Error setting EP last run timestamp:", e);
+                                    }
                                     if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
                                 });
                         }
@@ -13485,6 +13512,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.bullSnortData = json.data || [];
 
                 countLabel.textContent = `🐂 ${window.bullSnortData.length} Bull Snort signals found`;
+                try {
+                    const now = new Date();
+                    const dateStr = now.toISOString().split('T')[0];
+                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const tsEl = document.getElementById('bs-last-run-timestamp');
+                    if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
+                } catch (e) {
+                    console.error("Error setting Bull Snort last run timestamp:", e);
+                }
                 
                 sortBullSnortData();
                 updateBullSnortSortUI();

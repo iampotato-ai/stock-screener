@@ -221,6 +221,7 @@ class EPService:
     def __init__(self):
         self.ep_refresh_lock = threading.Lock()
         self.last_ep_refresh_time = 0.0
+        self.last_refresh_datetime = None
         self.ep_backtest_prep_lock = threading.Lock()
         self.ep_backtest_prep_status = {
             "running": False,
@@ -557,6 +558,7 @@ class EPService:
                 try:
                     from app.api.v1.legacy_routes import refresh_ep_screener as legacy_refresh
                     legacy_refresh()
+                    self.last_refresh_datetime = datetime.now().isoformat()
                 except Exception as e:
                     print(f"Error in background EP refresh: {e}")
 

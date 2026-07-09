@@ -1797,24 +1797,25 @@ def refresh_ep_screener():
                 round(price_change_pct, 3)
             ))
             
-            # Watchlist addition if EP score >= 0.55
-            if ep_score >= 0.55:
-                c.execute("SELECT id FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (s['ticker'],))
-                existing = c.fetchone()
-                if existing:
-                    c.execute('''
-                        UPDATE ep_watchlist
-                        SET ep_score = ?, stop_price = ?, ep_type = ?, updated_at = datetime('now')
-                        WHERE id = ?
-                    ''', (ep_score, today_low, ep_type, existing[0]))
-                else:
-                    c.execute('''
-                        INSERT INTO ep_watchlist (
-                            symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, catalyst_close
-                        ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
-                    ''', (
-                        s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low, today_close
-                    ))
+            # Check if symbol is already in active watchlist
+            c.execute("SELECT id FROM ep_watchlist WHERE symbol = ? AND status = 'ACTIVE'", (s['ticker'],))
+            existing = c.fetchone()
+            if existing:
+                # ALWAYS update metrics for existing watchlist items to keep them in-sync with latest EOD calculations
+                c.execute('''
+                    UPDATE ep_watchlist
+                    SET ep_score = ?, stop_price = ?, ep_type = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                ''', (ep_score, today_low, ep_type, existing[0]))
+            elif confidence == "HIGH":
+                # ONLY auto-add new items if they have HIGH confidence
+                c.execute('''
+                    INSERT INTO ep_watchlist (
+                        symbol, exchange, catalyst_date, ep_type, status, ep_score, entry_price, stop_price, catalyst_close
+                    ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
+                ''', (
+                    s['ticker'], s['exchange'], feature_date, ep_type, ep_score, today_close, today_low, today_close
+                ))
                 
                 # Send alert for new HIGH confidence candidates
                 if confidence == "HIGH" and ep_score >= 0.55 and not existing:

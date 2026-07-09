@@ -48,7 +48,8 @@ def get_ep_today():
             listings=res["listings"],
             total=res["total"],
             summary=res["summary"],
-            latest_date=res["latest_date"]
+            latest_date=res["latest_date"],
+            last_run_time=ep_service.last_refresh_datetime
         )
     except Exception as e:
         current_app.logger.error(f"Error getting EP today listings: {e}")

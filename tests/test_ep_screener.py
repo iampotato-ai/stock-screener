@@ -153,9 +153,9 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
     for i in range(149):
         date_str = (base_date - datetime.timedelta(days=150-i)).strftime("%Y-%m-%d")
         if i < 50:
-            c_price = 130.0
+            c_price = 145.0
         elif i < 100:
-            c_price = 115.0
+            c_price = 130.0
         else:
             c_price = 100.0
         mock_history.append({
@@ -186,15 +186,15 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
         {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
         {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
         {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 18.0, "eps": 1.8},
-        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 260.0, "net_profit": 40.0, "eps": 4.0} # YoY rev +160%, YoY net profit +300%
+        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 260.0, "net_profit": 40.0, "eps": 4.0, "surprise_type": "BLOWOUT_EARNINGS"} # YoY rev +160%, YoY net profit +300%
     ]
     
     # Mock announcements fetch
     mock_fetch_announcements.return_value = [
         {
             "symbol": "MOCKSTOCK",
-            "desc": "Capex expansion of manufacturing plant capacity",
-            "attchmntText": "capex expansion plant",
+            "desc": "General administrative update",
+            "attchmntText": "routine listing compliance details",
             "an_dt": "2026-06-11 11:00:00",
             "sort_date": "2026-06-11 11:00:00",
             "seq_id": "999999",
@@ -237,9 +237,9 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
     c.execute("SELECT event_type, headline, catalyst_score FROM corporate_events WHERE symbol='MOCKSTOCK'")
     events = c.fetchall()
     assert len(events) == 1
-    assert events[0][0] == "CAPEX_EXPANSION"
-    assert "Capex expansion" in events[0][1]
-    assert events[0][2] == 0.45
+    assert events[0][0] == "UNKNOWN"
+    assert "General administrative" in events[0][1]
+    assert events[0][2] == 0.20
     
     # Check ep_features
     c.execute("""
@@ -251,25 +251,22 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
     assert feat is not None
     assert feat[0] == "MOCKSTOCK"
     assert feat[1] > 0.0  # ep_score should be populated and > 0
-    assert feat[2] == "Story EP" # Capex is a Story EP
-    assert feat[3] in ("HIGH", "MEDIUM", "LOW")
+    assert feat[2] == "Growth EP"
+    assert feat[3] == "HIGH"
     assert feat[4] == 1000.0  # 10000000000.0 / 10000000 = 1000 Cr (TV India scanner returns INR directly)
     assert feat[5] == 1 # has_result
     assert feat[6] == 160.0 # revenue_growth: (260 - 100)/100 = 160%
     assert feat[7] == 300.0 # profit_growth: (40 - 10)/10 = 300%
     assert feat[8] == 1 # has_corp_event
-    assert feat[9] == "CAPEX_EXPANSION"
-    # catalyst_score: base 0.45 + 0.10 (rev >= 100) + 0.10 (profit >= 200) + 0.05 (mktcap < 5000 Cr) = 0.70
-    # Note: the small-cap bonus now fires correctly because mktcap_cr = 1000 Cr < 5000 Cr.
-    # Previously the buggy USD_TO_INR * 83.5 inflated it to 83 500 Cr, silently suppressing this bonus.
-    assert feat[10] == 0.70
+    assert feat[9] == "BLOWOUT_EARNINGS"
+    assert feat[10] == 1.00
     
     # Check ep_watchlist since ep_score will be high
     c.execute("SELECT symbol, ep_type, status FROM ep_watchlist WHERE symbol='MOCKSTOCK'")
     wl = c.fetchone()
     assert wl is not None
     assert wl[0] == "MOCKSTOCK"
-    assert wl[1] == "Story EP"
+    assert wl[1] == "Growth EP"
     assert wl[2] == "ACTIVE"
     
     conn.close()
