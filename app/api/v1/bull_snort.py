@@ -112,10 +112,15 @@ def bull_snort_screen():
         min_marketcap_cr is None
     )
 
-    if request.method == 'GET' and is_default:
+    force = request.args.get('force', 'false').lower() == 'true'
+
+    if request.method == 'GET' and is_default and not force:
         cache = current_app.config.get('BULL_SNORT_CACHE')
         if cache and 'data' in cache:
-            return jsonify({"data": cache['data']}), 200
+            return jsonify({
+                "data": cache['data'],
+                "refreshed": cache.get('refreshed')
+            }), 200
 
     results = bull_snort_service.screen_bull_snort(
         symbols=symbols,
@@ -128,12 +133,29 @@ def bull_snort_screen():
 
     # Populate cache if default GET request yielded results and cache was empty
     # Note: We only cache when min_marketcap_cr is None (using default cache behavior)
+    import pandas as pd
+    refreshed_time = pd.Timestamp.now().isoformat()
     if request.method == 'GET' and is_default and min_marketcap_cr is None:
-        import pandas as pd
-        current_app.config['BULL_SNORT_CACHE'] = {
+        import json
+        import os
+        cache_data = {
             'data': results,
             'count': len(results),
-            'refreshed': pd.Timestamp.now().isoformat()
+            'refreshed': refreshed_time
         }
+        current_app.config['BULL_SNORT_CACHE'] = cache_data
+        
+        # Save cache to instance folder for persistence across restarts
+        cache_file = os.path.join(current_app.instance_path, 'bull_snort_cache.json')
+        try:
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, indent=2)
+            current_app.logger.info("Saved Bull Snort cache to disk from API run")
+        except Exception as e:
+            current_app.logger.error(f"Failed to save Bull Snort cache to disk: {e}")
 
-    return jsonify({"data": results}), 200
+    return jsonify({
+        "data": results,
+        "refreshed": refreshed_time
+    }), 200

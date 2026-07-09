@@ -64,7 +64,7 @@ def main():
                             "INSERT OR REPLACE INTO market_cap_cache "
                             "(ticker, market_cap_inr, fetched_at) "
                             "VALUES (?, ?, datetime('now'))",
-                            (sym, int(cap * INR_PER_USD)),
+                            (sym, int(cap)),
                             commit=True
                         )
                         inserted += 1

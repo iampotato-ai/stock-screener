@@ -29,6 +29,17 @@ def create_app(config_name=None, overrides=None):
     except OSError:
         pass
 
+    # Load persisted Bull Snort cache if exists
+    cache_file = os.path.join(app.instance_path, 'bull_snort_cache.json')
+    if os.path.exists(cache_file):
+        try:
+            import json
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                app.config['BULL_SNORT_CACHE'] = json.load(f)
+            logger.info("Loaded persisted Bull Snort cache from disk")
+        except Exception as e:
+            logger.error(f"Failed to load persisted Bull Snort cache: {e}")
+
     # Initialize extensions
     init_extensions(app)
 

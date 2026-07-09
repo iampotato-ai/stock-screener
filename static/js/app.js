@@ -13452,19 +13452,105 @@ function generateGrowthMetricsHTML(stock) {
 // Bull Snort Workspace UI Handler
 // ===========================================================================
 let bullSnortScanTriggered = false;
+
+async function runBullSnortScreen(isAuto = false) {
+    const btnRunBullSnort = document.getElementById('btn-run-bull-snort');
+    if (!btnRunBullSnort) return;
+
+    const spinner = document.getElementById('bs-scan-spinner');
+    const btnText = btnRunBullSnort.querySelector('.btn-text');
+    const tbody = document.getElementById('bull-snort-tbody');
+    const countLabel = document.getElementById('bs-results-count');
+
+    if (spinner) spinner.classList.remove('hidden');
+    if (btnText) btnText.textContent = 'Screening...';
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="12" style="padding: 3rem; text-align: center; color: var(--color-text-muted);">
+                <span class="btn-spinner" style="display: inline-block; margin-right: 8px;"></span>
+                Scanning NSE universe for Bull Snort breakout setups...
+            </td>
+        </tr>
+    `;
+
+    try {
+        const vol_avg_period = document.getElementById('bs-vol-period').value;
+        const vol_surge_min = document.getElementById('bs-vol-surge').value;
+        const min_gap_history = document.getElementById('bs-min-gap').value;
+        const max_current_gap = document.getElementById('bs-max-gap').value;
+        const close_position_min = document.getElementById('bs-close-pos').value;
+
+        const params = new URLSearchParams({
+            vol_avg_period,
+            vol_surge_min,
+            min_gap_history,
+            max_current_gap,
+            close_position_min
+        });
+        
+        if (!isAuto) {
+            params.append('force', 'true');
+        }
+
+        const res = await fetch(`/api/bull_snort/screen?${params}`);
+        if (!res.ok) {
+            throw new Error(`API returned status ${res.status}`);
+        }
+        const json = await res.json();
+        window.bullSnortData = json.data || [];
+
+        countLabel.textContent = `🐂 ${window.bullSnortData.length} Bull Snort signals found`;
+        try {
+            let dateStr, timeStr;
+            if (json.refreshed) {
+                const refDate = new Date(json.refreshed);
+                if (isNaN(refDate.getTime())) {
+                    const now = new Date();
+                    dateStr = now.toISOString().split('T')[0];
+                    timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                } else {
+                    dateStr = refDate.getFullYear() + '-' + String(refDate.getMonth() + 1).padStart(2, '0') + '-' + String(refDate.getDate()).padStart(2, '0');
+                    timeStr = refDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
+            } else {
+                const now = new Date();
+                dateStr = now.toISOString().split('T')[0];
+                timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+            const tsEl = document.getElementById('bs-last-run-timestamp');
+            if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
+        } catch (e) {
+            console.error("Error setting Bull Snort last run timestamp:", e);
+        }
+        
+        sortBullSnortData();
+        updateBullSnortSortUI();
+        renderBullSnortTable();
+    } catch (err) {
+        console.error(err);
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="12" style="padding: 2rem; text-align: center; color: #ef4444; font-weight: 500;">
+                    ⚠️ Error running Bull Snort screen: ${err.message}
+                </td>
+            </tr>
+        `;
+    } finally {
+        if (spinner) spinner.classList.add('hidden');
+        if (btnText) btnText.textContent = 'Run Screen';
+    }
+}
+
 window.renderBullSnortWorkspace = function() {
     // Show the panel (make sure it's active)
     const view = document.getElementById('view-bull-snort');
     if (view) {
         view.classList.add('active');
     }
-    // Auto-trigger screen on first tab entry
+    // Auto-trigger screen on first tab entry (fetching cache)
     if (!bullSnortScanTriggered) {
         bullSnortScanTriggered = true;
-        const btnRun = document.getElementById('btn-run-bull-snort');
-        if (btnRun) {
-            btnRun.click();
-        }
+        runBullSnortScreen(true);
     }
 };
 
@@ -13472,73 +13558,7 @@ window.renderBullSnortWorkspace = function() {
 document.addEventListener('DOMContentLoaded', () => {
     const btnRunBullSnort = document.getElementById('btn-run-bull-snort');
     if (btnRunBullSnort) {
-        btnRunBullSnort.addEventListener('click', async () => {
-            const spinner = document.getElementById('bs-scan-spinner');
-            const btnText = btnRunBullSnort.querySelector('.btn-text');
-            const tbody = document.getElementById('bull-snort-tbody');
-            const countLabel = document.getElementById('bs-results-count');
-
-            if (spinner) spinner.classList.remove('hidden');
-            if (btnText) btnText.textContent = 'Screening...';
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="12" style="padding: 3rem; text-align: center; color: var(--color-text-muted);">
-                        <span class="btn-spinner" style="display: inline-block; margin-right: 8px;"></span>
-                        Scanning NSE universe for Bull Snort breakout setups...
-                    </td>
-                </tr>
-            `;
-
-            try {
-                const vol_avg_period = document.getElementById('bs-vol-period').value;
-                const vol_surge_min = document.getElementById('bs-vol-surge').value;
-                const min_gap_history = document.getElementById('bs-min-gap').value;
-                const max_current_gap = document.getElementById('bs-max-gap').value;
-                const close_position_min = document.getElementById('bs-close-pos').value;
-
-                const params = new URLSearchParams({
-                    vol_avg_period,
-                    vol_surge_min,
-                    min_gap_history,
-                    max_current_gap,
-                    close_position_min
-                });
-
-                const res = await fetch(`/api/bull_snort/screen?${params}`);
-                if (!res.ok) {
-                    throw new Error(`API returned status ${res.status}`);
-                }
-                const json = await res.json();
-                window.bullSnortData = json.data || [];
-
-                countLabel.textContent = `🐂 ${window.bullSnortData.length} Bull Snort signals found`;
-                try {
-                    const now = new Date();
-                    const dateStr = now.toISOString().split('T')[0];
-                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                    const tsEl = document.getElementById('bs-last-run-timestamp');
-                    if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
-                } catch (e) {
-                    console.error("Error setting Bull Snort last run timestamp:", e);
-                }
-                
-                sortBullSnortData();
-                updateBullSnortSortUI();
-                renderBullSnortTable();
-            } catch (err) {
-                console.error(err);
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="12" style="padding: 2rem; text-align: center; color: #ef4444; font-weight: 500;">
-                            ⚠️ Error running Bull Snort screen: ${err.message}
-                        </td>
-                    </tr>
-                `;
-            } finally {
-                if (spinner) spinner.classList.add('hidden');
-                if (btnText) btnText.textContent = 'Run Screen';
-            }
-        });
+        btnRunBullSnort.addEventListener('click', () => runBullSnortScreen(false));
     }
 });
 

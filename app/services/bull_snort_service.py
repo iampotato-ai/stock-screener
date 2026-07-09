@@ -32,6 +32,59 @@ BASE_NO_NEW_LOW_WINDOW = 10  # Phase 2: no new low in last N sessions
 MIN_ROWS_REQUIRED = 230  # Minimum rows of historical data required for Bull Snort calculation
 
 
+def _fetch_local_prices(symbol: str, latest_global_date=None, local_bars=None) -> List[Dict[str, Any]] | None:
+    """Attempt to fetch historical prices from the local daily_bars database table first."""
+    try:
+        bars = local_bars
+        if bars is None:
+            from flask import has_app_context
+            if not has_app_context():
+                return None
+            from app.models import DailyBar
+            from app.extensions import db
+            bars = db.session.query(DailyBar).filter(
+                DailyBar.symbol == symbol
+            ).order_by(DailyBar.trade_date.asc()).all()
+        
+        # Get the latest trade date in the entire daily_bars table to see what is current
+        if latest_global_date is None:
+            from flask import has_app_context
+            if has_app_context():
+                from app.models import DailyBar
+                from app.extensions import db
+                latest_global_date = db.session.query(db.func.max(DailyBar.trade_date)).scalar()
+        
+        if bars:
+            if latest_global_date:
+                latest_bar_date = bars[-1].trade_date
+                latest_bar_str = latest_bar_date.strftime('%Y-%m-%d') if hasattr(latest_bar_date, 'strftime') else str(latest_bar_date)
+                latest_global_str = latest_global_date.strftime('%Y-%m-%d') if hasattr(latest_global_date, 'strftime') else str(latest_global_date)
+                
+                # Check if the latest bar is older than global max by more than 3 days
+                import datetime
+                try:
+                    bar_dt = datetime.datetime.strptime(latest_bar_str, '%Y-%m-%d').date()
+                    global_dt = datetime.datetime.strptime(latest_global_str, '%Y-%m-%d').date()
+                    if (global_dt - bar_dt).days > 3:
+                        logger.debug(f"Local daily_bars for {symbol} are stale (latest: {latest_bar_str}, global: {latest_global_str})")
+                        return None
+                except Exception:
+                    if latest_bar_str < latest_global_str:
+                        return None
+
+            return [{
+                "date": bar.trade_date.strftime('%Y-%m-%d') if hasattr(bar.trade_date, 'strftime') else str(bar.trade_date),
+                "open": float(bar.open or 0.0),
+                "high": float(bar.high or 0.0),
+                "low": float(bar.low or 0.0),
+                "close": float(bar.close or 0.0),
+                "volume": int(bar.volume or 0)
+            } for bar in bars]
+    except Exception as e:
+        logger.error(f"Error reading local daily_bars for {symbol}: {e}")
+    return None
+
+
 def _has_sufficient_history(symbol: str, data=None) -> bool:
     """Return True iff the symbol has at least MIN_ROWS_REQUIRED rows of history.
 
@@ -44,6 +97,11 @@ def _has_sufficient_history(symbol: str, data=None) -> bool:
     """
     if data is not None:
         return len(data) >= MIN_ROWS_REQUIRED
+
+    # Check local database first
+    local_data = _fetch_local_prices(symbol)
+    if local_data is not None:
+        return len(local_data) >= MIN_ROWS_REQUIRED
 
     hist = fetch_historical_prices(symbol, range_str="2y")
     return hist is not None and len(hist) >= MIN_ROWS_REQUIRED
@@ -295,6 +353,7 @@ def screen_bull_snort(
     close_position_min: float = DEFAULT_CLOSE_POSITION_MIN,
     min_gap_history: float = DEFAULT_MIN_GAP_HISTORY,
     max_current_gap: float = DEFAULT_MAX_CURRENT_GAP,
+    allow_yfinance: bool = False,
 ) -> List[Dict[str, Any]]:
     """Run ``compute_bull_snort`` for each symbol in *symbols* and return successful results.
     """
@@ -302,37 +361,76 @@ def screen_bull_snort(
     skipped = []  # for optional diagnostic cache
     phase_kills = {'p1_gap': 0, 'p1_slope': 0, 'p2_gap': 0, 'p4_candle': 0}
 
-    for sym in symbols:
-        # Fetch data once per symbol
-        data = fetch_historical_prices(sym, range_str="2y")
+    # Pre-fetch the latest trade date and all daily bars in batch to avoid N+1 queries and context errors in threads
+    latest_global_date = None
+    bars_dict = {}
+    try:
+        from flask import has_app_context
+        if has_app_context():
+            from app.models import DailyBar
+            from app.extensions import db
+            latest_global_date = db.session.query(db.func.max(DailyBar.trade_date)).scalar()
+            
+            # Fetch all daily bars ordered by symbol and date
+            all_bars = db.session.query(DailyBar).order_by(DailyBar.symbol, DailyBar.trade_date.asc()).all()
+            for bar in all_bars:
+                if bar.symbol not in bars_dict:
+                    bars_dict[bar.symbol] = []
+                bars_dict[bar.symbol].append(bar)
+    except Exception as e:
+        logger.warning(f"Failed to pre-fetch daily bars or latest_global_date: {e}")
 
-        # Check if we have sufficient history (pre-filter)
-        if not _has_sufficient_history(sym, data):
-            skipped.append(sym)
-            continue  # silent skip
+    from concurrent.futures import ThreadPoolExecutor
 
-        # Compute Bull Snort using the already fetched data
-        res = compute_bull_snort(
-            sym,
-            vol_avg_period=vol_avg_period,
-            vol_surge_min=vol_surge_min,
-            close_position_min=close_position_min,
-            min_gap_history=min_gap_history,
-            max_current_gap=max_current_gap,
-            data=data,
-            debug_counter=phase_kills,
-        )
+    def process_symbol(sym):
+        try:
+            # Check local DB first using pre-fetched bars
+            data = _fetch_local_prices(sym, latest_global_date=latest_global_date, local_bars=bars_dict.get(sym))
+            if data is None:
+                # Stale or missing data - only download from yfinance if small list or allowed
+                if len(symbols) > 50 and not allow_yfinance:
+                    return None
+                data = fetch_historical_prices(sym, range_str="2y")
+            elif len(data) < MIN_ROWS_REQUIRED:
+                # Active symbol but has insufficient local database history (<230 bars)
+                # Since active symbols are few (usually <150), we can download up-to-date data from yfinance.
+                data = fetch_historical_prices(sym, range_str="2y")
+
+            # Check if we have sufficient history (pre-filter)
+            if not _has_sufficient_history(sym, data):
+                skipped.append(sym)
+                return None
+
+            # Compute Bull Snort using the data
+            res = compute_bull_snort(
+                sym,
+                vol_avg_period=vol_avg_period,
+                vol_surge_min=vol_surge_min,
+                close_position_min=close_position_min,
+                min_gap_history=min_gap_history,
+                max_current_gap=max_current_gap,
+                data=data,
+                debug_counter=phase_kills,
+            )
+            return res
+        except Exception as e:
+            logger.error(f"Error processing symbol {sym} in thread: {e}")
+            return None
+
+    # Use ThreadPoolExecutor to run process_symbol in parallel (max 15 workers)
+    max_workers = 15 if (allow_yfinance or len(symbols) <= 50) else 5
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures_results = list(executor.map(process_symbol, symbols))
+
+    for res in futures_results:
         if res:
             results.append(res)
 
     # Update diagnostic cache if any symbols were skipped and we're in Flask context
     if skipped:
         try:
-            # current_app is available only within an application context.
-            # Accessing config outside context raises RuntimeError.
             current_app.config.setdefault('BULL_SNORT_SKIPPED', set()).update(skipped)
         except RuntimeError:
-            # Outside Flask application context - diagnostic cache unavailable, safe to skip
             pass
 
     # Log the phase counts for debugging

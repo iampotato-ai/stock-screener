@@ -82,6 +82,19 @@ def init_scheduler(app: Flask):
         args=[app]
     )
 
+    # One-shot startup warm-up: fill Bull Snort cache if empty
+    # Fires 15 seconds after server start, in the background, without blocking requests.
+    if app.config.get('ENABLE_BULL_SNORT', False):
+        scheduler.add_job(
+            func=startup_bull_snort_warmup,
+            trigger='date',
+            run_date=datetime.now() + timedelta(seconds=15),
+            id='startup_bull_snort_warmup',
+            name='One-shot Bull Snort cache warm-up on server start',
+            replace_existing=True,
+            args=[app]
+        )
+
     # Add Bull Snort refresh job - runs daily at 16:05 (gated behind feature flag)
     if app.config.get('ENABLE_BULL_SNORT', False):
         scheduler.add_job(
@@ -197,6 +210,19 @@ def startup_ipo_cache_warmup(app: Flask):
         logger.error(f"Error in startup IPO cache warm-up: {e}")
 
 
+def startup_bull_snort_warmup(app: Flask):
+    """One-shot startup job: warm up Bull Snort cache on server start if it is missing."""
+    try:
+        with app.app_context():
+            cache = app.config.get('BULL_SNORT_CACHE')
+            if cache is None or 'data' not in cache:
+                logger.info("Startup warm-up: Bull Snort cache is empty. Refreshing...")
+                refresh_bull_snort(app)
+                logger.info("Startup Bull Snort cache warm-up complete.")
+    except Exception as e:
+        logger.error(f"Error in startup Bull Snort cache warm-up task: {e}")
+
+
 def refresh_bull_snort(app: Flask):
     """Background task to run Bull Snort screening and cache results."""
     try:
@@ -211,13 +237,26 @@ def refresh_bull_snort(app: Flask):
                 vol_surge_min=app.config.get('BULL_SNORT_VOL_SURGE_MIN', 3.0),
                 close_position_min=app.config.get('BULL_SNORT_CLOSE_POSITION_MIN', 0.65),
                 min_gap_history=app.config.get('BULL_SNORT_MIN_GAP_HISTORY', 10.0),
-                max_current_gap=app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0)
+                max_current_gap=app.config.get('BULL_SNORT_MAX_CURRENT_GAP', 5.0),
+                allow_yfinance=True
             )
-            app.config['BULL_SNORT_CACHE'] = {
+            cache_data = {
                 'data': results,
                 'count': len(results),
                 'refreshed': pd.Timestamp.now().isoformat()
             }
+            app.config['BULL_SNORT_CACHE'] = cache_data
+            
+            # Save cache to instance folder for persistence across restarts
+            cache_file = os.path.join(app.instance_path, 'bull_snort_cache.json')
+            try:
+                os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(cache_data, f, indent=2)
+                logger.info("Saved Bull Snort cache to disk")
+            except Exception as e:
+                logger.error(f"Failed to save Bull Snort cache to disk: {e}")
+
             logger.info(f"Bull Snort background screen completed: {len(results)} signals found")
     except Exception as e:
         logger.error(f"Error in background Bull Snort refresh task: {e}")
@@ -241,9 +280,8 @@ def refresh_market_cap_cache(app: Flask):
                     ticker = yf.Ticker(f"{sym}.NS")
                     info = ticker.info or {}
                     mkt_cap_raw = info.get('marketCap', 0)
-                    # Convert USD to INR using configurable rate (default 83.0)
-                    INR_PER_USD = app.config.get('INR_PER_USD', 83.0)
-                    market_cap_inr = int(mkt_cap_raw * INR_PER_USD)
+                    # yfinance returns marketCap in the currency of the security (INR for NSE)
+                    market_cap_inr = int(mkt_cap_raw)
                     # Insert into cache
                     execute_query(
                         "INSERT OR REPLACE INTO market_cap_cache (ticker, market_cap_inr, fetched_at) VALUES (?, ?, datetime('now'))",

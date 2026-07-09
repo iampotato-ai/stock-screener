@@ -28,7 +28,7 @@ def get_market_cap_inr(ticker: str) -> int | None:
         cap_usd = info.get('marketCap')
         if cap_usd is None:
             return None
-        return int(cap_usd * INR_PER_USD)
+        return int(cap_usd)
     except Exception as exc:
         logging.debug(f"Yahoo fetch failed for {ticker}: {exc}")
         return None
