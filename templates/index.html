@@ -165,7 +165,7 @@
     <!-- SheetJS Excel Library -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/lucide@0.418.0/dist/umd/lucide.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.68">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=1.0.69">
 </head>
 <body>
 
@@ -671,6 +671,26 @@
                         <input type="number" id="filter-pe-min" class="range-filter-input" step="0.1" placeholder="Min">
                         <span class="range-filter-span">to</span>
                         <input type="number" id="filter-pe-max" class="range-filter-input" step="0.1" placeholder="Max">
+                    </div>
+                </div>
+
+                <!-- RSI Filter -->
+                <div class="range-filter-group">
+                    <label for="filter-rsi-min">RSI</label>
+                    <div class="range-inputs-row">
+                        <input type="number" id="filter-rsi-min" class="range-filter-input" step="0.1" placeholder="Min">
+                        <span class="range-filter-span">to</span>
+                        <input type="number" id="filter-rsi-max" class="range-filter-input" step="0.1" placeholder="Max">
+                    </div>
+                </div>
+
+                <!-- RS Rating Filter -->
+                <div class="range-filter-group">
+                    <label for="filter-rs-rating-min">RS Rating</label>
+                    <div class="range-inputs-row">
+                        <input type="number" id="filter-rs-rating-min" class="range-filter-input" step="0.1" placeholder="Min">
+                        <span class="range-filter-span">to</span>
+                        <input type="number" id="filter-rs-rating-max" class="range-filter-input" step="0.1" placeholder="Max">
                     </div>
                 </div>
 
@@ -2981,7 +3001,7 @@
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.55"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.68"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.69"></script>
     <script>
     // ─── Momentum Confidence Score™ Tab Logic ───────────────────────────────────
     (function () {

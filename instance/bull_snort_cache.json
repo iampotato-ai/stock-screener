@@ -1,29 +1,10 @@
 {
   "data": [
     {
-      "symbol": "TCIEXP",
-      "date": "2026-07-09",
-      "open": 501.45,
-      "high": 583.0,
-      "low": 498.0,
-      "close": 553.55,
-      "prev_close": 499.0,
-      "pct_change": 10.93,
-      "volume": 2889144,
-      "avg_volume": 280303,
-      "vol_ratio": 10.307,
-      "close_position": 0.654,
-      "candle_range": 85.0,
-      "dma200": 567.23,
-      "current_gap_pct": 2.47,
-      "max_gap_6mo_pct": 38.83,
-      "dma_slope_norm": -0.1512,
-      "n_vol_pivots": 21,
-      "n_vol_surges": 9,
-      "accumulation_score": 100.0,
-      "final_score": 89.86
+      "symbol": "C",
+      "final_score": 77
     }
   ],
   "count": 1,
-  "refreshed": "2026-07-09T17:15:33.853678"
+  "refreshed": "2026-07-11T09:48:37.959018"
 }

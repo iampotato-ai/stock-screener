@@ -22,6 +22,7 @@ def get_db():
         )
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
+        g.db.execute("PRAGMA journal_mode = WAL")
     return g.db
 
 
@@ -52,6 +53,7 @@ def _get_connection():
     conn = sqlite3.connect(_DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn, True
 
 
@@ -715,6 +717,7 @@ def get_db_connection(db_path=None):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     try:
         yield conn
     finally:

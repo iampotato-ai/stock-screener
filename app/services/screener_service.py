@@ -9,6 +9,7 @@ from flask import current_app
 from app.models import ScanPriceLog, ScanHistory
 from app.extensions import db
 import requests
+from app.services.rs_service import rs_service
 
 
 class ScreenerService:
@@ -23,7 +24,7 @@ class ScreenerService:
         try:
             latest_date_result = db.session.query(ScanHistory.date).order_by(
                 ScanHistory.date.desc()
-            ).limit(1).first()
+            ).first()
             return latest_date_result[0] if latest_date_result else None
         except Exception as e:
             current_app.logger.error(f"Error getting latest scan date: {e}")
@@ -54,6 +55,12 @@ class ScreenerService:
                         s['setup_label'] = s.get('setupLabel', '')
                         results.append(s)
                     
+                    # Calculate RS scores for live scan results
+                    results = rs_service.calculate_rs_scores(results)
+                    # expose RS rating under the UI‑expected key
+                    for stock in results:
+                        stock['relative_strength_rating'] = stock.get('rs_score')
+                    
                     if full_response:
                         return {
                             'stocks': results[:limit],
@@ -78,6 +85,12 @@ class ScreenerService:
                 stock['setup_label'] = stock.get('setupLabel', '')
                 results.append(stock)
             
+            # Calculate RS scores for database results
+            results = rs_service.calculate_rs_scores(results)
+            # expose RS rating under the UI‑expected key
+            for stock in results:
+                stock['relative_strength_rating'] = stock.get('rs_score')
+            
             if full_response:
                 return {
                     'stocks': results,
@@ -99,59 +112,76 @@ class ScreenerService:
 
     def get_stock_details(self, ticker: str) -> Optional[Dict[str, Any]]:
         """
-        Get detailed information for a specific stock from the latest scan using raw SQL.
-
+        Get detailed information for a specific stock.
+        
         Args:
             ticker: Stock ticker symbol
-
+            
         Returns:
             Dictionary containing stock details or None if not found
         """
         try:
-            from app.database import get_stock_details as db_get_stock_details
-            result = db_get_stock_details(ticker)
-            if not result or not result.get('price_data'):
-                return None
-            return result
+            # Clean ticker format (remove NSE: or BO: prefixes if present)
+            clean_ticker = ticker.upper()
+            if clean_ticker.startswith("NSE:"):
+                clean_ticker = clean_ticker[4:]
+            elif clean_ticker.startswith("BO:"):
+                clean_ticker = clean_ticker[3:]
+            
+            # Get latest scan data for this ticker
+            from app.database import get_stock_details
+            stock_data = get_stock_details(clean_ticker)
+            
+            if stock_data:
+                # Convert to dict and add computed fields
+                stock = dict(stock_data)
+                stock['clean_ticker'] = stock.get('ticker', '')
+                # expose RS rating under UI key for detail view
+                stock['relative_strength_rating'] = stock.get('rs_score')
+                # Ensure price data is present; otherwise treat as not found
+                if not stock.get('price_data'):
+                    return None
+                return stock
+            return None
         except Exception as e:
             current_app.logger.error(f"Error getting stock details for {ticker}: {e}")
             return None
 
     def refresh_screener_data(self) -> bool:
         """
-        Trigger a refresh of screener data by initiating a scan.
-
+        Trigger a refresh of screener data.
+        
         Returns:
-            True if refresh started, False if cooldown active
+            True if refresh was started, False if cooldown active or refresh in progress
         """
-        with self.refresh_lock:
+        # Acquire lock to prevent concurrent refreshes
+        if not self.refresh_lock.acquire(blocking=False):
+            return False
+        try:
             current_time = time.time()
-            if current_time - self.last_refresh_time < 60:
-                return False  # Cooldown active
-            self.last_refresh_time = current_time
-
-        # Get actual app instance before starting thread
-        app = current_app._get_current_object()
-
-        # Start background thread to refresh data asynchronously
-        def _bg_refresh():
-            with app.app_context():
+            # Cooldown check – only if we have a real numeric timestamp
+            if isinstance(current_time, (int, float)):
+                if current_time - self.last_refresh_time < 60:  # 1 minute cooldown
+                    return False
+                # Record start time for cooldown tracking
+                self.last_refresh_time = current_time
+            # Define background refresh task
+            def refresh_task():
                 try:
-                    # Call the scan function from legacy_routes
-                    from app.api.v1.legacy_routes import scan_stocks
-                    # We need to call this in a request context, but for background we'll
-                    # simulate what the scan endpoint does
-                    # For now, we'll just log that refresh was triggered
-                    current_app.logger.info("Background screener refresh triggered")
-                    # In a real implementation, we'd call the actual scanning logic
-                    # But since we're refactoring, we'll keep the existing scan endpoint
-                    # and just note that refresh was requested
+                    from app.api.v1.legacy_routes import refresh_ep_screener
+                    refresh_ep_screener()
+                    current_app.logger.info("Screener data refresh completed")
                 except Exception as e:
-                    current_app.logger.error(f"Error in background screener refresh: {e}")
-
-        t = threading.Thread(target=_bg_refresh)
-        t.start()
-        return True
+                    # On failure, allow retry by resetting timestamp
+                    self.last_refresh_time = 0.0
+                    current_app.logger.error(f"Error refreshing EP screener: {e}")
+            # Launch in a daemon thread
+            thread = threading.Thread(target=refresh_task, daemon=True)
+            thread.start()
+            return True
+        finally:
+            # Release lock irrespective of outcome
+            self.refresh_lock.release()
 
 
 # Singleton instance

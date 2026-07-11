@@ -320,6 +320,7 @@ const masterColumnsConfig = {
         { id: 'change_from_open', name: 'Chg from Open (%)', sortField: 'change_from_open', isVisible: false, align: 'right', canToggle: true },
         { id: 'vwap', name: 'VWAP (₹)', sortField: 'VWAP', isVisible: false, align: 'right', canToggle: true },
         { id: 'rsi', name: 'RSI', sortField: 'RSI', isVisible: false, align: 'right', canToggle: true },
+        { id: 'relative_strength_rating', name: 'RS Rating', sortField: 'relative_strength_rating', isVisible: false, align: 'right', canToggle: true, tooltip: 'Relative Strength percentile vs peers (0‑100). Higher is stronger.' },
         { id: 'pct_above_low', name: 'Above 52W Low (%)', sortField: 'pct_above_low', isVisible: false, align: 'right', canToggle: true },
         { id: 'turnover_m', name: 'Avg Turnover (Cr)', sortField: 'turnover_m', isVisible: false, align: 'right', canToggle: true },
         { id: 'days_in_scan', name: 'Days in Scan', sortField: 'days_in_scan', isVisible: false, align: 'center', canToggle: true, tooltip: 'Consecutive trading days this stock has been in the scan.' },
@@ -411,8 +412,8 @@ window.openUpgradeModal = window.openUpgradeModal || function() {
 window.resetScreenerFilters = function() {
     if (searchInput) searchInput.value = '';
     
-    // Reset range filter input fields
     const rangeIds = [
+        'filter-rsi-min', 'filter-rsi-max', 'filter-rs-rating-min', 'filter-rs-rating-max',
         'filter-rvol-min', 'filter-rvol-max',
         'filter-change-min', 'filter-change-max',
         'filter-pe-min', 'filter-pe-max'
@@ -675,6 +676,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'filter-rvol-min', 'filter-rvol-max',
         'filter-change-min', 'filter-change-max',
         'filter-pe-min', 'filter-pe-max',
+        'filter-rsi-min', 'filter-rsi-max',
+        'filter-rs-rating-min', 'filter-rs-rating-max',
         'filter-ims', 'filter-swing', 'filter-candle', 'filter-volume-alert'
     ];
     rangeFilterInputs.forEach(id => {
@@ -2128,9 +2131,10 @@ function applyRegimePreset(swingBand) {
 
   // Clear range inputs
   const rangeInputs = [
-    'filter-rvol-min', 'filter-rvol-max',
-    'filter-change-min', 'filter-change-max',
-    'filter-pe-min', 'filter-pe-max'
+        'filter-rsi-min', 'filter-rsi-max', 'filter-rs-rating-min', 'filter-rs-rating-max',
+        'filter-rvol-min', 'filter-rvol-max',
+        'filter-change-min', 'filter-change-max',
+        'filter-pe-min', 'filter-pe-max'
   ];
   rangeInputs.forEach(id => {
     const el = document.getElementById(id);
@@ -2719,6 +2723,7 @@ function checkMaFlirtingOrBetween(stock) {
 function updateActiveFiltersCount() {
     let count = 0;
     const rangeFilterInputs = [
+        'filter-rsi-min', 'filter-rsi-max', 'filter-rs-rating-min', 'filter-rs-rating-max',
         'filter-rvol-min', 'filter-rvol-max',
         'filter-change-min', 'filter-change-max',
         'filter-pe-min', 'filter-pe-max',
@@ -2750,12 +2755,16 @@ function filterAndRender() {
     const sectorVal = selectedSector;
     
     // Get Range Filter values
-    const rvolMin = parseFloat(document.getElementById('filter-rvol-min')?.value);
-    const rvolMax = parseFloat(document.getElementById('filter-rvol-max')?.value);
-    const changeMin = parseFloat(document.getElementById('filter-change-min')?.value);
-    const changeMax = parseFloat(document.getElementById('filter-change-max')?.value);
-    const peMin = parseFloat(document.getElementById('filter-pe-min')?.value);
-    const peMax = parseFloat(document.getElementById('filter-pe-max')?.value);
+        const rvolMin = parseFloat(document.getElementById('filter-rvol-min')?.value);
+        const rvolMax = parseFloat(document.getElementById('filter-rvol-max')?.value);
+        const changeMin = parseFloat(document.getElementById('filter-change-min')?.value);
+        const changeMax = parseFloat(document.getElementById('filter-change-max')?.value);
+        const peMin = parseFloat(document.getElementById('filter-pe-min')?.value);
+        const peMax = parseFloat(document.getElementById('filter-pe-max')?.value);
+        const rsiMin = parseFloat(document.getElementById('filter-rsi-min')?.value);
+        const rsiMax = parseFloat(document.getElementById('filter-rsi-max')?.value);
+        const rsRatingMin = parseFloat(document.getElementById('filter-rs-rating-min')?.value);
+        const rsRatingMax = parseFloat(document.getElementById('filter-rs-rating-max')?.value);
     
     filteredStocks = stocksData.filter(stock => {
         const matchesSearch = (stock.clean_ticker && stock.clean_ticker.toLowerCase().includes(searchVal)) || 
@@ -2788,6 +2797,23 @@ function filterAndRender() {
         }
         if (!isNaN(peMax) && (stock.pe_ratio === null || stock.pe_ratio === undefined || stock.pe_ratio > peMax)) {
             matchesPe = false;
+        }
+        
+        // RSI Range
+        let matchesRsi = true;
+        if (!isNaN(rsiMin) && (stock.RSI === null || stock.RSI === undefined || stock.RSI < rsiMin)) {
+            matchesRsi = false;
+        }
+        if (!isNaN(rsiMax) && (stock.RSI === null || stock.RSI === undefined || stock.RSI > rsiMax)) {
+            matchesRsi = false;
+        }
+        // RS Rating Range
+        let matchesRsRating = true;
+        if (!isNaN(rsRatingMin) && (stock.relative_strength_rating === null || stock.relative_strength_rating === undefined || stock.relative_strength_rating < rsRatingMin)) {
+            matchesRsRating = false;
+        }
+        if (!isNaN(rsRatingMax) && (stock.relative_strength_rating === null || stock.relative_strength_rating === undefined || stock.relative_strength_rating > rsRatingMax)) {
+            matchesRsRating = false;
         }
 
         // IMS Score Filter
@@ -2897,7 +2923,7 @@ function filterAndRender() {
             matchesMtf = mtfVal === parseInt(currentMtfFilter);
         }
         
-        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesMtf;
+        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesMtf && matchesRsi && matchesRsRating;
     });
     
     // Clear the active intraday filter after applying so it doesn't stick permanently if the user changes other filters manually
@@ -3283,6 +3309,8 @@ function renderTable() {
             } else if (col.id === 'rsi') {
                 const rsiClass = stock.RSI != null ? (stock.RSI >= 70 ? 'val-up' : stock.RSI <= 30 ? 'val-down' : '') : '';
                 html += `<td data-column="rsi" class="text-right ${rsiClass}" style="font-weight:600;">${renderFundVal(stock.RSI, 1)}</td>`;
+            } else if (col.id === 'relative_strength_rating') {
+                html += `<td data-column="relative_strength_rating" class="text-right">${renderFundVal(stock.relative_strength_rating, 0)}</td>`;
             } else if (col.id === 'pct_above_low') {
                 const pct_above_low = stock.pct_above_low !== null && stock.pct_above_low !== undefined ? stock.pct_above_low : 0;
                 html += `
@@ -7904,6 +7932,10 @@ function getCurrentFilters() {
         rvolMax: parseFloat(document.getElementById('filter-rvol-max')?.value) || null,
         changeMin: parseFloat(document.getElementById('filter-change-min')?.value) || null,
         changeMax: parseFloat(document.getElementById('filter-change-max')?.value) || null,
+        rsiMin: parseFloat(document.getElementById('filter-rsi-min')?.value) || null,
+        rsiMax: parseFloat(document.getElementById('filter-rsi-max')?.value) || null,
+        rsRatingMin: parseFloat(document.getElementById('filter-rs-rating-min')?.value) || null,
+        rsRatingMax: parseFloat(document.getElementById('filter-rs-rating-max')?.value) || null,
         peMin: parseFloat(document.getElementById('filter-pe-min')?.value) || null,
         peMax: parseFloat(document.getElementById('filter-pe-max')?.value) || null,
         ims: document.getElementById('filter-ims')?.value || 'all',
@@ -7935,8 +7967,10 @@ function applyPreset(presetId) {
     setVal('filter-change-max', f.changeMax);
     setVal('filter-pe-min', f.peMin);
     setVal('filter-pe-max', f.peMax);
-    
-    // Selects (calls global setSelect helper)
+    setVal('filter-rsi-min', f.rsiMin);
+    setVal('filter-rsi-max', f.rsiMax);
+    setVal('filter-rs-rating-min', f.rsRatingMin);
+    setVal('filter-rs-rating-max', f.rsRatingMax);
     setSelect('filter-ims', 'selected-ims-label', f.ims);
     setSelect('filter-swing', 'selected-swing-label', f.swing);
     
@@ -12695,73 +12729,93 @@ function triggerEPRefresh() {
     refreshBtn.disabled = true;
     if (btnText) btnText.innerText = 'Scanning...';
     if (btnSvg) btnSvg.classList.add('spin-loader');
-    
-    EP_API.post('/api/ep/refresh', {})
-        .then(data => {
-            if (data.error) {
-                if (typeof showToast === 'function') showToast(`Sync Error: ${data.error}`, 'error');
-                resetEPBtn();
-                return;
-            }
-            if (typeof showToast === 'function') showToast('Background EP scan started.', 'success');
-            
-            let pollCount = 0;
-            const interval = setInterval(() => {
-                pollCount++;
-                EP_API.get('/api/ep/refresh/status')
-                    .then(statusRes => {
-                        if (!statusRes.running) {
-                            clearInterval(interval);
-                            EP_API.get('/api/ep/today')
-                                .then(todayRes => {
-                                    epListingsData = todayRes.listings || [];
-                                    
-                                    const highCount = todayRes.summary ? (todayRes.summary.HIGH || 0) : 0;
-                                    const badge = document.getElementById('ep-high-count');
-                                    if (badge) {
-                                        badge.innerText = highCount;
-                                        badge.style.display = highCount > 0 ? 'inline-block' : 'none';
-                                        if (typeof window.recalculateActiveTabHighlight === 'function') {
-                                            window.recalculateActiveTabHighlight();
-                                        }
-                                    }
-                                    
-                                    renderEPListingsTable();
-                                    resetEPBtn();
-                                    try {
-                                        const now = new Date();
-                                        const dateStr = now.toISOString().split('T')[0];
-                                        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                                        const tsEl = document.getElementById('ep-last-run-timestamp');
-                                        if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
-                                    } catch (e) {
-                                        console.error("Error setting EP last run timestamp:", e);
-                                    }
-                                    if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
-                                });
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Error polling status:', err);
-                    });
-                
-                if (pollCount >= 24) { // 2 minutes max
-                    clearInterval(interval);
-                    resetEPBtn();
-                }
-            }, 5000);
-        })
-        .catch(err => {
-            console.error('Error triggering EP refresh:', err);
-            if (typeof showToast === 'function') showToast('Failed to start EP scan', 'error');
-            resetEPBtn();
-        });
-        
+
     function resetEPBtn() {
         refreshBtn.disabled = false;
         if (btnText) btnText.innerText = 'Scan EPs';
         if (btnSvg) btnSvg.classList.remove('spin-loader');
     }
+
+    function startPolling() {
+        let pollCount = 0;
+        const MAX_POLLS = 36; // 3 minutes max (36 × 5s)
+        const interval = setInterval(() => {
+            pollCount++;
+            EP_API.get('/api/ep/refresh/status')
+                .then(statusRes => {
+                    if (!statusRes.running) {
+                        clearInterval(interval);
+                        // Reload EP data
+                        EP_API.get('/api/ep/today')
+                            .then(todayRes => {
+                                epListingsData = todayRes.listings || [];
+                                
+                                const highCount = todayRes.summary ? (todayRes.summary.HIGH || 0) : 0;
+                                const badge = document.getElementById('ep-high-count');
+                                if (badge) {
+                                    badge.innerText = highCount;
+                                    badge.style.display = highCount > 0 ? 'inline-block' : 'none';
+                                    if (typeof window.recalculateActiveTabHighlight === 'function') {
+                                        window.recalculateActiveTabHighlight();
+                                    }
+                                }
+                                
+                                renderEPListingsTable();
+                                resetEPBtn();
+                                try {
+                                    const now = new Date();
+                                    const dateStr = now.toISOString().split('T')[0];
+                                    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                    const tsEl = document.getElementById('ep-last-run-timestamp');
+                                    if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
+                                } catch (e) {
+                                    console.error("Error setting EP last run timestamp:", e);
+                                }
+                                if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
+                            })
+                            .catch(() => resetEPBtn());
+                    }
+                })
+                .catch(err => {
+                    console.error('Error polling EP status:', err);
+                });
+            
+            if (pollCount >= MAX_POLLS) {
+                clearInterval(interval);
+                resetEPBtn();
+                if (typeof showToast === 'function') showToast('EP scan timed out. Please try again.', 'warning');
+            }
+        }, 5000);
+    }
+
+    // Use raw fetch so we can inspect the status code before EP_API throws on 4xx
+    fetch('/api/ep/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({})
+    })
+    .then(async res => {
+        const data = await res.json();
+        if (res.status === 200 && data.success) {
+            // Scan just started
+            if (typeof showToast === 'function') showToast('Background EP scan started.', 'success');
+            startPolling();
+        } else if (res.status === 429) {
+            // A scan is already running — just start polling to track its completion
+            if (typeof showToast === 'function') showToast('EP scan already in progress. Tracking...', 'info');
+            startPolling();
+        } else {
+            // Actual error
+            const msg = data.error || `Unexpected response (${res.status})`;
+            if (typeof showToast === 'function') showToast(`Scan Error: ${msg}`, 'error');
+            resetEPBtn();
+        }
+    })
+    .catch(err => {
+        console.error('Error triggering EP refresh:', err);
+        if (typeof showToast === 'function') showToast('Failed to start EP scan', 'error');
+        resetEPBtn();
+    });
 }
 
 // Phase 4 - Themes & Backtesting Dashboard Logic

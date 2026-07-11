@@ -1,4 +1,5 @@
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask

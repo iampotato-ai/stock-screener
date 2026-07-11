@@ -1,160 +1,195 @@
-# Implementation Plan: Momentum Confidence Score™
+# Plan: Implement Authentication and Security for MomentumScan
 
-## Overview
-This plan outlines the implementation of the Momentum Confidence Score™ feature for MomentumScan, following the specification in SPEC.md.
+## Goal
+Implement comprehensive authentication, authorization, and security measures to make MomentumScan production-ready.
 
-## Major Components and Dependencies
+## Prerequisites
+- Review SPEC.md for detailed requirements
+- Review FIX_PLAN.md for implementation roadmap
+- Ensure development environment is set up
+- Run existing tests to establish baseline
 
-1. **Data Models** (Database layer)
-   - MomentumScore model to store calculated scores
-   - Dependencies: Existing database setup (models.py, extensions.py)
+## Phase 1: Foundation Setup
 
-2. **Scoring Engine Modules** (Core logic)
-   - Technical analysis module (technical.py)
-   - Fundamental analysis module (fundamentals.py)
-   - Momentum analysis module (momentum.py)
-   - Institutional analysis module (institutional.py)
-   - Risk & liquidity analysis module (risk.py)
-   - Weights configuration (weights.py)
-   - Badges system (badges.py)
-   - Explanations generator (explanations.py)
-   - Ranking system (ranking.py)
-   - Dependencies: Existing models for data access
+### Task 1: Add Authentication Dependencies
+- Add flask-login, flask-wtf, flask-talisman, flask-limiter to requirements.txt
+- Install dependencies: pip install -r requirements.txt
 
-3. **Service Layer**
-   - MomentumConfidenceScoreService to orchestrate the scoring
-   - Dependencies: All scoring engine modules, database models
+### Task 2: Initialize Authentication Extensions
+- Create/extend app/extensions.py to initialize LoginManager, CSRFProtal, Talisman, Limiter
+- Update app/__init__.py to initialize these extensions
 
-4. **API Endpoints**
-   - REST API endpoints for retrieving scores
-   - Dependencies: Service layer, existing API structure
+### Task 3: Enhance User Model
+- Add authentication fields to User model in app/models.py:
+  - is_active (boolean)
+  - is_admin (boolean) 
+  - last_login (datetime)
+  - failed_login_attempts (integer)
+  - locked_until (datetime)
+- Add methods for password hashing, checking, login tracking
 
-5. **Background Jobs**
-   - Scheduled jobs for daily score calculation
-   - Dependencies: APScheduler (already used in scheduler.py), scoring service
+### Task 4: Create Auth Blueprint
+- Create app/api/v1/auth.py with endpoints for:
+  - GET/POST /auth/register
+  - registration
+I login system, facilitating user management. I will cover with password being able to log in the endpoint for login
+  - GET /auth/logout
+  - GET /auth/profile
+  - POST /auth/change-password
 
-6. **Frontend Components** (Future phase - not in initial scope)
-   - Stock card component to display score
-   - Detail page for score breakdown
-   - Dependencies: API endpoints
+## Phase 2: Protection Implementation
 
-## Implementation Order
+### Task 5: Protect Existing Endpoints
+- Identify all state-changing endpoints (POST, PUT, DELETE, PATCH)
+- Add @login_required decorator to these endpoints
+- For GET endpoints that expose sensitive data, also add protection
+- Update API documentation in docstrings
 
-### Phase 1: Data Model and Core Infrastructure
-1. Create MomentumScore database model
-2. Create weights configuration system
-3. Set up basic scoring service structure
+### Task 6: Implement CSRF Protection
+- Configure CSRF protection for all state-changing operations
+- Update templates to include {{ csrf_token() }} in forms
+- Update JavaScript AJAX calls to include CSRF tokens in headers
 
-### Phase 2: Individual Scoring Modules (Can be done in parallel)
-3. Technical analysis module
-4. Fundamental analysis module  
-5. Momentum analysis module
-6. Institutional analysis module
-7. Risk & liquidity analysis module
+### Task 7: Add Input Validation System
+- Create app/utils/validation.py with:
+  - Ticker symbol validator (regex: ^[A-Z0-9.]{1,10}$)
+  - Numeric validators (positive integers, floats, ranges)
+  - Text validators (length, sanitization)
+  - Custom validators for specific use cases
+- Integrate validation into all API endpoints
+- Return 400 Bad Request with descriptive messages for invalid input
 
-### Phase 3: Integration and Supporting Systems
-8. Badges system
-9. Explanations generator
-10. Ranking system
-11. Main scoring service orchestration
-12. API endpoints
-13. Background job for daily calculation
+### Task 8: Fix SQL Injection Vulnerabilities
+- Audit app/database.py for raw SQL with string formatting
+- Convert to parameterized queries using ? placeholders
+- Audit app/api/v1/legacy_routes.py similarly
+- Ensure all service layer uses SQLAlchemy ORM properly
+- Replace any remaining raw SQL with ORM queries
 
-### Phase 4: Testing and Validation
-14. Unit tests for each module
-15. Integration tests for service layer
-16. Performance testing
-17. Validation against sample data
+### Task 9: Implement Proper Error Handling
+- Create app/utils/errors.py with:
+  - Standard error response format
+  - Global error handlers for 400, 401, 403, 404, 500
+  - Helper functions for common error responses
+- Update app/__init__.py to register error handlers
+- Replace ad-hoc error returns with standardized helpers
+- Ensure production errors don't leak stack traces
 
-## Risks and Mitigation Strategies
+## Phase 3: Security Hardening
 
-### Risk 1: Data Availability and Quality
-- **Risk**: Some fundamental/institutional data may not be available for all stocks
-- **Mitigation**: 
-  - Graceful degradation - calculate scores with available data
-  - Default values for missing data points
-  - Logging and monitoring for data gaps
+### Task 10: Add Security Headers
+- Configure Flask-Talisman with appropriate defaults:
+  - force_https: False (for development, True in production)
+  - strict_transport_security: max_age=31536000, include_subdomains
+  - frame_options: DENY
+  - content_security_policy: reasonable defaults
+  - content_security_policy_nonce_in: ['script-src']
+  - referrer_policy: strict-origin-when-cross-origin
 
-### Risk 2: Performance Impact
-- **Risk**: Calculating scores for all NSE stocks daily could be computationally expensive
-- **Mitigation**:
-  - Implement caching mechanisms
-  - Batch processing with database optimizations
-  - Consider incremental updates where possible
-  - Background processing during off-peak hours
+### Task 11: Implement Rate Limiting
+- Configure Flask-Limiter:
+  - Default limits: 100 per hour per IP
+  - Stricter limits for auth endpoints: 5 per minute
+  - Sensitive operations: 10 per hour
+  - Exemptions for health checks if needed
+- Store rate data in Redis for production (memory for dev)
 
-### Risk 3: Complexity of Financial Calculations
-- **Risk**: Technical indicators and financial calculations could be complex to implement correctly
-- **Mitigation**:
-  - Use established libraries where possible (TA-Lib, pandas-ta)
-  - Validate calculations against known examples
-  - Create unit tests with expected outputs
-  - Start with simplified implementations and iterate
+### Task 12: Enhance Logging and Monitoring
+- Configure structured logging in app/__init__.py
+- Ensure security events are logged (failed logins, etc.)
+- Don't log sensitive information (passwords, tokens)
+- Set appropriate log levels for production
 
-### Risk 4: Changing Requirements
-- **Risk**: Weight allocations or scoring criteria may need adjustment based on user feedback
-- **Mitigation**:
-  - Externalize weights to configuration (as recommended in spec)
-  - Modular design allows easy modification of individual components
-  - API versioning for backward compatibility
+## Phase 4: Testing and Verification
 
-## Parallelization Opportunities
+### Task 13: Create Security Test Suite
+- tests/test_auth.py:
+  - User registration, login, logout
+  - Password validation and hashing
+  - Session management
+  - Access control (protected vs unprotected endpoints)
+- tests/test_csrf.py:
+  - CSRF token generation and validation
+  - Protection against missing/invalid tokens
+- tests/test_validation.py:
+  - All validation functions work correctly
+  - Edge cases and boundary conditions
+- tests/test_security.py:
+  - SQL injection attempt prevention
+  - Information leakage tests
+  - Security headers verification
+  - Rate limiting effectiveness
 
-**Highly Parallelizable** (Can be worked on simultaneously):
-- Technical analysis module
-- Fundamental analysis module  
-- Momentum analysis module
-- Institutional analysis module
-- Risk & liquidity analysis module
-- Weights configuration
+### Task 14: Update Existing Tests
+- Modify existing tests to handle authentication:
+  - Add login/logout in test setup/teardown
+  - Use authenticated test client where needed
+  - Update fixtures to create test users
+- Ensure all existing tests still pass
 
-**Sequential Dependencies**:
-- Data model must be created before service layer
-- Individual modules must be complete before main scoring service
-- Service layer must be complete before API endpoints
-- API endpoints must be complete before frontend integration
+### Task 15: Perform Manual Security Verification
+- Create SECURITY_CHECKLIST.md with:
+  - Authentication bypass attempts
+  - CSRF testing
+  - Input validation boundary testing
+  - SQL injection attempts
+  - Information leakage checks
+  - Security headers verification
+  - Rate limiting tests
+- Execute checklist and document results
 
-## Verification Checkpoints
+## Phase 5: Documentation and Cleanup
 
-### Checkpoint 1: Data Model Complete
-- [ ] MomentumScore model created and migrated
-- [ ] Weights configuration system functional
-- [ ] Basic database operations working
+### Task 16: Update Documentation
+- Update README.md with:
+  - Authentication requirements
+  - How to register/login
+  - API changes due to security
+- Update docs/ with:
+  - Authentication API documentation
+  - Security best practices
+  - Deployment considerations
 
-### Checkpoint 2: Individual Modules Functional
-- [ ] Each scoring module returns correct format
-- [ ] Unit tests covering edge cases for each module
-- [ ] Sample data produces expected scores
+### Task 17: Cleanup and Deprecation
+- Mark deprecated database helpers in app/database.py
+- Add TODOs for removing legacy SQLite helpers in future
+- Ensure consistent use of SQLAlchemy ORM going forward
+- Remove any commented-out code or debug statements
 
-### Checkpoint 3: Integration Complete
-- [ ] Scoring service orchestrates all modules correctly
-- [ ] Weights are applied properly
-- [ ] Final score calculation matches specification
-- [ ] Badges and explanations generated correctly
+## Phase 6: Final Verification
 
-### Checkpoint 4: API and Background Jobs
-- [ ] API endpoints return correct data format
-- [ ] Background job runs without errors
-- [ ] Scores are persisted to database correctly
-- [ ] Response times within acceptable limits
+### Task 18: Run Full Test Suite
+- Execute: pytest --cov=app
+- Verify coverage meets targets (≥85% for services)
+- Fix any failing tests
 
-### Checkpoint 5: Validation and Testing
-- [ ] End-to-end testing with sample data
-- [ ] Performance testing with full dataset
-- [ ] Validation against manual calculations
-- [ ] User acceptance testing with sample traders
+### Task 19: Performance Validation
+- Run: python scripts/run_performance_tests.py
+- Ensure authentication doesn't significantly impact performance
+- Optimize if necessary (caching, indexing, etc.)
 
-## Estimated Effort
-- Phase 1 (Data Model): 2-3 days
-- Phase 2 (Modules): 8-10 days (can be parallelized)
-- Phase 3 (Integration): 3-4 days
-- Phase 4 (Testing): 3-4 days
-- **Total**: Approximately 2-3 weeks
+### Task 20: Pre-Production Checklist
+- Verify all secrets are in environment variables
+- Check that debug mode is off for production
+- Validate logging doesn't contain sensitive data
+- Confirm error pages don't leak stack traces
+- Ensure all dependencies are up to date
+- Run security scan (bandit, safety) if available
+
+## Dependencies
+- Tasks must be completed in order where indicated
+- Authentication foundation (Tasks 1-4) must complete before protection (Tasks 5-9)
+- Testing (Tasks 13-15) should run concurrently with development
+- Documentation (Task 16) can lag slightly but should be complete before sign-off
+
+## Estimated Timeline
+- Foundation Setup: 1 day
+- Protection Implementation: 2 days
+- Security Hardening: 1 day
+- Testing and Verification: 2 days
+- Documentation and Cleanup: 0.5 days
+- Final Verification: 0.5 days
+- Total: ~7 days
 
 ## Success Criteria
-- [ ] Momentum Confidence Score™ calculated daily for all NSE stocks
-- [ ] Scores follow the distribution and interpretation guidelines in spec
-- [ ] Explanations are clear and actionable
-- [ ] System performs within acceptable latency limits
-- [ ] Code is well-tested and maintainable
-- [ ] Ready for frontend integration in next phase
+All tasks completed, tests passing, manual verification checklist signed off, and the application is ready for production deployment with appropriate security measures in place.

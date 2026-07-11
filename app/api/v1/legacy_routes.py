@@ -651,11 +651,10 @@ def fetch_screener_fundamentals(symbol):
                     parsed_quarters.sort(key=lambda x: x["date_key"])
                     try:
                         latest_date_val = datetime.datetime.strptime(parsed_quarters[-1]["date_key"], "%Y-%m-%d")
-                        from flask import current_app
-                        try:
-                            staleness_days = current_app.config.get('EP_STALENESS_DAYS', 180)
-                        except Exception:
-                            staleness_days = 180
+                        # Use 400 days so Dec 2024 quarterly data (~193 days old) is never
+                        # treated as stale. Indian companies report quarterly (Mar/Jun/Sep/Dec)
+                        # so the previous quarter is always within 400 days.
+                        staleness_days = 400
                         if (datetime.datetime.now() - latest_date_val).days < staleness_days:
                             return parsed_quarters
                         print(f"[NSE Ingest] Latest quarter {parsed_quarters[-1]['quarter']} ({parsed_quarters[-1]['date_key']}) for {symbol} is stale. Falling back to Yahoo Finance.")
@@ -1807,7 +1806,7 @@ def refresh_ep_screener():
                     SET ep_score = ?, stop_price = ?, ep_type = ?, updated_at = datetime('now')
                     WHERE id = ?
                 ''', (ep_score, today_low, ep_type, existing[0]))
-            elif confidence == "HIGH":
+            elif confidence in ("HIGH", "MEDIUM"):
                 # ONLY auto-add new items if they have HIGH confidence
                 c.execute('''
                     INSERT INTO ep_watchlist (
@@ -1878,10 +1877,7 @@ def refresh_ep_screener():
                         if today_close < prev_close and rel_volume_20_val >= 1.2:
                             trigger_type = "FAILED_BOUNCE"
                     else:
-                        # 1. Red-to-Green (RTG)
                         rtg_triggered = (today_open < prev_close and today_close > prev_close and rel_volume_20_val >= 1.5)
-                        
-                        # 2. Tight Range Breakout
                         tight_breakout_triggered = False
                         if len(history_data) >= 6:
                             prev_5_closes = [h["close"] for h in history_data[-6:-1]]
@@ -1892,22 +1888,19 @@ def refresh_ep_screener():
                             prev_5_highs = [h["high"] for h in history_data[-6:-1]]
                             five_day_high = max(prev_5_highs)
                             tight_breakout_triggered = (five_day_range < 8.0 and today_close > five_day_high and rel_volume_20_val >= 2.0)
-                            
-                        # 3. Level Reclaim
                         reclaim_triggered = (
                             catalyst_close is not None and
                             prev_close < catalyst_close and
                             today_close >= catalyst_close * 0.995 and
                             rel_volume_20_val >= 1.5
                         )
-                        
                         if rtg_triggered:
                             trigger_type = "RED_TO_GREEN"
                         elif tight_breakout_triggered:
                             trigger_type = "RANGE_BREAKOUT"
                         elif reclaim_triggered:
                             trigger_type = "RECLAIM"
-                            
+                    
                     if trigger_type:
                         c.execute("""
                             UPDATE ep_watchlist
@@ -1915,8 +1908,6 @@ def refresh_ep_screener():
                             WHERE id = ?
                         """, (trigger_type, today_close, today_bar["date"], w_id))
                         conn.commit()
-                        
-                        # Send alert for watchlist trigger
                         alert_msg = (
                             f"🔔 <b>EP Watchlist Triggered!</b>\n"
                             f"<b>Symbol:</b> {symbol}\n"
@@ -1982,7 +1973,8 @@ def refresh_ep_screener():
                 time.sleep(0.2)
             except Exception as alert_err:
                 print(f"[EP Refresh] Error sending queued alert: {alert_err}")
-                
+        # Clear the queue after dispatch to avoid duplicate alerts in subsequent runs
+        telegram_alerts_queue.clear()
     print("[EP Refresh] EP screening and cache refresh completed.")
 
 

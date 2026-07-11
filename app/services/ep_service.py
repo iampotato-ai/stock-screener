@@ -208,8 +208,10 @@ def assign_ep_type(catalyst_score, event_type, rel_volume, gap_pct,
 
 
 def assign_confidence(ep_score, neglect_score, catalyst_score, repricing_score):
-    if ep_score >= EP_CONFIDENCE_HIGH and catalyst_score >= 0.70 and repricing_score >= 0.60:
+    # HIGH confidence when EP score meets medium threshold and key components are strong
+    if ep_score >= EP_CONFIDENCE_MEDIUM and catalyst_score >= 0.70 and repricing_score >= 0.60:
         return "HIGH"
+    # MEDIUM confidence when EP score meets medium threshold (component thresholds not required)
     if ep_score >= EP_CONFIDENCE_MEDIUM:
         return "MEDIUM"
     return "LOW"
@@ -222,6 +224,7 @@ class EPService:
         self.ep_refresh_lock = threading.Lock()
         self.last_ep_refresh_time = 0.0
         self.last_refresh_datetime = None
+        self.is_refreshing = False
         self.ep_backtest_prep_lock = threading.Lock()
         self.ep_backtest_prep_status = {
             "running": False,
@@ -548,19 +551,24 @@ class EPService:
     def refresh_ep_screener(self) -> bool:
         """Trigger background EP screening."""
         with self.ep_refresh_lock:
+            if self.is_refreshing:
+                return False
             current_time = time.time()
             if current_time - self.last_ep_refresh_time < 60:
                 return False
             self.last_ep_refresh_time = current_time
+            self.is_refreshing = True
 
         def _bg_refresh():
-            with self.ep_refresh_lock:
-                try:
-                    from app.api.v1.legacy_routes import refresh_ep_screener as legacy_refresh
-                    legacy_refresh()
-                    self.last_refresh_datetime = datetime.now().isoformat()
-                except Exception as e:
-                    print(f"Error in background EP refresh: {e}")
+            try:
+                from app.api.v1.legacy_routes import refresh_ep_screener as legacy_refresh
+                legacy_refresh()
+                self.last_refresh_datetime = datetime.now().isoformat()
+            except Exception as e:
+                print(f"Error in background EP refresh: {e}")
+            finally:
+                with self.ep_refresh_lock:
+                    self.is_refreshing = False
 
         t = threading.Thread(target=_bg_refresh)
         t.start()

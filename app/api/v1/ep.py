@@ -146,7 +146,7 @@ def api_refresh_ep():
 def api_refresh_ep_status():
     """Get EP features refresh status (running or not)."""
     try:
-        is_running = ep_service.ep_refresh_lock.locked()
+        is_running = ep_service.is_refreshing
         return jsonify(running=is_running)
     except Exception as e:
         return jsonify(error=str(e)), 500

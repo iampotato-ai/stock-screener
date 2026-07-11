@@ -1,4 +1,5 @@
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from app import create_app
 
 # Canonical entry point for running the application locally/development
