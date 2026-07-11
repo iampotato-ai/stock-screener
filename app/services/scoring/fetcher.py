@@ -615,10 +615,13 @@ class StockDataFetcher:
                 
         result['is_breakout'] = is_breakout_confirmed
 
-        # Relative strength rating (simplified - vs median of universe)
-        # In a real implementation, this would compare against the peer universe
-        # For now, we'll use a placeholder based on price performance
-        result['relative_strength_rating'] = 50.0  # Placeholder - would be calculated vs universe
+        # TODO(rs-mcs-integration): This is a placeholder. Real RS rating must
+        # be fetched from RSService.calculate_rs_scores() against the full
+        # screener universe BEFORE the MCS pipeline runs, then injected into
+        # stock_data here. Until this is wired up, MomentumAnalyzer's
+        # relative_strength criterion always scores at the "Average" tier
+        # (rs=50 → 2 pts out of 6 max), regardless of actual stock performance.
+        result['relative_strength_rating'] = 50.0
 
         return result
 

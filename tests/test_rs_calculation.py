@@ -5,10 +5,10 @@ import unittest
 from app.utils.calculation import (
     calculate_weighted_return,
     calculate_percentile_rank,
-    calculate_rs_scores_from_returns,
     safe_float_conversion,
     safe_get_return
 )
+
 
 
 class TestCalculationUtils(unittest.TestCase):
@@ -119,46 +119,6 @@ class TestCalculationUtils(unittest.TestCase):
         self.assertEqual(safe_get_return(data, '12m'), 0.0)  # Missing key
         self.assertEqual(safe_get_return(data, '12m', -999), -999)  # Custom default
     
-    def test_calculate_rs_scores_from_returns(self):
-        """Test RS score calculation from returns data."""
-        stocks_data = [
-            {'ticker': 'AAPL', 'returns': {'3m': 10, '6m': 20, '9m': 30, '12m': 40}},
-            {'ticker': 'GOOGL', 'returns': {'3m': 5, '6m': 15, '9m': 25, '12m': 35}},
-            {'ticker': 'MSFT', 'returns': {'3m': 0, '6m': 0, '9m': 0, '12m': 0}},
-            {'ticker': 'TSLA', 'returns': {}}  # No returns data
-        ]
-        
-        result = calculate_rs_scores_from_returns(stocks_data)
-        
-        # Should have same number of items
-        self.assertEqual(len(result), 4)
-        
-        # All should have rs_score
-        for stock in result:
-            self.assertIn('rs_score', stock)
-            self.assertIn('momentum_score', stock)
-            
-        # AAPL should have highest momentum score (22.0 as calculated earlier)
-        # GOOGL should be second (0.4*5 + 0.2*15 + 0.2*25 + 0.2*35 = 2+3+5+7=17)
-        # MSFT should be third (0)
-        # TSLA should be last (0.0 momentum score)
-        
-        # Find stocks by ticker
-        aapl = next(s for s in result if s['ticker'] == 'AAPL')
-        googl = next(s for s in result if s['ticker'] == 'GOOGL')
-        msft = next(s for s in result if s['ticker'] == 'MSFT')
-        tsla = next(s for s in result if s['ticker'] == 'TSLA')
-        
-        # AAPL should have highest RS score
-        self.assertGreaterEqual(aapl['rs_score'], googl['rs_score'])
-        self.assertGreaterEqual(googl['rs_score'], msft['rs_score'])
-        self.assertGreaterEqual(msft['rs_score'], tsla['rs_score'])
-        
-        # All scores should be between 1 and 99
-        for stock in result:
-            self.assertGreaterEqual(stock['rs_score'], 1)
-            self.assertLessEqual(stock['rs_score'], 99)
-
 
 if __name__ == '__main__':
     unittest.main()

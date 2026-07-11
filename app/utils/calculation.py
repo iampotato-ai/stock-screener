@@ -7,6 +7,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_RS_WEIGHTS = {
+    '3m': 0.40,
+    '6m': 0.20,
+    '9m': 0.20,
+    '12m': 0.20
+}
+
+
 def calculate_weighted_return(
     returns: dict,
     weights: dict = None
@@ -22,12 +30,7 @@ def calculate_weighted_return(
         Weighted return score
     """
     if weights is None:
-        weights = {
-            '3m': 0.40,
-            '6m': 0.20,
-            '9m': 0.20,
-            '12m': 0.20
-        }
+        weights = DEFAULT_RS_WEIGHTS
     
     weighted_sum = 0.0
     total_weight = 0.0
@@ -96,49 +99,6 @@ def calculate_percentile_rank(
     percentile = round(percentile)
     return max(1, min(99, percentile))
 
-
-def calculate_rs_scores_from_returns(
-    stocks_data: list,
-    returns_key: str = 'returns'
-) -> list:
-    """
-    Calculate RS scores for a list of stocks based on their returns.
-    
-    Args:
-        stocks_data: List of stock dictionaries containing returns data
-        returns_key: Key in each stock dict where returns are stored
-        
-    Returns:
-        List of stocks with added 'rs_score' field
-    """
-    if not stocks_data:
-        return stocks_data
-    
-    # Calculate momentum scores for all stocks
-    scored_stocks = []
-    for stock in stocks_data:
-        stock_copy = stock.copy()
-        returns = stock_copy.get(returns_key, {})
-        
-        if isinstance(returns, dict):
-            momentum_score = calculate_weighted_return(returns)
-            stock_copy['momentum_score'] = momentum_score
-            scored_stocks.append(stock_copy)
-        else:
-            # No valid returns data
-            stock_copy['momentum_score'] = 0.0
-            scored_stocks.append(stock_copy)
-    
-    # Extract momentum scores for ranking
-    momentum_scores = [s.get('momentum_score', 0.0) for s in scored_stocks]
-    
-    # Calculate RS scores based on percentile ranking
-    for stock in scored_stocks:
-        momentum_score = stock.get('momentum_score', 0.0)
-        rs_score = calculate_percentile_rank(momentum_scores, momentum_score)
-        stock['rs_score'] = rs_score
-    
-    return sorted(scored_stocks, key=lambda x: x.get('rs_score', 0), reverse=True)
 
 
 def safe_float_conversion(value, default: float = 0.0) -> float:

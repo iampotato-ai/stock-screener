@@ -9969,6 +9969,14 @@ opacity: 1;
 .ep-scan-button:active {
     transform: translateY(0);
 }
+.ep-scan-button:disabled {
+    opacity: 0.65 !important;
+    cursor: not-allowed !important;
+    background: rgba(99, 102, 241, 0.05) !important;
+    border-color: rgba(99, 102, 241, 0.15) !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
 
 /* Sub-tabs styles */
 .ep-sub-tabs {
