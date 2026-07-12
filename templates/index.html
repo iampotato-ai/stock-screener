@@ -431,6 +431,10 @@
                 <div class="dashboard-left-col">
                     <div class="dashboard-section-title">Sector Heatmap</div>
                     <div class="breadth-sector-heatmap" id="breadth-sector-heatmap" style="margin-top: 0;"></div>
+<div class="dashboard-section-title">Stage Distribution</div>
+<canvas id="stage-distribution-chart" style="width:100%; height:250px;"></canvas>
+<div class="dashboard-section-title">Stage History (Daily)</div>
+<canvas id="stage-history-chart" style="width:100%; height:250px;"></canvas>
                 </div>
                 <aside class="dashboard-sidebar">
                     <!-- Alert Log Panel -->
@@ -617,6 +621,79 @@
             
             <div class="range-filter-body" id="range-filter-body">
                 <!-- Setup Filter Chips inside Accordion -->
+                    <!-- New Stage Filter Chips -->
+                    <div class="range-filter-row-full" style="margin-top: 0.5rem;">
+                        <span class="range-filter-section-title">Stage</span>
+                        <div class="filter-chip-bar" id="stage-filter-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                            <div class="filter-chip active" data-value="all">All</div>
+                            <div class="filter-chip" data-value="stage1">Stage 1</div>
+                            <div class="filter-chip" data-value="stage2">Stage 2</div>
+                            <div class="filter-chip" data-value="stage3">Stage 3</div>
+                            <div class="filter-chip" data-value="stage4">Stage 4</div>
+                        </div>
+                    </div>
+                    <!-- Template Score Range -->
+                    <div class="range-filter-group" style="margin-top: 0.5rem;">
+                        <label for="filter-template-score-min">Template Score</label>
+                        <div class="range-inputs-row">
+                            <input type="number" id="filter-template-score-min" class="range-filter-input" step="0.1" placeholder="Min">
+                            <span class="range-filter-span">to</span>
+                            <input type="number" id="filter-template-score-max" class="range-filter-input" step="0.1" placeholder="Max">
+                        </div>
+                    </div>
+                    <!-- Stage Confidence Range -->
+                    <div class="range-filter-group" style="margin-top: 0.5rem;">
+                        <label for="filter-stage-conf-min">Stage Confidence</label>
+                        <div class="range-inputs-row">
+                            <input type="number" id="filter-stage-conf-min" class="range-filter-input" step="0.1" placeholder="Min">
+                            <span class="range-filter-span">to</span>
+                            <input type="number" id="filter-stage-conf-max" class="range-filter-input" step="0.1" placeholder="Max">
+                        </div>
+                    </div>
+                    <!-- Transition Filter Chips -->
+                    <div class="range-filter-row-full" style="margin-top: 0.5rem;">
+                        <span class="range-filter-section-title">Transition</span>
+                        <div class="filter-chip-bar" id="transition-filter-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                            <div class="filter-chip active" data-value="all">All</div>
+                            <div class="filter-chip" data-value="uptrend">Uptrend</div>
+                            <div class="filter-chip" data-value="downtrend">Downtrend</div>
+                            <div class="filter-chip" data-value="sideways">Sideways</div>
+                        </div>
+                    </div>
+                    <!-- Stage Duration Range -->
+                    <div class="range-filter-group" style="margin-top: 0.5rem;">
+                        <label for="filter-stage-duration-min">Stage Duration (days)</label>
+                        <div class="range-inputs-row">
+                            <input type="number" id="filter-stage-duration-min" class="range-filter-input" step="1" placeholder="Min">
+                            <span class="range-filter-span">to</span>
+                            <input type="number" id="filter-stage-duration-max" class="range-filter-input" step="1" placeholder="Max">
+                        </div>
+                    </div>
+                    <!-- Boolean Flags -->
+                    <div class="range-filter-group" style="margin-top: 0.5rem;">
+                        <label>Above 200 DMA</label>
+                        <div class="filter-chip-bar" id="above-200dma-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                            <div class="filter-chip active" data-value="all">All</div>
+                            <div class="filter-chip" data-value="yes">Yes</div>
+                            <div class="filter-chip" data-value="no">No</div>
+                        </div>
+                    </div>
+                    <div class="range-filter-group" style="margin-top: 0.5rem;">
+                        <label>Rising 200 DMA</label>
+                        <div class="filter-chip-bar" id="rising-200dma-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                            <div class="filter-chip active" data-value="all">All</div>
+                            <div class="filter-chip" data-value="yes">Yes</div>
+                            <div class="filter-chip" data-value="no">No</div>
+                        </div>
+                    </div>
+                    <div class="range-filter-group" style="margin-top: 0.5rem;">
+                        <label>Near High</label>
+                        <div class="filter-chip-bar" id="near-high-chips" style="margin-bottom: 0; padding: 0.25rem 0;">
+                            <div class="filter-chip active" data-value="all">All</div>
+                            <div class="filter-chip" data-value="yes">Yes</div>
+                            <div class="filter-chip" data-value="no">No</div>
+                        </div>
+                    </div>
                 <div class="range-filter-row-full">
                     <span class="range-filter-section-title">Setup Filters</span>
                     <div class="filter-chip-bar" id="setup-filter-chips" style="margin-bottom: 0; padding: 0.25rem 0;">

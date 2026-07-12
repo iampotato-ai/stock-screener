@@ -458,6 +458,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize market status tracking
     updateMarketStatusUI();
+// Fetch Stage Analyzer results and render charts
+fetch('/stage-analyzer/results')
+    .then(res => res.json())
+    .then(data => {
+        const stageCounts = { early: 0, mid: 0, late: 0, unknown: 0 };
+        const history = {};
+        const todayStr = new Date().toISOString().slice(0,10);
+        Object.values(data).forEach(entry => {
+            const stage = (entry.score && entry.score.stage) || entry.stage || 'unknown';
+            if (stageCounts[stage] !== undefined) {
+                stageCounts[stage]++;
+            } else {
+                stageCounts['unknown'] = (stageCounts['unknown'] || 0) + 1;
+            }
+            if (!history[todayStr]) history[todayStr] = { early:0, mid:0, late:0, unknown:0 };
+            if (history[todayStr][stage] !== undefined) {
+                history[todayStr][stage]++;
+            } else {
+                history[todayStr]['unknown']++;
+            }
+        });
+        const distCtx = document.getElementById('stage-distribution-chart').getContext('2d');
+        new Chart(distCtx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(stageCounts),
+                datasets: [{
+                    data: Object.values(stageCounts),
+                    backgroundColor: ['#10b981','#f59e0b','#ef4444','#6b7280']
+                }]
+            },
+            options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
+        });
+        const dates = Object.keys(history).sort();
+        const lineCtx = document.getElementById('stage-history-chart').getContext('2d');
+        new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [
+                    { label:'Early', data: dates.map(d=>history[d].early||0), borderColor:'#10b981', fill:false },
+                    { label:'Mid', data: dates.map(d=>history[d].mid||0), borderColor:'#f59e0b', fill:false },
+                    { label:'Late', data: dates.map(d=>history[d].late||0), borderColor:'#ef4444', fill:false },
+                    { label:'Unknown', data: dates.map(d=>history[d].unknown||0), borderColor:'#6b7280', fill:false }
+                ]
+            },
+            options: { responsive:true, interaction:{mode:'index', intersect:false}, scales:{y:{beginAtZero:true}} }
+        });
+    })
+    .catch(err => console.error('Failed to load stage analyzer results:', err));
     setInterval(updateMarketStatusUI, 5000);
 
 
@@ -2752,6 +2802,18 @@ function filterAndRender() {
     updateActiveFiltersCount();
 
     const searchVal = searchInput.value.toLowerCase().trim();
+    // New filter values
+    const stageFilter = document.querySelector('#stage-filter-chips .filter-chip.active')?.dataset.value || 'all';
+    const transitionFilter = document.querySelector('#transition-filter-chips .filter-chip.active')?.dataset.value || 'all';
+    const above200dmaFilter = document.querySelector('#above-200dma-chips .filter-chip.active')?.dataset.value || 'all';
+    const rising200dmaFilter = document.querySelector('#rising-200dma-chips .filter-chip.active')?.dataset.value || 'all';
+    const nearHighFilter = document.querySelector('#near-high-chips .filter-chip.active')?.dataset.value || 'all';
+    const templateScoreMin = parseFloat(document.getElementById('filter-template-score-min')?.value);
+    const templateScoreMax = parseFloat(document.getElementById('filter-template-score-max')?.value);
+    const stageConfMin = parseFloat(document.getElementById('filter-stage-conf-min')?.value);
+    const stageConfMax = parseFloat(document.getElementById('filter-stage-conf-max')?.value);
+    const stageDurMin = parseFloat(document.getElementById('filter-stage-duration-min')?.value);
+    const stageDurMax = parseFloat(document.getElementById('filter-stage-duration-max')?.value);
     const sectorVal = selectedSector;
     
     // Get Range Filter values
@@ -2884,7 +2946,64 @@ function filterAndRender() {
             }
         }
 
+        // New Filters
+        // Stage Filter
+        let matchesStage = true;
+        if (stageFilter !== 'all') {
+            const stockStage = (stock.stage || '').toLowerCase();
+            matchesStage = stockStage === stageFilter.toLowerCase();
+        }
+        // Template Score Range
+        let matchesTemplateScore = true;
+        if (!isNaN(templateScoreMin) && (stock.template_score === null || stock.template_score === undefined || stock.template_score < templateScoreMin)) {
+            matchesTemplateScore = false;
+        }
+        if (!isNaN(templateScoreMax) && (stock.template_score === null || stock.template_score === undefined || stock.template_score > templateScoreMax)) {
+            matchesTemplateScore = false;
+        }
+        // Stage Confidence Range
+        let matchesStageConf = true;
+        if (!isNaN(stageConfMin) && (stock.stage_confidence === null || stock.stage_confidence === undefined || stock.stage_confidence < stageConfMin)) {
+            matchesStageConf = false;
+        }
+        if (!isNaN(stageConfMax) && (stock.stage_confidence === null || stock.stage_confidence === undefined || stock.stage_confidence > stageConfMax)) {
+            matchesStageConf = false;
+        }
+        // Transition Filter
+        let matchesTransition = true;
+        if (transitionFilter !== 'all') {
+            const trans = (stock.transition || '').toLowerCase();
+            matchesTransition = trans === transitionFilter.toLowerCase();
+        }
+        // Stage Duration Range (days)
+        let matchesStageDur = true;
+        if (!isNaN(stageDurMin) && (stock.stage_duration === null || stock.stage_duration === undefined || stock.stage_duration < stageDurMin)) {
+            matchesStageDur = false;
+        }
+        if (!isNaN(stageDurMax) && (stock.stage_duration === null || stock.stage_duration === undefined || stock.stage_duration > stageDurMax)) {
+            matchesStageDur = false;
+        }
+        // Above 200 DMA Filter
+        let matchesAbove200dma = true;
+        if (above200dmaFilter !== 'all') {
+            const isAbove = !!stock.above_200dma;
+            matchesAbove200dma = (above200dmaFilter === 'yes' && isAbove) || (above200dmaFilter === 'no' && !isAbove);
+        }
+        // Rising 200 DMA Filter
+        let matchesRising200dma = true;
+        if (rising200dmaFilter !== 'all') {
+            const isRising = !!stock.rising_200dma;
+            matchesRising200dma = (rising200dmaFilter === 'yes' && isRising) || (rising200dmaFilter === 'no' && !isRising);
+        }
+        // Near High Filter
+        let matchesNearHigh = true;
+        if (nearHighFilter !== 'all') {
+            const isNear = !!stock.near_high;
+            matchesNearHigh = (nearHighFilter === 'yes' && isNear) || (nearHighFilter === 'no' && !isNear);
+        }
+
         // Stat Card Filter
+        let matchesStatCard = true;
         let matchesStatCard = true;
         if (activeStatFilter && activeStatFilter !== 'total') {
             const sb = (stock.swingband || '').toLowerCase();
@@ -2923,7 +3042,7 @@ function filterAndRender() {
             matchesMtf = mtfVal === parseInt(currentMtfFilter);
         }
         
-        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesMtf && matchesRsi && matchesRsRating;
+        return matchesSearch && matchesSector && matchesRvol && matchesChange && matchesPe && matchesIms && matchesSwing && matchesCandle && matchesVolume && matchesSetup && matchesStatCard && matchesMtf && matchesRsi && matchesRsRating && matchesStage && matchesTemplateScore && matchesStageConf && matchesTransition && matchesStageDur && matchesAbove200dma && matchesRising200dma && matchesNearHigh;
     });
     
     // Clear the active intraday filter after applying so it doesn't stick permanently if the user changes other filters manually
