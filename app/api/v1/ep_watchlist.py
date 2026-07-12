@@ -12,9 +12,6 @@ def get_ep_watchlist():
     Get all active EP watchlist entries.
     Returns a JSON with key 'watchlist' containing the list of entries.
     """
-    from app.extensions import db
-    from app.models import EpWatchlist
-    print("ENDPOINT SQLALCHEMY WATCHLIST QUERY:", [x.symbol for x in db.session.query(EpWatchlist).all()])
     try:
         watchlist = watchlist_service.get_active_ep_watchlist()
         return jsonify(watchlist=watchlist)

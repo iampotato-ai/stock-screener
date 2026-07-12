@@ -65,7 +65,7 @@ def _fetch_local_prices(symbol: str, latest_global_date=None, local_bars=None) -
                 try:
                     bar_dt = datetime.datetime.strptime(latest_bar_str, '%Y-%m-%d').date()
                     global_dt = datetime.datetime.strptime(latest_global_str, '%Y-%m-%d').date()
-                    if (global_dt - bar_dt).days > 3:
+                    if bar_dt < global_dt:
                         logger.debug(f"Local daily_bars for {symbol} are stale (latest: {latest_bar_str}, global: {latest_global_str})")
                         return None
                 except Exception:
@@ -395,6 +395,14 @@ def screen_bull_snort(
                 # Active symbol but has insufficient local database history (<230 bars)
                 # Since active symbols are few (usually <150), we can download up-to-date data from yfinance.
                 data = fetch_historical_prices(sym, range_str="2y")
+
+            # Check if downloaded or local data is stale compared to latest global market date
+            if latest_global_date and data:
+                latest_global_str = latest_global_date.strftime('%Y-%m-%d') if hasattr(latest_global_date, 'strftime') else str(latest_global_date)
+                latest_data_str = data[-1]["date"]
+                if latest_data_str < latest_global_str:
+                    logger.debug(f"Data for {sym} is stale (data date: {latest_data_str}, global date: {latest_global_str})")
+                    return None
 
             # Check if we have sufficient history (pre-filter)
             if not _has_sufficient_history(sym, data):

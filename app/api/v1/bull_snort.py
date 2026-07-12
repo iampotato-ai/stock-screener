@@ -135,7 +135,7 @@ def bull_snort_screen():
     # Note: We only cache when min_marketcap_cr is None (using default cache behavior)
     import pandas as pd
     refreshed_time = pd.Timestamp.now().isoformat()
-    if request.method == 'GET' and is_default and min_marketcap_cr is None:
+    if request.method == 'GET' and is_default and min_marketcap_cr is None and not current_app.config.get('TESTING'):
         import json
         import os
         cache_data = {

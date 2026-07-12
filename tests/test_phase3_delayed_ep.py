@@ -11,6 +11,12 @@ db_fd, db_path = tempfile.mkstemp()
 
 orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
 
+# Set PYTEST_CURRENT_TEST env var BEFORE importing app so init_scheduler's
+# guard fires and the background scheduler does NOT start.
+# This prevents the IPO warmup one-shot job (fires 10s after import) from
+# writing to the database and causing 'database is locked' during tests.
+os.environ.setdefault('PYTEST_CURRENT_TEST', 'test_phase3_delayed_ep.py::setup')
+
 # Now insert root path and import app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import app
@@ -23,17 +29,45 @@ from app import (
     refresh_ep_screener
 )
 
-# Shut down background scheduler to prevent test database locking
+# Force TESTING=True immediately so no background tasks run in any subsequent
+# test client or app_context that might be pushed.
+flask_app.config['TESTING'] = True
+
+# Shut down background scheduler if it started despite the env guard.
+# This is a fallback for environments where the guard may have been bypassed.
 if hasattr(flask_app, 'scheduler') and flask_app.scheduler:
     try:
         flask_app.scheduler.shutdown(wait=False)
     except Exception:
         pass
+# Also check APScheduler's running attribute in case it's a direct reference
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    import gc
+    for obj in gc.get_objects():
+        if isinstance(obj, BackgroundScheduler) and obj.running:
+            try:
+                obj.shutdown(wait=False)
+            except Exception:
+                pass
+except Exception:
+    pass
+
 
 
 @pytest.fixture(autouse=True)
 def patch_sqlite(monkeypatch):
-    app.init_db()
+    from app.database import init_db_standalone
+    from app.extensions import db
+    init_db_standalone(db_path)
+    # Dispose SQLAlchemy engine pool to release any open connections
+    # so subsequent raw sqlite3 connections don't hit a lock
+    try:
+        with flask_app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+    except Exception:
+        pass
 
 @pytest.fixture(scope="module", autouse=True)
 def cleanup_temp_db():
@@ -47,19 +81,34 @@ def cleanup_temp_db():
 @pytest.fixture
 def client():
     from app.extensions import db
+    flask_app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
+    flask_app.config['DATABASE'] = db_path
+    flask_app.config['TESTING'] = True
     with flask_app.app_context():
         try:
             db.session.remove()
             db.engine.dispose()
+            db.create_all()
+            # Dispose again after create_all to release the pool connection
+            db.engine.dispose()
         except Exception:
             pass
-    flask_app.config['TESTING'] = True
     with flask_app.test_client() as client:
         yield client
+    # Teardown: release engine pool after each test that uses this fixture
+    try:
+        with flask_app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+    except Exception:
+        pass
 
 @pytest.fixture(autouse=True)
 def clean_db(patch_sqlite):
-    conn = orig_connect(db_path)
+    # Use timeout=30 so raw connection waits if SQLAlchemy pool hasn't fully
+    # released its connection yet (race between engine.dispose() and OS unlock)
+    conn = orig_connect(db_path, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")  # ensure WAL so reads don't block writes
     c = conn.cursor()
     c.execute("DELETE FROM ep_watchlist")
     c.execute("DELETE FROM sugar_babies")
