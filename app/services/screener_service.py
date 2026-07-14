@@ -30,6 +30,49 @@ class ScreenerService:
             current_app.logger.error(f"Error getting latest scan date: {e}")
             return None
 
+    def _get_local_stage_analysis(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """Attempt to calculate stage classification locally using daily_bars table to avoid HTTP requests.
+        
+        Tries the plain ticker first, then falls back to .NS and .BO suffix variants to handle
+        mismatches between screener ticker format (plain) and daily_bars storage format (suffixed).
+        """
+        try:
+            from app.models import DailyBar
+            from app.services.stage_analyzer.engine import analyze
+
+            # Try the ticker as-is first, then with exchange suffixes (daily_bars may store RUBICON.NS)
+            candidate_symbols = [ticker, f"{ticker}.NS", f"{ticker}.BO"]
+            bars = []
+            for sym in candidate_symbols:
+                bars = db.session.query(DailyBar).filter(
+                    DailyBar.symbol == sym
+                ).order_by(DailyBar.trade_date.asc()).all()
+                if bars:
+                    break  # Use whichever format has data
+
+            if len(bars) >= 5:
+                history = [{
+                    "date": bar.trade_date.strftime('%Y-%m-%d') if hasattr(bar.trade_date, 'strftime') else str(bar.trade_date),
+                    "open": float(bar.open or 0.0),
+                    "high": float(bar.high or 0.0),
+                    "low": float(bar.low or 0.0),
+                    "close": float(bar.close or 0.0),
+                    "volume": int(bar.volume or 0)
+                } for bar in bars]
+                
+                closes = [day["close"] for day in history]
+                sma21 = sum(closes[-21:]) / 21 if len(closes) >= 21 else None
+                sma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else None
+                stock_data = {"ticker": ticker, "history": history, "SMA21": sma21, "SMA50": sma50}
+                return analyze(stock_data)
+            elif bars:
+                current_app.logger.debug(
+                    f"Stage analysis skipped for {ticker}: only {len(bars)} bars available (need >=5)"
+                )
+        except Exception as e:
+            current_app.logger.warning(f"Failed local stage analyzer query for {ticker}: {e}")
+        return None
+
     def get_scan_results(self, limit: int = 500, live: bool = False, full_response: bool = False) -> Any:
         """
         Get the latest scan results.
@@ -57,9 +100,30 @@ class ScreenerService:
                     
                     # Calculate RS scores for live scan results
                     results = rs_service.calculate_rs_scores(results)
-                    # expose RS rating under the UI‑expected key
+                    # expose RS rating under the UI‑expected key and enrich with Stage info
+                    from flask import has_app_context
+                    stage_results = current_app.config.get('STAGE_ANALYSIS_RESULTS', {}) if has_app_context() else {}
                     for stock in results:
                         stock['relative_strength_rating'] = stock.get('rs_score')
+                        ticker = stock.get('clean_ticker') or stock.get('ticker') or stock.get('symbol', '')
+                        if ticker.startswith("NSE:"):
+                            ticker = ticker[4:]
+                        elif ticker.startswith("BO:"):
+                            ticker = ticker[3:]
+                        ticker = ticker.upper()
+                        
+                        analysis = stage_results.get(ticker)
+                        if analysis and 'score' in analysis:
+                            stock['stage_label'] = analysis['score'].get('stage', 'Unknown')
+                        else:
+                            # Lazy-load stage analysis locally from daily_bars (never make blocking network requests)
+                            inline_analysis = self._get_local_stage_analysis(ticker)
+                            if inline_analysis:
+                                if has_app_context():
+                                    stage_results[ticker] = inline_analysis
+                                stock['stage_label'] = inline_analysis['score'].get('stage', 'Unknown')
+                            else:
+                                stock['stage_label'] = 'Unknown'
                     
                     if full_response:
                         return {
@@ -87,9 +151,30 @@ class ScreenerService:
             
             # Calculate RS scores for database results
             results = rs_service.calculate_rs_scores(results)
-            # expose RS rating under the UI‑expected key
+            # expose RS rating under the UI‑expected key and enrich with Stage info
+            from flask import has_app_context
+            stage_results = current_app.config.get('STAGE_ANALYSIS_RESULTS', {}) if has_app_context() else {}
             for stock in results:
                 stock['relative_strength_rating'] = stock.get('rs_score')
+                ticker = stock.get('clean_ticker') or stock.get('ticker') or stock.get('symbol', '')
+                if ticker.startswith("NSE:"):
+                    ticker = ticker[4:]
+                elif ticker.startswith("BO:"):
+                    ticker = ticker[3:]
+                ticker = ticker.upper()
+                
+                analysis = stage_results.get(ticker)
+                if analysis and 'score' in analysis:
+                    stock['stage_label'] = analysis['score'].get('stage', 'Unknown')
+                else:
+                    # Lazy-load stage analysis locally from daily_bars (never make blocking network requests)
+                    inline_analysis = self._get_local_stage_analysis(ticker)
+                    if inline_analysis:
+                        if has_app_context():
+                            stage_results[ticker] = inline_analysis
+                        stock['stage_label'] = inline_analysis['score'].get('stage', 'Unknown')
+                    else:
+                        stock['stage_label'] = 'Unknown'
             
             if full_response:
                 return {

@@ -54,6 +54,8 @@ def create_app(config_name=None, overrides=None):
         logger.debug("Scheduler initialization skipped in reloader process")
 
     # Register blueprints
+    from app.services.stage_analyzer.api import stage_analyzer_bp
+    app.register_blueprint(stage_analyzer_bp, url_prefix='/api/v1')
     from .api.v1 import api_bp
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(api_bp, url_prefix='/api/v1', name='api_v1')

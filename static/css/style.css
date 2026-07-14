@@ -10865,5 +10865,27 @@ opacity: 1;
   }
 }
 
+/* Stage Badge Styles */
+.stage-1-badge {
+    background: rgba(245, 158, 11, 0.12) !important;
+    color: #f59e0b !important;
+    border: 1px solid rgba(245, 158, 11, 0.25) !important;
+}
+.stage-2-badge {
+    background: rgba(16, 185, 129, 0.12) !important;
+    color: #10b981 !important;
+    border: 1px solid rgba(16, 185, 129, 0.25) !important;
+}
+.stage-3-badge {
+    background: rgba(139, 92, 246, 0.12) !important;
+    color: #8b5cf6 !important;
+    border: 1px solid rgba(139, 92, 246, 0.25) !important;
+}
+.stage-4-badge {
+    background: rgba(239, 68, 68, 0.12) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.25) !important;
+}
+
 
 

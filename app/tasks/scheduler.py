@@ -28,7 +28,7 @@ def init_scheduler(app: Flask):
         return None
 
     # Prevent double initialization in Flask debug mode
-    if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+    if app.debug and os.environ.get('WERKZEUG_RUN_MAIN') != 'true' and os.environ.get('SCHEDULER_FORCE_START') != 'true':
         # We are in the Flask reloader process, skip initialization
         logger.debug("Scheduler not initialized in reloader process")
         return None
@@ -121,6 +121,35 @@ def init_scheduler(app: Flask):
         replace_existing=True,
         args=[app]
     )
+
+    # Add Stage Analyzer jobs – reuses shared price cache and SMA calculations
+    if app.config.get('STAGE_ANALYSIS_ENABLED', True):
+        from app.services.stage_analyzer.scheduler import _run_stage_analysis_job
+        scheduler.add_job(
+            func=_run_stage_analysis_job,
+            trigger='cron',
+            hour=app.config.get('STAGE_ANALYSIS_HOUR', 16),
+            minute=app.config.get('STAGE_ANALYSIS_MINUTE', 30),
+            timezone='Asia/Kolkata',
+            id='stage_analysis_daily',
+            name='Daily Stage Analyzer run',
+            replace_existing=True,
+            args=[app]
+        )
+
+        from datetime import datetime
+        interval_minutes = app.config.get('STAGE_ANALYSIS_INTERVAL_MINUTES', 60)
+        scheduler.add_job(
+            func=_run_stage_analysis_job,
+            trigger='interval',
+            minutes=interval_minutes,
+            id='stage_analysis_interval',
+            name=f'Stage Analyzer interval ({interval_minutes} min)',
+            replace_existing=True,
+            args=[app],
+            next_run_time=datetime.now()
+        )
+
 
     # Add market cap refresh job - runs daily at configured hour (gated behind feature flag)
     if app.config.get('ENABLE_MARKET_CAP_CACHE', True):

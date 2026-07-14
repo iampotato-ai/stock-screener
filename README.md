@@ -74,6 +74,10 @@ Full implementation of the EP strategy for Indian markets, comprising:
 
 ## 📂 Project Structure (post‑refactor Overview
 
+### Documentation
+- [Feature Overview](docs/FEATURES_OVERVIEW.md)
+- [Migration Feature Guide](docs/migration_features_guide.md)
+
 ```
 stock-screener/
 │

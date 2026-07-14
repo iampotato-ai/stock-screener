@@ -1,5 +1,6 @@
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["SCHEDULER_FORCE_START"] = "true"  # Force background scheduler to start when reloader is disabled
 from app import create_app
 
 # Canonical entry point for running the application locally/development
@@ -11,4 +12,4 @@ if __name__ == '__main__':
     port = int(os.environ.get('FLASK_PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
     
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, use_reloader=False)

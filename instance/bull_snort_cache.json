@@ -1,29 +1,5 @@
 {
-  "data": [
-    {
-      "symbol": "INDIQUBE",
-      "date": "2026-07-10",
-      "open": 173.0,
-      "high": 179.4,
-      "low": 171.02,
-      "close": 178.11,
-      "prev_close": 171.02,
-      "pct_change": 4.15,
-      "volume": 861149,
-      "avg_volume": 164625,
-      "vol_ratio": 5.231,
-      "close_position": 0.846,
-      "candle_range": 8.38,
-      "dma200": 186.26,
-      "current_gap_pct": 4.58,
-      "max_gap_6mo_pct": 28.05,
-      "dma_slope_norm": -0.154,
-      "n_vol_pivots": 7,
-      "n_vol_surges": 4,
-      "accumulation_score": 100.0,
-      "final_score": 85.98
-    }
-  ],
-  "count": 1,
-  "refreshed": "2026-07-11T15:06:08.423331"
+  "data": [],
+  "count": 0,
+  "refreshed": "2026-07-14T19:25:21.359564"
 }
