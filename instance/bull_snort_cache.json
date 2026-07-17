@@ -1,5 +1,29 @@
 {
-  "data": [],
-  "count": 0,
-  "refreshed": "2026-07-14T19:25:21.359564"
+  "data": [
+    {
+      "symbol": "METROBRAND",
+      "date": "2026-07-17",
+      "open": 1031.0,
+      "high": 1095.0,
+      "low": 1018.9,
+      "close": 1071.3,
+      "prev_close": 1031.0,
+      "pct_change": 3.91,
+      "volume": 270712,
+      "avg_volume": 50551,
+      "vol_ratio": 5.355,
+      "close_position": 0.689,
+      "candle_range": 76.1,
+      "dma200": 1074.31,
+      "current_gap_pct": 0.28,
+      "max_gap_6mo_pct": 26.56,
+      "dma_slope_norm": -0.0929,
+      "n_vol_pivots": 21,
+      "n_vol_surges": 12,
+      "accumulation_score": 100.0,
+      "final_score": 91.49
+    }
+  ],
+  "count": 1,
+  "refreshed": "2026-07-17T17:30:31.655113"
 }

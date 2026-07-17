@@ -56,6 +56,21 @@
         background: rgba(255, 255, 255, 0.05);
         color: #94a3b8;
         border: 1px solid rgba(255, 255, 255, 0.1);
+
+      /* AI Deep Dive Button Styling */
+      #btn-deep-dive-ai:hover {
+        background: #059669 !important;
+        box-shadow: 0 6px 16px rgba(16, 185, 129, 0.3) !important;
+        transform: translateY(-1px);
+      }
+      #btn-deep-dive-ai:active {
+        transform: translateY(0);
+      }
+      #btn-deep-dive-ai:disabled {
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: var(--color-text-muted) !important;
+        box-shadow: none !important;
+        cursor: not-allowed !important;
       }
 
       /* Model Weights Bar styling */
@@ -432,38 +447,41 @@
                     <div class="dashboard-section-title">Sector Heatmap</div>
                     <div class="breadth-sector-heatmap" id="breadth-sector-heatmap" style="margin-top: 0;"></div>
 <div class="dashboard-section-title">Stage Distribution</div>
-<div class="glass-panel" style="padding: var(--space-4); margin-bottom: var(--space-4);">
-    <div style="height: 200px; margin-bottom: 0.5rem;">
-        <canvas id="stage-distribution-chart" style="width:100%; height:200px;"></canvas>
-    </div>
-    <!-- Classification Legend / Guide -->
-    <div class="stage-info-grid" style="display: grid; gap: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 1rem; margin-top: 0.75rem;">
-        <div style="display: flex; align-items: start; gap: 0.5rem; font-size: 0.75rem; line-height: 1.4;">
-            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #f59e0b; margin-top: 0.25rem; flex-shrink: 0;"></span>
-            <div>
-                <strong style="color: var(--color-text-primary); font-family: 'Outfit'; font-weight: 600;">Stage 1 (Consolidation):</strong>
-                <span style="color: var(--color-text-secondary);">Sideways movement (-5% to +10% growth) at the lower end of the 6-month range.</span>
-            </div>
+<div class="glass-panel" style="padding: var(--space-md); margin-bottom: var(--space-md);">
+    <div class="stage-panel-split">
+        <!-- Left: Doughnut Chart -->
+        <div style="height: 200px; display: flex; align-items: center; justify-content: center; position: relative;">
+            <canvas id="stage-distribution-chart"></canvas>
         </div>
-        <div style="display: flex; align-items: start; gap: 0.5rem; font-size: 0.75rem; line-height: 1.4;">
-            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #10b981; margin-top: 0.25rem; flex-shrink: 0;"></span>
-            <div>
-                <strong style="color: var(--color-text-primary); font-family: 'Outfit'; font-weight: 600;">Stage 2 (Advancing):</strong>
-                <span style="color: var(--color-text-secondary);">Strong upward trend (>10% price growth over the 6-month period).</span>
+        <!-- Right: Telemetry Legend Grid -->
+        <div class="stage-info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-xs);">
+            <div class="stage-card stage-card-1" onclick="window.filterScreenerByStage('Stage 1')">
+                <div class="stage-card-title">
+                    <span>STAGE 1 · CONSOLIDATION</span>
+                    <span id="stage-count-1" class="stage-card-count">-- STOCKS</span>
+                </div>
+                <div class="stage-card-desc">Sideways range-bound movement at the lower end of the 6-month cycle.</div>
             </div>
-        </div>
-        <div style="display: flex; align-items: start; gap: 0.5rem; font-size: 0.75rem; line-height: 1.4;">
-            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #8b5cf6; margin-top: 0.25rem; flex-shrink: 0;"></span>
-            <div>
-                <strong style="color: var(--color-text-primary); font-family: 'Outfit'; font-weight: 600;">Stage 3 (Distribution):</strong>
-                <span style="color: var(--color-text-secondary);">Sideways topping movement (-5% to +10% growth) at the upper end of the range.</span>
+            <div class="stage-card stage-card-2" onclick="window.filterScreenerByStage('Stage 2')">
+                <div class="stage-card-title">
+                    <span>STAGE 2 · ADVANCING</span>
+                    <span id="stage-count-2" class="stage-card-count">-- STOCKS</span>
+                </div>
+                <div class="stage-card-desc">Strong upward trend with consistent price growth over the period.</div>
             </div>
-        </div>
-        <div style="display: flex; align-items: start; gap: 0.5rem; font-size: 0.75rem; line-height: 1.4;">
-            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; margin-top: 0.25rem; flex-shrink: 0;"></span>
-            <div>
-                <strong style="color: var(--color-text-primary); font-family: 'Outfit'; font-weight: 600;">Stage 4 (Declining):</strong>
-                <span style="color: var(--color-text-secondary);">Downward trend (<= -5% price growth over the 6-month period).</span>
+            <div class="stage-card stage-card-3" onclick="window.filterScreenerByStage('Stage 3')">
+                <div class="stage-card-title">
+                    <span>STAGE 3 · DISTRIBUTION</span>
+                    <span id="stage-count-3" class="stage-card-count">-- STOCKS</span>
+                </div>
+                <div class="stage-card-desc">Sideways topping movement at the upper end of the trading range.</div>
+            </div>
+            <div class="stage-card stage-card-4" onclick="window.filterScreenerByStage('Stage 4')">
+                <div class="stage-card-title">
+                    <span>STAGE 4 · DECLINING</span>
+                    <span id="stage-count-4" class="stage-card-count">-- STOCKS</span>
+                </div>
+                <div class="stage-card-desc">Downward trend showing persistent sell pressure and breakdown.</div>
             </div>
         </div>
     </div>
@@ -2400,6 +2418,9 @@
                         <span>Score: <strong id="ep-detail-score" style="color: var(--color-text-primary);"></strong></span>
                         <span>Confidence: <strong id="ep-detail-confidence"></strong></span>
                         <span id="ep-detail-mktcap"></span>
+                        <button id="ep-detail-help-trigger" style="border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); color: #10b981; border-radius: 4px; padding: 2px 8px; font-size: 0.72rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin-left: 4px; font-family: inherit;">
+                            <span>❓</span> Understanding the EP Pivot
+                        </button>
                     </p>
                 </div>
                 <button class="modal-close-btn" data-modal-close title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth);">
@@ -2407,6 +2428,22 @@
                 </button>
             </div>
             <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; background: rgba(0,0,0,0.2); max-height: 60vh;">
+                <!-- Section: AI Thesis and Reasoning -->
+                <div id="ep-detail-ai-section" class="hidden" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; padding: 1.2rem; display: flex; flex-direction: column; gap: var(--space-2);">
+                    <h4 style="margin: 0; font-size: 0.95rem; color: #10b981; display: flex; align-items: center; gap: var(--space-2); font-weight: 700;">
+                        <span>✨</span> AI Score Breakdown & Thesis
+                    </h4>
+                    <div id="ep-detail-ai-thesis" style="font-style: italic; font-size: 0.85rem; color: #d1d5db; line-height: 1.6; text-align: justify; padding: 0.2rem 0;"></div>
+                    
+                    <!-- Accordion Panel for Reasoning Chain -->
+                    <div style="border-top: 1px dashed rgba(16, 185, 129, 0.15); padding-top: 0.5rem; margin-top: 0.3rem;">
+                        <button id="ep-detail-ai-reasoning-toggle" style="background: transparent; border: none; color: #10b981; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; gap: 4px; padding: 0; font-weight: 600; font-family: inherit; text-decoration: underline;">
+                            View AI Reasoning Chain
+                        </button>
+                        <pre id="ep-detail-ai-reasoning-content" class="hidden" style="margin-top: 0.5rem; font-family: monospace; font-size: 0.7rem; color: #34d399; background: rgba(0,0,0,0.4); padding: 0.7rem; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.1); overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow-y: auto;"></pre>
+                    </div>
+                </div>
+
                 <!-- Section: Price Chart -->
                 <div>
                     <h4 style="margin: 0 0 var(--space-3) 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: var(--space-2);">
@@ -2417,9 +2454,26 @@
 
                 <!-- Section: Quarterly Financials -->
                 <div>
-                    <h4 style="margin: 0 0 var(--space-3) 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: var(--space-2);">
-                        <span>📊</span> Quarterly Financial Results (YoY Growth)
-                    </h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3);">
+                        <h4 style="margin: 0; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: var(--space-2);">
+                            <span>📊</span> Quarterly Financial Results (YoY Growth)
+                        </h4>
+                        <button id="btn-ep-detail-ai-fund" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.25rem 0.6rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05); color: #10b981; cursor: pointer; font-family: inherit;">
+                            <span>🤖</span> Analyze Fundamentals
+                        </button>
+                    </div>
+                    
+                    <!-- AI Fundamental Analysis Output Card -->
+                    <div id="ep-detail-ai-fund-card" class="hidden" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; padding: 1rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: var(--space-2);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.82rem; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 4px;">
+                                <span>🤖</span> AI Fundamental Rating
+                            </span>
+                            <span id="ep-detail-ai-fund-verdict" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight: 700; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">GARP</span>
+                        </div>
+                        <div id="ep-detail-ai-fund-summary" style="font-style: italic; font-size: 0.82rem; color: #d1d5db; line-height: 1.55; text-align: justify; padding: 0.2rem 0;"></div>
+                    </div>
+
                     <div style="overflow-x: auto; border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
                         <table class="screener-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 0;">
                             <thead>
@@ -2472,6 +2526,124 @@
                         <button class="btn" id="btn-ep-detail-remove-watchlist" style="background: #dc2626; border: 1px solid #b91c1c; color: #fff; display: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer;">Remove Watchlist</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Episodic Pivot Understanding Modal -->
+    <div class="modal-overlay hidden" id="ep-understanding-modal" style="z-index: 11000;">
+        <div class="modal-container glass-panel" style="max-width: 650px; width: 90vw; height: auto; max-height: 85%;">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding: 1.2rem 1.5rem;">
+                <div class="modal-title-area" style="display: flex; align-items: flex-start; gap: 0.8rem;">
+                    <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: #10b981; flex-shrink: 0; font-size: 1.1rem; line-height: 1;">
+                        ❓
+                    </div>
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.1rem; color: #fff; font-weight: 700; display: flex; align-items: center; gap: 0.4rem;">
+                            Understanding Episodic Pivots (EPs)
+                        </h3>
+                        <p style="margin: 0.2rem 0 0 0; font-size: 0.75rem; color: var(--color-text-muted); line-height: 1.3;">
+                            Comprehensive guide to the criteria used for quantitative and qualitative scoring.
+                        </p>
+                    </div>
+                </div>
+                <button class="modal-close-btn" id="btn-close-ep-understanding" title="Close Modal" style="background: transparent; border: none; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; border-radius: 4px; transition: var(--transition-smooth); margin-left: auto;">
+                    <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.2rem; overflow-y: auto; background: rgba(0,0,0,0.25); max-height: 60vh;">
+                
+                <!-- What is an EP? -->
+                <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: 6px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <h4 style="margin: 0; font-size: 0.9rem; color: #10b981; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                        💡 What is an Episodic Pivot?
+                    </h4>
+                    <p style="margin: 0; font-size: 0.8rem; color: #d1d5db; line-height: 1.55; text-align: justify; font-family: inherit;">
+                        An <strong>Episodic Pivot (EP)</strong> is a powerful quantitative setup popularized by legendary traders. It marks a major structural trend reversal or acceleration where a stock breaks out on exceptional volume (RVOL) and price momentum, triggered by a highly material catalyst (such as stellar earnings, multi-million dollar order wins, rating upgrades, or strategic mergers) that forces the institutional market to suddenly re-evaluate and reprice the equity.
+                    </p>
+                </div>
+
+                <!-- 5 Pillars Section -->
+                <div>
+                    <h4 style="margin: 0 0 0.8rem 0; font-size: 0.8rem; font-weight: 700; color: #fff; letter-spacing: 0.5px;">
+                        THE 5 PILLARS OF EP SCORING
+                    </h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+                        
+                        <!-- Pillar 1 -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 0.8rem 1rem; display: flex; gap: 1rem; align-items: flex-start;">
+                            <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.2); color: #3b82f6; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem;">
+                                📊
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">Relative Volume (RVOL)</span>
+                                <span style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.45;">
+                                    Represents institutional footprint. A true EP requires <strong>RVOL ≥ 2.0x</strong> (and often > 5.0x to 10.0x), indicating aggressive institutional accumulation that cannot be hidden.
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Pillar 2 -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 0.8rem 1rem; display: flex; gap: 1rem; align-items: flex-start;">
+                            <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem;">
+                                ✨
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">Catalyst Score (Intensity)</span>
+                                <span style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.45;">
+                                    Measures the significance of corporate developments. High-intensity catalysts include positive earnings surprises (YoY growth acceleration), major contract/order wins, regulatory approvals, rating upgrades, or joint ventures.
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Pillar 3 -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 0.8rem 1rem; display: flex; gap: 1rem; align-items: flex-start;">
+                            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.2); color: #f59e0b; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem;">
+                                📈
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">Close Location Percentage (Conviction)</span>
+                                <span style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.45;">
+                                    Where the price closes within the daily high-low range. A high close location (<strong>≥ 50%</strong>, ideally > 75%) indicates persistent buy conviction that absorbed all intraday supply.
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Pillar 4 -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 0.8rem 1rem; display: flex; gap: 1rem; align-items: flex-start;">
+                            <div style="background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.2); color: #8b5cf6; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem;">
+                                👁️‍🗨️
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">Neglect Score (Institutional Space)</span>
+                                <span style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.45;">
+                                    Higher scores indicate low institutional ownership, light analyst coverage, or high retail concentration. Highly neglected stocks reprice much more violently when a powerful catalyst emerges.
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Pillar 5 -->
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 0.8rem 1rem; display: flex; gap: 1rem; align-items: flex-start;">
+                            <div style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.2); color: #ec7299; border-radius: 6px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.95rem;">
+                                ⚡
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                <span style="font-size: 0.85rem; font-weight: 700; color: #fff;">Repricing Score (Potential Momentum)</span>
+                                <span style="font-size: 0.78rem; color: var(--color-text-secondary); line-height: 1.45;">
+                                    Estimates the headroom for momentum continuation. Evaluates historical price speed and volatility to identify candidates primed for persistent multi-week trends.
+                                </span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Footer Info Note -->
+                <div style="display: flex; gap: 8px; align-items: center; font-size: 0.72rem; color: var(--color-text-muted); border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.6rem; margin-top: 0.2rem;">
+                    <span>ℹ️</span>
+                    <span>EP Scores are computed using a proprietary weighted ensemble of the 5 Pillars combined with real-time news indexing.</span>
+                </div>
+
             </div>
         </div>
     </div>
@@ -3063,7 +3235,7 @@
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.55"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.76"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.81"></script>
     <script>
     // ─── Momentum Confidence Score™ Tab Logic ───────────────────────────────────
     (function () {

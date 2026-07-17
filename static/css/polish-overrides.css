@@ -35,6 +35,73 @@ a:focus-visible {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
   }
 }
+
+/* Telemetry Grid layout for Stage Distribution Panel */
+.stage-panel-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .stage-panel-split {
+    grid-template-columns: 1.2fr 2fr;
+  }
+}
+
+.stage-card {
+  background: var(--color-surface-soft);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: var(--space-sm);
+  border-radius: var(--radius-none);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), background-color var(--transition-smooth), transform var(--transition-smooth);
+}
+
+.stage-card:hover {
+  background: var(--color-surface-elevated);
+  transform: translateY(-2px);
+}
+
+.stage-card:active {
+  transform: translateY(0);
+}
+
+.stage-card-count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.stage-card-1 .stage-card-count { color: var(--accent-amber); }
+.stage-card-2 .stage-card-count { color: var(--accent-green); }
+.stage-card-3 .stage-card-count { color: var(--accent-purple); }
+.stage-card-4 .stage-card-count { color: var(--accent-red); }
+
+.stage-card-title {
+  font: var(--typography-label-uppercase);
+  color: var(--color-on-canvas);
+  margin-bottom: var(--space-xs);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  letter-spacing: 1px;
+}
+
+.stage-card-desc {
+  font: var(--typography-body-sm);
+  color: var(--color-body);
+  line-height: 1.4;
+}
+
+/* Stage-specific border colors to match Chart.js mapping */
+.stage-card-1 { border-left: 3px solid var(--accent-amber); }
+.stage-card-2 { border-left: 3px solid var(--accent-green); }
+.stage-card-3 { border-left: 3px solid var(--accent-purple); }
+.stage-card-4 { border-left: 3px solid var(--accent-red); }
+.stage-card-unknown { border-left: 3px solid var(--color-muted); }
+

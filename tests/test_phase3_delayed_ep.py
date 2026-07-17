@@ -647,6 +647,14 @@ def test_days_on_watch_idempotent(mock_post, mock_fetch_prices, mock_send_alert)
 @patch("app.fetch_nse_announcements")
 @patch("requests.post")
 def test_high_confidence_alert_no_duplicates(mock_post, mock_fetch_announcements, mock_fetch_fundamentals, mock_fetch_prices, mock_send_alert):
+    # Clear databases for isolation
+    conn = orig_connect(db_path)
+    c = conn.cursor()
+    c.execute("DELETE FROM ep_watchlist")
+    c.execute("DELETE FROM ep_features")
+    conn.commit()
+    conn.close()
+
     mock_tv_response = MagicMock()
     mock_tv_response.json.return_value = {
         "data": [

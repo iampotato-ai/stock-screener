@@ -1,0 +1,314 @@
+import os
+import time
+import requests
+import re
+from typing import Dict, Any, Optional
+from flask import current_app
+
+class AIService:
+    """Service to interact with NVIDIA NIM APIs and Google Gemini Fallbacks."""
+
+    def __init__(self):
+        self.nim_circuit_breaker_until = 0.0
+
+    def _get_api_keys(self) -> tuple:
+        """Retrieve API keys from current_app config or environment."""
+        nim_key = os.environ.get("NVIDIA_NIM_API_KEY")
+        gemini_key = os.environ.get("GEMINI_API_KEY")
+        if current_app:
+            nim_key = current_app.config.get("NVIDIA_NIM_API_KEY", nim_key)
+            gemini_key = current_app.config.get("GEMINI_API_KEY", gemini_key)
+        return nim_key, gemini_key
+
+    def _call_nim(self, model: str, messages: list, temperature: float = 0.2) -> Optional[dict]:
+        """Call NVIDIA NIM API with retries and circuit breaker checks."""
+        nim_key, _ = self._get_api_keys()
+        if not nim_key:
+            return None
+
+        # Check circuit breaker
+        if time.time() < self.nim_circuit_breaker_until:
+            if current_app:
+                current_app.logger.warning("NIM Circuit breaker is active. Skipping NIM.")
+            return None
+
+        url = os.environ.get("NVIDIA_NIM_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
+        headers = {
+            "Authorization": f"Bearer {nim_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature
+        }
+
+        retries = 2
+        for attempt in range(retries + 1):
+            try:
+                if current_app:
+                    current_app.logger.info(f"Calling NIM API (model: {model}, attempt: {attempt + 1})")
+                
+                resp = requests.post(url, json=payload, headers=headers, timeout=15)
+                
+                # Check for rate limit (429)
+                if resp.status_code == 429:
+                    self.nim_circuit_breaker_until = time.time() + 15.0
+                    if current_app:
+                        current_app.logger.warning("NIM returned 429. Opening circuit breaker for 15s.")
+                    return None
+                
+                resp.raise_for_status()
+                return resp.json()
+
+            except Exception as e:
+                if attempt < retries:
+                    sleep_time = 2 ** attempt
+                    if current_app:
+                        current_app.logger.warning(f"NIM request failed: {e}. Retrying in {sleep_time}s...")
+                    time.sleep(sleep_time)
+                else:
+                    if current_app:
+                        current_app.logger.error(f"NIM request failed completely after {retries} retries: {e}")
+                    # If it failed completely with other network issues, let's open circuit breaker too just in case
+                    self.nim_circuit_breaker_until = time.time() + 5.0
+                    return None
+        return None
+
+    def _call_gemini(self, model: str, prompt: str) -> Optional[str]:
+        """Call Google Gemini API as fallback."""
+        _, gemini_key = self._get_api_keys()
+        if not gemini_key:
+            if current_app:
+                current_app.logger.error("GEMINI_API_KEY is not configured.")
+            return None
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": prompt
+                }]
+            }]
+        }
+
+        try:
+            if current_app:
+                current_app.logger.info(f"Calling Gemini Fallback API (model: {model})")
+            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+            resp.raise_for_status()
+            
+            data = resp.json()
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    return parts[0].get("text")
+            return None
+        except Exception as e:
+            if current_app:
+                current_app.logger.error(f"Gemini API request failed: {e}")
+            return None
+
+    def generate_thesis_and_reasoning(self, symbol: str, technicals: dict, financials: list, announcements: list) -> dict:
+        """Generate AI Score Breakdown & Thesis with internal reasoning chain."""
+        # Build prompt content
+        tech_summary = (
+            f"Symbol: {symbol}\n"
+            f"EP Score: {technicals.get('ep_score', 'N/A')}\n"
+            f"Neglect Score: {technicals.get('neglect_score', 'N/A')}\n"
+            f"Catalyst Score: {technicals.get('catalyst_score', 'N/A')}\n"
+            f"Repricing Score: {technicals.get('repricing_score', 'N/A')}\n"
+            f"Market Cap: INR {technicals.get('market_cap_cr', 'N/A')} Crores\n"
+            f"Rel Volume: {technicals.get('rel_volume', 'N/A')}x\n"
+            f"Close Location: {technicals.get('close_loc', 'N/A')}\n"
+            f"Daily Change: {technicals.get('price_change_pct', 'N/A')}%\n"
+        )
+        
+        fin_summary = ""
+        for f in financials[:2]:
+            fin_summary += (
+                f"- Quarter: {f.get('quarter', 'N/A')}, Result Date: {f.get('result_date', 'N/A')}, "
+                f"Revenue Growth YoY: {f.get('revenue_yoy_pct', '0') or '0'}%, "
+                f"Net Profit Growth YoY: {f.get('net_profit_yoy_pct', '0') or '0'}%\n"
+            )
+            
+        ann_summary = ""
+        for a in announcements[:3]:
+            ann_summary += (
+                f"- Date: {a.get('event_date', 'N/A')}, Event: {a.get('event_type', 'N/A')}, Headline: {a.get('headline', '')[:100]}\n"
+            )
+
+        # Base instructions
+        instruction = (
+            "We need to produce a cohesive AI Score Breakdown & Thesis, exactly 2 to 3 sentences, 50 to 80 words total.\n"
+            "Must explain catalyst, ground thesis in scores and growth numbers, style of institutional research note, "
+            "plain prose, no markdown, no bold, no asterisks, no lists, and no self-promotional terms.\n"
+            "Ground your analysis using the following data:\n\n"
+            f"--- TECHNICALS ---\n{tech_summary}\n"
+            f"--- QUARTERLY FINANCIALS ---\n{fin_summary}\n"
+            f"--- CORPORATE ANNOUNCEMENTS ---\n{ann_summary}\n"
+        )
+
+        # 1. Try NIM first
+        nim_model = os.environ.get("NVIDIA_NIM_MODEL", "openai/gpt-oss-120b")
+        nim_messages = [
+            {"role": "system", "content": "You are a senior institutional equity research analyst. Answer strictly under the provided constraints."},
+            {"role": "user", "content": instruction}
+        ]
+
+        nim_resp = self._call_nim(nim_model, nim_messages)
+        if nim_resp:
+            choices = nim_resp.get("choices", [])
+            if choices:
+                choice = choices[0]
+                message = choice.get("message", {})
+                thesis = message.get("content", "").strip()
+                
+                # Extract reasoning chain
+                reasoning = (
+                    message.get("reasoning_content") or 
+                    message.get("thought") or 
+                    choice.get("reasoning_content") or 
+                    choice.get("thought") or 
+                    "Reasoning chain generated by openai/gpt-oss-120b."
+                )
+                return {"thesis": thesis, "reasoning": reasoning}
+
+        # 2. Fallback to Gemini
+        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash") # Fallback to gemini-2.5-flash or gemini-2.0-flash
+        gemini_prompt = (
+            f"{instruction}\n\n"
+            "CRITICAL ADDITIONAL INSTRUCTION FOR LOGGING:\n"
+            "Before outputting the 2-3 sentence plain prose thesis, you must provide your detailed step-by-step thinking process "
+            "explaining how you arrived at the conclusion. Wrap this step-by-step thinking process inside `<thought>...</thought>` XML tags. "
+            "The final 2-3 sentence thesis must be placed outside the `<thought>` tags at the very end of your response.\n"
+            "Example response structure:\n"
+            "<thought>\n- Analyzing metrics...\n- Synthesis...\n</thought>\n"
+            "NPST exhibits strong momentum..."
+        )
+
+        gemini_text = self._call_gemini(gemini_model, gemini_prompt)
+        if gemini_text:
+            # Parse <thought> tags
+            thought_match = re.search(r"<thought>(.*?)</thought>", gemini_text, re.DOTALL | re.IGNORECASE)
+            reasoning = "Gemini fallback reasoning process."
+            if thought_match:
+                reasoning = thought_match.group(1).strip()
+                # Remove thought tags and reasoning text from thesis
+                thesis = re.sub(r"<thought>.*?</thought>", "", gemini_text, flags=re.DOTALL | re.IGNORECASE).strip()
+            else:
+                thesis = gemini_text.strip()
+            return {"thesis": thesis, "reasoning": reasoning}
+
+        # Last resort fallback if both fail
+        fallback_thesis = (
+            f"The episodic pivot for {symbol} is supported by a catalyst score of {technicals.get('catalyst_score', 'N/A')} "
+            f"and a final score of {technicals.get('ep_score', 'N/A')}. Growth numbers and volume metrics suggest "
+            "institutional interest is starting to build from historical base support."
+        )
+        return {
+            "thesis": fallback_thesis,
+            "reasoning": "Default offline fallback generated due to NIM and Gemini API unavailability."
+        }
+
+    def analyze_sentiment(self, text: str) -> dict:
+        """Utility endpoint sentiment analysis."""
+        prompt = (
+            "Analyze the sentiment of the following financial text. "
+            "You must return ONLY a clean JSON object with three keys: "
+            "\"sentiment\" (which must be exactly \"BULLISH\", \"BEARISH\", or \"NEUTRAL\"), "
+            "\"score\" (integer confidence score from 1 to 100), "
+            "and \"summary\" (brief 1-2 sentence explanation of drivers).\n"
+            "Strictly do not output any markdown code blocks, backticks, or extra wrapping text. Return pure JSON.\n"
+            f"Text to analyze: {text}"
+        )
+
+        # Try NIM
+        nim_model = os.environ.get("NVIDIA_NIM_MODEL_LIGHT", "meta/llama-3.1-70b-instruct")
+        nim_messages = [
+            {"role": "user", "content": prompt}
+        ]
+        nim_resp = self._call_nim(nim_model, nim_messages)
+        if nim_resp:
+            choices = nim_resp.get("choices", [])
+            if choices:
+                content = choices[0].get("message", {}).get("content", "").strip()
+                try:
+                    # Clean up markdown JSON wrapper if present
+                    clean_content = re.sub(r"```json|```", "", content).strip()
+                    import json
+                    return json.loads(clean_content)
+                except Exception:
+                    pass
+
+        # Try Gemini Fallback
+        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_text = self._call_gemini(gemini_model, prompt)
+        if gemini_text:
+            try:
+                clean_content = re.sub(r"```json|```", "", gemini_text).strip()
+                import json
+                return json.loads(clean_content)
+            except Exception:
+                pass
+
+        # Fallback response
+        return {
+            "sentiment": "NEUTRAL",
+            "score": 50,
+            "summary": "Default fallback summary due to AI service rate limit or configurations."
+        }
+
+    def analyze_fundamentals(self, metrics: dict) -> dict:
+        """Utility endpoint fundamental analysis."""
+        prompt = (
+            "Analyze the fundamental valuation, growth, and quality of a company with these metrics:\n"
+            f"{metrics}\n\n"
+            "You must return ONLY a clean JSON object with three keys: "
+            "\"verdict\" (which must be exactly \"VALUE_TRAP\", \"UNDERVALUED\", \"FAIRLY_VALUED\", \"OVERVALUED\", or \"GARP\"), "
+            "\"score\" (integer rating from 1 to 100), "
+            "and \"summary\" (brief financial explanation of the core valuation thesis).\n"
+            "Strictly do not output any markdown code blocks, backticks, or extra wrapping text. Return pure JSON."
+        )
+
+        # Try NIM
+        nim_model = os.environ.get("NVIDIA_NIM_MODEL_LIGHT", "meta/llama-3.1-70b-instruct")
+        nim_messages = [
+            {"role": "user", "content": prompt}
+        ]
+        nim_resp = self._call_nim(nim_model, nim_messages)
+        if nim_resp:
+            choices = nim_resp.get("choices", [])
+            if choices:
+                content = choices[0].get("message", {}).get("content", "").strip()
+                try:
+                    clean_content = re.sub(r"```json|```", "", content).strip()
+                    import json
+                    return json.loads(clean_content)
+                except Exception:
+                    pass
+
+        # Try Gemini Fallback
+        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        gemini_text = self._call_gemini(gemini_model, prompt)
+        if gemini_text:
+            try:
+                clean_content = re.sub(r"```json|```", "", gemini_text).strip()
+                import json
+                return json.loads(clean_content)
+            except Exception:
+                pass
+
+        # Fallback response
+        return {
+            "verdict": "FAIRLY_VALUED",
+            "score": 60,
+            "summary": "Default fallback fundamental thesis due to API limits or configurations."
+        }
+
+# Singleton instance
+ai_service = AIService()

@@ -18,4 +18,5 @@ from . import screener  # noqa: F401
 from . import legacy_routes  # noqa: F401
 from . import score  # noqa: F401
 from . import events  # noqa: F401
+from . import ai_analysis  # noqa: F401
 # Add other modules as they are created

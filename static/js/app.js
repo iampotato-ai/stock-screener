@@ -459,6 +459,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize market status tracking
     updateMarketStatusUI();
+
+// Global Stage Filtering Helper
+window.filterScreenerByStage = function(stage) {
+    if (!stage) return;
+    const targetVal = (stage === 'Unknown' || stage === 'all') ? 'all' : stage;
+    const chip = document.querySelector(`#stage-filter-chips .filter-chip[data-value="${targetVal}"]`);
+    if (chip) {
+        // Toggle active visual on the filter chip
+        const chips = document.querySelectorAll('#stage-filter-chips .filter-chip');
+        chips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        
+        // Open range-filters-panel accordion if not expanded
+        const rangePanel = document.getElementById('range-filters-panel');
+        if (rangePanel && !rangePanel.classList.contains('expanded')) {
+            const rangeToggle = document.getElementById('range-filter-toggle');
+            if (rangeToggle) rangeToggle.click();
+        }
+        
+        // Trigger screener update
+        if (typeof filterAndRender === 'function') {
+            filterAndRender();
+        }
+        
+        // Smooth scroll to table
+        const table = document.getElementById('screener-table');
+        if (table) {
+            table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        
+        // Show styled toast feedback
+        if (typeof showToast === 'function') {
+            showToast(`Filtered screener to ${stage}`, 'success');
+        }
+    }
+};
+
 // Fetch Stage Analyzer results and render charts
 // Fetch Stage Analyzer results and render doughnut chart
 fetch('/api/v1/stage-analyzer/results')
@@ -479,6 +516,19 @@ fetch('/api/v1/stage-analyzer/results')
                 stageCounts['Unknown'] = (stageCounts['Unknown'] || 0) + 1;
             }
         });
+
+        // Update live counts on the telemetry legend cards
+        const stage1El = document.getElementById('stage-count-1');
+        const stage2El = document.getElementById('stage-count-2');
+        const stage3El = document.getElementById('stage-count-3');
+        const stage4El = document.getElementById('stage-count-4');
+        if (stage1El) stage1El.textContent = `${stageCounts['Stage 1'] || 0} STOCKS`;
+        if (stage2El) stage2El.textContent = `${stageCounts['Stage 2'] || 0} STOCKS`;
+        if (stage3El) stage3El.textContent = `${stageCounts['Stage 3'] || 0} STOCKS`;
+        if (stage4El) stage4El.textContent = `${stageCounts['Stage 4'] || 0} STOCKS`;
+
+        const fontHeading = 'Cabinet Grotesk';
+        const fontBody = 'Geist';
         const distCtx = document.getElementById('stage-distribution-chart').getContext('2d');
         new Chart(distCtx, {
             type: 'doughnut',
@@ -488,7 +538,7 @@ fetch('/api/v1/stage-analyzer/results')
                     data: Object.values(stageCounts),
                     backgroundColor: ['#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#64748b'],
                     borderWidth: 2,
-                    borderColor: '#0d111e', // matches card background
+                    borderColor: '#1a1a1a', // matches BMW M surface card background
                     hoverOffset: 4
                 }]
             },
@@ -496,27 +546,37 @@ fetch('/api/v1/stage-analyzer/results')
                 responsive: true,
                 maintainAspectRatio: false,
                 cutout: '70%',
+                onClick: (event, elements, chart) => {
+                    if (elements && elements.length > 0) {
+                        const index = elements[0].index;
+                        const label = chart.data.labels[index];
+                        if (window.filterScreenerByStage) {
+                            window.filterScreenerByStage(label);
+                        }
+                    }
+                },
                 plugins: {
                     legend: {
                         position: 'bottom',
                         labels: {
-                            color: '#94A3B8',
-                            font: { family: 'Outfit', size: 11 },
+                            color: '#bbbbbb', // var(--color-body)
+                            font: { family: fontHeading, size: 11, weight: 'bold' },
                             padding: 12,
                             usePointStyle: true,
-                            pointStyle: 'circle'
+                            pointStyle: 'rect', // boxy M style markers
+                            boxWidth: 8
                         }
                     },
                     tooltip: {
-                        backgroundColor: 'rgba(13, 17, 30, 0.95)',
-                        borderColor: 'rgba(255, 255, 255, 0.08)',
+                        backgroundColor: '#1a1a1a', // var(--color-surface-card)
+                        borderColor: '#7e7e7e', // var(--color-muted)
                         borderWidth: 1,
-                        titleColor: '#F8FAFC',
-                        titleFont: { family: 'Outfit', weight: 'bold', size: 12 },
-                        bodyColor: '#94A3B8',
-                        bodyFont: { family: 'Outfit', size: 12 },
+                        titleColor: '#ffffff',
+                        titleFont: { family: fontHeading, weight: 'bold', size: 12 },
+                        bodyColor: '#bbbbbb',
+                        bodyFont: { family: fontBody, size: 12 },
                         padding: 10,
-                        cornerRadius: 6
+                        cornerRadius: 0 // sharp corners
                     }
                 }
             }
@@ -600,33 +660,34 @@ fetch('/api/v1/stage-analyzer/history')
                     legend: {
                         position: 'bottom',
                         labels: {
-                            color: '#94A3B8',
-                            font: { family: 'Outfit', size: 11 },
+                            color: '#bbbbbb', // var(--color-body)
+                            font: { family: 'Cabinet Grotesk', size: 11, weight: 'bold' },
                             padding: 12,
                             usePointStyle: true,
-                            pointStyle: 'circle'
+                            pointStyle: 'rect', // boxy M style markers
+                            boxWidth: 8
                         }
                     },
                     tooltip: {
-                        backgroundColor: 'rgba(13, 17, 30, 0.95)',
-                        borderColor: 'rgba(255, 255, 255, 0.08)',
+                        backgroundColor: '#1a1a1a', // var(--color-surface-card)
+                        borderColor: '#7e7e7e', // var(--color-muted)
                         borderWidth: 1,
-                        titleColor: '#F8FAFC',
-                        titleFont: { family: 'Outfit', weight: 'bold', size: 12 },
-                        bodyColor: '#94A3B8',
-                        bodyFont: { family: 'Outfit', size: 12 },
+                        titleColor: '#ffffff',
+                        titleFont: { family: 'Cabinet Grotesk', weight: 'bold', size: 12 },
+                        bodyColor: '#bbbbbb',
+                        bodyFont: { family: 'Geist', size: 12 },
                         padding: 10,
-                        cornerRadius: 6
+                        cornerRadius: 0 // sharp corners
                     }
                 },
                 scales: {
                     x: {
                         grid: { color: 'rgba(255, 255, 255, 0.04)', borderColor: 'transparent', drawBorder: false },
-                        ticks: { color: '#94A3B8', font: { family: 'Outfit', size: 10 } }
+                        ticks: { color: '#bbbbbb', font: { family: 'Geist', size: 10 } }
                     },
                     y: {
                         grid: { color: 'rgba(255, 255, 255, 0.04)', borderColor: 'transparent', drawBorder: false },
-                        ticks: { color: '#94A3B8', font: { family: 'Outfit', size: 10 }, precision: 0 },
+                        ticks: { color: '#bbbbbb', font: { family: 'Geist', size: 10 }, precision: 0 },
                         beginAtZero: true
                     }
                 }
@@ -8791,6 +8852,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize presets UI
     renderPresetsDropdown();
 
+    // EP Understanding Modal Trigger
+    const epHelpTrigger = document.getElementById('ep-detail-help-trigger');
+    const epHelpModal = document.getElementById('ep-understanding-modal');
+    if (epHelpTrigger && epHelpModal) {
+        epHelpTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            epHelpModal.classList.remove('hidden');
+        });
+    }
+
     // Global Modal Normalization (ESC & backdrop click to close)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -12311,6 +12382,26 @@ function openEPDetailModal(symbol) {
     document.getElementById('ep-detail-confidence').textContent = '...';
     document.getElementById('ep-detail-mktcap').textContent = '';
     
+    const aiSection = document.getElementById('ep-detail-ai-section');
+    if (aiSection) {
+        aiSection.classList.add('hidden');
+        document.getElementById('ep-detail-ai-thesis').textContent = '';
+        const reasoningContent = document.getElementById('ep-detail-ai-reasoning-content');
+        if (reasoningContent) reasoningContent.classList.add('hidden');
+    }
+    
+    const aiFundCard = document.getElementById('ep-detail-ai-fund-card');
+    if (aiFundCard) {
+        aiFundCard.classList.add('hidden');
+        document.getElementById('ep-detail-ai-fund-verdict').textContent = '';
+        document.getElementById('ep-detail-ai-fund-summary').textContent = '';
+    }
+    const aiFundBtn = document.getElementById('btn-ep-detail-ai-fund');
+    if (aiFundBtn) {
+        aiFundBtn.innerHTML = '<span>🤖</span> Analyze Fundamentals';
+        aiFundBtn.disabled = false;
+    }
+    
     const chartContainer = document.getElementById('ep-detail-chart');
     if (chartContainer) {
         chartContainer.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Loading chart...</div>';
@@ -12409,6 +12500,90 @@ function openEPDetailModal(symbol) {
                         </div>
                     `;
                 }).join('');
+            }
+            
+            // Populate AI Thesis & Reasoning
+            const aiSec = document.getElementById('ep-detail-ai-section');
+            if (aiSec) {
+                if (data.ai_thesis) {
+                    aiSec.classList.remove('hidden');
+                    document.getElementById('ep-detail-ai-thesis').textContent = data.ai_thesis;
+                    document.getElementById('ep-detail-ai-reasoning-content').textContent = data.ai_reasoning || 'No reasoning path recorded.';
+                    
+                    // Setup accordion toggle listener
+                    const reasoningToggle = document.getElementById('ep-detail-ai-reasoning-toggle');
+                    if (reasoningToggle) {
+                        const reasoningToggleCloned = reasoningToggle.cloneNode(true);
+                        reasoningToggle.parentNode.replaceChild(reasoningToggleCloned, reasoningToggle);
+                        reasoningToggleCloned.addEventListener('click', () => {
+                            const content = document.getElementById('ep-detail-ai-reasoning-content');
+                            if (content.classList.contains('hidden')) {
+                                content.classList.remove('hidden');
+                            } else {
+                                content.classList.add('hidden');
+                            }
+                        });
+                    }
+                } else {
+                    aiSec.classList.add('hidden');
+                }
+            }
+            
+            // Bind AI Fundamental Analysis Trigger
+            const aiFundTrigger = document.getElementById('btn-ep-detail-ai-fund');
+            if (aiFundTrigger) {
+                const aiFundTriggerCloned = aiFundTrigger.cloneNode(true);
+                aiFundTrigger.parentNode.replaceChild(aiFundTriggerCloned, aiFundTrigger);
+                
+                aiFundTriggerCloned.addEventListener('click', () => {
+                    const fundsData = data.fundamentals || [];
+                    if (fundsData.length === 0) {
+                        if (typeof showToast === 'function') showToast('No quarterly financials available to analyze', 'warning');
+                        return;
+                    }
+                    
+                    aiFundTriggerCloned.disabled = true;
+                    aiFundTriggerCloned.innerHTML = '<span>⏳</span> Analyzing...';
+                    
+                    // Reset card values
+                    const card = document.getElementById('ep-detail-ai-fund-card');
+                    card.classList.add('hidden');
+                    document.getElementById('ep-detail-ai-fund-verdict').textContent = '';
+                    document.getElementById('ep-detail-ai-fund-summary').textContent = '';
+                    
+                    EP_API.post('/api/v1/analyze/fundamentals', { metrics: { quarters: fundsData } })
+                        .then(res => {
+                            if (res.error) {
+                                if (typeof showToast === 'function') showToast(`Analysis failed: ${res.error}`, 'error');
+                            } else {
+                                card.classList.remove('hidden');
+                                document.getElementById('ep-detail-ai-fund-verdict').textContent = res.verdict || 'UNKNOWN';
+                                document.getElementById('ep-detail-ai-fund-summary').textContent = res.summary || 'No summary returned.';
+                                
+                                // Color code the verdict badge
+                                const verdictEl = document.getElementById('ep-detail-ai-fund-verdict');
+                                const v = (res.verdict || '').toUpperCase();
+                                if (v === 'UNDERVALUED' || v === 'GARP') {
+                                    verdictEl.style.background = 'rgba(16, 185, 129, 0.2)';
+                                    verdictEl.style.color = '#34d399';
+                                } else if (v === 'FAIRLY_VALUED') {
+                                    verdictEl.style.background = 'rgba(245, 158, 11, 0.2)';
+                                    verdictEl.style.color = '#fbbf24';
+                                } else {
+                                    verdictEl.style.background = 'rgba(239, 68, 68, 0.2)';
+                                    verdictEl.style.color = '#f87171';
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error analyzing fundamentals:', err);
+                            if (typeof showToast === 'function') showToast('Network error during fundamental analysis', 'error');
+                        })
+                        .finally(() => {
+                            aiFundTriggerCloned.disabled = false;
+                            aiFundTriggerCloned.innerHTML = '<span>🤖</span> Analyze Fundamentals';
+                        });
+                });
             }
             
             // Watchlist & Sugar Babies Controls - Fix Stale Closures (Clone Buttons)
@@ -13513,6 +13688,15 @@ function updateFundamentalSectionsVisibility() {
         const valContent = valuationSection.querySelector('.drawer-section-content');
         if (valContent) {
             valContent.innerHTML = generateValuationMetricsHTML(window.currentTradeStock);
+            
+            // Bind the Deep Dive AI button click event listener!
+            const deepDiveBtn = valContent.querySelector('#btn-deep-dive-ai');
+            if (deepDiveBtn) {
+                deepDiveBtn.addEventListener('click', triggerDeepDiveAI);
+            }
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
         }
         const qualContent = qualitySection.querySelector('.drawer-section-content');
         if (qualContent) {
@@ -13545,23 +13729,210 @@ function updateFundamentalSectionsVisibility() {
     }
 }
 
+// Function to trigger Deep Dive AI Fundamental analysis via backend NIM endpoint
+function triggerDeepDiveAI() {
+    const stock = window.currentTradeStock;
+    if (!stock) return;
+    
+    const deepDiveBtn = document.getElementById('btn-deep-dive-ai');
+    const card = document.getElementById('deep-dive-ai-card');
+    
+    if (!deepDiveBtn || !card) return;
+    
+    deepDiveBtn.disabled = true;
+    deepDiveBtn.innerHTML = '<span style="display:inline-block; animation:spin 1s linear infinite; margin-right: 4px;">⏳</span> Analyzing...';
+    
+    // Ingest metrics as required by the spec
+    const metrics = {
+        ticker: stock.clean_ticker || stock.name,
+        sector: stock.sector,
+        pe_ratio: stock.pe_ratio,
+        earnings_yield: stock.earnings_yield,
+        peg_ratio: stock.peg_ratio,
+        ev_ebitda: stock.ev_ebitda,
+        pb_ratio: stock.pb_ratio,
+        price_sales_ratio: stock.price_sales_ratio,
+        graham_multiplier: stock.graham_multiplier,
+        fcf_yield: stock.fcf_yield,
+        div_yield: stock.div_yield,
+        roe: stock.roe,
+        roce: stock.roce,
+        roa: stock.roa,
+        gross_margin: stock.gross_margin,
+        ebitda_margin: stock.ebitda_margin,
+        cfo_ebitda: stock.cfo_ebitda,
+        cfo_pat: stock.cfo_pat,
+        current_ratio: stock.current_ratio,
+        quick_ratio: stock.quick_ratio,
+        debt_to_equity: stock.debt_to_equity,
+        asset_turnover: stock.asset_turnover,
+        financial_leverage: stock.financial_leverage,
+        revenue_growth_qoq: stock.revenue_growth_qoq,
+        revenue_growth_yoy: stock.revenue_growth_yoy,
+        revenue_growth_5y: stock.revenue_growth_5y,
+        profit_growth: stock.profit_growth,
+        ebitda_cagr_3y: stock.ebitda_cagr_3y,
+        net_income_cagr_5y: stock.net_income_cagr_5y,
+        operating_leverage: stock.operating_leverage,
+        order_growth: stock.order_growth
+    };
+    
+    fetch('/api/v1/analyze/fundamentals', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ metrics: metrics })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            if (typeof showToast === 'function') showToast(`Analysis failed: ${data.error}`, 'error');
+            return;
+        }
+        
+        // Cache on the active stock object
+        stock.ai_fundamental_analysis = data;
+        
+        // Display details
+        displayDeepDiveAIResult(data);
+    })
+    .catch(err => {
+        console.error('Error in deep dive fundamental AI analysis:', err);
+        if (typeof showToast === 'function') showToast('Network error during AI analysis', 'error');
+    })
+    .finally(() => {
+        deepDiveBtn.disabled = false;
+        deepDiveBtn.innerHTML = '<i data-lucide="cpu" style="width: 14px; height: 14px;"></i> Deep Dive AI';
+        // Parse Lucide icons in the generated content
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    });
+}
+
+function displayDeepDiveAIResult(data) {
+    const card = document.getElementById('deep-dive-ai-card');
+    const verdictEl = document.getElementById('deep-dive-ai-verdict');
+    const scoreEl = document.getElementById('deep-dive-ai-score-badge');
+    const summaryEl = document.getElementById('deep-dive-ai-summary');
+    
+    if (!card || !verdictEl || !scoreEl || !summaryEl) return;
+    
+    const v = (data.verdict || 'UNKNOWN').toUpperCase();
+    verdictEl.textContent = data.verdict || 'UNKNOWN';
+    scoreEl.textContent = `Score: ${data.score || 0}/100`;
+    summaryEl.textContent = data.summary || 'No thesis summary returned.';
+    
+    // Style card and verdict based on classification
+    if (v === 'UNDERVALUED' || v === 'GARP') {
+        card.style.background = 'rgba(16, 185, 129, 0.04)';
+        card.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+        verdictEl.style.color = '#34d399';
+    } else if (v === 'FAIRLY_VALUED') {
+        card.style.background = 'rgba(245, 158, 11, 0.04)';
+        card.style.borderColor = 'rgba(245, 158, 11, 0.2)';
+        verdictEl.style.color = '#fbbf24';
+    } else {
+        card.style.background = 'rgba(239, 68, 68, 0.04)';
+        card.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+        verdictEl.style.color = '#f87171';
+    }
+    
+    card.classList.remove('hidden');
+}
+
 // Generate HTML for Valuation Deep Dive metrics
 function generateValuationMetricsHTML(stock) {
-    if (!stock.pe_ratio && !stock.ev_ebitda && !stock.pb_ratio) {
+    if (!stock.pe_ratio && !stock.ev_ebitda && !stock.pb_ratio && !stock.price_sales_ratio) {
         return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
             Valuation data unavailable for this stock.
         </p>`;
     }
 
-    const peRatio = stock.pe_ratio || 0;
-    const epsGrowth = stock.revenue_growth_qoq || 0; // Proxy for eps_growth_qoq
-    const pegRatio = (stock.peg_ratio !== undefined && stock.peg_ratio !== null) ? stock.peg_ratio : (epsGrowth > 0 ? peRatio / epsGrowth : 0);
+    const peRatio = stock.pe_ratio;
+    const earningsYield = stock.earnings_yield !== undefined && stock.earnings_yield !== null ? stock.earnings_yield : (peRatio > 0 ? 100.0 / peRatio : null);
+    const pegRatio = stock.peg_ratio;
+    const evEbitda = stock.ev_ebitda;
+    const pbRatio = stock.pb_ratio;
+    const psRatio = stock.price_sales_ratio;
+    const grahamMultiplier = stock.graham_multiplier;
+    const fcfYield = stock.fcf_yield;
+    const divYield = stock.div_yield;
 
-    const evEbitda = stock.ev_ebitda || 0; // Proxy for ev_revenue
-    const divYield = stock.div_yield || 0; // Shows yield context
-    const fcfYield = stock.fcf_yield || 0; // Proxy for buyback yield
-    const debtToEquity = stock.debt_to_equity || 0; // Proxy for debt_ebitda
-    const pbRatio = stock.pb_ratio || 0;
+    const formatVal = (val, suffix = '', precision = 2) => {
+        if (val === undefined || val === null || isNaN(val)) return '—';
+        return val.toFixed(precision) + suffix;
+    };
+
+    // Helper to get CSS classes based on condition
+    const getPEClass = (pe) => {
+        if (pe === null || pe === undefined || isNaN(pe) || pe <= 0) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (pe < 15) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (pe >= 40) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getEYClass = (ey) => {
+        if (ey === null || ey === undefined || isNaN(ey)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (ey > 6.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getPEGClass = (peg) => {
+        if (peg === null || peg === undefined || isNaN(peg)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (peg > 0 && peg < 1.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (peg >= 1.0 || peg <= 0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getEVClass = (ev) => {
+        if (ev === null || ev === undefined || isNaN(ev)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (ev < 10.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (ev >= 20.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getPBClass = (pb) => {
+        if (pb === null || pb === undefined || isNaN(pb)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (pb < 1.5) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (pb >= 5.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getPSClass = (ps) => {
+        if (ps === null || ps === undefined || isNaN(ps)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (ps < 2.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getGrahamClass = (gm) => {
+        if (gm === null || gm === undefined || isNaN(gm)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (gm < 22.5) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getFCFClass = (fcf) => {
+        if (fcf === null || fcf === undefined || isNaN(fcf)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (fcf > 5.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getDivClass = (div) => {
+        if (div === null || div === undefined || isNaN(div)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (div > 1.5) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const cPE = getPEClass(peRatio);
+    const cEY = getEYClass(earningsYield);
+    const cPEG = getPEGClass(pegRatio);
+    const cEV = getEVClass(evEbitda);
+    const cPB = getPBClass(pbRatio);
+    const cPS = getPSClass(psRatio);
+    const cGM = getGrahamClass(grahamMultiplier);
+    const cFCF = getFCFClass(fcfYield);
+    const cDiv = getDivClass(divYield);
 
     return `
         <div class="metric-row">
@@ -13570,18 +13941,28 @@ function generateValuationMetricsHTML(stock) {
                 <span class="metric-help" title="Price to Earnings ratio. Lower is cheaper.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${peRatio > 0 && peRatio < 25 ? 'metric-value-positive' : (peRatio >= 40 ? 'metric-value-negative' : 'metric-value-neutral')}">${peRatio > 0 ? peRatio.toFixed(2) : '—'}</span>
-                <span class="metric-value-trend ${peRatio > 0 && peRatio < 25 ? 'trend-up' : (peRatio >= 40 ? 'trend-down' : 'trend-neutral')}"></span>
+                <span class="metric-value-number ${cPE.val}">${formatVal(peRatio)}</span>
+                <span class="metric-value-trend ${cPE.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Earnings Yield</span>
+                <span class="metric-help" title="Earnings per share divided by price. Higher is better.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cEY.val}">${formatVal(earningsYield, '%')}</span>
+                <span class="metric-value-trend ${cEY.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
                 <span class="metric-name">PEG Ratio</span>
-                <span class="metric-help" title="Price/Earnings to Growth ratio. &lt;1.0 suggests undervalued relative to growth.">ⓘ</span>
+                <span class="metric-help" title="Price/Earnings to Growth ratio. &lt;1.0 is undervalued.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${pegRatio < 1 && pegRatio > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${pegRatio.toFixed(2)}</span>
-                <span class="metric-value-trend ${pegRatio < 1 && pegRatio > 0 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cPEG.val}">${formatVal(pegRatio)}</span>
+                <span class="metric-value-trend ${cPEG.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13590,38 +13971,8 @@ function generateValuationMetricsHTML(stock) {
                 <span class="metric-help" title="Enterprise Value to EBITDA. Lower is cheaper.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${evEbitda.toFixed(2)}</span>
-                <span class="metric-value-trend ${evEbitda < 15 ? 'trend-up' : 'trend-down'}"></span>
-            </div>
-        </div>
-        <div class="metric-row">
-            <div class="metric-label">
-                <span class="metric-name">Dividend Yield</span>
-                <span class="metric-help" title="Dividend per share divided by price per share.">ⓘ</span>
-            </div>
-            <div class="metric-value">
-                <span class="metric-value-number">${divYield.toFixed(2)}%</span>
-                <span class="metric-value-trend ${divYield > 1.5 ? 'trend-up' : 'trend-neutral'}"></span>
-            </div>
-        </div>
-        <div class="metric-row">
-            <div class="metric-label">
-                <span class="metric-name">FCF Yield (Buyback Proxy)</span>
-                <span class="metric-help" title="Free Cash Flow divided by Market Cap. Indicates cash generation.">ⓘ</span>
-            </div>
-            <div class="metric-value">
-                <span class="metric-value-number ${fcfYield > 5 ? 'metric-value-positive' : 'metric-value-neutral'}">${fcfYield.toFixed(2)}%</span>
-                <span class="metric-value-trend ${fcfYield > 5 ? 'trend-up' : 'trend-neutral'}"></span>
-            </div>
-        </div>
-        <div class="metric-row">
-            <div class="metric-label">
-                <span class="metric-name">Debt/Equity</span>
-                <span class="metric-help" title="Total Debt to Shareholder Equity. Lower is safer.">ⓘ</span>
-            </div>
-            <div class="metric-value">
-                <span class="metric-value-number ${debtToEquity < 1.0 ? 'metric-value-positive' : 'metric-value-negative'}">${debtToEquity.toFixed(2)}</span>
-                <span class="metric-value-trend ${debtToEquity < 1.0 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cEV.val}">${formatVal(evEbitda)}</span>
+                <span class="metric-value-trend ${cEV.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13630,29 +13981,239 @@ function generateValuationMetricsHTML(stock) {
                 <span class="metric-help" title="Price per share divided by Book Value per share.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${pbRatio < 3.0 ? 'metric-value-positive' : 'metric-value-neutral'}">${pbRatio.toFixed(2)}</span>
-                <span class="metric-value-trend ${pbRatio < 3.0 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cPB.val}">${formatVal(pbRatio)}</span>
+                <span class="metric-value-trend ${cPB.trend}"></span>
             </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Price / Sales (P/S)</span>
+                <span class="metric-help" title="Price per share divided by Sales per share.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cPS.val}">${formatVal(psRatio)}</span>
+                <span class="metric-value-trend ${cPS.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Graham Multiplier</span>
+                <span class="metric-help" title="P/E multiplied by P/B. Highly defensive if &lt; 22.5.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cGM.val}">${formatVal(grahamMultiplier)}</span>
+                <span class="metric-value-trend ${cGM.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">FCF Yield (Buyback Proxy)</span>
+                <span class="metric-help" title="Free Cash Flow divided by Market Cap.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cFCF.val}">${formatVal(fcfYield, '%')}</span>
+                <span class="metric-value-trend ${cFCF.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Dividend Yield</span>
+                <span class="metric-help" title="Dividend per share divided by price.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cDiv.val}">${formatVal(divYield, '%')}</span>
+                <span class="metric-value-trend ${cDiv.trend}"></span>
+            </div>
+        </div>
+        ${getAIAnalysisCacheHTML(stock)}
+    `;
+}
+
+// Stored cache checker for Deep Dive AI
+function getAIAnalysisCacheHTML(stock) {
+    const hasCachedAnalysis = stock.ai_fundamental_analysis !== undefined && stock.ai_fundamental_analysis !== null;
+    const cache = stock.ai_fundamental_analysis || {};
+    const cachedVerdict = cache.verdict || '';
+    const cachedScore = cache.score || 0;
+    const cachedSummary = cache.summary || '';
+    
+    let cardClass = hasCachedAnalysis ? '' : 'hidden';
+    let cardBackground = 'rgba(255,255,255,0.02)';
+    let cardBorderColor = 'rgba(255,255,255,0.06)';
+    let verdictColor = 'var(--color-text-primary)';
+    
+    if (hasCachedAnalysis) {
+        const v = cachedVerdict.toUpperCase();
+        if (v === 'UNDERVALUED' || v === 'GARP') {
+            cardBackground = 'rgba(16, 185, 129, 0.04)';
+            cardBorderColor = 'rgba(16, 185, 129, 0.2)';
+            verdictColor = '#34d399';
+        } else if (v === 'FAIRLY_VALUED') {
+            cardBackground = 'rgba(245, 158, 11, 0.04)';
+            cardBorderColor = 'rgba(245, 158, 11, 0.2)';
+            verdictColor = '#fbbf24';
+        } else {
+            cardBackground = 'rgba(239, 68, 68, 0.04)';
+            cardBorderColor = 'rgba(239, 68, 68, 0.2)';
+            verdictColor = '#f87171';
+        }
+    }
+    
+    return `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-4); margin-bottom: var(--space-3); border-top: 1px solid rgba(255,255,255,0.06); padding-top: 1rem;">
+            <span style="font-size: 0.9rem; font-weight: 600; color: var(--color-text-secondary);">Relative Metrics</span>
+            <button id="btn-deep-dive-ai" class="btn" style="background: #10b981; color: white; border: none; font-weight: 600; font-size: 0.78rem; padding: 6px 14px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); transition: all 0.2s ease;">
+                 <i data-lucide="cpu" style="width: 14px; height: 14px;"></i> Deep Dive AI
+            </button>
+        </div>
+
+        <div id="deep-dive-ai-card" class="${cardClass}" style="background: ${cardBackground}; border: 1px solid ${cardBorderColor}; border-radius: 10px; padding: var(--space-4); margin-top: var(--space-3); display: flex; flex-direction: column; gap: 0.75rem; transition: all 0.3s ease;">
+             <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                       <span id="deep-dive-ai-verdict" style="font-size: 1.1rem; font-weight: 800; color: ${verdictColor}; letter-spacing: 0.02em;">${cachedVerdict}</span>
+                       <span id="deep-dive-ai-score-badge" class="badge" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: var(--color-text-secondary); font-size: 0.72rem; padding: 3px 8px; border-radius: 6px;">Score: ${cachedScore}/100</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 4px; color: var(--color-text-muted); font-size: 0.7rem;">
+                       <span>Powered by NVIDIA NIM</span>
+                       <i data-lucide="cpu" style="width: 12px; height: 12px;"></i>
+                  </div>
+             </div>
+             <p id="deep-dive-ai-summary" style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.55; text-align: justify; margin: 0;">${cachedSummary}</p>
         </div>
     `;
 }
 
+
 // Generate HTML for Quality Trends Analysis metrics
 function generateQualityMetricsHTML(stock) {
-    if (!stock.roe && !stock.roce && !stock.gross_margin) {
+    if (!stock.roe && !stock.roce && !stock.gross_margin && !stock.current_ratio) {
         return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
             Quality data unavailable for this stock.
         </p>`;
     }
 
-    const roe = stock.roe || 0;
-    const roce = stock.roce || 0;
-    const roa = stock.roa || 0;
-    const grossMargin = stock.gross_margin || 0;
-    const ebitdaMargin = stock.ebitda_margin || 0;
-    const cfoEbitda = stock.cfo_ebitda || 0; // Proxy for fcf_conversion_pct
-    const cfoPat = stock.cfo_pat || 0; // Proxy for earnings quality / surprise
-    const wcIntensity = stock.wc_intensity || 0; // Proxy for working_capital_trend
+    const roe = stock.roe;
+    const roce = stock.roce;
+    const roa = stock.roa;
+    const grossMargin = stock.gross_margin;
+    const ebitdaMargin = stock.ebitda_margin;
+    const cfoEbitda = stock.cfo_ebitda;
+    const cfoPat = stock.cfo_pat;
+    const currentRatio = stock.current_ratio;
+    const quickRatio = stock.quick_ratio;
+    const debtToEquity = stock.debt_to_equity;
+    const assetTurnover = stock.asset_turnover;
+    const financialLeverage = stock.financial_leverage;
+
+    const formatVal = (val, suffix = '', precision = 1) => {
+        if (val === undefined || val === null || isNaN(val)) return '—';
+        return val.toFixed(precision) + suffix;
+    };
+
+    // Detect sector
+    const sector = (stock.sector || '').toLowerCase();
+    const isFinancial = sector.includes('banking') || sector.includes('finance') || sector.includes('nbfc') || sector.includes('insurance');
+    const isRetailLowMargin = sector.includes('trading') || sector.includes('distribution') || sector.includes('retail') || sector.includes('fmcg');
+
+    // Thresholds classes
+    const getROEClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 15.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getROCEClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 15.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getROAClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 6.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getGrossClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 40.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getEbitdaClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (isRetailLowMargin) {
+            if (val >= 8.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+            if (val < 3.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        } else {
+            if (val >= 20.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+            if (val < 10.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        }
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getCFOEbitdaClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 80.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getCFOPatClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 100.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (val < 40.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getCurrentRatioClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 1.5) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (val < 1.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getQuickRatioClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 1.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getDEClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (isFinancial) {
+            if (val < 5.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+            if (val >= 10.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        } else {
+            if (val < 1.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+            if (val >= 1.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        }
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getAssetTurnoverClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 0.8) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getLeverageClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val < 2.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const cROE = getROEClass(roe);
+    const cROCE = getROCEClass(roce);
+    const cROA = getROAClass(roa);
+    const cGross = getGrossClass(grossMargin);
+    const cEbitda = getEbitdaClass(ebitdaMargin);
+    const cCFOEbitda = getCFOEbitdaClass(cfoEbitda);
+    const cCFOPat = getCFOPatClass(cfoPat);
+    const cCurrent = getCurrentRatioClass(currentRatio);
+    const cQuick = getQuickRatioClass(quickRatio);
+    const cDE = getDEClass(debtToEquity);
+    const cAT = getAssetTurnoverClass(assetTurnover);
+    const cFL = getLeverageClass(financialLeverage);
 
     return `
         <div class="metric-row">
@@ -13661,8 +14222,8 @@ function generateQualityMetricsHTML(stock) {
                 <span class="metric-help" title="Net Income divided by Shareholder Equity. Measures profitability.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${roe >= 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${roe.toFixed(1)}%</span>
-                <span class="metric-value-trend ${roe >= 15 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cROE.val}">${formatVal(roe, '%')}</span>
+                <span class="metric-value-trend ${cROE.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13671,8 +14232,8 @@ function generateQualityMetricsHTML(stock) {
                 <span class="metric-help" title="EBIT divided by Capital Employed. Measures capital efficiency.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${roce >= 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${roce.toFixed(1)}%</span>
-                <span class="metric-value-trend ${roce >= 15 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cROCE.val}">${formatVal(roce, '%')}</span>
+                <span class="metric-value-trend ${cROCE.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13681,8 +14242,8 @@ function generateQualityMetricsHTML(stock) {
                 <span class="metric-help" title="Net Income divided by Total Assets.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${roa.toFixed(1)}%</span>
-                <span class="metric-value-trend ${roa >= 6 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cROA.val}">${formatVal(roa, '%')}</span>
+                <span class="metric-value-trend ${cROA.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13691,48 +14252,88 @@ function generateQualityMetricsHTML(stock) {
                 <span class="metric-help" title="Gross Profit divided by Revenue.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${grossMargin.toFixed(1)}%</span>
-                <span class="metric-value-trend ${grossMargin > 40 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cGross.val}">${formatVal(grossMargin, '%')}</span>
+                <span class="metric-value-trend ${cGross.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
                 <span class="metric-name">EBITDA Margin</span>
-                <span class="metric-help" title="EBITDA divided by Revenue.">ⓘ</span>
+                <span class="metric-help" title="EBITDA divided by Revenue. Sector adjusted for Retail/Trading.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${ebitdaMargin.toFixed(1)}%</span>
-                <span class="metric-value-trend ${ebitdaMargin > 20 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cEbitda.val}">${formatVal(ebitdaMargin, '%')}</span>
+                <span class="metric-value-trend ${cEbitda.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
                 <span class="metric-name">CFO / EBITDA (FCF Proxy)</span>
-                <span class="metric-help" title="Cash Flow from Operations divided by EBITDA. >80% is high quality.">ⓘ</span>
+                <span class="metric-help" title="Cash Flow from Operations divided by EBITDA.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${cfoEbitda >= 80 ? 'metric-value-positive' : 'metric-value-neutral'}">${cfoEbitda.toFixed(1)}%</span>
-                <span class="metric-value-trend ${cfoEbitda >= 80 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cCFOEbitda.val}">${formatVal(cfoEbitda, '%')}</span>
+                <span class="metric-value-trend ${cCFOEbitda.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
                 <span class="metric-name">CFO / PAT (Earnings Quality)</span>
-                <span class="metric-help" title="Cash Flow from Operations divided by Profit After Tax. Measures cash realization of earnings.">ⓘ</span>
+                <span class="metric-help" title="Cash Flow from Operations divided by Profit After Tax. Measures cash realization.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${cfoPat >= 100 ? 'metric-value-positive' : 'metric-value-negative'}">${cfoPat.toFixed(1)}%</span>
-                <span class="metric-value-trend ${cfoPat >= 100 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cCFOPat.val}">${formatVal(cfoPat, '%')}</span>
+                <span class="metric-value-trend ${cCFOPat.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Working Capital Intensity</span>
-                <span class="metric-help" title="Working Capital divided by Revenue. Lower is better.">ⓘ</span>
+                <span class="metric-name">Current Ratio</span>
+                <span class="metric-help" title="Current Assets divided by Current Liabilities.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number">${wcIntensity.toFixed(1)}%</span>
-                <span class="metric-value-trend ${wcIntensity < 15 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cCurrent.val}">${formatVal(currentRatio, '', 2)}</span>
+                <span class="metric-value-trend ${cCurrent.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Quick Ratio</span>
+                <span class="metric-help" title="Liquid Current Assets divided by Current Liabilities.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cQuick.val}">${formatVal(quickRatio, '', 2)}</span>
+                <span class="metric-value-trend ${cQuick.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Debt/Equity</span>
+                <span class="metric-help" title="Total Debt to Shareholder Equity. Sector adjusted for Banks/Financials.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cDE.val}">${formatVal(debtToEquity, '', 2)}</span>
+                <span class="metric-value-trend ${cDE.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Asset Turnover</span>
+                <span class="metric-help" title="ROA divided by Net Margin. Measures asset operational efficiency.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cAT.val}">${formatVal(assetTurnover, 'x', 2)}</span>
+                <span class="metric-value-trend ${cAT.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Financial Leverage</span>
+                <span class="metric-help" title="ROE divided by ROA. Lower is safer.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cFL.val}">${formatVal(financialLeverage, 'x', 2)}</span>
+                <span class="metric-value-trend ${cFL.trend}"></span>
             </div>
         </div>
     `;
@@ -13740,26 +14341,84 @@ function generateQualityMetricsHTML(stock) {
 
 // Generate HTML for Growth Momentum Signals metrics
 function generateGrowthMetricsHTML(stock) {
-    // Fallback mappings if database fields are available but standard properties are missing
-    if (!stock.revenue_growth_yoy && stock.revenue_growth != null) {
-        stock.revenue_growth_yoy = stock.revenue_growth;
-    }
-    if (!stock.revenue_growth_qoq && stock.profit_growth != null) {
-        stock.revenue_growth_qoq = stock.profit_growth;
-    }
-
-    if (!stock.revenue_growth_qoq && !stock.revenue_growth_yoy && !stock.revenue_growth_3y) {
+    if (!stock.revenue_growth_qoq && !stock.revenue_growth_yoy && !stock.revenue_growth_5y) {
         return `<p style="color:var(--color-text-muted); font-size:0.82rem; padding:0.8rem 0; text-align:center;">
             Growth data unavailable for this stock.
         </p>`;
     }
 
-    const revQoQ = stock.revenue_growth_qoq || 0;
-    const revYoY = stock.revenue_growth_yoy || 0;
-    const rev3Y = stock.revenue_growth_3y || 0;
-    const epsCagr = stock.eps_cagr || 0;
-    const ebitdaCagr = stock.ebitda_cagr || 0;
-    const orderGrowth = stock.order_growth || 0; // Proxy for order_book_growth_pct
+    const revQoQ = stock.revenue_growth_qoq;
+    const revYoY = stock.revenue_growth_yoy;
+    const rev5Y = stock.revenue_growth_5y;
+    const profitYoY = stock.profit_growth; // Net profit growth YoY
+    const ebitdaCagr = stock.ebitda_cagr_3y; // ebitda_yoy_growth_ttm or computed
+    const epsCagr = stock.net_income_cagr_5y; // net_income_cagr_5y
+    const opLeverage = stock.operating_leverage;
+    const orderGrowth = stock.order_growth;
+
+    const formatVal = (val, suffix = '', precision = 2) => {
+        if (val === undefined || val === null || isNaN(val)) return '—';
+        return val.toFixed(precision) + suffix;
+    };
+
+    // Helper thresholds
+    const getQoQClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val >= 5.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        if (val < 0.0) return { val: 'metric-value-negative', trend: 'trend-down' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getYoYClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 0.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-negative', trend: 'trend-down' };
+    };
+
+    const get5YClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 15.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getProfitClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 0.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-negative', trend: 'trend-down' };
+    };
+
+    const getEbitdaClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 15.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getEpsClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 15.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getOpLeverageClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 1.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+    };
+
+    const getOrderClass = (val) => {
+        if (val === null || val === undefined || isNaN(val)) return { val: 'metric-value-neutral', trend: 'trend-neutral' };
+        if (val > 0.0) return { val: 'metric-value-positive', trend: 'trend-up' };
+        return { val: 'metric-value-negative', trend: 'trend-down' };
+    };
+
+    const cQoQ = getQoQClass(revQoQ);
+    const cYoY = getYoYClass(revYoY);
+    const c5Y = get5YClass(rev5Y);
+    const cProfit = getProfitClass(profitYoY);
+    const cEbitda = getEbitdaClass(ebitdaCagr);
+    const cEps = getEpsClass(epsCagr);
+    const cOp = getOpLeverageClass(opLeverage);
+    const cOrder = getOrderClass(orderGrowth);
 
     return `
         <div class="metric-row">
@@ -13768,8 +14427,8 @@ function generateGrowthMetricsHTML(stock) {
                 <span class="metric-help" title="Quarter-over-Quarter revenue growth.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${revQoQ > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${revQoQ.toFixed(2)}%</span>
-                <span class="metric-value-trend ${revQoQ > 0 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cQoQ.val}">${formatVal(revQoQ, '%')}</span>
+                <span class="metric-value-trend ${cQoQ.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13778,18 +14437,28 @@ function generateGrowthMetricsHTML(stock) {
                 <span class="metric-help" title="Year-over-Year revenue growth.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${revYoY > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${revYoY.toFixed(2)}%</span>
-                <span class="metric-value-trend ${revYoY > 0 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cYoY.val}">${formatVal(revYoY, '%')}</span>
+                <span class="metric-value-trend ${cYoY.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Revenue Growth (3Y CAGR)</span>
-                <span class="metric-help" title="3-Year Compound Annual Growth Rate of Revenue.">ⓘ</span>
+                <span class="metric-name">Revenue Growth (5Y CAGR)</span>
+                <span class="metric-help" title="5-Year Compound Annual Growth Rate of Revenue.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${rev3Y > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${rev3Y.toFixed(2)}%</span>
-                <span class="metric-value-trend ${rev3Y > 15 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${c5Y.val}">${formatVal(rev5Y, '%')}</span>
+                <span class="metric-value-trend ${c5Y.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Net Profit Growth (YoY)</span>
+                <span class="metric-help" title="Year-over-Year net income growth.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cProfit.val}">${formatVal(profitYoY, '%')}</span>
+                <span class="metric-value-trend ${cProfit.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
@@ -13798,32 +14467,40 @@ function generateGrowthMetricsHTML(stock) {
                 <span class="metric-help" title="3-Year Compound Annual Growth Rate of EBITDA.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${ebitdaCagr > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${ebitdaCagr.toFixed(2)}%</span>
-                <span class="metric-value-trend ${ebitdaCagr > 15 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cEbitda.val}">${formatVal(ebitdaCagr, '%')}</span>
+                <span class="metric-value-trend ${cEbitda.trend}"></span>
             </div>
         </div>
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">EPS CAGR (3Y)</span>
-                <span class="metric-help" title="3-Year Compound Annual Growth Rate of Earnings Per Share.">ⓘ</span>
+                <span class="metric-name">EPS CAGR (5Y)</span>
+                <span class="metric-help" title="5-Year Compound Annual Growth Rate of Earnings Per Share.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${epsCagr > 15 ? 'metric-value-positive' : 'metric-value-neutral'}">${epsCagr.toFixed(2)}%</span>
-                <span class="metric-value-trend ${epsCagr > 15 ? 'trend-up' : 'trend-neutral'}"></span>
+                <span class="metric-value-number ${cEps.val}">${formatVal(epsCagr, '%')}</span>
+                <span class="metric-value-trend ${cEps.trend}"></span>
             </div>
         </div>
-        ${orderGrowth !== 0 ? `
         <div class="metric-row">
             <div class="metric-label">
-                <span class="metric-name">Order Book Growth (YoY)</span>
+                <span class="metric-name">Operating Leverage</span>
+                <span class="metric-help" title="EBITDA Growth divided by Revenue Growth. &gt;1.0 shows margin expansion.">ⓘ</span>
+            </div>
+            <div class="metric-value">
+                <span class="metric-value-number ${cOp.val}">${formatVal(opLeverage, 'x')}</span>
+                <span class="metric-value-trend ${cOp.trend}"></span>
+            </div>
+        </div>
+        <div class="metric-row">
+            <div class="metric-label">
+                <span class="metric-name">Order Book Growth</span>
                 <span class="metric-help" title="Growth rate of order book backlog.">ⓘ</span>
             </div>
             <div class="metric-value">
-                <span class="metric-value-number ${orderGrowth > 0 ? 'metric-value-positive' : 'metric-value-negative'}">${orderGrowth.toFixed(1)}%</span>
-                <span class="metric-value-trend ${orderGrowth > 0 ? 'trend-up' : 'trend-down'}"></span>
+                <span class="metric-value-number ${cOrder.val}">${formatVal(orderGrowth, '%', 1)}</span>
+                <span class="metric-value-trend ${cOrder.trend}"></span>
             </div>
         </div>
-        ` : ''}
     `;
 }
 

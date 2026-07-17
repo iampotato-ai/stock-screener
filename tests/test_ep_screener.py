@@ -366,7 +366,8 @@ def test_api_endpoints(client):
         assert "fundamentals" in data
         
     # Test POST /api/ep/refresh
-    with patch("app.refresh_ep_screener") as mock_refresh:
+    with patch("app.api.v1.ep.ep_service.refresh_ep_screener") as mock_refresh:
+        mock_refresh.return_value = True
         res = client.post("/api/ep/refresh")
         assert res.status_code == 200
         data = res.get_json()
@@ -380,29 +381,21 @@ def test_api_endpoints(client):
 
 
 def test_fetch_nse_fundamentals_api():
-    # Mock NSE response
-    mock_nse_json = {
-        "resCmpData": [
-            {
-                "re_to_dt": "31-MAR-2026",
-                "re_create_dt": "16-APR-2026",
-                "re_net_sale": "12826000",      # 128260.0 Cr
-                "re_net_profit": "872100",       # 8721.0 Cr
-                "re_basic_eps_for_cont_dic_opr": "6.44"
-            }
-        ]
-    }
-    
+    # Mock requests.get to return Screener.in html
+    mock_html = """
+    <html><body><section id="quarters"><table>
+    <thead><tr><th></th><th>Mar 2026</th></tr></thead>
+    <tbody>
+    <tr><td>Sales</td><td>128260.0</td></tr>
+    <tr><td>Net Profit</td><td>8721.0</td></tr>
+    <tr><td>EPS</td><td>6.44</td></tr>
+    </tbody></table></section></body></html>
+    """
     mock_res = MagicMock()
     mock_res.status_code = 200
-    mock_res.json.return_value = mock_nse_json
+    mock_res.text = mock_html
     
-    mock_session = MagicMock()
-    # Ensure __enter__ returns the mock session itself
-    mock_session.__enter__.return_value = mock_session
-    mock_session.get.side_effect = [MagicMock(), mock_res]
-    
-    with patch("requests.Session", return_value=mock_session):
+    with patch("requests.get", return_value=mock_res):
         res = app.fetch_screener_fundamentals("RELIANCE")
         assert len(res) == 1
         assert res[0]["quarter"] == "Mar 2026"
@@ -414,13 +407,9 @@ def test_fetch_nse_fundamentals_api():
 
 def test_fetch_yfinance_fundamentals_fallback():
     import pandas as pd
-    # Mock NSE returns 404
-    mock_nse_res = MagicMock()
-    mock_nse_res.status_code = 404
-    
-    mock_session = MagicMock()
-    mock_session.__enter__.return_value = mock_session
-    mock_session.get.side_effect = [MagicMock(), mock_nse_res]
+    # Mock requests.get returning None (or exception) to trigger yfinance fallback
+    mock_res_screener = MagicMock()
+    mock_res_screener.status_code = 404
     
     # Mock yfinance Ticker data
     mock_df = pd.DataFrame(
@@ -436,7 +425,7 @@ def test_fetch_yfinance_fundamentals_fallback():
     mock_ticker = MagicMock()
     mock_ticker.quarterly_income_stmt = mock_df
     
-    with patch("requests.Session", return_value=mock_session), \
+    with patch("requests.get", return_value=mock_res_screener), \
          patch("yfinance.Ticker", return_value=mock_ticker):
         res = app.fetch_screener_fundamentals("CAPILLARY")
         assert len(res) == 1

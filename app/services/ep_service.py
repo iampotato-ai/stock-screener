@@ -16,6 +16,32 @@ from app.utils.technical import fetch_historical_prices
 from pathlib import Path
 from flask import current_app
 
+def _load_ep_cache() -> dict:
+    """Load cached EP explanations from on-disk JSON."""
+    cache_path = os.path.join(current_app.instance_path if current_app else '.', 'ep_explanations_cache.json')
+    if os.path.exists(cache_path):
+        try:
+            import json
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def _save_ep_cache(cache: dict):
+    """Save EP explanations to on-disk JSON."""
+    if current_app:
+        os.makedirs(current_app.instance_path, exist_ok=True)
+        cache_path = os.path.join(current_app.instance_path, 'ep_explanations_cache.json')
+    else:
+        cache_path = 'ep_explanations_cache.json'
+    try:
+        import json
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
 _MODEL = None
 _MANIFEST = None
 
@@ -149,12 +175,27 @@ def compute_repricing_score(gap_pct, rel_volume, close_loc, price_change_pct,
                  0.35 * n_vol +
                  0.20 * n_close +
                  0.15 * n_strength)
+                 
+    # Penalize failed breakouts (closing in the lower half of the daily range)
+    if close_loc < 0.50:
+        # Scale down smoothly (e.g. close_loc=0.10 becomes 0.2x of original repricing score)
+        repricing *= (close_loc / 0.50)
+        
+    # Penalize red days (closed negative or flat compared to yesterday's close)
+    if price_change_pct <= 0:
+        repricing *= 0.1
+        
     return round(repricing, 3)
 
 
 def compute_ep_score(neglect_score, catalyst_score, repricing_score,
                      liquidity_ok=True, has_fundamentals=True, **kwargs):
     """Compute EP score using ML model if available, otherwise fallback to hand‑crafted weighted sum."""
+    # Enforce positive price action for positive EPs
+    price_change_pct = kwargs.get("price_change_pct")
+    if catalyst_score >= 0 and price_change_pct is not None and price_change_pct <= 0:
+        return 0.0
+
     # Attempt model prediction
     try:
         features = {
@@ -441,6 +482,46 @@ class EPService:
         # Sugar baby info
         sb = SugarBaby.query.filter_by(symbol=symbol_upper, is_active=1).first()
         detail["is_sugar_baby"] = 1 if sb else 0
+
+        # AI Thesis & Reasoning
+        feature_date = detail.get("feature_date") or "no_date"
+        cache_key = f"{symbol_upper}_{feature_date}"
+        
+        # Avoid circular import by importing inside
+        from app.services.ai_service import ai_service
+        
+        cache = _load_ep_cache()
+        if cache_key in cache:
+            detail["ai_thesis"] = cache[cache_key].get("thesis")
+            detail["ai_reasoning"] = cache[cache_key].get("reasoning")
+        else:
+            # Generate new thesis & reasoning
+            technicals = {
+                "ep_score": detail.get("ep_score"),
+                "neglect_score": detail.get("neglect_score"),
+                "catalyst_score": detail.get("catalyst_score"),
+                "repricing_score": detail.get("repricing_score"),
+                "market_cap_cr": detail.get("market_cap_cr") or detail.get("mktcap_cr"),
+                "rel_volume": detail.get("rel_volume") or detail.get("rvol"),
+                "close_loc": detail.get("close_loc") or detail.get("close_location"),
+                "price_change_pct": detail.get("price_change_pct"),
+            }
+            financials = detail.get("fundamentals", [])
+            announcements = detail.get("corporate_events", [])
+            
+            ai_res = ai_service.generate_thesis_and_reasoning(
+                symbol_upper, technicals, financials, announcements
+            )
+            
+            detail["ai_thesis"] = ai_res.get("thesis")
+            detail["ai_reasoning"] = ai_res.get("reasoning")
+            
+            # Save to cache
+            cache[cache_key] = {
+                "thesis": ai_res.get("thesis"),
+                "reasoning": ai_res.get("reasoning")
+            }
+            _save_ep_cache(cache)
 
         return detail
 

@@ -63,9 +63,17 @@ def get_stage_analysis_history():
             symbol_data[symbol].append((trade_date_str, close))
             all_dates_set.add(trade_date_str)
 
-        # Sort all unique dates and take the last 30
-        sorted_dates = sorted(list(all_dates_set))
-        target_dates = sorted_dates[-30:]
+        # Sort all unique dates, filter out weekends (Saturday and Sunday), and take the last 30
+        from datetime import datetime
+        valid_dates = []
+        for d in sorted(list(all_dates_set)):
+            try:
+                dt = datetime.strptime(d, '%Y-%m-%d')
+                if dt.weekday() < 5:  # Monday=0, ..., Friday=4. Saturday=5, Sunday=6.
+                    valid_dates.append(d)
+            except ValueError:
+                pass
+        target_dates = valid_dates[-30:]
 
         # Reconstruct daily stage counts
         stage_history = {}

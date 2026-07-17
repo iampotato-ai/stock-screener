@@ -3,13 +3,16 @@ Screener service for managing stock screening operations.
 """
 import time
 import threading
+import logging
 from datetime import date
 from typing import List, Dict, Any, Optional
-from flask import current_app
+from flask import current_app, has_app_context
 from app.models import ScanPriceLog, ScanHistory
 from app.extensions import db
 import requests
 from app.services.rs_service import rs_service
+
+logger = logging.getLogger(__name__)
 
 
 class ScreenerService:
@@ -27,7 +30,7 @@ class ScreenerService:
             ).first()
             return latest_date_result[0] if latest_date_result else None
         except Exception as e:
-            current_app.logger.error(f"Error getting latest scan date: {e}")
+            logger.error(f"Error getting latest scan date: {e}")
             return None
 
     def _get_local_stage_analysis(self, ticker: str) -> Optional[Dict[str, Any]]:
@@ -66,11 +69,11 @@ class ScreenerService:
                 stock_data = {"ticker": ticker, "history": history, "SMA21": sma21, "SMA50": sma50}
                 return analyze(stock_data)
             elif bars:
-                current_app.logger.debug(
+                logger.debug(
                     f"Stage analysis skipped for {ticker}: only {len(bars)} bars available (need >=5)"
                 )
         except Exception as e:
-            current_app.logger.warning(f"Failed local stage analyzer query for {ticker}: {e}")
+            logger.warning(f"Failed local stage analyzer query for {ticker}: {e}")
         return None
 
     def get_scan_results(self, limit: int = 500, live: bool = False, full_response: bool = False) -> Any:
@@ -134,7 +137,7 @@ class ScreenerService:
                         }
                     return results[:limit]
             except Exception as e:
-                current_app.logger.error(f"Error performing live scan: {e}")
+                logger.error(f"Error performing live scan: {e}")
                 # Fall back to database results if live scan fails
 
         try:
@@ -185,7 +188,7 @@ class ScreenerService:
                 }
             return results
         except Exception as e:
-            current_app.logger.error(f"Error getting scan results: {e}")
+            logger.error(f"Error getting scan results: {e}")
             if full_response:
                 return {
                     'stocks': [],
@@ -229,7 +232,7 @@ class ScreenerService:
                 return stock
             return None
         except Exception as e:
-            current_app.logger.error(f"Error getting stock details for {ticker}: {e}")
+            logger.error(f"Error getting stock details for {ticker}: {e}")
             return None
 
     def refresh_screener_data(self) -> bool:
@@ -255,18 +258,22 @@ class ScreenerService:
                 try:
                     from app.api.v1.legacy_routes import refresh_ep_screener
                     refresh_ep_screener()
-                    current_app.logger.info("Screener data refresh completed")
+                    logger.info("Screener data refresh completed")
                 except Exception as e:
                     # On failure, allow retry by resetting timestamp
                     self.last_refresh_time = 0.0
-                    current_app.logger.error(f"Error refreshing EP screener: {e}")
+                    logger.error(f"Error refreshing EP screener: {e}")
+                finally:
+                    self.refresh_lock.release()
             # Launch in a daemon thread
             thread = threading.Thread(target=refresh_task, daemon=True)
             thread.start()
             return True
-        finally:
-            # Release lock irrespective of outcome
+        except Exception as e:
+            # Release lock if we failed to start the thread
             self.refresh_lock.release()
+            logger.error(f"Failed to start background refresh: {e}")
+            return False
 
 
 # Singleton instance

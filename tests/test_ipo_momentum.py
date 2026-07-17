@@ -172,9 +172,12 @@ def test_api_detail_and_refresh_smoke(client, monkeypatch):
     assert res_404.status_code == 404
     
     # Refresh API smoke test
-    res_refresh = client.post("/api/ipo/refresh")
-    assert res_refresh.status_code == 200
-    assert res_refresh.get_json()["success"] is True
+    from unittest.mock import patch
+    with patch("app.api.v1.ipo.ipo_service.refresh_ipo_metrics") as mock_refresh:
+        mock_refresh.return_value = True
+        res_refresh = client.post("/api/ipo/refresh")
+        assert res_refresh.status_code == 200
+        assert res_refresh.get_json()["success"] is True
 
 def test_volume_filter_and_additional_columns(client, monkeypatch):
     # Mock data refresh with different volumes and changes

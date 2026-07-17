@@ -38,8 +38,8 @@ def load_data_from_db(db_path: str):
             print("[Model Training] Table 'daily_bars' does not exist.")
             return None, None
             
-        # Read features
-        cursor.execute("SELECT symbol, feature_date, neglect_score, catalyst_score, repricing_score, liquidity_ok, has_fundamentals FROM ep_features")
+        # Read features (using actual existing columns in ep_features schema)
+        cursor.execute("SELECT symbol, feature_date, neglect_score, catalyst_score, repricing_score, has_result, market_cap_cr, avg_turnover_cr FROM ep_features")
         features_rows = cursor.fetchall()
         
         # Read close prices
@@ -81,22 +81,33 @@ def load_data_from_db(db_path: str):
     y = []
     
     for row in features_rows:
-        sym, feat_dt, neglect, catalyst, repricing, liq, fund = row
+        sym, feat_dt, neglect, catalyst, repricing, has_result, mktcap, avg_turnover = row
+        liq = 1.0 if (mktcap and mktcap >= 200.0 and avg_turnover and avg_turnover >= 5.0) else 0.0
+        fund = 1.0 if has_result else 0.0
+        
         if isinstance(feat_dt, str):
             feat_dt = feat_dt.split()[0]
         sym_upper = sym.upper()
         
-        p0 = price_map.get((sym_upper, feat_dt))
+        # Try suffix fallbacks (as stored in daily_bars)
+        p0 = None
+        target_sym = None
+        for candidate in [sym_upper, f"{sym_upper}.NS", f"{sym_upper}.BO"]:
+            p0 = price_map.get((candidate, feat_dt))
+            if p0 is not None and p0 > 0:
+                target_sym = candidate
+                break
+                
         if p0 is None or p0 == 0:
             continue
             
         # Find 5 trading days later
-        dates = sym_dates.get(sym_upper, [])
+        dates = sym_dates.get(target_sym, [])
         try:
             idx = dates.index(feat_dt)
             if idx + 5 < len(dates):
                 feat_dt_5 = dates[idx + 5]
-                p5 = price_map.get((sym_upper, feat_dt_5))
+                p5 = price_map.get((target_sym, feat_dt_5))
             else:
                 p5 = None
         except ValueError:
@@ -106,7 +117,8 @@ def load_data_from_db(db_path: str):
             continue
             
         pct_move = (p5 - p0) / p0
-        label = 1 if pct_move >= 0.40 else 0
+        # Change label threshold to 10% move in 5 days (more realistic for swing EPs)
+        label = 1 if pct_move >= 0.10 else 0
         
         X.append([
             float(neglect or 0.0),
