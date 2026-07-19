@@ -102,8 +102,8 @@ class Config:
     ITEMS_PER_PAGE = int(os.environ.get('ITEMS_PER_PAGE', '50'))
     # EP Scoring Model configuration
     EP_MODEL_PATH = os.path.join(basedir, 'models', 'ep_scoring_model_latest.pkl')
-    EP_CONFIDENCE_HIGH = float(os.environ.get('EP_CONFIDENCE_HIGH', '0.72'))
-    EP_CONFIDENCE_MEDIUM = float(os.environ.get('EP_CONFIDENCE_MEDIUM', '0.55'))
+    EP_CONFIDENCE_HIGH = float(os.environ.get('EP_CONFIDENCE_HIGH', '0.45'))
+    EP_CONFIDENCE_MEDIUM = float(os.environ.get('EP_CONFIDENCE_MEDIUM', '0.35'))
     EP_MODEL_TRAIN_HOUR = int(os.environ.get('EP_MODEL_TRAIN_HOUR', '16'))
     EP_MODEL_TRAIN_MINUTE = int(os.environ.get('EP_MODEL_TRAIN_MINUTE', '0'))
     # Daily Momentum Confidence Score calculation schedule (default 16:30 IST)

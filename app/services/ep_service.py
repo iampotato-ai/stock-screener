@@ -65,27 +65,44 @@ def _load_ep_model():
     return _MODEL, _MANIFEST
 
 def predict_ep_score(features: dict) -> float:
-    """Predict EP probability using the loaded model.
+    """Predict EP score using the loaded model.
 
+    Supports both XGBRegressor (v2.0+) and XGBClassifier (legacy).
     Features dict is ordered according to the manifest's ``feature_order``.
-    Returns the positive‑class probability rounded to three decimals.
+    Returns a score in [0, 1] rounded to three decimals.
     """
     try:
         model, manifest = _load_ep_model()
     except Exception as e:
-        # Log and fallback to original hand‑crafted score elsewhere
+        # Log and fallback to original hand-crafted score elsewhere
         current_app.logger.warning(f"EP model load failed: {e}")
         raise
     import numpy as np
+
+    # Derive is_short_ep from catalyst_score if not explicitly provided
+    if "is_short_ep" not in features:
+        catalyst = features.get("catalyst_score", 0.0)
+        features["is_short_ep"] = 1.0 if (catalyst is not None and catalyst < 0) else 0.0
+
     ordered = [features.get(col, 0.0) for col in manifest.get('feature_order', [])]
-    preds = model.predict_proba(np.array([ordered]))
-    preds = np.array(preds)
-    prob = preds[0, 1]
-    return round(float(prob), 3)
+    arr = np.array([ordered])
+
+    model_type = manifest.get("model_type", "XGBClassifier")
+    if model_type == "XGBRegressor" or not hasattr(model, 'predict_proba'):
+        # Regression model: predict() returns a continuous score
+        raw = float(model.predict(arr)[0])
+        score = max(0.0, min(1.0, raw))
+    else:
+        # Classification model: predict_proba() returns class probabilities
+        preds = model.predict_proba(arr)
+        preds = np.array(preds)
+        score = float(preds[0, 1])
+
+    return round(score, 3)
 
 # Define thresholds as named constants (Issue 5.2)
-EP_CONFIDENCE_HIGH = 0.72
-EP_CONFIDENCE_MEDIUM = 0.55
+EP_CONFIDENCE_HIGH = 0.45
+EP_CONFIDENCE_MEDIUM = 0.35
 EP_CONFIDENCE_LOW = 0.0
 
 EP_CATALYST_BASE = {
@@ -276,7 +293,7 @@ class EPService:
         }
 
     def get_ep_today(self, ep_type: str = 'all', confidence: str = 'all',
-                     min_score: float = 0.55, min_mktcap: float = 0.0,
+                     min_score: float = 0.10, min_mktcap: float = 0.0,
                      max_mktcap: float = 999999.0, exchange: str = 'all',
                      limit: Optional[int] = None, offset: Optional[int] = None) -> Dict[str, Any]:
         """Get latest EP features based on filters and pagination."""

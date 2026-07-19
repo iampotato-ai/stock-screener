@@ -310,5 +310,53 @@ class AIService:
             "summary": "Default fallback fundamental thesis due to API limits or configurations."
         }
 
+    def analyze_announcement(self, symbol: str, headline: str, pdf_text: Optional[str] = None) -> Optional[dict]:
+        """
+        Evaluate a corporate announcement using NVIDIA NIM (Llama 3.1 70b) or fallback Gemini.
+        Returns a dictionary containing catalyst_score, sentiment, nlp_sentiment_score,
+        nlp_category, and summary.
+        """
+        pdf_context = f'\nAttachment text extract: "{pdf_text}".' if pdf_text else ''
+        prompt = (
+            f'Evaluate this corporate announcement for {symbol}: "{headline}".{pdf_context}\n\n'
+            'Return a JSON strictly with these five keys:\n'
+            '1) "catalyst_score" as a float between 0.0 and 1.0 (e.g. 0.85 for strong catalyst, 0.50 for neutral).\n'
+            '2) "sentiment" as an integer: 1 for Positive, -1 for Negative, or 0 for Neutral.\n'
+            '3) "nlp_sentiment_score" as a float between -1.0 (very negative) and 1.0 (very positive).\n'
+            '4) "nlp_category" as a short capitalized string representing category (e.g. "Dividend", "Order Win", "Agreements", "Earnings", "Regulatory", "Acquisition", "Personnel Change", "Other").\n'
+            '5) "summary" as a short 1-sentence AI summary of the event based on the headline and attachment.\n\n'
+            'Strictly do not output any markdown code blocks, backticks, or extra wrapping text. Return pure JSON.'
+        )
+
+        # Try NIM first
+        nim_model = os.environ.get("NVIDIA_NIM_MODEL_LIGHT", "meta/llama-3.1-70b-instruct")
+        nim_messages = [
+            {"role": "user", "content": prompt}
+        ]
+        nim_resp = self._call_nim(nim_model, nim_messages)
+        if nim_resp:
+            choices = nim_resp.get("choices", [])
+            if choices:
+                content = choices[0].get("message", {}).get("content", "").strip()
+                try:
+                    clean_content = re.sub(r"```json|```", "", content).strip()
+                    import json
+                    return json.loads(clean_content)
+                except Exception:
+                    pass
+
+        # Try Gemini Fallback
+        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
+        gemini_text = self._call_gemini(gemini_model, prompt)
+        if gemini_text:
+            try:
+                clean_content = re.sub(r"```json|```", "", gemini_text).strip()
+                import json
+                return json.loads(clean_content)
+            except Exception:
+                pass
+
+        return None
+
 # Singleton instance
 ai_service = AIService()

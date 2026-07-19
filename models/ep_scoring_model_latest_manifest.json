@@ -4,9 +4,24 @@
     "catalyst_score",
     "repricing_score",
     "liquidity_ok",
-    "has_fundamentals"
+    "has_fundamentals",
+    "gap_pct",
+    "rel_volume",
+    "close_loc",
+    "price_change_pct",
+    "intraday_range_pct",
+    "market_cap_cr",
+    "is_short_ep"
   ],
-  "version": "1.0",
-  "trained_on": "2026-07-14 22:21:24",
-  "training_samples": 6646
+  "version": "2.0",
+  "model_type": "XGBRegressor",
+  "trained_on": "2026-07-19 09:55:54",
+  "training_samples": 5340,
+  "test_samples": 1335,
+  "target": "blended: 60% hand-crafted score + 40% forward-return signal (20% threshold)",
+  "metrics": {
+    "rmse": 0.0493,
+    "mae": 0.0179,
+    "r2": 0.7909
+  }
 }

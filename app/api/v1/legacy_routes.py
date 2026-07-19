@@ -1197,42 +1197,12 @@ def map_nlp_category_to_standard(nlp_cat: str) -> tuple:
     return "cat-other", "Other", "imp-sentiment", "Sentiment only"
 
 def fetch_announcement_content(raw_url):
-    """
-    Stub function for fetching and extracting text from corporate announcements.
-    Currently returns None since PDF parsing libraries are not installed.
-    """
-    return None
-
-_NLP_CATEGORY_PATTERNS = {
-    "cat-order-win":   ["order", "contract", "award", "bagged", "secured", "win", "₹", "crore"],
-    "cat-capex":       ["capex", "expansion", "plant", "capacity", "greenfield", "brownfield", "invest"],
-    "cat-governance":  ["ceo", "md", "director", "appoint", "resign", "board", "promoter", "buyback"],
-    "cat-regulatory":  ["sebi", "fraud", "penalty", "notice", "investigation", "default", "npa"],
-    "cat-results":     ["result", "profit", "revenue", "quarter", "q1", "q2", "q3", "q4", "eps", "ebitda"],
-    "cat-dividend":    ["dividend", "bonus", "split", "rights"],
-    "cat-acquisition": ["merger", "acquisition", "takeover", "amalgamation", "demerger"],
-}
-
-_NLP_POSITIVE_WORDS = {"order", "win", "award", "profit", "growth", "expansion", "dividend",
-                        "buyback", "bonus", "upgrade", "strong", "beat", "record", "approved"}
-_NLP_NEGATIVE_WORDS = {"fraud", "penalty", "notice", "default", "npa", "loss", "decline",
-                        "downgrade", "resign", "investigation", "concern", "miss", "cut"}
+    from app.utils.helpers import fetch_announcement_content as helper_fetch
+    return helper_fetch(raw_url)
 
 def _prepare_text_for_analysis(desc: str, text: str, attachment_url: str = "") -> str:
-    """Combines description and text inputs, optionally fetching full content."""
-    full_text = ""
-    if desc:
-        full_text += desc + " "
-    if text:
-        full_text += text
-    
-    # Fetch full announcement text if available
-    if attachment_url:
-        try:
-            full_text = fetch_announcement_content(attachment_url) or full_text
-        except Exception as e:
-            print(f"[NLP classify] Fetch content error: {e}")
-    return full_text
+    from app.utils.helpers import _prepare_text_for_analysis as helper_prep
+    return helper_prep(desc, text, attachment_url)
 
 def _analyze_sentiment(text: str) -> dict:
     """Executes FinBERT sentiment analysis and returns sentiment label and continuous score."""
@@ -1509,11 +1479,53 @@ def refresh_ep_screener():
     conn = sqlite3.connect('scan_history.db')
     c = conn.cursor()
     
-    for s, rel_vol in candidates:
+    def _fetch_candidate_data(cand):
+        s, rel_vol = cand
         suffix = ".BO" if s['exchange'] == "BSE" else ".NS"
         ticker = f"{s['ticker']}{suffix}"
+        
+        history = []
         try:
             history = fetch_historical_prices(ticker, range_str="6mo")
+        except Exception as e:
+            print(f"[EP Parallel Fetch] Error fetching history for {ticker}: {e}")
+            
+        quarters_data = []
+        try:
+            quarters_data = fetch_screener_fundamentals(s['ticker'])
+        except Exception as e:
+            print(f"[EP Parallel Fetch] Error fetching fundamentals for {s['ticker']}: {e}")
+            
+        announcements = []
+        if s['exchange'] == "NSE":
+            try:
+                announcements = fetch_nse_announcements(s['ticker'])
+            except Exception as e:
+                print(f"[EP Parallel Fetch] Error fetching announcements for {s['ticker']}: {e}")
+                
+        return {
+            "s": s,
+            "rel_vol": rel_vol,
+            "ticker": ticker,
+            "history": history,
+            "quarters_data": quarters_data,
+            "announcements": announcements
+        }
+
+    from concurrent.futures import ThreadPoolExecutor
+    fetched_candidates = []
+    if candidates:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            fetched_candidates = list(executor.map(_fetch_candidate_data, candidates))
+
+    for item in fetched_candidates:
+        s = item["s"]
+        rel_vol = item["rel_vol"]
+        ticker = item["ticker"]
+        history = item["history"]
+        quarters_data = item["quarters_data"]
+        announcements = item["announcements"]
+        try:
             if not history or len(history) < 5:
                 continue
                 
@@ -1592,8 +1604,7 @@ def refresh_ep_screener():
                     dq, dp
                 ))
 
-            # Ingest Fundamentals & YoY metrics
-            quarters_data = fetch_screener_fundamentals(s['ticker'])
+            # Ingest Fundamentals & YoY metrics (pre-fetched)
             if quarters_data:
                 quarters_data = compute_yoy_metrics(quarters_data)
                 for q in quarters_data:
@@ -1614,12 +1625,11 @@ def refresh_ep_screener():
             from flask import has_app_context, current_app
             import os
             if os.environ.get('PYTEST_CURRENT_TEST') or (has_app_context() and current_app.testing):
-                seven_days_ago = datetime(2026, 6, 11) - timedelta(days=7)
+                six_months_ago = datetime(2026, 6, 11) - timedelta(days=180)
             else:
-                seven_days_ago = datetime.now() - timedelta(days=7)
+                six_months_ago = datetime.now() - timedelta(days=180)
             
             if s['exchange'] == "NSE":
-                announcements = fetch_nse_announcements(s['ticker'])
                 if isinstance(announcements, list):
                     for item in announcements:
                         sort_date_str = item.get("sort_date")
@@ -1629,32 +1639,10 @@ def refresh_ep_screener():
                             dt = datetime.strptime(sort_date_str, "%Y-%m-%d %H:%M:%S")
                         except Exception:
                             continue
-                        if dt >= seven_days_ago:
+                        if dt >= six_months_ago:
                             desc = item.get("desc", "")
                             text = item.get("attchmntText", "")
-                            enhanced_class = enhanced_classify_announcement(desc, text, item.get("attchmntFile", ""))
-                            cat = enhanced_class['cat']
-                            cat_score = enhanced_class['catalyst_score']
                             
-                            # Map cat to event_type
-                            if cat == "cat-order-win":
-                                event_type_mapped = "ORDER_WIN"
-                            elif cat == "cat-capex":
-                                event_type_mapped = "CAPEX_EXPANSION"
-                            elif cat == "cat-governance":
-                                event_type_mapped = "MGMT_CHANGE"
-                            elif cat == "cat-regulatory":
-                                event_type_mapped = "FRAUD_CONCERN"
-                            else:
-                                event_type_mapped = "UNKNOWN"
-                                
-                            sent_val = 0
-                            sent_str = enhanced_class['sent'].lower()
-                            if "positive" in sent_str:
-                                sent_val = 1
-                            elif "negative" in sent_str:
-                                sent_val = -1
-                                
                             an_dt = item.get("an_dt", "")
                             raw_date = an_dt.split(" ")[0] if " " in an_dt else an_dt
                             # Normalize 'DD-Mon-YYYY' -> ISO 'YYYY-MM-DD'
@@ -1662,28 +1650,66 @@ def refresh_ep_screener():
                                 date_str = datetime.strptime(raw_date, "%d-%b-%Y").strftime("%Y-%m-%d")
                             except ValueError:
                                 date_str = raw_date
-                            
-                            # Deduplicate insertion
+                                
+                            # Deduplicate/Upsert check
                             c.execute('''
-                                SELECT id FROM corporate_events
+                                SELECT id, summary, headline FROM corporate_events
                                 WHERE symbol = ? AND event_date = ? AND headline = ?
                             ''', (s['ticker'], date_str, desc if desc else text[:200]))
-                            if not c.fetchone():
-                                c.execute('''
-                                    INSERT INTO corporate_events (
-                                        symbol, exchange, event_date, event_type, headline, sentiment,
-                                        catalyst_score, source, raw_url, nlp_sentiment_score,
-                                        nlp_category, summary, impact_magnitude
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ''', (
-                                    s['ticker'], s['exchange'], date_str, event_type_mapped,
-                                    desc if desc else text[:200], sent_val, cat_score, 'NSE',
-                                    item.get("attchmntFile", ""),
-                                    enhanced_class['nlp_sentiment_score'],
-                                    enhanced_class['nlp_category'],
-                                    enhanced_class['summary'],
-                                    enhanced_class['impact_magnitude']
-                                ))
+                            existing = c.fetchone()
+                            
+                            if not existing or not existing[1] or existing[1] == existing[2]:
+                                from app.services.nlp_service import nlp_service
+                                enhanced_class = nlp_service.process_announcement(desc, text, item.get("attchmntFile", ""), s['ticker'])
+                                cat = enhanced_class['cat']
+                                cat_score = enhanced_class['catalyst_score']
+                                
+                                # Map cat to event_type
+                                if cat == "cat-order-win":
+                                    event_type_mapped = "ORDER_WIN"
+                                elif cat == "cat-capex":
+                                    event_type_mapped = "CAPEX_EXPANSION"
+                                elif cat == "cat-governance":
+                                    event_type_mapped = "MGMT_CHANGE"
+                                elif cat == "cat-regulatory":
+                                    event_type_mapped = "FRAUD_CONCERN"
+                                else:
+                                    event_type_mapped = "UNKNOWN"
+                                    
+                                sent_val = enhanced_class['sentiment']
+                                
+                                if not existing:
+                                    c.execute('''
+                                        INSERT INTO corporate_events (
+                                            symbol, exchange, event_date, event_type, headline, sentiment,
+                                            catalyst_score, source, raw_url, nlp_sentiment_score,
+                                            nlp_category, summary, impact_magnitude
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    ''', (
+                                        s['ticker'], s['exchange'], date_str, event_type_mapped,
+                                        desc if desc else text[:200], sent_val, cat_score, 'NSE',
+                                        item.get("attchmntFile", ""),
+                                        enhanced_class['nlp_sentiment_score'],
+                                        enhanced_class['nlp_category'],
+                                        enhanced_class['summary'],
+                                        enhanced_class['impact_magnitude']
+                                    ))
+                                else:
+                                    c.execute('''
+                                        UPDATE corporate_events SET
+                                            event_type = ?, sentiment = ?, catalyst_score = ?,
+                                            raw_url = ?, nlp_sentiment_score = ?,
+                                            nlp_category = ?, summary = ?, impact_magnitude = ?
+                                        WHERE id = ?
+                                    ''', (
+                                        event_type_mapped, sent_val, cat_score,
+                                        item.get("attchmntFile", ""),
+                                        enhanced_class['nlp_sentiment_score'],
+                                        enhanced_class['nlp_category'],
+                                        enhanced_class['summary'],
+                                        enhanced_class['impact_magnitude'],
+                                        existing[0]
+                                    ))
 
             # Retrieve latest fundamentals
             c.execute('''
@@ -1935,11 +1961,26 @@ def refresh_ep_screener():
             FROM ep_watchlist WHERE status = 'ACTIVE'
         """)
         active_watchlist = c.fetchall()
-        for row in active_watchlist:
-            w_id, symbol, exchange, catalyst_date, ep_type, ep_score, catalyst_close = row
-            ticker_full = f"{symbol}.NS" if exchange == "NSE" else f"{symbol}.BO"
+        
+        def _fetch_watchlist_history(r):
+            w_id_val, sym_val, exch_val, _, _, _, _ = r
+            ticker_f = f"{sym_val}.NS" if exch_val == "NSE" else f"{sym_val}.BO"
+            h_data = []
             try:
-                history_data = fetch_historical_prices(ticker_full, range_str="6mo")
+                h_data = fetch_historical_prices(ticker_f, range_str="6mo")
+            except Exception as ex:
+                print(f"[EP Parallel Fetch] Error fetching watchlist history for {ticker_f}: {ex}")
+            return r, h_data
+
+        from concurrent.futures import ThreadPoolExecutor
+        fetched_watchlist = []
+        if active_watchlist:
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                fetched_watchlist = list(executor.map(_fetch_watchlist_history, active_watchlist))
+
+        for row, history_data in fetched_watchlist:
+            w_id, symbol, exchange, catalyst_date, ep_type, ep_score, catalyst_close = row
+            try:
                 if history_data and len(history_data) >= 21:
                     today_bar = history_data[-1]
                     if catalyst_date == today_bar["date"]:
@@ -2479,6 +2520,13 @@ def classify_setup(stock, sector_meta=None):
             confidence = 80
         else:
             primary_label = "Early Watch"
+            
+    return {
+        "setupLabel": primary_label,
+        "setupConfidence": confidence,
+        "setupTags": tags
+    }
+
 def compute_extra_fields(stock):
     # Extract fundamental fields from TradingView scanner response keys if present
     # This acts as our dynamic extraction layer
@@ -6164,7 +6212,7 @@ def fetch_symbols():
 
 # Cache configuration for NSE announcements
 ANNOUNCEMENTS_CACHE = {}
-CACHE_TIMEOUT_SECONDS = 300  # Cache for 5 minutes
+CACHE_TIMEOUT_SECONDS = 14400  # Cache for 4 hours
 
 def fetch_nse_announcements(symbol=None):
     try:
@@ -6326,6 +6374,10 @@ def classify_announcement(desc, text):
 @api_bp.route("/announcements", methods=["POST", "GET"])
 def get_announcements():
     from flask import request
+    import sqlite3
+    from datetime import datetime, timedelta
+    from app.services.nlp_service import map_category_to_codes
+    
     try:
         symbols = []
         if request.method == "POST":
@@ -6341,76 +6393,188 @@ def get_announcements():
             
         clean_symbols = [s.split(":")[-1] for s in symbols]
         
-        all_raw_data = []
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = [executor.submit(fetch_nse_announcements, sym) for sym in clean_symbols]
-            for fut in futures:
-                try:
-                    all_raw_data.append(fut.result())
-                except Exception as e:
-                    print(f"Error fetching symbols: {str(e)}")
-                    
-        processed = []
-        seen_seq_ids = set()
+        # 6 months cutoff
+        now_dt = datetime.now()
+        six_months_ago = now_dt - timedelta(days=180)
+        cutoff_date_str = six_months_ago.strftime("%Y-%m-%d")
         
-        for raw_list in all_raw_data:
-            if not isinstance(raw_list, list):
-                continue
-            symbol_count = 0
-            for item in raw_list:
-                if symbol_count >= 15:
-                    break
-                seq_id = item.get("seq_id")
-                if not seq_id or seq_id in seen_seq_ids:
-                    continue
-                seen_seq_ids.add(seq_id)
+        # Enforce 4-hour cache TTL
+        now_ts = time.time()
+        for sym in clean_symbols:
+            cache_key = sym
+            need_fetch = True
+            if cache_key in ANNOUNCEMENTS_CACHE:
+                cache_data = ANNOUNCEMENTS_CACHE[cache_key]
+                if now_ts - cache_data["timestamp"] < CACHE_TIMEOUT_SECONDS:
+                    need_fetch = False
+                    
+            if need_fetch:
+                # Fetch announcements from NSE
+                raw_list = fetch_nse_announcements(sym)
+                ANNOUNCEMENTS_CACHE[cache_key] = {
+                    "timestamp": now_ts,
+                    "data": raw_list
+                }
                 
-                ticker = item.get("symbol")
-                desc = item.get("desc", "")
-                text = item.get("attchmntText", "")
-                
-                enhanced_class = enhanced_classify_announcement(desc, text, item.get("attchmntFile", ""))
-                
-                an_dt = item.get("an_dt", "")
-                raw_date = an_dt.split(" ")[0] if " " in an_dt else an_dt
-                # Normalize 'DD-Mon-YYYY' -> ISO 'YYYY-MM-DD'
+                # Ingest new announcements into database
+                if isinstance(raw_list, list) and len(raw_list) > 0:
+                    conn = sqlite3.connect('scan_history.db')
+                    c = conn.cursor()
+                    
+                    for item in raw_list:
+                        desc = item.get("desc", "")
+                        text = item.get("attchmntText", "")
+                        attchment = item.get("attchmntFile", "")
+                        
+                        # Date parsing and temporal filtering (last 6 months)
+                        an_dt = item.get("an_dt", "")
+                        raw_date = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                        try:
+                            date_str = datetime.strptime(raw_date, "%d-%b-%Y").strftime("%Y-%m-%d")
+                        except ValueError:
+                            date_str = raw_date
+                            
+                        # If older than 6 months, skip
+                        if date_str < cutoff_date_str:
+                            continue
+                            
+                        sort_date_str = item.get("sort_date")
+                        if sort_date_str:
+                            try:
+                                dt = datetime.strptime(sort_date_str, "%Y-%m-%d %H:%M:%S")
+                                if dt < six_months_ago:
+                                    continue
+                            except Exception:
+                                pass
+                                
+                        # Deduplicate/Upsert check
+                        c.execute('''
+                            SELECT id, summary, headline FROM corporate_events
+                            WHERE symbol = ? AND event_date = ? AND headline = ?
+                        ''', (sym, date_str, desc if desc else text[:200]))
+                        existing = c.fetchone()
+                        
+                        if not existing or not existing[1] or existing[1] == existing[2]:
+                            from app.services.nlp_service import nlp_service
+                            enhanced_class = nlp_service.process_announcement(desc, text, attchment, sym)
+                            
+                            cat = enhanced_class['cat']
+                            if cat == "cat-order-win":
+                                event_type_mapped = "ORDER_WIN"
+                            elif cat == "cat-capex":
+                                event_type_mapped = "CAPEX_EXPANSION"
+                            elif cat == "cat-governance":
+                                event_type_mapped = "MGMT_CHANGE"
+                            elif cat == "cat-regulatory":
+                                event_type_mapped = "FRAUD_CONCERN"
+                            else:
+                                event_type_mapped = "UNKNOWN"
+                                
+                            if not existing:
+                                c.execute('''
+                                    INSERT INTO corporate_events (
+                                        symbol, exchange, event_date, event_type, headline, sentiment,
+                                        catalyst_score, source, raw_url, nlp_sentiment_score,
+                                        nlp_category, summary, impact_magnitude
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    sym, 'NSE', date_str, event_type_mapped,
+                                    desc if desc else text[:200],
+                                    enhanced_class['sentiment'],
+                                    enhanced_class['catalyst_score'],
+                                    'NSE',
+                                    attchment,
+                                    enhanced_class['nlp_sentiment_score'],
+                                    enhanced_class['nlp_category'],
+                                    enhanced_class['summary'],
+                                    enhanced_class['impact_magnitude']
+                                ))
+                            else:
+                                c.execute('''
+                                    UPDATE corporate_events SET
+                                        event_type = ?, sentiment = ?, catalyst_score = ?,
+                                        raw_url = ?, nlp_sentiment_score = ?,
+                                        nlp_category = ?, summary = ?, impact_magnitude = ?
+                                    WHERE id = ?
+                                ''', (
+                                    event_type_mapped,
+                                    enhanced_class['sentiment'],
+                                    enhanced_class['catalyst_score'],
+                                    attchment,
+                                    enhanced_class['nlp_sentiment_score'],
+                                    enhanced_class['nlp_category'],
+                                    enhanced_class['summary'],
+                                    enhanced_class['impact_magnitude'],
+                                    existing[0]
+                                ))
+                            
+                    conn.commit()
+                    conn.close()
+
+        # Query and return database records from the last 6 months
+        processed = []
+        conn = sqlite3.connect('scan_history.db')
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        
+        for sym in clean_symbols:
+            c.execute('''
+                SELECT id, symbol, exchange, event_date, event_type, headline, sentiment,
+                       catalyst_score, source, raw_url, nlp_sentiment_score, nlp_category,
+                       summary, impact_magnitude
+                FROM corporate_events
+                WHERE symbol = ? AND event_date >= ?
+                ORDER BY event_date DESC, id DESC
+            ''', (sym, cutoff_date_str))
+            
+            rows = c.fetchall()
+            for r in rows:
+                sentiment_val = r["sentiment"]
+                sent_class = 'sent-neutral'
+                sent_name = '🟡 Neutral'
+                if sentiment_val == 1:
+                    sent_class = 'sent-positive'
+                    sent_name = '🟢 Positive'
+                elif sentiment_val == -1:
+                    sent_class = 'sent-negative'
+                    sent_name = '🔴 Negative'
+                    
                 try:
-                    date_str = datetime.strptime(raw_date, "%d-%b-%Y").strftime("%Y-%m-%d")
-                except ValueError:
-                    date_str = raw_date
-                
-                try:
-                    dt = datetime.strptime(item.get("sort_date"), "%Y-%m-%d %H:%M:%S")
+                    dt = datetime.strptime(r["event_date"], "%Y-%m-%d")
                     ts = int(dt.timestamp() * 1000)
                 except Exception:
                     ts = 0
                     
+                display_category = r["nlp_category"]
+                cat_code, cat_name, imp_code, imp_name = map_category_to_codes(display_category or "Announcement")
+                
                 processed.append({
-                    "id": str(seq_id),
-                    "ticker": ticker,
-                    "headline": desc if desc else text[:80],
-                    "category": enhanced_class['cat'],
-                    "categoryName": enhanced_class['cat_name'],
-                    "impact": enhanced_class['imp'],
-                    "impactName": enhanced_class['imp_name'],
-                    "sentiment": enhanced_class['sent'],
-                    "sentimentName": enhanced_class['sent_name'],
-                    "sentimentReason": enhanced_class['reason'],
-                    "date": date_str,
+                    "id": str(r["id"]),
+                    "ticker": r["symbol"],
+                    "headline": r["headline"],
+                    "category": cat_code,
+                    "categoryName": cat_name,
+                    "impact": imp_code,
+                    "impactName": imp_name,
+                    "sentiment": sentiment_val,  # Integer: 1/-1/0
+                    "sentimentClass": sent_class,
+                    "sentimentName": sent_name,
+                    "sentimentReason": f"NLP Category: {r['nlp_category'] or 'Other'}",
+                    "date": r["event_date"],
                     "timestamp": ts,
-                    "detailContent": text,
-                    "attchmntFile": item.get("attchmntFile", ""),
-                    "nlp_sentiment_score": enhanced_class['nlp_sentiment_score'],
-                    "nlp_category": enhanced_class['nlp_category'],
-                    "summary": enhanced_class['summary'],
-                    "impact_magnitude": enhanced_class['impact_magnitude'],
-                    "enhanced_catalyst_score": enhanced_class['catalyst_score']
+                    "detailContent": r["summary"] or r["headline"],
+                    "attchmntFile": r["raw_url"],
+                    "nlp_sentiment_score": r["nlp_sentiment_score"],
+                    "nlp_category": r["nlp_category"],
+                    "summary": r["summary"],
+                    "impact_magnitude": r["impact_magnitude"],
+                    "enhanced_catalyst_score": r["catalyst_score"]
                 })
-                symbol_count += 1
                 
+        conn.close()
         processed.sort(key=lambda x: x["timestamp"], reverse=True)
-                
         return jsonify({"announcements": processed})
+        
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 

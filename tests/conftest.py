@@ -6,6 +6,9 @@ import tempfile
 import pytest
 from flask import Flask
 
+# Prevent background schedulers and task runners from spawning during test collection
+os.environ.setdefault('PYTEST_CURRENT_TEST', 'conftest_setup')
+
 # Global patch of sqlite3.connect to ensure SQLAlchemy connection redirect works
 # even if app/SQLAlchemy was initialized before the individual test module imports.
 if not hasattr(sqlite3, "__original_connect__"):

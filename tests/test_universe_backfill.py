@@ -14,14 +14,6 @@ db_fd, db_path = tempfile.mkstemp()
 # Store original connect to redirect requests
 orig_connect = getattr(sqlite3, "__original_connect__", sqlite3.connect)
 
-def mock_connect(database, *args, **kwargs):
-    if database and "scan_history.db" in database:
-        return orig_connect(db_path, *args, **kwargs)
-    return orig_connect(database, *args, **kwargs)
-
-# Patch sqlite connect
-sqlite3.connect = mock_connect
-
 # Import the module under test
 from app.api.v1.legacy_routes import run_historical_backfill
 

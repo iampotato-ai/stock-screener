@@ -93,13 +93,75 @@ def _prepare_text_for_analysis(desc: str, text: str, attachment_url: str = "") -
             print(f"[NLP Helper] Fetch content error: {e}")
     return full_text
 
+def download_pdf(url: str) -> Optional[bytes]:
+    """Secure PDF download using Requests with NSE headers and cookies."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-announcements",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9"
+    }
+    import requests
+    try:
+        with requests.Session() as s:
+            # First hit the home domain / announcements page to set session cookies
+            s.get("https://www.nseindia.com/companies-listing/corporate-filings-announcements", headers=headers, timeout=10)
+            res = s.get(url, headers=headers, timeout=15)
+            if res.status_code == 200:
+                return res.content
+            else:
+                print(f"[PDF Ingest] Failed to download PDF {url}. Status code: {res.status_code}")
+    except Exception as e:
+        print(f"[PDF Ingest] Error downloading PDF {url}: {e}")
+    return None
+
+def extract_text_from_pdf(pdf_bytes: bytes) -> Optional[str]:
+    """Extracts first 3,000 characters from PDF, collapsing spacing and suppressing decode warnings."""
+    import pypdf
+    import io
+    import logging
+    
+    # Suppress internal PDF stream decode warnings
+    logging.getLogger("pypdf").setLevel(logging.ERROR)
+    
+    try:
+        pdf_file = io.BytesIO(pdf_bytes)
+        reader = pypdf.PdfReader(pdf_file)
+        text_parts = []
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+                if sum(len(t) for t in text_parts) >= 3000:
+                    break
+        
+        full_text = "\n".join(text_parts)
+        # Extract first 3000 characters
+        full_text = full_text[:3000]
+        # Collapse consecutive spaces and newlines
+        full_text = re.sub(r'\s+', ' ', full_text).strip()
+        return full_text
+    except Exception as e:
+        print(f"[PDF Ingest] Error parsing PDF text: {e}")
+    return None
+
 def fetch_announcement_content(raw_url: str) -> Optional[str]:
     """
-    Stub function for fetching and extracting text from corporate announcements.
-    Currently returns None since PDF parsing libraries are not installed.
+    Downloads and extracts text from corporate announcement PDF.
+    Resolves relative URLs to absolute.
     """
-    # In a full implementation, this would fetch the URL and extract text
-    # based on content type (PDF, HTML, etc.)
+    if not raw_url:
+        return None
+        
+    url = raw_url.strip()
+    if url.startswith("/"):
+        url = "https://www.nseindia.com" + url
+    elif not url.startswith("http"):
+        url = "https://www.nseindia.com/" + url
+        
+    pdf_bytes = download_pdf(url)
+    if pdf_bytes:
+        return extract_text_from_pdf(pdf_bytes)
     return None
 
 def _analyze_sentiment(text: str) -> Dict:

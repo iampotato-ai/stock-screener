@@ -11961,7 +11961,7 @@ function renderVerdictStrip(containerId, label, returnPct, confidenceLabel, conf
 let epActiveFilters = {
     ep_type: 'all',
     confidence: 'all',
-    min_score: 0.55,
+    min_score: 0.10,
     min_mktcap: '',
     max_mktcap: ''
 };

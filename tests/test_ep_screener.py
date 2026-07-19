@@ -98,12 +98,12 @@ def test_assign_ep_type_and_confidence():
     assert assign_ep_type(0.50, "STRONG_BEAT", 3.0, 2.0, day1_messy=True) == "Delayed EP"
     
     # Test assign_confidence
-    # ep_score >= 0.72, catalyst_score >= 0.70, repricing_score >= 0.60 -> HIGH
-    assert assign_confidence(0.75, 0.50, 0.75, 0.65) == "HIGH"
-    # ep_score >= 0.55 -> MEDIUM
-    assert assign_confidence(0.60, 0.50, 0.50, 0.50) == "MEDIUM"
+    # ep_score >= 0.45, catalyst_score >= 0.70, repricing_score >= 0.60 -> HIGH
+    assert assign_confidence(0.50, 0.50, 0.75, 0.65) == "HIGH"
+    # ep_score >= 0.35 -> MEDIUM
+    assert assign_confidence(0.40, 0.50, 0.50, 0.50) == "MEDIUM"
     # Otherwise -> LOW
-    assert assign_confidence(0.50, 0.50, 0.50, 0.50) == "LOW"
+    assert assign_confidence(0.30, 0.50, 0.50, 0.50) == "LOW"
 
 def test_db_initialization():
     conn = orig_connect(db_path)
@@ -239,7 +239,7 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
     assert len(events) == 1
     assert events[0][0] == "UNKNOWN"
     assert "General administrative" in events[0][1]
-    assert events[0][2] == 0.20
+    assert events[0][2] == 0.50
     
     # Check ep_features
     c.execute("""
