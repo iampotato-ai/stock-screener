@@ -527,8 +527,8 @@ fetch('/api/v1/stage-analyzer/results')
         if (stage3El) stage3El.textContent = `${stageCounts['Stage 3'] || 0} STOCKS`;
         if (stage4El) stage4El.textContent = `${stageCounts['Stage 4'] || 0} STOCKS`;
 
-        const fontHeading = 'Cabinet Grotesk';
-        const fontBody = 'Geist';
+        const fontHeading = "'Cabinet Grotesk', system-ui, sans-serif";
+        const fontBody = "'Geist', system-ui, sans-serif";
         const distCtx = document.getElementById('stage-distribution-chart').getContext('2d');
         new Chart(distCtx, {
             type: 'doughnut',
@@ -3163,7 +3163,16 @@ function filterAndRender() {
                 const label = (stock.setupLabel || '').toUpperCase();
                 matchesSetup = label.includes('[A]') || label.includes('[A+]');
             } else {
-                matchesSetup = stock.setupLabel === currentSetupFilter || (stock.setupTags && stock.setupTags.includes(currentSetupFilter));
+                const sLabel = stock.setupLabel || '';
+                const sTags = stock.setupTags || [];
+                const sBand = (stock.swingband || '').toLowerCase();
+                matchesSetup = sLabel === currentSetupFilter || 
+                               sTags.includes(currentSetupFilter) ||
+                               (currentSetupFilter === 'Pullback to MA' && (sLabel.includes('Pullback') || sTags.some(t => t.includes('Pullback')) || ['strong', 'elite'].includes(sBand))) ||
+                               (currentSetupFilter === 'Breakout Ready' && (sLabel.includes('Breakout') || sTags.some(t => t.includes('Breakout')) || ['strong', 'elite'].includes(sBand))) ||
+                               (currentSetupFilter === 'Inside Bar Coil' && (sLabel.includes('Coil') || stock.is_inside_bar || stock.volDryUp)) ||
+                               (currentSetupFilter === 'Sector Leader' && (sLabel.includes('Leader') || sTags.some(t => t.includes('Leader')))) ||
+                               (currentSetupFilter === 'Momentum Continuation' && (sLabel.includes('Momentum') || sTags.some(t => t.includes('Momentum'))));
             }
         }
 
@@ -5941,20 +5950,122 @@ let loadedTimeline = { today: [], yesterday: [], last_week: [], earlier: [] };
 let lastFetchedTimelineSymbol = '';
 let isTimelineLoading = false;
 
+let newsLoadingTickers = new Set();
+let newsSentimentCache = {};
+
 async function fetchGoogleNews(ticker) {
-    // Kept for backward compatibility signature if called elsewhere
-    if (!ticker) return;
+    if (!ticker) return [];
+    
+    // Check if loading or already cached
+    if (newsLoadingTickers.has(ticker)) {
+        return (newsSentimentCache[ticker] && newsSentimentCache[ticker].news) || [];
+    }
+    
+    const cacheEntry = newsSentimentCache[ticker];
+    const isFresh = cacheEntry && (Date.now() - cacheEntry.timestamp < 300000); // 5 minutes
+    
+    if (isFresh) {
+        return cacheEntry.news;
+    }
+    
+    newsLoadingTickers.add(ticker);
+    
     try {
         const res = await fetch(`/api/news?symbol=${ticker}`);
         if (res.ok) {
             const data = await res.json();
-            return (data.data && data.data.news) || data.news || [];
+            const payload = data.data || {};
+            
+            newsSentimentCache[ticker] = {
+                news: payload.news || [],
+                sentiment: payload.sentiment || 'sent-neutral',
+                summary: payload.summary || 'No catalyst summary available.',
+                timestamp: Date.now()
+            };
+            return payload.news || [];
         }
     } catch (e) {
-        console.error(e);
+        console.error("Error fetching news:", e);
+    } finally {
+        newsLoadingTickers.delete(ticker);
     }
     return [];
 }
+
+function renderNewsWithSentiment(symbol, news, sentiment, summary) {
+    const feed = document.getElementById('announcements-feed');
+    if (!feed) return;
+    
+    let sentimentIcon = '🟡';
+    let sentimentLabel = 'Neutral';
+    let sentimentStyle = 'background: rgba(245, 158, 11, 0.1); color: rgb(245, 158, 11); border: 1px solid rgba(245, 158, 11, 0.2);';
+    
+    if (sentiment === 'sent-positive') {
+        sentimentIcon = '🟢';
+        sentimentLabel = 'Positive';
+        sentimentStyle = 'background: rgba(34, 197, 94, 0.1); color: rgb(34, 197, 94); border: 1px solid rgba(34, 197, 94, 0.2);';
+    } else if (sentiment === 'sent-negative') {
+        sentimentIcon = '🔴';
+        sentimentLabel = 'Negative';
+        sentimentStyle = 'background: rgba(239, 68, 68, 0.1); color: rgb(239, 68, 68); border: 1px solid rgba(239, 68, 68, 0.2);';
+    }
+
+    let catalystCardHtml = `
+        <div class="sentiment-catalyst-card" style="padding: 1rem; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 6px; margin-bottom: 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <span style="font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em;">AI Catalyst Analysis</span>
+                <span class="sentiment-pill" style="font-size: 0.65rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px; ${sentimentStyle}">
+                    ${sentimentIcon} ${sentimentLabel}
+                </span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--color-text-primary); line-height: 1.45; font-style: italic;">
+                "${summary}"
+            </div>
+        </div>
+    `;
+
+    let newsItemsHtml = '';
+    if (news.length === 0) {
+        newsItemsHtml = `
+            <div class="news-placeholder">
+                <i data-lucide="alert-circle" style="width: 24px; height: 24px; color: var(--color-text-muted); margin-bottom: 0.5rem; display: inline-block;"></i>
+                <p>No recent news found for ${symbol}.</p>
+            </div>
+        `;
+    } else {
+        news.forEach(item => {
+            const pubDate = item.pub_date || 'Unknown Date';
+            newsItemsHtml += `
+                <div class="announcement-item" onclick="window.open('${item.link}', '_blank')" style="cursor: pointer; transition: background 0.2s; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                    <div class="announcement-meta" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; color: var(--color-text-muted);">
+                        <span class="announcement-ticker" style="font-weight: 600; color: var(--accent-blue);">${symbol}</span>
+                        <span>${pubDate}</span>
+                    </div>
+                    <div class="announcement-headline" style="color: var(--color-text-primary); font-weight: 500; margin-top: 0.4rem; font-size: 0.82rem; line-height: 1.35;">${item.title}</div>
+                    <div style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.3rem; line-height: 1.35;">
+                        ${item.summary || item.title}
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; font-size: 0.65rem; color: var(--color-text-muted); margin-top: 0.4rem;">
+                        <span>Source: ${item.source}</span>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    feed.innerHTML = `
+        ${catalystCardHtml}
+        <div class="announcements-divider" style="margin-top: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.02); padding: 0.35rem; border-radius: 4px;">
+            <span style="font-size: 0.7rem; font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.05em; text-transform: uppercase;">Aggregated News Waterfall</span>
+        </div>
+        <div class="news-list-container">
+            ${newsItemsHtml}
+        </div>
+    `;
+    
+    window.initIcons(feed);
+}
+
 
 function renderTimelineHtml() {
     const feed = document.getElementById('announcements-feed');
@@ -6057,35 +6168,83 @@ async function renderAnnouncements(forceFetch = false) {
     }
 
     const symbolParam = activeNewsFilter === 'all' ? 'ALL' : activeNewsFilter;
-    const symbolChanged = lastFetchedTimelineSymbol !== symbolParam;
     
-    if (forceFetch || symbolChanged || isTimelineLoading || Object.values(loadedTimeline).every(arr => arr.length === 0)) {
-        if (isTimelineLoading) return;
-        isTimelineLoading = true;
-        
-        feed.innerHTML = `
-            <div class="news-placeholder">
-                <div style="border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent-blue); border-radius: 50%; width: 18px; height: 18px; animation: sector-pulse 1s linear infinite; margin-bottom: 0.5rem; display: inline-block;"></div>
-                <p style="font-size: 0.75rem; color: var(--color-text-muted);">Loading Market Intelligence feed...</p>
-            </div>
-        `;
-        
-        try {
-            const res = await fetch(`/api/events?symbol=${symbolParam}&limit=30`);
-            if (res.ok) {
-                const result = await res.json();
-                loadedTimeline = result.data || { today: [], yesterday: [], last_week: [], earlier: [] };
-                lastFetchedTimelineSymbol = symbolParam;
+    if (symbolParam === 'ALL') {
+        const symbolChanged = lastFetchedTimelineSymbol !== symbolParam;
+        if (forceFetch || symbolChanged || isTimelineLoading || Object.values(loadedTimeline).every(arr => arr.length === 0)) {
+            if (isTimelineLoading) return;
+            isTimelineLoading = true;
+            
+            feed.innerHTML = `
+                <div class="news-placeholder">
+                    <div style="border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent-blue); border-radius: 50%; width: 18px; height: 18px; animation: sector-pulse 1s linear infinite; margin-bottom: 0.5rem; display: inline-block;"></div>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted);">Loading Market Intelligence feed...</p>
+                </div>
+            `;
+            
+            try {
+                const res = await fetch(`/api/events?symbol=ALL&limit=30`);
+                if (res.ok) {
+                    const result = await res.json();
+                    loadedTimeline = result.data || { today: [], yesterday: [], last_week: [], earlier: [] };
+                    lastFetchedTimelineSymbol = 'ALL';
+                }
+            } catch (e) {
+                console.error("Error fetching events timeline:", e);
+                loadedTimeline = { today: [], yesterday: [], last_week: [], earlier: [] };
+            } finally {
+                isTimelineLoading = false;
             }
-        } catch (e) {
-            console.error("Error fetching events timeline:", e);
-            loadedTimeline = { today: [], yesterday: [], last_week: [], earlier: [] };
-        } finally {
-            isTimelineLoading = false;
         }
+        renderTimelineHtml();
+    } else {
+        if (newsLoadingTickers.has(symbolParam)) {
+            return;
+        }
+        
+        const cacheEntry = newsSentimentCache[symbolParam];
+        const isFresh = cacheEntry && (Date.now() - cacheEntry.timestamp < 300000); // 5 minutes
+        
+        if (forceFetch || !isFresh) {
+            newsLoadingTickers.add(symbolParam);
+            
+            feed.innerHTML = `
+                <div class="news-placeholder">
+                    <div style="border: 2px solid rgba(255,255,255,0.1); border-top: 2px solid var(--accent-blue); border-radius: 50%; width: 18px; height: 18px; animation: sector-pulse 1s linear infinite; margin-bottom: 0.5rem; display: inline-block;"></div>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted);">Fetching news & AI catalysts...</p>
+                </div>
+            `;
+            
+            try {
+                const res = await fetch(`/api/news?symbol=${symbolParam}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const payload = data.data || {};
+                    
+                    newsSentimentCache[symbolParam] = {
+                        news: payload.news || [],
+                        sentiment: payload.sentiment || 'sent-neutral',
+                        summary: payload.summary || 'No catalyst summary available.',
+                        timestamp: Date.now()
+                    };
+                    lastFetchedTimelineSymbol = symbolParam;
+                }
+            } catch (e) {
+                console.error("Error fetching news:", e);
+                newsSentimentCache[symbolParam] = {
+                    news: [],
+                    sentiment: 'sent-neutral',
+                    summary: 'Failed to fetch news and catalysts.',
+                    timestamp: Date.now()
+                };
+            } finally {
+                newsLoadingTickers.delete(symbolParam);
+            }
+        }
+        
+        const details = newsSentimentCache[symbolParam] || { news: [], sentiment: 'sent-neutral', summary: '' };
+        renderNewsWithSentiment(symbolParam, details.news, details.sentiment, details.summary);
     }
-    
-    renderTimelineHtml();
 }
 
 function showAnnouncementSource(id) {
@@ -13225,11 +13384,19 @@ function triggerEPRefresh() {
     const btnText = refreshBtn.querySelector('span');
     const btnSvg = refreshBtn.querySelector('svg');
     
+    const progContainer = document.getElementById('ep-progress-container');
+    const progBar = document.getElementById('ep-progress-bar');
+    const progPct = document.getElementById('ep-progress-pct');
+    const progStatus = document.getElementById('ep-progress-status');
+    const progSymbolBadge = document.getElementById('ep-progress-symbol-badge');
+    const progTimer = document.getElementById('ep-progress-timer');
+    
     if (refreshBtn.disabled) return;
     
     refreshBtn.disabled = true;
     if (btnText) btnText.innerText = 'Scanning...';
     if (btnSvg) btnSvg.classList.add('spin-loader');
+    if (progContainer) progContainer.style.display = 'block';
 
     function resetEPBtn() {
         refreshBtn.disabled = false;
@@ -13239,15 +13406,34 @@ function triggerEPRefresh() {
 
     function startPolling() {
         let pollCount = 0;
-        const MAX_POLLS = 36; // 3 minutes max (36 × 5s)
+        const MAX_POLLS = 120; // 3 minutes max (120 × 1.5s)
         const interval = setInterval(() => {
             pollCount++;
-            EP_API.get('/api/ep/refresh/status')
+            fetch('/api/ep/refresh/status')
+                .then(res => res.json())
                 .then(statusRes => {
+                    const pct = statusRes.progress_pct || 0;
+                    if (progBar) progBar.style.width = `${pct}%`;
+                    if (progPct) progPct.textContent = `${pct}%`;
+                    if (progStatus) progStatus.textContent = statusRes.message || 'Scanning EP candidates...';
+                    if (progTimer) progTimer.textContent = `${statusRes.elapsed_seconds || 0}s`;
+                    
+                    if (statusRes.current_symbol && progSymbolBadge) {
+                        progSymbolBadge.textContent = statusRes.current_symbol;
+                        progSymbolBadge.style.display = 'inline-block';
+                    } else if (progSymbolBadge) {
+                        progSymbolBadge.style.display = 'none';
+                    }
+
                     if (!statusRes.running) {
                         clearInterval(interval);
+                        if (progBar) progBar.style.width = '100%';
+                        if (progPct) progPct.textContent = '100%';
+                        if (progStatus) progStatus.textContent = 'Scan completed!';
+                        
                         // Reload EP data
-                        EP_API.get('/api/ep/today')
+                        fetch('/api/ep/today')
+                            .then(res => res.json())
                             .then(todayRes => {
                                 epListingsData = todayRes.listings || [];
                                 
@@ -13265,7 +13451,7 @@ function triggerEPRefresh() {
                                 resetEPBtn();
                                 try {
                                     const now = new Date();
-                                    const dateStr = now.toISOString().split('T')[0];
+                                    const dateStr = todayRes.latest_date || now.toISOString().split('T')[0];
                                     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                                     const tsEl = document.getElementById('ep-last-run-timestamp');
                                     if (tsEl) tsEl.textContent = `(Last Run: ${dateStr} ${timeStr})`;
@@ -13273,8 +13459,17 @@ function triggerEPRefresh() {
                                     console.error("Error setting EP last run timestamp:", e);
                                 }
                                 if (typeof showToast === 'function') showToast('EP scan finished successfully.', 'success');
+                                
+                                setTimeout(() => {
+                                    if (progContainer) progContainer.style.display = 'none';
+                                }, 2500);
                             })
-                            .catch(() => resetEPBtn());
+                            .catch(() => {
+                                resetEPBtn();
+                                setTimeout(() => {
+                                    if (progContainer) progContainer.style.display = 'none';
+                                }, 2500);
+                            });
                     }
                 })
                 .catch(err => {
@@ -13284,9 +13479,10 @@ function triggerEPRefresh() {
             if (pollCount >= MAX_POLLS) {
                 clearInterval(interval);
                 resetEPBtn();
+                if (progContainer) progContainer.style.display = 'none';
                 if (typeof showToast === 'function') showToast('EP scan timed out. Please try again.', 'warning');
             }
-        }, 5000);
+        }, 1500);
     }
 
     // Use raw fetch so we can inspect the status code before EP_API throws on 4xx
@@ -13310,12 +13506,14 @@ function triggerEPRefresh() {
             const msg = data.error || `Unexpected response (${res.status})`;
             if (typeof showToast === 'function') showToast(`Scan Error: ${msg}`, 'error');
             resetEPBtn();
+            if (progContainer) progContainer.style.display = 'none';
         }
     })
     .catch(err => {
         console.error('Error triggering EP refresh:', err);
         if (typeof showToast === 'function') showToast('Failed to start EP scan', 'error');
         resetEPBtn();
+        if (progContainer) progContainer.style.display = 'none';
     });
 }
 

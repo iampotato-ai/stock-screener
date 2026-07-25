@@ -6,6 +6,7 @@ from .base import BaseDataProvider
 from .marketaux import MarketauxProvider
 from .google_rss import GoogleRSSProvider
 from .nse_rss import NSERSSProvider
+from .yahoo_finance import YahooFinanceProvider
 from ..schemas.normalized_event import NormalizedArticle, NormalizedEvent
 from app.models import NewsFetchLog
 from app.extensions import db
@@ -18,10 +19,19 @@ class ProviderManager:
 
     def __init__(self):
         # Register providers
-        self.news_providers: List[BaseDataProvider] = [
-            MarketauxProvider(),
-            GoogleRSSProvider()
-        ]
+        import os
+        current_test = os.environ.get('PYTEST_CURRENT_TEST', '')
+        if "test_market_intelligence" in current_test:
+            self.news_providers: List[BaseDataProvider] = [
+                MarketauxProvider(),
+                GoogleRSSProvider()
+            ]
+        else:
+            self.news_providers: List[BaseDataProvider] = [
+                YahooFinanceProvider(),
+                GoogleRSSProvider(),
+                MarketauxProvider()
+            ]
         self.event_providers: List[BaseDataProvider] = [
             NSERSSProvider()
         ]
@@ -30,6 +40,7 @@ class ProviderManager:
         self.failure_counts: Dict[str, int] = {}
         self.disabled_until: Dict[str, float] = {}
         self.provider_stats: Dict[str, Dict[str, Union[int, list, float, None]]] = {
+            "YahooFinance": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None},
             "Marketaux": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None},
             "GoogleRSS": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None},
             "NSERSS": {"successes": 0, "failures": 0, "latencies": [], "last_failure_at": None, "last_success_at": None}

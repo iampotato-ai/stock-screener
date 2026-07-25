@@ -84,7 +84,10 @@ with app.app_context():
             elif cat == "cat-governance":
                 event_type_mapped = "MGMT_CHANGE"
             elif cat == "cat-regulatory":
-                event_type_mapped = "FRAUD_CONCERN"
+                if res.get('sentiment') == -1:
+                    event_type_mapped = "FRAUD_CONCERN"
+                else:
+                    event_type_mapped = "UNKNOWN"
             else:
                 event_type_mapped = "UNKNOWN"
                 

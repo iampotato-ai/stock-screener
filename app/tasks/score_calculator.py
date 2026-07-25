@@ -125,28 +125,43 @@ def calculate_all_scores(app: Flask, force: bool = False) -> None:
 
             logger.info(f"Successfully fetched TradingView data for {len(isolated_tv_data)} symbols")
 
-            # Process each symbol with the pre-fetched TradingView data
-            for start in range(0, total, batch_size):
-                batch = symbols[start:start + batch_size]
-                for idx, symbol in enumerate(batch, start=start + 1):
-                    try:
-                        # Pass the isolated TradingView data to the scoring service
-                        result = service.calculate_score_for_stock(symbol, isolated_tv_data=isolated_tv_data.get(symbol))
-                        if result.get('success', False):
-                            success_count += 1
-                        else:
-                            fail_count += 1
-                            logger.warning(f"Score calculation failed for {symbol}: {result.get('error')}")
-                    except Exception as exc:
-                        fail_count += 1
-                        logger.error(f"Exception calculating score for {symbol}: {exc}")
-                    
-                    _mcs_job_status["completed"] = idx
-                    _mcs_job_status["success_count"] = success_count
-                    _mcs_job_status["fail_count"] = fail_count
+            # Process symbols concurrently using ThreadPoolExecutor (10 workers)
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            import threading
 
-                logger.info(f"Processed symbols {start + 1}-{min(start + batch_size, total)} of {total}")
-                time.sleep(1)  # Delay between batches to prevent overwhelming resources
+            status_lock = threading.Lock()
+
+            def _process_single_symbol(sym: str):
+                with app.app_context():
+                    s_service = MomentumConfidenceScoreService()
+                    return sym, s_service.calculate_score_for_stock(sym, isolated_tv_data=isolated_tv_data.get(sym), bypass_yahoo=True)
+
+            max_workers = min(10, max(1, total))
+            logger.info(f"Launching parallel scoring calculation for {total} symbols using {max_workers} worker threads")
+
+            completed_counter = 0
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_sym = {executor.submit(_process_single_symbol, sym): sym for sym in symbols}
+                for future in as_completed(future_to_sym):
+                    sym = future_to_sym[future]
+                    completed_counter += 1
+                    try:
+                        _, result = future.result()
+                        with status_lock:
+                            if result.get('success', False):
+                                success_count += 1
+                            else:
+                                fail_count += 1
+                                logger.warning(f"Score calculation failed for {sym}: {result.get('error')}")
+                            _mcs_job_status["completed"] = completed_counter
+                            _mcs_job_status["success_count"] = success_count
+                            _mcs_job_status["fail_count"] = fail_count
+                    except Exception as exc:
+                        with status_lock:
+                            fail_count += 1
+                            _mcs_job_status["completed"] = completed_counter
+                            _mcs_job_status["fail_count"] = fail_count
+                        logger.error(f"Exception calculating score for {sym}: {exc}")
 
             _mcs_job_status["status"] = "completed"
             _mcs_job_status["last_run"] = datetime.now().isoformat()

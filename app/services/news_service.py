@@ -33,10 +33,20 @@ class NewsService:
                 'title': a.title,
                 'link': a.url,
                 'pub_date': a.published_at.strftime('%Y-%m-%d %H:%M:%S') if a.published_at else '',
-                'source': a.source
+                'source': a.source,
+                'summary': a.summary
             })
             
-        return {"symbol": symbol, "news": legacy_list}
+        # Run AI Sentiment/Catalyst engine
+        from app.services.ai_service import ai_service
+        analysis = ai_service.analyze_news_catalysts(symbol, legacy_list)
+            
+        return {
+            "symbol": symbol,
+            "news": legacy_list,
+            "sentiment": analysis.get("sentiment", "sent-neutral"),
+            "summary": analysis.get("summary", "")
+        }
 
 
 # Singleton instance for backward compatibility

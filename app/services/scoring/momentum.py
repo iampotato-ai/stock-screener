@@ -1,9 +1,12 @@
 """
 Momentum Analysis Module for Momentum Confidence Score™
-Implements momentum analysis scoring (20 points)
+Implements momentum analysis scoring (20 points), enriched with
+quant-factor signals ported from HKUDS/Vibe-Trading (MIT License).
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+from app.services.scoring.quant_factors import score_quant_factors
 
 logger = logging.getLogger(__name__)
 
@@ -142,13 +145,50 @@ class MomentumAnalyzer:
                 details['criteria_not_met'].append(f'Low Momentum Acceleration ({mom_acceleration:.1f}%)')
                 details['points_breakdown']['momentum_acceleration'] = 0
 
+            # ── Quant Factor Bonus (0–4 points) ──────────────────────────
+            # History is loaded from DailyBar if available; gracefully
+            # degrades to single-period signals when DB has no history.
+            close_history: List[float] = []
+            volume_history: List[int] = []
+            open_history: List[float] = []
+            try:
+                symbol   = stock_data.get('symbol', '')
+                exchange = stock_data.get('exchange', 'NSE')
+                if symbol:
+                    close_history, volume_history, open_history = (
+                        self._load_ohlcv_history(symbol, exchange)
+                    )
+            except Exception as hist_err:
+                logger.debug("Could not load OHLCV history for quant factors: %s", hist_err)
+
+            quant_result = score_quant_factors(
+                stock_data,
+                close_history=close_history or None,
+                volume_history=volume_history or None,
+                open_history=open_history or None,
+            )
+            quant_score = quant_result.get('score', 0.0)
+            score += quant_score
+            details['points_breakdown']['quant_factors'] = round(quant_score, 2)
+            details['quant_signals'] = quant_result.get('signal_scores', {})
+            if quant_score >= 2.0:
+                details['criteria_met'].append(
+                    f'Strong Quant Signals ({quant_result["factors_computed"]} factors, +{quant_score:.1f}pt)'
+                )
+            elif quant_score >= 1.0:
+                details['criteria_met'].append(
+                    f'Moderate Quant Signals (+{quant_score:.1f}pt)'
+                )
+            else:
+                details['criteria_not_met'].append('Weak Quant Signals')
+
             # Ensure score doesn't exceed maximum
             score = min(score, 20)
 
             details['total_score'] = score
             details['max_score'] = 20
 
-            logger.debug(f"Momentum analysis score: {score}/20")
+            logger.debug("Momentum analysis score: %.1f/20 (quant bonus: %.2f)", score, quant_score)
 
             return {
                 'score': score,
@@ -168,3 +208,43 @@ class MomentumAnalyzer:
                     'points_breakdown': {}
                 }
             }
+
+    @staticmethod
+    def _load_ohlcv_history(
+        symbol: str, exchange: str, n_bars: int = 20
+    ):
+        """
+        Load last N daily bars from DailyBar table.
+        Returns (close_history, volume_history, open_history) lists.
+        Falls back to ([], [], []) when DB is unavailable or has no data.
+        Tries plain symbol first, then .NS / .BO suffixes.
+        """
+        try:
+            from app.models import DailyBar
+            from app.extensions import db
+
+            candidates = [symbol, f"{symbol}.NS", f"{symbol}.BO"]
+            bars = []
+            for sym in candidates:
+                bars = (
+                    db.session.query(DailyBar)
+                    .filter(DailyBar.symbol == sym)
+                    .order_by(DailyBar.trade_date.desc())
+                    .limit(n_bars)
+                    .all()
+                )
+                if bars:
+                    break
+
+            if not bars:
+                return [], [], []
+
+            bars = list(reversed(bars))   # oldest first
+            closes  = [float(b.close  or 0) for b in bars]
+            volumes = [int(b.volume   or 0) for b in bars]
+            opens   = [float(b.open   or 0) for b in bars]
+            return closes, volumes, opens
+
+        except Exception as db_err:
+            logger.debug("OHLCV history load failed: %s", db_err)
+            return [], [], []

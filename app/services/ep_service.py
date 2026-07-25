@@ -291,6 +291,29 @@ class EPService:
             "current_symbol": "",
             "error": None
         }
+        self.ep_refresh_status = {
+            "running": False,
+            "progress_pct": 0,
+            "stage": "idle",
+            "message": "Idle",
+            "processed": 0,
+            "total": 0,
+            "current_symbol": "",
+            "start_time": None,
+            "elapsed_seconds": 0,
+            "last_completed_at": None,
+            "error": None
+        }
+
+    def get_refresh_status(self) -> Dict[str, Any]:
+        """Get current granular progress status of EP screener refresh."""
+        with self.ep_refresh_lock:
+            status = dict(self.ep_refresh_status)
+            if status.get("running") and status.get("start_time"):
+                status["elapsed_seconds"] = int(time.time() - status["start_time"])
+            elif not status.get("running") and self.last_refresh_datetime:
+                status["last_completed_at"] = self.last_refresh_datetime
+            return status
 
     def get_ep_today(self, ep_type: str = 'all', confidence: str = 'all',
                      min_score: float = 0.10, min_mktcap: float = 0.0,
@@ -359,6 +382,152 @@ class EPService:
             "latest_date": latest_date.strftime('%Y-%m-%d')
         }
 
+    def _enrich_events_for_symbol(self, symbol_upper: str):
+        """Fetch and enrich corporate events for a single symbol on-the-fly."""
+        try:
+            from app.api.v1.legacy_routes import fetch_nse_announcements, ANNOUNCEMENTS_CACHE, CACHE_TIMEOUT_SECONDS
+            from app.services.nlp_service import nlp_service
+            import sqlite3
+            
+            now_ts = time.time()
+            cache_key = symbol_upper
+            need_fetch = True
+            
+            if cache_key in ANNOUNCEMENTS_CACHE:
+                cache_data = ANNOUNCEMENTS_CACHE[cache_key]
+                if now_ts - cache_data["timestamp"] < CACHE_TIMEOUT_SECONDS:
+                    need_fetch = False
+                    
+            if need_fetch:
+                raw_list = fetch_nse_announcements(symbol_upper)
+                ANNOUNCEMENTS_CACHE[cache_key] = {
+                    "timestamp": now_ts,
+                    "data": raw_list
+                }
+                
+                if isinstance(raw_list, list) and len(raw_list) > 0:
+                    # 6 months cutoff
+                    six_months_ago = datetime.now() - timedelta(days=180)
+                    cutoff_date_str = six_months_ago.strftime("%Y-%m-%d")
+                    
+                    conn = sqlite3.connect('scan_history.db')
+                    c = conn.cursor()
+                    
+                    for item in raw_list:
+                        desc = item.get("desc", "")
+                        text = item.get("attchmntText", "")
+                        attchment = item.get("attchmntFile", "")
+                        
+                        an_dt = item.get("an_dt", "")
+                        raw_date = an_dt.split(" ")[0] if " " in an_dt else an_dt
+                        try:
+                            date_str = datetime.strptime(raw_date, "%d-%b-%Y").strftime("%Y-%m-%d")
+                        except ValueError:
+                            date_str = raw_date
+                            
+                        if date_str < cutoff_date_str:
+                            continue
+                            
+                        sort_date_str = item.get("sort_date")
+                        if sort_date_str:
+                            try:
+                                dt = datetime.strptime(sort_date_str, "%Y-%m-%d %H:%M:%S")
+                                if dt < six_months_ago:
+                                    continue
+                            except Exception:
+                                pass
+                                
+                        # Check deduplication / missing summary / heuristic placeholders
+                        c.execute('''
+                            SELECT id, summary, headline FROM corporate_events
+                            WHERE symbol = ? AND event_date = ? AND headline = ?
+                        ''', (symbol_upper, date_str, desc if desc else text[:200]))
+                        existing = c.fetchone()
+                        
+                        is_placeholder = False
+                        if existing:
+                            summ, head = existing[1], existing[2]
+                            if not summ or summ == head or summ == "Regulatory action, penalty, or tax notice filed.":
+                                is_placeholder = True
+                            else:
+                                prefixes = [
+                                    "Dividend Action: ", "Stock Split/Sub-division: ", "Bonus Issue: ",
+                                    "Share Buyback: ", "Order/Contract Win: ", "Financial Results: ",
+                                    "M&A Activity: ", "Key Personnel/Auditor Update: ", "NSE Filing: ",
+                                    "Dividend/Distribution: ", "Stock Split: ", "Bonus Share Issue: ",
+                                    "Capex/Expansion: ", "Management Change: ", "Theme/Sector Catalyst: ",
+                                    "Regulatory Notice: "
+                                ]
+                                for p in prefixes:
+                                    if summ == p + head:
+                                        is_placeholder = True
+                                        break
+                                        
+                        if not existing or is_placeholder:
+                            enhanced_class = nlp_service.process_announcement(desc, text, attchment, symbol_upper)
+                            cat = enhanced_class['cat']
+                            
+                            if cat == "cat-order-win":
+                                event_type_mapped = "ORDER_WIN"
+                            elif cat == "cat-capex":
+                                event_type_mapped = "CAPEX_EXPANSION"
+                            elif cat == "cat-governance":
+                                event_type_mapped = "MGMT_CHANGE"
+                            elif cat == "cat-regulatory":
+                                if enhanced_class.get('sentiment') == -1:
+                                    event_type_mapped = "FRAUD_CONCERN"
+                                else:
+                                    event_type_mapped = "UNKNOWN"
+                            else:
+                                event_type_mapped = "UNKNOWN"
+                                
+                            if not existing:
+                                c.execute('''
+                                    INSERT INTO corporate_events (
+                                        symbol, exchange, event_date, event_type, headline, sentiment,
+                                        catalyst_score, source, raw_url, nlp_sentiment_score,
+                                        nlp_category, summary, impact_magnitude
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (
+                                    symbol_upper, 'NSE', date_str, event_type_mapped,
+                                    desc if desc else text[:200],
+                                    enhanced_class['sentiment'],
+                                    enhanced_class['catalyst_score'],
+                                    'NSE',
+                                    attchment,
+                                    enhanced_class['nlp_sentiment_score'],
+                                    enhanced_class['nlp_category'],
+                                    enhanced_class['summary'],
+                                    enhanced_class['impact_magnitude']
+                                ))
+                            else:
+                                c.execute('''
+                                    UPDATE corporate_events SET
+                                        event_type = ?, sentiment = ?, catalyst_score = ?,
+                                        raw_url = ?, nlp_sentiment_score = ?,
+                                        nlp_category = ?, summary = ?, impact_magnitude = ?
+                                    WHERE id = ?
+                                ''', (
+                                    event_type_mapped,
+                                    enhanced_class['sentiment'],
+                                    enhanced_class['catalyst_score'],
+                                    attchment,
+                                    enhanced_class['nlp_sentiment_score'],
+                                    enhanced_class['nlp_category'],
+                                    enhanced_class['summary'],
+                                    enhanced_class['impact_magnitude'],
+                                    existing[0]
+                                ))
+                    conn.commit()
+                    conn.close()
+        except Exception as e:
+            try:
+                from flask import current_app
+                if current_app:
+                    current_app.logger.error(f"Error enriching events inside get_ep_detail for {symbol_upper}: {e}")
+            except Exception:
+                pass
+
     def get_ep_detail(self, symbol: str) -> Dict[str, Any]:
         """Fetch detailed analytics for a single stock.
 
@@ -366,6 +535,7 @@ class EPService:
         added on a previous scan day and is no longer in today's EP results).
         """
         symbol_upper = symbol.upper().strip()
+        self._enrich_events_for_symbol(symbol_upper)
         feat = EpFeature.query.filter_by(symbol=symbol_upper).order_by(EpFeature.feature_date.desc()).first()
         if not feat:
             # Try to build a minimal response from the watchlist entry
@@ -393,7 +563,7 @@ class EPService:
             # Safe corporate events query (avoids SQLAlchemy date parse failure)
             try:
                 rows = db.session.execute(
-                    db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
+                    db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude FROM corporate_events WHERE symbol = :s ORDER BY event_date DESC, id DESC LIMIT 10"),
                     {"s": symbol_upper}
                 ).fetchall()
                 detail["corporate_events"] = [dict(r._mapping) for r in rows]
@@ -417,11 +587,11 @@ class EPService:
         history = fetch_historical_prices(ticker, range_str="6mo")
         detail["history"] = history or []
 
-        # Corporate events — use raw SQL ORDER BY id to avoid SQLAlchemy crashing
+        # Corporate events — use raw SQL ORDER BY event_date DESC, id DESC to avoid SQLAlchemy crashing
         # on 'DD-Mon-YYYY' date strings that may exist in the event_date column.
         try:
             rows = db.session.execute(
-                db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude FROM corporate_events WHERE symbol = :s ORDER BY id DESC LIMIT 10"),
+                db.text("SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude FROM corporate_events WHERE symbol = :s ORDER BY event_date DESC, id DESC LIMIT 10"),
                 {"s": symbol_upper}
             ).fetchall()
             detail["corporate_events"] = [dict(r._mapping) for r in rows]
@@ -508,6 +678,15 @@ class EPService:
         from app.services.ai_service import ai_service
         
         cache = _load_ep_cache()
+        # Invalidate fallback responses generated before API keys/models were fixed
+        if cache_key in cache:
+            cached_reasoning = str(cache[cache_key].get("reasoning", ""))
+            cached_thesis = str(cache[cache_key].get("thesis", ""))
+            if any(term in cached_reasoning or term in cached_thesis for term in [
+                "Default offline fallback", "API unavailability", "openai/gpt-oss-120b", "Default fallback"
+            ]):
+                del cache[cache_key]
+
         if cache_key in cache:
             detail["ai_thesis"] = cache[cache_key].get("thesis")
             detail["ai_reasoning"] = cache[cache_key].get("reasoning")
@@ -656,17 +835,47 @@ class EPService:
                 return False
             self.last_ep_refresh_time = current_time
             self.is_refreshing = True
+            self.ep_refresh_status.update({
+                "running": True,
+                "progress_pct": 5,
+                "stage": "starting",
+                "message": "Scanning TradingView universe...",
+                "processed": 0,
+                "total": 0,
+                "current_symbol": "",
+                "start_time": current_time,
+                "elapsed_seconds": 0,
+                "error": None
+            })
 
         def _bg_refresh():
             try:
-                from app.api.v1.legacy_routes import refresh_ep_screener as legacy_refresh
-                legacy_refresh()
+                import app.api.v1.legacy_routes as lr
+                lr.ep_refresh_status = self.ep_refresh_status
+                lr.refresh_ep_screener()
                 self.last_refresh_datetime = datetime.now().isoformat()
+                with self.ep_refresh_lock:
+                    self.ep_refresh_status.update({
+                        "running": False,
+                        "progress_pct": 100,
+                        "stage": "complete",
+                        "message": "EP scan completed successfully.",
+                        "last_completed_at": self.last_refresh_datetime
+                    })
             except Exception as e:
                 print(f"Error in background EP refresh: {e}")
+                with self.ep_refresh_lock:
+                    self.ep_refresh_status.update({
+                        "running": False,
+                        "progress_pct": 0,
+                        "stage": "error",
+                        "message": f"Scan failed: {e}",
+                        "error": str(e)
+                    })
             finally:
                 with self.ep_refresh_lock:
                     self.is_refreshing = False
+                    self.ep_refresh_status["running"] = False
 
         t = threading.Thread(target=_bg_refresh)
         t.start()

@@ -32,6 +32,25 @@ def global_mock_connect(database, *args, **kwargs):
                         val = getattr(mod, 'db_file')
                         if val:
                             return orig_connect(val, *args, **kwargs)
+            # Fallback: redirect if any active module has db_path/db_file defined
+            for mod_name, mod in list(sys.modules.items()):
+                if hasattr(mod, 'db_path'):
+                    val = getattr(mod, 'db_path')
+                    if val:
+                        return orig_connect(val, *args, **kwargs)
+                if hasattr(mod, 'db_file'):
+                    val = getattr(mod, 'db_file')
+                    if val:
+                        return orig_connect(val, *args, **kwargs)
+            
+            # Global fallback for collection-time connections when database is locked
+            global_temp_db = os.environ.get('GLOBAL_TEST_TEMP_DB')
+            if not global_temp_db:
+                fd, path = tempfile.mkstemp(suffix='_global_fallback.db')
+                os.close(fd)
+                os.environ['GLOBAL_TEST_TEMP_DB'] = path
+                global_temp_db = path
+            return orig_connect(global_temp_db, *args, **kwargs)
     return orig_connect(database, *args, **kwargs)
 
 sqlite3.connect = global_mock_connect
@@ -67,3 +86,14 @@ def flask_app(monkeypatch, temp_db_path):
         init_db_app()
         
     yield app
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_global_temp_db():
+    yield
+    global_temp_db = os.environ.get('GLOBAL_TEST_TEMP_DB')
+    if global_temp_db and os.path.exists(global_temp_db):
+        try:
+            os.unlink(global_temp_db)
+        except OSError:
+            pass

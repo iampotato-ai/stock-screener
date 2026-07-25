@@ -150,6 +150,7 @@ class ScreenerService:
                 stock = dict(r)
                 stock['clean_ticker'] = stock.get('ticker', '')
                 stock['setup_label'] = stock.get('setupLabel', '')
+                stock = self._enrich_stock_metadata(stock)
                 results.append(stock)
             
             # Calculate RS scores for database results
@@ -158,7 +159,7 @@ class ScreenerService:
             from flask import has_app_context
             stage_results = current_app.config.get('STAGE_ANALYSIS_RESULTS', {}) if has_app_context() else {}
             for stock in results:
-                stock['relative_strength_rating'] = stock.get('rs_score')
+                stock['relative_strength_rating'] = stock.get('rs_score') or stock.get('relative_strength_rating')
                 ticker = stock.get('clean_ticker') or stock.get('ticker') or stock.get('symbol', '')
                 if ticker.startswith("NSE:"):
                     ticker = ticker[4:]
@@ -177,7 +178,10 @@ class ScreenerService:
                             stage_results[ticker] = inline_analysis
                         stock['stage_label'] = inline_analysis['score'].get('stage', 'Unknown')
                     else:
-                        stock['stage_label'] = 'Unknown'
+                        stock['stage_label'] = stock.get('stage_label') or 'Unknown'
+                        
+                # Re-run setup tag enrichment to ensure stage & RS tags are complete
+                self._enrich_stock_metadata(stock)
             
             if full_response:
                 return {
@@ -197,6 +201,43 @@ class ScreenerService:
                     'universe': []
                 }
             return []
+
+    def _enrich_stock_metadata(self, stock: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure deserialization of JSON tags and dynamic enrichment of setup tags for fallback data."""
+        import json
+        if isinstance(stock.get('setup_tags_json'), str) and stock['setup_tags_json']:
+            try:
+                stock['setupTags'] = json.loads(stock['setup_tags_json'])
+            except Exception:
+                stock['setupTags'] = []
+
+        if not stock.get('setupTags'):
+            stock['setupTags'] = []
+
+        label = stock.get('setupLabel') or stock.get('setup_label') or ''
+        if label and label not in stock['setupTags']:
+            stock['setupTags'].append(label)
+
+        swing = (stock.get('swingband') or '').lower()
+        close = stock.get('close') or 0.0
+        high52 = stock.get('price_52_week_high')
+
+        if swing in ['strong', 'elite']:
+            if high52 and close >= high52 * 0.95:
+                if 'Breakout Ready' not in stock['setupTags']: stock['setupTags'].append('Breakout Ready')
+            else:
+                if 'Pullback to MA' not in stock['setupTags']: stock['setupTags'].append('Pullback to MA')
+
+        if label == 'Sector Leader' and 'Sector Leader' not in stock['setupTags']:
+            stock['setupTags'].append('Sector Leader')
+
+        if isinstance(stock.get('candlestick_json'), str) and stock['candlestick_json']:
+            try:
+                stock['candlestick_patterns'] = json.loads(stock['candlestick_json'])
+            except Exception:
+                stock['candlestick_patterns'] = {}
+
+        return stock
 
     def get_stock_details(self, ticker: str) -> Optional[Dict[str, Any]]:
         """

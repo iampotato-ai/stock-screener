@@ -81,6 +81,14 @@ class Config:
     NEWS_REFRESH_MINUTES = int(os.environ.get('NEWS_REFRESH_MINUTES', '60'))
     EVENT_REFRESH_MINUTES = int(os.environ.get('EVENT_REFRESH_MINUTES', '120'))
 
+    # AI Service Configuration
+    NVIDIA_NIM_API_KEY = os.environ.get('NVIDIA_NIM_API_KEY')
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+    NVIDIA_NIM_MODEL = os.environ.get('NVIDIA_NIM_MODEL', 'meta/llama-3.1-70b-instruct')
+    NVIDIA_NIM_MODEL_LIGHT = os.environ.get('NVIDIA_NIM_MODEL_LIGHT', 'meta/llama-3.1-70b-instruct')
+    GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-flash-lite-latest')
+    GEMINI_FALLBACK_MODEL = os.environ.get('GEMINI_FALLBACK_MODEL', 'gemini-flash-lite-latest')
+
     # Feature flags
     ENABLE_BACKGROUND_TASKS = os.environ.get('ENABLE_BACKGROUND_TASKS', 'True').lower() == 'true'
     ENABLE_TELEGRAM_ALERTS = os.environ.get('ENABLE_TELEGRAM_ALERTS', 'True').lower() == 'true'

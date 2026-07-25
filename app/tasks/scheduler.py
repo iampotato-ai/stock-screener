@@ -35,10 +35,11 @@ def init_scheduler(app: Flask):
 
     scheduler = BackgroundScheduler()
 
-    # Add EP refresh job - runs every 30 minutes
+    from datetime import datetime as _dt, timedelta as _td
+    # Add EP refresh job - runs every 30 minutes, first run delayed 5 min after startup
     scheduler.add_job(
         func=refresh_ep_task,
-        trigger=IntervalTrigger(minutes=30),
+        trigger=IntervalTrigger(minutes=30, start_date=_dt.now() + _td(minutes=5)),
         id='ep_refresh_job',
         name='Refresh EP screener data every 30 minutes',
         replace_existing=True,
@@ -219,7 +220,9 @@ def startup_ipo_cache_warmup(app: Flask):
         import os
         with app.app_context():
             db_path = app.config.get('DATABASE', 'scan_history.db')
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(db_path, timeout=60.0)
+            conn.execute('PRAGMA busy_timeout = 60000')
+            conn.execute('PRAGMA journal_mode = WAL')
             c = conn.cursor()
             c.execute(
                 "SELECT COUNT(*) FROM ipo_listings "

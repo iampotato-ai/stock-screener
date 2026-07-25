@@ -19,7 +19,15 @@ from app.services.scoring.fetcher_utils import (
 )
 from app.utils.technical import classify_technical_pattern
 
+import threading
+
 logger = logging.getLogger(__name__)
+
+# Thread-safe in-memory TTL caches for Yahoo Finance data (6 hours TTL)
+_YAHOO_FUNDAMENTALS_CACHE: Dict[str, Any] = {}
+_YAHOO_OHLCV_CACHE: Dict[str, Any] = {}
+_YAHOO_CACHE_LOCK = threading.Lock()
+_YAHOO_CACHE_TTL = 6 * 3600  # 6 hours
 
 
 class StockDataFetcher:
@@ -30,15 +38,15 @@ class StockDataFetcher:
 
     def __init__(self):
         """Initialize the stock data fetcher."""
-        # These would normally come from config, but we'll use defaults for now
         self.tradingview_url = "https://scanner.tradingview.com/india/scan"
         self.yahoo_finance_base = "https://query1.finance.yahoo.com/v10/finance/quoteSummary"
         self.yahoo_chart_base = "https://query1.finance.yahoo.com/v8/finance/chart"
         self.request_timeout = 10
-        self.rate_limit_delay = 0.1  # 100ms between Yahoo requests
+        self.rate_limit_delay = 0.02  # Reduced to 20ms for faster throughput
 
     def fetch_stock_data(self, symbol: str, exchange: str = 'NSE',
-                         isolated_tv_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                         isolated_tv_data: Optional[Dict[str, Any]] = None,
+                         bypass_yahoo: bool = True) -> Dict[str, Any]:
         """
         Fetch complete stock data for a symbol using layered approach.
 
@@ -46,6 +54,7 @@ class StockDataFetcher:
             symbol: Stock symbol (e.g., 'RELIANCE')
             exchange: Stock exchange (default: 'NSE')
             isolated_tv_data: Pre-fetched TradingView data for batch efficiency
+            bypass_yahoo: If True, completely bypasses Yahoo Finance network calls.
 
         Returns:
             Dictionary conforming to StockDataSchema
@@ -65,10 +74,78 @@ class StockDataFetcher:
                 if tv_data:
                     result.update(self._extract_technical_from_tv(tv_data))
 
-            # Layer 2: Yahoo Finance fundamentals
-            yahoo_fundamentals = self._fetch_yahoo_fundamentals(symbol)
-            if yahoo_fundamentals:
-                result.update(self._extract_fundamentals_from_yahoo(yahoo_fundamentals))
+            # Check local database cache to avoid slow Yahoo Finance network queries
+            has_local_fundamentals = False
+            has_local_technical = False
+            
+            db_path = 'scan_history.db'
+            try:
+                from flask import current_app
+                if current_app:
+                    db_path = current_app.config.get('DATABASE', 'scan_history.db')
+            except Exception:
+                pass
+
+            import sqlite3
+            try:
+                # Query fundamentals and historical daily bars from sqlite database
+                db_conn = sqlite3.connect(db_path, timeout=0.2)
+                db_conn.execute("PRAGMA journal_mode=WAL")
+                db_conn.execute("PRAGMA busy_timeout = 200")
+                db_cursor = db_conn.cursor()
+                
+                # Fetch latest fundamentals record
+                db_cursor.execute('''
+                    SELECT revenue_yoy_pct, net_profit_yoy_pct, ebitda_margin
+                    FROM fundamentals
+                    WHERE symbol = ?
+                    ORDER BY result_date DESC, id DESC
+                    LIMIT 1
+                ''', (symbol.upper().strip(),))
+                fund_row = db_cursor.fetchone()
+                if fund_row:
+                    result['revenue_growth_yoy'] = fund_row[0] if fund_row[0] is not None else 0.0
+                    result['profit_growth_yoy'] = fund_row[1] if fund_row[1] is not None else 0.0
+                    if fund_row[2] is not None:
+                        result['operating_margin'] = fund_row[2]
+                        result['net_margin'] = fund_row[2]
+                    # Since TradingView (Layer 1) already populated ROE, ROCE, and Debt to Equity,
+                    # having the growth rates from database completes the core fundamentals set.
+                    has_local_fundamentals = True
+
+                # Fetch daily bars from local DB for technical analysis
+                db_cursor.execute('''
+                    SELECT open, high, low, close, volume
+                    FROM daily_bars
+                    WHERE symbol = ?
+                    ORDER BY trade_date ASC
+                ''', (symbol.upper().strip(),))
+                bars_rows = db_cursor.fetchall()
+                if bars_rows and len(bars_rows) >= 5:
+                    history_list = []
+                    for row in bars_rows:
+                        history_list.append({
+                            'open': float(row[0]),
+                            'high': float(row[1]),
+                            'low': float(row[2]),
+                            'close': float(row[3]),
+                            'volume': float(row[4])
+                        })
+                    
+                    local_tech = self._extract_technical_from_ohlcv_list(history_list)
+                    result.update(local_tech)
+                    has_local_technical = True
+                    logger.debug(f"Computed technical indicators from local DB for {symbol}")
+                
+                db_conn.close()
+            except Exception as db_e:
+                logger.warning(f"Failed to query local database fallback for {symbol}: {db_e}")
+
+            # Layer 2: Yahoo Finance fundamentals (fallback if local fundamentals missing and not bypassed)
+            if not has_local_fundamentals and not bypass_yahoo:
+                yahoo_fundamentals = self._fetch_yahoo_fundamentals(symbol)
+                if yahoo_fundamentals:
+                    result.update(self._extract_fundamentals_from_yahoo(yahoo_fundamentals))
 
             # Layer 2.5: NSE Bulk and Block Deals
             try:
@@ -97,10 +174,11 @@ class StockDataFetcher:
             except Exception as e:
                 logger.warning(f"Error fetching bulk/block deals for {symbol}: {e}")
 
-            # Layer 3: Yahoo Finance OHLCV for technical indicators
-            yahoo_ohlcv = self._fetch_yahoo_ohlcv(symbol)
-            if yahoo_ohlcv:
-                result.update(self._extract_technical_from_ohlcv(yahoo_ohlcv))
+            # Layer 3: Yahoo Finance OHLCV for technical indicators (fallback if local technical missing and not bypassed)
+            if not has_local_technical and not bypass_yahoo:
+                yahoo_ohlcv = self._fetch_yahoo_ohlcv(symbol)
+                if yahoo_ohlcv:
+                    result.update(self._extract_technical_from_ohlcv(yahoo_ohlcv))
 
             # Layer 4: Database fallback for price (if needed)
             # This would be implemented if we had direct DB access for price history
@@ -151,7 +229,8 @@ class StockDataFetcher:
                 "columns": [
                     "name", "close", "market_cap_basic", "price_52_week_high",
                     "price_52_week_low", "RSI", "EMA50", "Perf.W", "Perf.1M", "Perf.3M",
-                    "volume", "average_volume_10d_calc", "average_volume_30d_calc"
+                    "volume", "average_volume_10d_calc", "average_volume_30d_calc",
+                    "return_on_equity_fq", "return_on_capital_employed_fq", "debt_to_equity_fq"
                 ]
             }
 
@@ -195,7 +274,10 @@ class StockDataFetcher:
                                 'Perf.3M': cols[9] if len(cols) > 9 else None,
                                 'volume': cols[10] if len(cols) > 10 else None,
                                 'average_volume_10d_calc': cols[11] if len(cols) > 11 else None,
-                                'average_volume_30d_calc': cols[12] if len(cols) > 12 else None
+                                'average_volume_30d_calc': cols[12] if len(cols) > 12 else None,
+                                'return_on_equity_fq': cols[13] if len(cols) > 13 else None,
+                                'return_on_capital_employed_fq': cols[14] if len(cols) > 14 else None,
+                                'debt_to_equity_fq': cols[15] if len(cols) > 15 else None
                             }
                     elif isinstance(item, list) and len(item) > 0:
                         sym = item[0]
@@ -214,7 +296,10 @@ class StockDataFetcher:
                                 'Perf.3M': item[9] if len(item) > 9 else None,
                                 'volume': item[10] if len(item) > 10 else None,
                                 'average_volume_10d_calc': item[11] if len(item) > 11 else None,
-                                'average_volume_30d_calc': item[12] if len(item) > 12 else None
+                                'average_volume_30d_calc': item[12] if len(item) > 12 else None,
+                                'return_on_equity_fq': item[13] if len(item) > 13 else None,
+                                'return_on_capital_employed_fq': item[14] if len(item) > 14 else None,
+                                'debt_to_equity_fq': item[15] if len(item) > 15 else None
                             }
 
             logger.info(f"Fetched isolated TradingView data for {len(tv_data)} symbols")
@@ -234,17 +319,22 @@ class StockDataFetcher:
             return None
 
     def _fetch_yahoo_fundamentals(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Fetch fundamental data from Yahoo Finance using yfinance to avoid HTTP 401 Crumb errors."""
-        try:
-            # Respect rate limit
-            if self.rate_limit_delay > 0:
-                time.sleep(self.rate_limit_delay)
+        """Fetch fundamental data from Yahoo Finance with strict timeout to prevent hangs."""
+        now = time.time()
+        clean_sym = symbol.upper().strip()
+        with _YAHOO_CACHE_LOCK:
+            if clean_sym in _YAHOO_FUNDAMENTALS_CACHE:
+                cached = _YAHOO_FUNDAMENTALS_CACHE[clean_sym]
+                if now - cached['timestamp'] < _YAHOO_CACHE_TTL:
+                    return cached['data']
 
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+
+        def _do_fetch():
             import yfinance as yf
-            ticker = yf.Ticker(f"{symbol}.NS")
+            ticker = yf.Ticker(f"{clean_sym}.NS")
             info = ticker.info or {}
             
-            # Fetch and format income statement history
             income_stmt_history = []
             try:
                 df = ticker.income_stmt
@@ -273,14 +363,14 @@ class StockDataFetcher:
                                 'netIncome': {'raw': net_inc_val}
                             })
             except Exception as e:
-                logger.warning(f"Error parsing income statement for {symbol}: {e}")
+                logger.debug(f"Income statement fetch skipped for {clean_sym}: {e}")
 
-            data = {
+            return {
                 'quoteSummary': {
                     'result': [{
                         'financialData': {
                             'returnOnEquity': {'raw': info.get('returnOnEquity')},
-                            'returnOnCapitalEmployed': {'raw': info.get('returnOnAssets')}, # Proxy
+                            'returnOnCapitalEmployed': {'raw': info.get('returnOnAssets')},
                             'debtToEquity': {'raw': info.get('debtToEquity')},
                             'operatingMargins': {'raw': info.get('operatingMargins')},
                             'profitMargins': {'raw': info.get('profitMargins')},
@@ -296,22 +386,40 @@ class StockDataFetcher:
                     }]
                 }
             }
+
+        try:
+            with ThreadPoolExecutor(max_workers=1) as single_executor:
+                future = single_executor.submit(_do_fetch)
+                data = future.result(timeout=2.5)  # 2.5s max timeout per stock
+
+            with _YAHOO_CACHE_LOCK:
+                _YAHOO_FUNDAMENTALS_CACHE[clean_sym] = {'timestamp': now, 'data': data}
+
             return data
 
+        except FutureTimeoutError:
+            logger.warning(f"Yahoo Finance fundamentals timeout (>2.5s) for {clean_sym}, using defaults")
+            return None
         except Exception as e:
-            logger.error(f"Error fetching Yahoo Finance fundamentals for {symbol}: {e}")
+            logger.debug(f"Yahoo Finance fundamentals unavailable for {clean_sym}: {e}")
             return None
 
     def _fetch_yahoo_ohlcv(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Fetch OHLCV data from Yahoo Finance for technical indicators."""
+        now = time.time()
+        clean_sym = symbol.upper().strip()
+        with _YAHOO_CACHE_LOCK:
+            if clean_sym in _YAHOO_OHLCV_CACHE:
+                cached = _YAHOO_OHLCV_CACHE[clean_sym]
+                if now - cached['timestamp'] < _YAHOO_CACHE_TTL:
+                    return cached['data']
+
         try:
             # Respect rate limit
             if self.rate_limit_delay > 0:
                 time.sleep(self.rate_limit_delay)
 
-            # Yahoo Finance expects .NS suffix for NSE stocks
-            yahoo_symbol = f"{symbol}.NS"
-            # Get 1 year of daily data
+            yahoo_symbol = f"{clean_sym}.NS"
             url = f"{self.yahoo_chart_base}/{yahoo_symbol}?interval=1d&range=1y"
 
             req = urllib.request.Request(
@@ -322,10 +430,13 @@ class StockDataFetcher:
             with urllib.request.urlopen(req, timeout=self.request_timeout) as response:
                 data = json.loads(response.read().decode('utf-8'))
 
+            with _YAHOO_CACHE_LOCK:
+                _YAHOO_OHLCV_CACHE[clean_sym] = {'timestamp': now, 'data': data}
+
             return data
 
         except Exception as e:
-            logger.error(f"Error fetching Yahoo Finance OHLCV for {symbol}: {e}")
+            logger.error(f"Error fetching Yahoo Finance OHLCV for {clean_sym}: {e}")
             return None
 
     def _extract_technical_from_tv(self, tv_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -364,6 +475,20 @@ class StockDataFetcher:
         market_cap = tv_data.get('market_cap_basic')
         if market_cap is not None:
             result['market_cap_cr'] = float(market_cap) / 1e7  # Convert to crores
+
+        # Extract basic fundamental fields if present from TV
+        roe = tv_data.get('return_on_equity_fq')
+        if roe is not None:
+            result['roe'] = float(roe)
+
+        roce = tv_data.get('return_on_capital_employed_fq')
+        if roce is not None:
+            result['roce'] = float(roce)
+
+        debt = tv_data.get('debt_to_equity_fq')
+        if debt is not None:
+            val = float(debt)
+            result['debt_to_equity'] = val / 100.0 if val > 10.0 else val
 
         return result
 
@@ -465,6 +590,119 @@ class StockDataFetcher:
                     result['revenue_growth_yoy'] = compute_yoy_growth(revenues) * 100.0
                 if len(profits) >= 2:
                     result['profit_growth_yoy'] = compute_yoy_growth(profits) * 100.0
+
+        return result
+
+    def _extract_technical_from_ohlcv_list(self, history_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Extract technical indicators from local DB daily bars list."""
+        result = {}
+        if len(history_list) < 2:
+            return result
+
+        opens = [day['open'] for day in history_list]
+        closes = [day['close'] for day in history_list]
+        highs = [day['high'] for day in history_list]
+        lows = [day['low'] for day in history_list]
+        volumes = [day['volume'] for day in history_list]
+
+        # Calculate EMA20, EMA100, EMA200
+        if len(closes) >= 20:
+            ema_20_values = compute_ema(closes, 20)
+            if ema_20_values and not math.isnan(ema_20_values[-1]):
+                result['ema_20'] = ema_20_values[-1]
+
+        if len(closes) >= 100:
+            ema_100_values = compute_ema(closes, 100)
+            if ema_100_values and not math.isnan(ema_100_values[-1]):
+                result['ema_100'] = ema_100_values[-1]
+
+        if len(closes) >= 200:
+            ema_200_values = compute_ema(closes, 200)
+            if ema_200_values and not math.isnan(ema_200_values[-1]):
+                result['ema_200'] = ema_200_values[-1]
+
+        # Calculate MACD
+        if len(closes) >= 26:
+            macd_line, signal_line, _ = compute_macd(closes)
+            if macd_line and not math.isnan(macd_line[-1]):
+                result['macd'] = macd_line[-1]
+            if signal_line and not math.isnan(signal_line[-1]):
+                result['macd_signal'] = signal_line[-1]
+
+        # Calculate ADX
+        if len(highs) >= 14 and len(lows) >= 14 and len(closes) >= 14:
+            adx_values = compute_adx(highs, lows, closes)
+            if adx_values and not math.isnan(adx_values[-1]):
+                result['adx'] = adx_values[-1]
+
+        # Calculate Supertrend
+        if len(highs) >= 10 and len(lows) >= 10 and len(closes) >= 10:
+            supertrend, direction = compute_supertrend(highs, lows, closes)
+            if supertrend and not math.isnan(supertrend[-1]):
+                result['supertrend'] = supertrend[-1]
+            if direction and len(direction) > 0:
+                result['supertrend_direction'] = direction[-1]
+
+        # Calculate RSI
+        if len(closes) >= 14:
+            rsi_values = compute_rsi(closes)
+            if rsi_values and not math.isnan(rsi_values[-1]):
+                result['rsi'] = rsi_values[-1]
+
+        # Calculate volatility
+        if len(closes) >= 30:
+            volatility = compute_volatility(closes)
+            result['volatility_30d'] = volatility
+
+        # Calculate average daily volume
+        if len(volumes) >= 30:
+            avg_volume = sum(volumes[-30:]) / min(30, len(volumes))
+            result['avg_daily_volume'] = int(avg_volume)
+
+        # Volume ratio (today's volume / 30-day average)
+        if len(volumes) >= 31:  # Need at least 30 days of history + today
+            today_volume = volumes[-1] if volumes else 0
+            avg_volume_30d = sum(volumes[-31:-1]) / 30 if len(volumes) >= 31 else 0
+            if avg_volume_30d > 0:
+                result['volume_ratio'] = today_volume / avg_volume_30d
+
+        # Higher highs and higher lows (20-period)
+        if len(highs) >= 20 and len(lows) >= 20:
+            recent_highs = highs[-10:]
+            previous_highs = highs[-20:-10]
+            recent_lows = lows[-10:]
+            previous_lows = lows[-20:-10]
+
+            if max(recent_highs) > max(previous_highs):
+                result['higher_highs'] = True
+            if min(recent_lows) > min(previous_lows):
+                result['higher_lows'] = True
+
+        # VCP pattern and breakout detection
+        pattern_result = classify_technical_pattern(history_list)
+        result['has_vcp_pattern'] = pattern_result['pattern'].startswith('VCP')
+        
+        BREAKOUT_PATTERNS = {
+            'High Tight Flag Breakout',
+            'VCP Breakout (3T)',
+            'Cup & Handle Breakout',
+            'Long Base Breakout',
+            'Resistance Breakout'
+        }
+        is_pattern_breakout = pattern_result.get('pattern', '') in BREAKOUT_PATTERNS
+        
+        # Safeguard: a fresh breakout day should not be a significant down day (e.g. <-2.5%)
+        is_breakout_confirmed = False
+        if is_pattern_breakout:
+            if len(closes) >= 2:
+                day_change_pct = ((closes[-1] - closes[-2]) / closes[-2]) * 100.0
+                if day_change_pct >= -2.5:
+                    is_breakout_confirmed = True
+            else:
+                is_breakout_confirmed = True
+                
+        result['is_breakout'] = is_breakout_confirmed
+        result['relative_strength_rating'] = 50.0
 
         return result
 
@@ -693,7 +931,8 @@ class StockDataFetcher:
 
 # Convenience function for external use
 def fetch_stock_data(symbol: str, exchange: str = 'NSE',
-                     isolated_tv_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                     isolated_tv_data: Optional[Dict[str, Any]] = None,
+                     bypass_yahoo: bool = True) -> Dict[str, Any]:
     """
     Convenience function to fetch stock data for a single symbol.
 
@@ -701,12 +940,13 @@ def fetch_stock_data(symbol: str, exchange: str = 'NSE',
         symbol: Stock symbol
         exchange: Stock exchange
         isolated_tv_data: Pre-fetched TradingView data
+        bypass_yahoo: If True, completely bypasses Yahoo Finance network calls.
 
     Returns:
         Dictionary conforming to StockDataSchema
     """
     fetcher = StockDataFetcher()
-    return fetcher.fetch_stock_data(symbol, exchange, isolated_tv_data)
+    return fetcher.fetch_stock_data(symbol, exchange, isolated_tv_data, bypass_yahoo)
 
 
 def fetch_isolated_tv_data(symbols: List[str]) -> Dict[str, Any]:

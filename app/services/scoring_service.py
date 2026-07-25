@@ -31,7 +31,12 @@ except ImportError as e:
     ExplanationGenerator = None
     StockRanker = None
 
+import threading
+
 logger = logging.getLogger(__name__)
+
+_db_save_lock = threading.Lock()
+
 
 class MomentumConfidenceScoreService:
     """
@@ -56,8 +61,9 @@ class MomentumConfidenceScoreService:
         logger.info(f"MomentumConfidenceScoreService initialized with weights: {self.weights}")
 
     def calculate_score_for_stock(self, symbol: str, exchange: str = 'NSE',
-                              calculation_date: Optional[date] = None,
-                              isolated_tv_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                               calculation_date: Optional[date] = None,
+                               isolated_tv_data: Optional[Dict[str, Any]] = None,
+                               bypass_yahoo: bool = True) -> Dict[str, Any]:
         """
         Calculate Momentum Confidence Score for a single stock.
 
@@ -66,6 +72,7 @@ class MomentumConfidenceScoreService:
             exchange: Stock exchange (default: 'NSE')
             calculation_date: Date for calculation (default: today)
             isolated_tv_data: Pre-fetched TradingView data for this symbol (optional)
+            bypass_yahoo: If True, completely bypasses Yahoo Finance network calls.
 
         Returns:
             Dictionary containing score breakdown, badges, explanation, and metadata
@@ -110,7 +117,7 @@ class MomentumConfidenceScoreService:
                 raise Exception("One or more required analyzers are not available")
 
             # Fetch real stock data using TradingView and Yahoo Finance
-            stock_data = self._fetch_stock_data(symbol, exchange, isolated_tv_data=isolated_tv_data)
+            stock_data = self._fetch_stock_data(symbol, exchange, isolated_tv_data=isolated_tv_data, bypass_yahoo=bypass_yahoo)
 
             # Calculate scores for each pillar
             technical_result = self.technical_analyzer.analyze(stock_data)
@@ -157,13 +164,36 @@ class MomentumConfidenceScoreService:
                 result['weighted_scores']['risk_liquidity']
             )
 
+
             # Swing Velocity Score — Technical 45%, Momentum 45%, Risk 10%
             # Fundamentals and Institutional contribute 0 in swing mode
-            result['swing_score'] = min(100, round(
+            raw_swing = min(100, round(
                 result['pillar_scores']['technical']      * (45.0 / 30.0) +
                 result['pillar_scores']['momentum']       * (45.0 / 20.0) +
                 result['pillar_scores']['risk_liquidity'] * (10.0 / 10.0)
             ))
+
+            # Apply correlation regime penalty — FUSED market reduces alpha
+            # Regime is computed by MarketBreadthService and cached in module-level dict
+            try:
+                from app.services.market_breadth_service import _cached_regime
+                corr_regime = _cached_regime.get('label', 'NORMAL')
+                corr_score  = _cached_regime.get('score', 0.0)
+            except Exception:
+                corr_regime = 'NORMAL'
+                corr_score  = 0.0
+
+            if corr_regime == 'FUSED':
+                result['swing_score'] = round(raw_swing * 0.85)    # 15% penalty
+                result['fused_market_penalty_applied'] = True
+            else:
+                result['swing_score'] = raw_swing
+                result['fused_market_penalty_applied'] = False
+
+            result['correlation_regime']       = corr_regime
+            result['correlation_regime_score'] = corr_score
+
+
 
             # Collect details for explanation
             result['technical_details'] = technical_result.get('details', {})
@@ -182,8 +212,11 @@ class MomentumConfidenceScoreService:
 
             result['success'] = True
 
-            # Save to database
-            self._save_score_to_db(result)
+            # Save to database (best-effort; non-fatal if DB is locked)
+            try:
+                self._save_score_to_db(result)
+            except Exception as db_err:
+                logger.warning(f"Failed to persist score to database for {symbol}.{exchange}: {db_err}")
 
             logger.info(f"Successfully calculated score for {symbol}.{exchange}: {result['total_score']}")
 
@@ -196,7 +229,8 @@ class MomentumConfidenceScoreService:
         return result
 
     def _fetch_stock_data(self, symbol: str, exchange: str,
-                          isolated_tv_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                          isolated_tv_data: Optional[Dict[str, Any]] = None,
+                          bypass_yahoo: bool = True) -> Dict[str, Any]:
         """
         Get stock data for a symbol using real data fetching.
         This replaces the mock data implementation with real data from TradingView and Yahoo Finance.
@@ -204,56 +238,57 @@ class MomentumConfidenceScoreService:
         from app.services.scoring.fetcher import fetch_stock_data
 
         # Fetch real stock data
-        stock_data = fetch_stock_data(symbol, exchange, isolated_tv_data=isolated_tv_data)
+        stock_data = fetch_stock_data(symbol, exchange, isolated_tv_data=isolated_tv_data, bypass_yahoo=bypass_yahoo)
 
         logger.info(f"Fetched real data for {symbol}.{exchange}: price={stock_data.get('price', 0)}")
 
         return stock_data
 
     def _save_score_to_db(self, score_data: Dict[str, Any]) -> None:
-        """Save the calculated score to the database."""
-        try:
-            # Check if score already exists for this stock/date
-            calculation_date = datetime.strptime(score_data['date'], '%Y-%m-%d').date()
-            existing = MomentumScore.query.filter_by(
-                symbol=score_data['symbol'],
-                exchange=score_data['exchange'],
-                date=calculation_date
-            ).first()
-
-            if existing:
-                # Update existing record
-                existing.total_score = score_data['total_score']
-                existing.technical_score = score_data['pillar_scores']['technical']
-                existing.fundamental_score = score_data['pillar_scores']['fundamental']
-                existing.momentum_score = score_data['pillar_scores']['momentum']
-                existing.institutional_score = score_data['pillar_scores']['institutional']
-                existing.risk_liquidity_score = score_data['pillar_scores']['risk_liquidity']
-                existing.badges = score_data['badges']
-                existing.calculated_at = datetime.utcnow()
-            else:
-                # Create new record
-                new_score = MomentumScore(
+        """Save the calculated score to the database (thread-safe)."""
+        with _db_save_lock:
+            try:
+                # Check if score already exists for this stock/date
+                calculation_date = datetime.strptime(score_data['date'], '%Y-%m-%d').date()
+                existing = MomentumScore.query.filter_by(
                     symbol=score_data['symbol'],
                     exchange=score_data['exchange'],
-                    date=calculation_date,
-                    total_score=score_data['total_score'],
-                    technical_score=score_data['pillar_scores']['technical'],
-                    fundamental_score=score_data['pillar_scores']['fundamental'],
-                    momentum_score=score_data['pillar_scores']['momentum'],
-                    institutional_score=score_data['pillar_scores']['institutional'],
-                    risk_liquidity_score=score_data['pillar_scores']['risk_liquidity'],
-                    badges=score_data['badges']
-                )
-                db.session.add(new_score)
+                    date=calculation_date
+                ).first()
 
-            db.session.commit()
-            logger.debug(f"Saved score for {score_data['symbol']} to database")
+                if existing:
+                    # Update existing record
+                    existing.total_score = score_data['total_score']
+                    existing.technical_score = score_data['pillar_scores']['technical']
+                    existing.fundamental_score = score_data['pillar_scores']['fundamental']
+                    existing.momentum_score = score_data['pillar_scores']['momentum']
+                    existing.institutional_score = score_data['pillar_scores']['institutional']
+                    existing.risk_liquidity_score = score_data['pillar_scores']['risk_liquidity']
+                    existing.badges = score_data['badges']
+                    existing.calculated_at = datetime.utcnow()
+                else:
+                    # Create new record
+                    new_score = MomentumScore(
+                        symbol=score_data['symbol'],
+                        exchange=score_data['exchange'],
+                        date=calculation_date,
+                        total_score=score_data['total_score'],
+                        technical_score=score_data['pillar_scores']['technical'],
+                        fundamental_score=score_data['pillar_scores']['fundamental'],
+                        momentum_score=score_data['pillar_scores']['momentum'],
+                        institutional_score=score_data['pillar_scores']['institutional'],
+                        risk_liquidity_score=score_data['pillar_scores']['risk_liquidity'],
+                        badges=score_data['badges']
+                    )
+                    db.session.add(new_score)
 
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Error saving score to database: {e}")
-            raise
+                db.session.commit()
+                logger.debug(f"Saved score for {score_data['symbol']} to database")
+
+            except Exception as e:
+                db.session.rollback()
+                logger.error(f"Error saving score to database: {e}")
+                raise
 
     def get_latest_score(self, symbol: str, exchange: str = 'NSE') -> Optional[Dict[str, Any]]:
         """
@@ -273,7 +308,24 @@ class MomentumConfidenceScoreService:
             ).order_by(MomentumScore.date.desc()).first()
 
             if score_record:
-                return score_record.to_dict()
+                data = score_record.to_dict()
+                # Dynamically enrich DB cached records with pillar details if missing
+                if not data.get('technical_details'):
+                    try:
+                        stock_data = self._fetch_stock_data(symbol, exchange)
+                        if self.technical_analyzer:
+                            data['technical_details'] = self.technical_analyzer.analyze(stock_data).get('details', {})
+                        if self.fundamental_analyzer:
+                            data['fundamental_details'] = self.fundamental_analyzer.analyze(stock_data).get('details', {})
+                        if self.momentum_analyzer:
+                            data['momentum_details'] = self.momentum_analyzer.analyze(stock_data).get('details', {})
+                        if self.institutional_analyzer:
+                            data['institutional_details'] = self.institutional_analyzer.analyze(stock_data).get('details', {})
+                        if self.risk_analyzer:
+                            data['risk_details'] = self.risk_analyzer.analyze(stock_data).get('details', {})
+                    except Exception as enrich_err:
+                        logger.warning(f"Could not enrich cached score details for {symbol}: {enrich_err}")
+                return data
             return None
         except Exception as e:
             logger.error(f"Error retrieving score for {symbol}.{exchange}: {e}")

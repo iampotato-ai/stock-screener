@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature_specification id="ep-screener-trader-workflow" status="proposed" audience="claude-code">
+  <objective>
+    Upgrade the NSE/BSE Episodic Pivot screener into an auditable EOD trader workflow.
+    It must explain catalyst quality, price acceptance, tradability, risk, and historical evidence.
+    It is research/planning software and must not present scores as investment advice or guaranteed returns.
+  </objective>
+
+  <constraints>
+    <constraint>Preserve existing Flask, SQLAlchemy, SQLite development, APScheduler, Jinja, and vanilla JavaScript architecture.</constraint>
+    <constraint>Keep existing /api/ep/* responses backward compatible; add response fields rather than removing or renaming fields.</constraint>
+    <constraint>Do not destructively rewrite existing ep_features or ep_watchlist history.</constraint>
+    <constraint>Do not add paid data vendors, broker execution, or new ML dependencies without explicit approval.</constraint>
+    <constraint>First trader release is EOD-only. Intraday signals remain feature-flagged off.</constraint>
+  </constraints>
+
+  <decisions>
+    <risk_defaults>
+      <risk_per_trade_percent>0.5</risk_per_trade_percent>
+      <maximum_concurrent_positions>5</maximum_concurrent_positions>
+      <maximum_aggregate_initial_risk_percent>2.5</maximum_aggregate_initial_risk_percent>
+      <maximum_positions_per_sector_or_theme>2</maximum_positions_per_sector_or_theme>
+      <maximum_single_position_exposure_percent>20</maximum_single_position_exposure_percent>
+      <rule>Defaults are editable safety templates. Never size a position without an explicit account-risk setting.</rule>
+    </risk_defaults>
+
+    <authoritative_data>
+      <delivery_percent>NSE daily security-wise delivery/equity reports.</delivery_percent>
+      <fo_eligibility>NSE daily Equity Derivatives underlyings/contracts data; do not use a static inferred list.</fo_eligibility>
+      <surveillance>NSE ASM/GSM notices and lists; also check BSE equivalent notices for dual-listed securities.</surveillance>
+      <free_float>Estimate from latest NSE shareholding-pattern filing: public shareholding multiplied by paid-up shares. Always expose filing date.</free_float>
+      <provenance_rule>Persist source URL, source published time, effective date, fetch time, and source status.</provenance_rule>
+    </authoritative_data>
+
+    <catalyst_overrides>
+      <shared_override_access>administrator_or_authorised_research_analyst_only</shared_override_access>
+      <standard_user_access>private_notes_and_correction_requests_only</standard_user_access>
+      <audit_fields>original_value, override_value, reason, evidence_url, actor, reviewer, created_at, reviewed_at</audit_fields>
+    </catalyst_overrides>
+
+    <trade_ownership>
+      <ep_episode_owns>catalyst, score_version, original_ep_day_levels, thesis, proposed_trade_plan</ep_episode_owns>
+      <trade_journal_owns>actual_entry, actual_stop, targets, quantity, status, exit, pnl, realised_r</trade_journal_owns>
+      <link_field>ep_episode_id or source_signal_id</link_field>
+      <rule>Journal creation copies an immutable EP snapshot and never mutates episode facts.</rule>
+    </trade_ownership>
+  </decisions>
+
+  <data_model>
+    <entity name="ep_episode" mutability="immutable">
+      <fields>id, symbol, exchange, catalyst_id, event_timestamp, source_url, event_type, original_ohlcv, original_scores, score_version, original_stop_price, materiality_inputs, data_quality</fields>
+    </entity>
+    <entity name="ep_episode_daily_state" mutability="append_or_idempotent_upsert">
+      <key>episode_id, trading_date</key>
+      <fields>close, current_score, trailing_stop, setup_state, trigger_type, r_achieved, reason_codes, freshness</fields>
+    </entity>
+    <entity name="trade_journal" mutability="execution_record">
+      <required_new_link>ep_episode_id or source_signal_id</required_new_link>
+    </entity>
+  </data_model>
+
+  <api_contract>
+    <compatibility>Existing endpoints remain available.</compatibility>
+    <additive_response_fields>quality, freshness, coverage, episode, risk_plan, score_version, setup_state</additive_response_fields>
+    <future_endpoints>
+      <endpoint>/api/v1/ep/episodes/&lt;id&gt;</endpoint>
+      <endpoint>/api/v1/ep/episodes/&lt;id&gt;/states</endpoint>
+      <endpoint>/api/v1/ep/episodes/&lt;id&gt;/risk-plan</endpoint>
+    </future_endpoints>
+    <validation>Return 400 for malformed input and 422 for a valid request that cannot produce an executable risk plan.</validation>
+  </api_contract>
+
+  <phases>
+    <phase number="0" name="Safety and semantics">
+      <requirements>
+        <requirement>Freeze original stop, catalyst date, original EP-day fields, and original score/version.</requirement>
+        <requirement>Add a named trailing-stop rule that only ratchets in the favourable direction.</requirement>
+        <requirement>Use one centrally configured confidence vocabulary across service, UI, alerts, and tests.</requirement>
+        <requirement>Expose feature date, pipeline completion time, and source status.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>Nightly refresh cannot change original stop or original episode facts.</criterion>
+        <criterion>Trailing stop is monotonic by trade direction.</criterion>
+      </acceptance_criteria>
+    </phase>
+
+    <phase number="1" name="Tradability and coverage">
+      <requirements>
+        <requirement>Create a reusable TradabilityAssessment with explicit PASS/WARN/FAIL reasons.</requirement>
+        <requirement>Default long gates: ₹200 Cr market cap, ₹20 Cr 20-day median traded value, ₹5 Cr EP-day traded value, and ₹30 price.</requirement>
+        <requirement>Separate earnings, announcement, abnormal-volume, delayed-trigger, and theme discovery queues.</requirement>
+        <requirement>Show coverage counts for scanned, discovered, enriched, excluded, and failed-source records.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>A liquid material earnings event below 3x relative volume can be discovered.</criterion>
+        <criterion>Failed tradability gates prevent auto-alerting and show reasons.</criterion>
+      </acceptance_criteria>
+    </phase>
+
+    <phase number="2" name="Catalyst evidence">
+      <requirements>
+        <requirement>Build CatalystAssessment with source provenance, event timing, extraction confidence, materiality inputs, and auditable overrides.</requirement>
+        <requirement>Require a source URL and timestamp before catalyst status is PASS.</requirement>
+        <requirement>Show measurable materiality for results, orders, capex, turnarounds, governance, and themes.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>Every PASS catalyst links to evidence and explains materiality.</criterion>
+        <criterion>Unknown or incomplete input is WARN, not fabricated certainty.</criterion>
+      </acceptance_criteria>
+    </phase>
+
+    <phase number="3" name="EOD setup playbook">
+      <requirements>
+        <requirement>Calculate price acceptance and context from EOD data: gap, close location, range/ATR, relative volume, delivery, moving averages, base levels, breadth, and sector RRG.</requirement>
+        <requirement>Assign exactly one setup state: ACTIONABLE_NOW, WAIT_FOR_TRIGGER, WAIT_FOR_PULLBACK, AVOID, or TRIGGERED.</requirement>
+        <requirement>Define an intraday-compatible contract but do not enable VWAP or opening-range rules.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>Each candidate has a state and reason codes.</criterion>
+        <criterion>Detail UI shows entry trigger, invalidation, and why-now/why-wait explanation.</criterion>
+      </acceptance_criteria>
+    </phase>
+
+    <phase number="4" name="Risk plan and journal">
+      <requirements>
+        <requirement>Generate entry zone, original stop, trailing rule, risk per share, quantity, maximum chase price, and R levels.</requirement>
+        <requirement>Create a journal draft when an EP triggers and link it to the immutable episode.</requirement>
+        <requirement>Block actionable status when required risk-plan values are absent or invalid.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>Journal owns realised trade facts; EP episode owns original signal facts.</criterion>
+      </acceptance_criteria>
+    </phase>
+
+    <phase number="5" name="Outcome model and backtesting">
+      <requirements>
+        <requirement>Retain explainable rules as baseline and train outcome models only on real, timestamp-valid history.</requirement>
+        <requirement>Use EP-type-specific, walk-forward evaluation and net-of-cost execution assumptions.</requirement>
+        <requirement>Include brokerage, taxes, slippage, gap stops, timing, cash, and overlapping positions in backtests.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>No model replaces the baseline without predeclared out-of-sample improvement.</criterion>
+      </acceptance_criteria>
+    </phase>
+
+    <phase number="6" name="User experience and operations">
+      <requirements>
+        <requirement>Add state, quality, freshness, and risk to the EP command-center table.</requirement>
+        <requirement>Alert only on state transitions and deduplicate per episode.</requirement>
+        <requirement>Make detail reads side-effect-free; run enrichment in background jobs.</requirement>
+        <requirement>Escape third-party text before browser rendering.</requirement>
+      </requirements>
+      <acceptance_criteria>
+        <criterion>A trader can choose act, wait, or avoid from the detail view in under 60 seconds.</criterion>
+      </acceptance_criteria>
+    </phase>
+  </phases>
+
+  <testing>
+    <unit>Scoring, gates, state transitions, sizing, stop monotonicity, override audit.</unit>
+    <integration>Pipeline idempotency, persistence, API contracts, journal linkage.</integration>
+    <backtest>Event timing, stop gaps, simultaneous target/stop, costs, slippage, walk-forward splits.</backtest>
+    <e2e>Actionable, wait, avoid, triggered, alert, and journal workflows.</e2e>
+    <security>HTML-bearing external event fixture must not execute in client.</security>
+  </testing>
+
+  <boundaries>
+    <always>Use parameterized persistence, source provenance, freshness indicators, and tests for each phase.</always>
+    <ask_first>Add a paid vendor, ML dependency, database-engine change, public API version, broker integration, or automatic execution.</ask_first>
+    <never>Use synthetic data for production scoring, widen initial stops silently, overwrite episode facts, or render untrusted text as HTML.</never>
+  </boundaries>
+
+  <remaining_open_questions>
+    <question>Which role/authentication mechanism authorises shared catalyst overrides?</question>
+    <question>Which minute-bar provider is approved before intraday functionality is enabled?</question>
+    <question>Which migration tool will create immutable episode and daily-state tables?</question>
+  </remaining_open_questions>
+</feature_specification>

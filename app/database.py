@@ -18,11 +18,13 @@ def get_db():
     if 'db' not in g:
         g.db = sqlite3.connect(
             current_app.config['DATABASE'],
-            detect_types=sqlite3.PARSE_DECLTYPES
+            detect_types=sqlite3.PARSE_DECLTYPES,
+            timeout=30.0
         )
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
         g.db.execute("PRAGMA journal_mode = WAL")
+        g.db.execute("PRAGMA busy_timeout = 30000")
     return g.db
 
 
@@ -50,11 +52,48 @@ def _get_connection():
                 "Database path not initialized. Call init_db_app() or init_db_standalone() first."
             )
 
-    conn = sqlite3.connect(_DATABASE_PATH)
+    conn = sqlite3.connect(_DATABASE_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
     return conn, True
+
+
+def _migrate_scan_price_log_schema(conn):
+    """Safely migrate scan_price_log schema by adding any missing columns."""
+    c = conn.cursor()
+    c.execute("PRAGMA table_info(scan_price_log)")
+    existing_cols = {row[1] for row in c.fetchall()}
+    
+    new_cols = [
+        ("relative_volume", "REAL"),
+        ("change", "REAL"),
+        ("pe_ratio", "REAL"),
+        ("RSI", "REAL"),
+        ("relative_strength_rating", "REAL"),
+        ("price_52_week_high", "REAL"),
+        ("stage_label", "TEXT"),
+        ("setup_tags_json", "TEXT"),
+        ("mtf_score", "INTEGER"),
+        ("vol_dry_up", "INTEGER"),
+        ("is_inside_bar", "INTEGER"),
+        ("candlestick_json", "TEXT"),
+    ]
+    added_any = False
+    for col_name, col_type in new_cols:
+        if col_name not in existing_cols:
+            try:
+                c.execute(f"ALTER TABLE scan_price_log ADD COLUMN {col_name} {col_type}")
+                logger.info(f"Added column {col_name} ({col_type}) to scan_price_log")
+                added_any = True
+            except Exception as e:
+                logger.warning(f"Failed to add column {col_name} to scan_price_log: {e}")
+    if added_any:
+        try:
+            conn.commit()
+        except Exception:
+            pass
 
 
 def init_db_app():
@@ -96,9 +135,22 @@ def _create_tables(conn):
             close REAL,
             swingband TEXT,
             setupLabel TEXT,
+            relative_volume REAL,
+            change REAL,
+            pe_ratio REAL,
+            RSI REAL,
+            relative_strength_rating REAL,
+            price_52_week_high REAL,
+            stage_label TEXT,
+            setup_tags_json TEXT,
+            mtf_score INTEGER,
+            vol_dry_up INTEGER,
+            is_inside_bar INTEGER,
+            candlestick_json TEXT,
             PRIMARY KEY (date, ticker)
         )
     ''')
+    _migrate_scan_price_log_schema(conn)
 
     # Check if table breadth_history exists and what its PK is
     c.execute("PRAGMA table_info(breadth_history)")
@@ -766,16 +818,24 @@ def fetch_all(query, params=()):
 
 # ========== SCREENER RELATED FUNCTIONS ==========
 
-def get_latest_scan_results(limit=50):
-    """Get latest scan results with optional limit."""
-    query = '''
-        SELECT s.ticker, s.date, s.close, s.swingband, s.setupLabel
-        FROM scan_price_log s
-        WHERE s.date = (SELECT MAX(date) FROM scan_history)
-        ORDER BY s.ticker ASC
-        LIMIT ?
-    '''
-    return fetch_all(query, (limit,))
+def get_latest_scan_results(limit=500):
+    """Get latest scan results with full technical indicators."""
+    conn, should_close = _get_connection()
+    try:
+        _migrate_scan_price_log_schema(conn)
+        query = '''
+            SELECT s.*
+            FROM scan_price_log s
+            WHERE s.date = (SELECT MAX(date) FROM scan_history)
+            ORDER BY s.ticker ASC
+            LIMIT ?
+        '''
+        cursor = conn.cursor()
+        cursor.execute(query, (limit,))
+        return cursor.fetchall()
+    finally:
+        if should_close:
+            conn.close()
 
 
 def get_stock_details(ticker):

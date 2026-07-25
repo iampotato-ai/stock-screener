@@ -433,6 +433,18 @@ class ScanPriceLog(BaseModel):
     close = db.Column(db.Float)
     swingband = db.Column(db.String(20))
     setupLabel = db.Column(db.String(100))
+    relative_volume = db.Column(db.Float)
+    change = db.Column(db.Float)
+    pe_ratio = db.Column(db.Float)
+    RSI = db.Column(db.Float)
+    relative_strength_rating = db.Column(db.Float)
+    price_52_week_high = db.Column(db.Float)
+    stage_label = db.Column(db.String(50))
+    setup_tags_json = db.Column(db.Text)
+    mtf_score = db.Column(db.Integer)
+    vol_dry_up = db.Column(db.Boolean)
+    is_inside_bar = db.Column(db.Boolean)
+    candlestick_json = db.Column(db.Text)
 
     __table_args__ = (db.PrimaryKeyConstraint('date', 'ticker', name='_date_ticker_pk'),)
 

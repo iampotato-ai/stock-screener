@@ -144,10 +144,10 @@ def api_refresh_ep():
 
 @api_bp.route('/ep/refresh/status', methods=['GET'])
 def api_refresh_ep_status():
-    """Get EP features refresh status (running or not)."""
+    """Get EP features refresh status with granular progress information."""
     try:
-        is_running = ep_service.is_refreshing
-        return jsonify(running=is_running)
+        status = ep_service.get_refresh_status()
+        return jsonify(status)
     except Exception as e:
         return jsonify(error=str(e)), 500
 

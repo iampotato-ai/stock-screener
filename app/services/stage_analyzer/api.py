@@ -38,24 +38,48 @@ def get_stage_analysis_status():
 @stage_analyzer_bp.route('/stage-analyzer/history', methods=['GET'])
 def get_stage_analysis_history():
     """Return historical daily stage counts for the last 30 trading dates
-    reconstructed dynamically from the daily_bars database table.
+    reconstructed dynamically from the daily_bars database table using forward fill
+    and incorporating the latest live stage scan cache for the current date.
     """
     try:
         from app.database import fetch_all
-        # Load daily bars
-        rows = fetch_all("SELECT symbol, trade_date, close FROM daily_bars ORDER BY symbol, trade_date ASC")
-        if not rows:
+        from datetime import datetime
+        import bisect
+
+        # 1. Fetch live stage results cache to ensure today's counts match live telemetry exactly
+        live_results = current_app.config.get('STAGE_ANALYSIS_RESULTS', {})
+
+        # Define active symbols list (based on cache or fallback to top 300 nse symbols)
+        active_symbols = set(live_results.keys())
+        if not active_symbols:
+            from app.database import get_nse_symbols
+            try:
+                mcap_rows = fetch_all("SELECT ticker FROM market_cap_cache ORDER BY market_cap_inr DESC LIMIT 300")
+                if mcap_rows:
+                    active_symbols = set(r["ticker"] for r in mcap_rows)
+            except Exception:
+                pass
+            if not active_symbols:
+                active_symbols = set(get_nse_symbols()[:300])
+
+        active_list = sorted(list(active_symbols))
+
+        # 2. Fetch daily bars only for the active symbols to ensure perfect count alignment
+        rows = []
+        if active_list:
+            placeholders = ','.join('?' for _ in active_list)
+            query = f"SELECT symbol, trade_date, close FROM daily_bars WHERE symbol IN ({placeholders}) ORDER BY symbol, trade_date ASC"
+            rows = fetch_all(query, tuple(active_list))
+
+        if not rows and not live_results:
             return jsonify({})
 
-        # Group closing prices and dates by symbol
         symbol_data = {}
         all_dates_set = set()
         for row in rows:
             symbol = row["symbol"]
             trade_date = row["trade_date"]
             close = row["close"]
-            
-            # Normalize trade_date if it is datetime/date object to string format
             trade_date_str = trade_date.strftime('%Y-%m-%d') if hasattr(trade_date, 'strftime') else str(trade_date)
             
             if symbol not in symbol_data:
@@ -63,32 +87,59 @@ def get_stage_analysis_history():
             symbol_data[symbol].append((trade_date_str, close))
             all_dates_set.add(trade_date_str)
 
-        # Sort all unique dates, filter out weekends (Saturday and Sunday), and take the last 30
-        from datetime import datetime
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        if live_results:
+            all_dates_set.add(today_str)
+
+        # Extract last 30 valid weekday trading dates
         valid_dates = []
         for d in sorted(list(all_dates_set)):
             try:
                 dt = datetime.strptime(d, '%Y-%m-%d')
-                if dt.weekday() < 5:  # Monday=0, ..., Friday=4. Saturday=5, Sunday=6.
+                if dt.weekday() < 5:  # Mon-Fri
                     valid_dates.append(d)
             except ValueError:
                 pass
-        target_dates = valid_dates[-30:]
 
-        # Reconstruct daily stage counts
-        stage_history = {}
+        target_dates = valid_dates[-30:]
+        if not target_dates:
+            return jsonify({})
+
+        latest_date = target_dates[-1]
+
+        # Reconstruct daily stage counts with bisect forward-fill
+        stage_history = {d: {'Stage 1': 0, 'Stage 2': 0, 'Stage 3': 0, 'Stage 4': 0, 'Unknown': 0} for d in target_dates}
+        processed_latest = set()
+
         for symbol, data in symbol_data.items():
             dates = [x[0] for x in data]
             closes = [x[1] for x in data]
             
             for target_date in target_dates:
-                if target_date not in dates:
+                # For latest_date, prefer live_results if available
+                if target_date == latest_date and symbol in live_results:
+                    if symbol not in processed_latest:
+                        entry = live_results[symbol]
+                        stg = (entry.get('score', {}) or {}).get('stage') or entry.get('stage') or 'Unknown'
+                        if stg == 'mid': stg = 'Stage 1'
+                        elif stg == 'early': stg = 'Stage 2'
+                        elif stg == 'late': stg = 'Stage 4'
+                        elif stg == 'unknown': stg = 'Unknown'
+                        if stg not in stage_history[target_date]: stg = 'Unknown'
+                        stage_history[target_date][stg] += 1
+                        processed_latest.add(symbol)
                     continue
-                idx = dates.index(target_date)
+
+                # Forward-fill: find rightmost date <= target_date
+                idx = bisect.bisect_right(dates, target_date) - 1
+                if idx < 0:
+                    continue
+
                 if idx < 4:
+                    stage_history[target_date]['Unknown'] += 1
                     continue
                 
-                # Slicing up to 60 bars of history
+                # Slice up to 60 bars of history
                 start_idx = max(0, idx - 60)
                 sub_closes = closes[start_idx:idx+1]
                 
@@ -108,9 +159,20 @@ def get_stage_analysis_history():
                     else:
                         stage = "Stage 1"
                         
-                if target_date not in stage_history:
-                    stage_history[target_date] = {'Stage 1': 0, 'Stage 2': 0, 'Stage 3': 0, 'Stage 4': 0, 'Unknown': 0}
                 stage_history[target_date][stage] += 1
+
+        # For latest date, add any symbols in live_results not present in daily_bars
+        if latest_date in stage_history and live_results:
+            for symbol, entry in live_results.items():
+                if symbol not in processed_latest:
+                    stg = (entry.get('score', {}) or {}).get('stage') or entry.get('stage') or 'Unknown'
+                    if stg == 'mid': stg = 'Stage 1'
+                    elif stg == 'early': stg = 'Stage 2'
+                    elif stg == 'late': stg = 'Stage 4'
+                    elif stg == 'unknown': stg = 'Unknown'
+                    if stg not in stage_history[latest_date]: stg = 'Unknown'
+                    stage_history[latest_date][stg] += 1
+                    processed_latest.add(symbol)
                 
         return jsonify(stage_history)
     except Exception as e:

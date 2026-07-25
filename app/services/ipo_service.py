@@ -438,33 +438,50 @@ class IPOService:
 
                     phase = classify_momentum_phase(days_since, current_vs_issue_pct, current_vs_listing_pct)
 
-                    # Write to cache
-                    conn2 = sqlite3.connect('scan_history.db')
-                    c2 = conn2.cursor()
-                    c2.execute('''
-                        INSERT OR REPLACE INTO ipo_metrics_cache (
-                            ticker, company_name, listing_date, exchange, sector, issue_price,
-                            listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
-                            rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
-                            momentum_phase, current_price, volume, change_pct, day_low, day_high,
-                            is_blue_bar, is_green_bar, is_orange_bar, cached_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                    ''', (
+                    return (
                         ticker, company_name, listing_date, exchange, sector, issue_price,
                         round(listing_gain_pct, 2), round(current_vs_issue_pct, 2), round(current_vs_listing_pct, 2), days_since,
                         round(rvol_ratio, 2), above_listing_high, round(drawdown_from_ath, 2), swing_score, pattern_name,
                         phase, current_price, current_vol, round(change, 2), round(current_low, 2), round(current_high, 2),
                         is_blue, is_green, is_orange
-                    ))
-                    conn2.commit()
-                    conn2.close()
+                    )
                 except Exception as e:
                     print(f"Error computing IPO metrics for {ticker}: {e}")
+                    return None
 
             # Run in parallel
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=8) as executor:
-                executor.map(_update_single, listings)
+                completed_results = list(executor.map(_update_single, listings))
+
+            # Filter out None results
+            valid_results = [r for r in completed_results if r is not None]
+
+            if valid_results:
+                # Resolve DB path dynamically if possible
+                db_path = 'scan_history.db'
+                try:
+                    from flask import current_app
+                    if current_app:
+                        db_path = current_app.config.get('DATABASE', 'scan_history.db')
+                except Exception:
+                    pass
+
+                conn2 = sqlite3.connect(db_path, timeout=30.0)
+                conn2.execute("PRAGMA journal_mode=WAL")
+                conn2.execute("PRAGMA busy_timeout = 30000")
+                c2 = conn2.cursor()
+                c2.executemany('''
+                    INSERT OR REPLACE INTO ipo_metrics_cache (
+                        ticker, company_name, listing_date, exchange, sector, issue_price,
+                        listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
+                        rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
+                        momentum_phase, current_price, volume, change_pct, day_low, day_high,
+                        is_blue_bar, is_green_bar, is_orange_bar, cached_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ''', valid_results)
+                conn2.commit()
+                conn2.close()
 
             print("IPO metrics cache refreshed successfully.")
         except Exception as e:

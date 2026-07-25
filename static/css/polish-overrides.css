@@ -77,6 +77,15 @@ a:focus-visible {
   text-transform: uppercase;
 }
 
+.stage-card-count {
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
 .stage-card-1 .stage-card-count { color: var(--accent-amber); }
 .stage-card-2 .stage-card-count { color: var(--accent-green); }
 .stage-card-3 .stage-card-count { color: var(--accent-purple); }
@@ -89,6 +98,7 @@ a:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   letter-spacing: 1px;
 }
 

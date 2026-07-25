@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit tests for MomentumConfidenceScoreService.
 
 Covers: happy path, failure path, DB upsert idempotency,
@@ -119,7 +119,7 @@ class TestMomentumConfidenceScoreService:
             'momentum': 20, 'institutional_confidence': 15, 'risk_liquidity': 10
         }
         mock_record = MagicMock()
-        mock_record.to_dict.return_value = {'symbol': 'TCS', 'total_score': 87}
+        mock_record.to_dict.return_value = {'symbol': 'TCS', 'total_score': 87, 'technical_details': {'criteria_met': []}}
         MockScore.query.filter_by.return_value.order_by.return_value.first.return_value = mock_record
 
         with flask_app.app_context():
@@ -127,7 +127,7 @@ class TestMomentumConfidenceScoreService:
             service = MomentumConfidenceScoreService()
             result = service.get_latest_score('TCS', 'NSE')
 
-        assert result == {'symbol': 'TCS', 'total_score': 87}
+        assert result == {'symbol': 'TCS', 'total_score': 87, 'technical_details': {'criteria_met': []}}
 
     @patch('app.services.scoring_service.MomentumScore')
     @patch('app.services.scoring_service.db')

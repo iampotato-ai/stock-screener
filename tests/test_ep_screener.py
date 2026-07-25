@@ -186,7 +186,7 @@ def test_refresh_ep_screener(mock_fetch_announcements, mock_fetch_fundamentals, 
         {"quarter": "Sep 2025", "date_key": "2025-09-30", "revenue": 110.0, "net_profit": 12.0, "eps": 1.2},
         {"quarter": "Dec 2025", "date_key": "2025-12-30", "revenue": 120.0, "net_profit": 15.0, "eps": 1.5},
         {"quarter": "Mar 2026", "date_key": "2026-03-31", "revenue": 130.0, "net_profit": 18.0, "eps": 1.8},
-        {"quarter": "Jun 2026", "date_key": "2026-06-30", "revenue": 260.0, "net_profit": 40.0, "eps": 4.0, "surprise_type": "BLOWOUT_EARNINGS"} # YoY rev +160%, YoY net profit +300%
+        {"quarter": "Jun 2026", "date_key": "2026-06-10", "revenue": 260.0, "net_profit": 40.0, "eps": 4.0, "surprise_type": "BLOWOUT_EARNINGS"} # YoY rev +160%, YoY net profit +300%
     ]
     
     # Mock announcements fetch
@@ -494,5 +494,29 @@ def test_nlp_classification_mocked(mock_summarizer, mock_event_classifier, mock_
         # catalyst score: base 0.65 * sentiment_multiplier (1.2) * confidence (0.85) = 0.663
         assert res['catalyst_score'] == 0.663
         assert res['impact_magnitude'] == 0.663
+
+
+def test_ep_refresh_progress_status_endpoint():
+    """Test that ep_service.get_refresh_status() returns progress tracking details."""
+    from app.services.ep_service import ep_service
+    ep_service.ep_refresh_status.update({
+        "running": True,
+        "progress_pct": 45,
+        "stage": "analyzing_candidates",
+        "message": "Analyzing candidate 18 of 40: RELIANCE",
+        "processed": 18,
+        "total": 40,
+        "current_symbol": "RELIANCE",
+        "start_time": 1000.0
+    })
+
+    status = ep_service.get_refresh_status()
+    assert status["running"] is True
+    assert status["progress_pct"] == 45
+    assert status["processed"] == 18
+    assert status["total"] == 40
+    assert status["current_symbol"] == "RELIANCE"
+    assert status["stage"] == "analyzing_candidates"
+
 
 

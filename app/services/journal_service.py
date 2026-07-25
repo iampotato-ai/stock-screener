@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from app.extensions import db
 from app.models import TradeJournal
 from app.utils.journal_math import compute_pnl_and_r
+from app.services.journal_bias import analyze_biases as _compute_biases
 
 
 class JournalService:
@@ -170,6 +171,21 @@ class JournalService:
         db.session.delete(entry)
         db.session.commit()
         return True  # Deleted
+
+    def analyze_biases(self) -> Dict[str, Any]:
+        """
+        Run all four bias diagnostics on the current journal.
+
+        Fetches all journal entries (open + closed) and delegates to
+        journal_bias.analyze_biases() for pure-Python computation.
+
+        Returns:
+            Dict containing bias_scores, severity ratings, recommendations,
+            and a plain-English summary. See journal_bias.analyze_biases()
+            for the full response schema.
+        """
+        entries = self.get_journal_entries()
+        return _compute_biases(entries)
 
 
 # Singleton instance

@@ -6,6 +6,10 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from app.models import BreadthHistory
 from app import db
+from app.services.correlation_regime import correlation_regime_service
+
+# In-memory cache for correlation regime (avoids repeated DB computation)
+_cached_regime: Dict[str, Any] = {}
 
 
 class MarketBreadthService:
@@ -14,9 +18,23 @@ class MarketBreadthService:
     def save_breadth_snapshot(self, advances: int, declines: int, unchanged: int,
                             pct_sma21: float, pct_sma50: float, pct_52high: float,
                             avg_recommend: float, regime_score: int, regime_band: str) -> None:
-        """Save a market breadth snapshot to the database."""
+        """Save a market breadth snapshot to the database.
+        Also triggers correlation regime computation and caches the result.
+        """
         today = datetime.now().date()
         now_time = datetime.now().time()
+
+        # Compute and cache correlation regime (best-effort; non-fatal)
+        try:
+            regime_label, regime_corr = correlation_regime_service.compute_regime_from_db()
+            _cached_regime['label'] = regime_label
+            _cached_regime['score'] = regime_corr
+            _cached_regime['updated_at'] = datetime.utcnow().isoformat()
+        except Exception as regime_err:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Correlation regime computation failed: %s", regime_err
+            )
 
         # Use SQLAlchemy model
         breadth_record = BreadthHistory.query.filter_by(date=today).first()
@@ -63,9 +81,15 @@ class MarketBreadthService:
         return [record.to_dict() for record in records]
 
     def get_latest_breadth_snapshot(self) -> Optional[Dict[str, Any]]:
-        """Get the most recent market breadth snapshot."""
+        """Get the most recent market breadth snapshot, enriched with correlation regime."""
         history = self.get_breadth_history(limit=1)
-        return history[0] if history else None
+        if not history:
+            return None
+        snapshot = history[0]
+        # Attach cached correlation regime (populated during save_breadth_snapshot)
+        snapshot['correlation_regime'] = _cached_regime.get('label', 'NORMAL')
+        snapshot['correlation_regime_score'] = _cached_regime.get('score', 0.0)
+        return snapshot
 
     def calculate_sector_scores(self, universe_stocks: List[Dict[str, Any]]) -> tuple:
         """

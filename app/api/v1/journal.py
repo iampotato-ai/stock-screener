@@ -114,3 +114,23 @@ def delete_journal_entry(trade_id):
     except Exception as e:
         current_app.logger.error(f"Error deleting journal entry: {e}")
         return jsonify(error=str(e)), 500
+
+
+@api_bp.route('/journal/bias-analysis', methods=['GET'])
+def get_journal_bias_analysis():
+    """
+    Analyse the current trade journal for four common behavioural biases:
+      1. Disposition Effect  — cutting winners early / holding losers too long
+      2. Overtrading         — excessive trade frequency vs optimal cadence
+      3. Momentum Chasing    — entering after large recent price moves
+      4. Anchoring Bias      — using same stop distance regardless of volatility
+
+    Returns severity ratings, numeric scores, plain-English recommendations,
+    and an executive summary. Requires ≥5 journal entries.
+    """
+    try:
+        result = journal_service.analyze_biases()
+        return jsonify(success=True, data=result), 200
+    except Exception as e:
+        current_app.logger.error(f"Error running bias analysis: {e}")
+        return jsonify(error=str(e)), 500

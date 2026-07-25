@@ -1500,6 +1500,24 @@
                 </div>
             </div>
 
+            <!-- EP Refresh Progress Container -->
+            <div id="ep-progress-container" style="display: none; margin-top: 1rem; margin-bottom: 0.75rem; padding: 0.85rem 1.25rem; background: rgba(15, 23, 42, 0.65); backdrop-filter: blur(12px); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); transition: all 0.3s ease;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; font-weight: 600; color: #f8fafc;">
+                        <i data-lucide="loader-2" class="spin-loader" style="width: 16px; height: 16px; color: #3b82f6;"></i>
+                        <span id="ep-progress-status">Scanning TradingView market universe...</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.8rem;">
+                        <span id="ep-progress-symbol-badge" style="display: none; padding: 2px 8px; border-radius: 6px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; font-family: monospace; font-weight: 700;"></span>
+                        <span id="ep-progress-timer" style="color: #94a3b8; font-size: 0.75rem; font-family: monospace;">0s</span>
+                        <span id="ep-progress-pct" style="font-weight: 700; color: #3b82f6; min-width: 38px; text-align: right;">0%</span>
+                    </div>
+                </div>
+                <div style="width: 100%; height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 9999px; overflow: hidden; position: relative;">
+                    <div id="ep-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6); border-radius: 9999px; transition: width 0.4s ease-in-out; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);"></div>
+                </div>
+            </div>
+
             <div class="ep-sub-tabs">
                 <button class="ep-sub-tab active" data-sub="today">Today's EPs</button>
                 <button class="ep-sub-tab" data-sub="watchlist">Active Watchlist</button>
@@ -1949,13 +1967,43 @@
     <!-- Workspace View: Momentum Confidence Score™ -->
     <div class="workspace-view" id="view-momentum-score">
         <style>
-            /* ── MCS Design System ─────────────────────────────────── */
-            /* Monospace numeric alignments in score table */
+            /* ── MCS Design System (Harmonized) ────────────────────── */
+            .mcs-workspace-wrapper {
+                padding: var(--space-4);
+                border-radius: var(--radius-lg);
+                background: var(--panel-bg);
+                border: 1px solid var(--panel-border);
+                box-shadow: var(--shadow-premium);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+            }
+
+            .mcs-header-title {
+                font-family: var(--font-heading);
+                font-size: 1.25rem;
+                font-weight: 700;
+                color: var(--color-text-primary);
+                letter-spacing: -0.01em;
+            }
+
+            .mcs-header-subtitle {
+                font-family: var(--font-body);
+                font-size: 0.8rem;
+                color: var(--color-text-secondary);
+            }
+
+            /* ── Monospace numeric & Table adjustments ─────────────── */
             #mcs-table td {
                 font-variant-numeric: tabular-nums;
             }
             #mcs-table th {
-                border-bottom: 1px solid rgba(255,255,255,0.06);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                font-family: var(--font-display);
+                font-size: 0.75rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: var(--color-text-secondary);
             }
             #mcs-table th.sortable {
                 cursor: pointer;
@@ -1968,141 +2016,178 @@
             #mcs-table th.sortable:focus-visible {
                 outline: none;
                 color: var(--color-text-primary) !important;
-                background: rgba(255,255,255,0.05);
-                border-radius: 4px;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: var(--radius-sm);
             }
             #mcs-table th.sorted {
-                color: var(--color-text-primary) !important;
+                color: var(--accent-purple) !important;
             }
             #mcs-table tr {
-                transition: background-color 120ms ease;
-                border-bottom: 1px solid rgba(255,255,255,0.04);
+                transition: background-color 150ms ease;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.04);
             }
             #mcs-table tbody tr:hover {
-                background: rgba(255,255,255,0.04);
+                background: rgba(255, 255, 255, 0.04);
             }
 
             /* ── Toggle Pill ─────────────────────────────────────── */
             #mcs-mode-toggle {
-                display: flex;
-                background: rgba(255,255,255,0.04);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 10px;
+                display: inline-flex;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: var(--radius-md);
                 padding: 3px;
-                gap: 2px;
+                gap: 3px;
             }
             .mcs-mode-btn {
-                padding: 5px 16px;
+                padding: 6px 14px;
                 border: none;
-                border-radius: 7px;
+                border-radius: var(--radius-sm);
                 font-size: 0.75rem;
                 font-weight: 600;
-                font-family: 'Outfit', system-ui, sans-serif;
+                font-family: var(--font-display);
                 cursor: pointer;
-                transition: background 200ms cubic-bezier(0.16,1,0.3,1),
-                            color 200ms ease,
-                            box-shadow 150ms ease,
-                            transform 100ms ease;
+                transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
                 letter-spacing: 0.02em;
             }
             .mcs-mode-btn:focus-visible {
                 outline: none;
-                box-shadow: 0 0 0 2px rgba(168,85,247,0.4);
+                box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.4);
             }
             .mcs-mode-btn:active { transform: scale(0.96); }
             .mcs-mode-btn.classic-active {
-                background: rgba(100,116,139,0.25);
-                color: #e2e8f0;
-                box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+                background: rgba(139, 92, 246, 0.25);
+                color: #d8b4fe;
+                border: 1px solid rgba(168, 85, 247, 0.3);
+                box-shadow: 0 2px 8px rgba(168, 85, 247, 0.2);
             }
             .mcs-mode-btn.swing-active {
-                background: rgba(245,158,11,0.18);
+                background: rgba(245, 158, 11, 0.2);
                 color: #fbbf24;
-                box-shadow: inset 0 1px 0 rgba(251,191,36,0.15);
+                border: 1px solid rgba(245, 158, 11, 0.35);
+                box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
             }
             .mcs-mode-btn:not(.classic-active):not(.swing-active) {
                 background: transparent;
                 color: var(--color-text-muted);
             }
+            .mcs-mode-btn:not(.classic-active):not(.swing-active):hover {
+                color: var(--color-text-secondary);
+                background: rgba(255, 255, 255, 0.04);
+            }
 
             /* ── Action Buttons ──────────────────────────────────── */
             #btn-calculate-all-mcs {
-                transition: box-shadow 200ms ease, transform 100ms ease,
-                            background 150ms ease;
+                background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: var(--radius-md);
+                padding: 6px 16px;
+                font-family: var(--font-display);
+                font-size: 0.8rem;
+                font-weight: 700;
+                cursor: pointer;
+                transition: var(--transition-smooth);
+                box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
             }
             #btn-calculate-all-mcs:hover {
-                box-shadow: 0 4px 16px rgba(168,85,247,0.25),
-                            inset 0 1px 0 rgba(255,255,255,0.15);
+                box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4),
+                            inset 0 1px 0 rgba(255, 255, 255, 0.3);
                 transform: translateY(-1px);
             }
             #btn-calculate-all-mcs:active { transform: translateY(0) scale(0.98); }
+
             #btn-export-mcs {
-                transition: background 200ms ease, border-color 200ms ease,
-                            transform 100ms ease;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: var(--radius-md);
+                color: var(--color-text-primary);
+                padding: 6px 14px;
+                font-family: var(--font-display);
+                font-size: 0.8rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: var(--transition-smooth);
             }
             #btn-export-mcs:hover {
-                background: rgba(255,255,255,0.08) !important;
-                border-color: rgba(255,255,255,0.18) !important;
+                background: rgba(255, 255, 255, 0.08);
+                border-color: rgba(255, 255, 255, 0.2);
                 transform: translateY(-1px);
             }
             #btn-export-mcs:active { transform: translateY(0) scale(0.98); }
 
-            /* ── MCS Stat Cards (Boxy style matching main screener) ────────────────── */
+            /* ── MCS Stat Cards ──────────────────────────────────── */
             .mcs-stat-card {
                 flex: 1;
                 min-width: 140px;
                 cursor: pointer;
+                background: var(--panel-bg);
+                border: 1px solid var(--panel-border);
+                border-radius: var(--radius-md);
+                padding: 0.85rem 1rem;
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                transition: var(--transition-smooth);
+            }
+            .mcs-stat-card:hover {
+                transform: translateY(-2px);
             }
             .stat-card--mcs-scored {
-                border-color: rgba(192, 132, 252, 0.15); /* #c084fc */
-                background: linear-gradient(180deg, rgba(192, 132, 252, 0.03) 0%, rgba(192, 132, 252, 0.01) 100%), var(--panel-bg);
+                border-color: rgba(192, 132, 252, 0.2);
+                background: linear-gradient(180deg, rgba(192, 132, 252, 0.04) 0%, rgba(192, 132, 252, 0.01) 100%), var(--panel-bg);
             }
             .stat-card--mcs-scored:hover, .stat-card--mcs-scored.active {
-                border-color: rgba(192, 132, 252, 0.5) !important;
-                background: rgba(192, 132, 252, 0.06) !important;
+                border-color: rgba(192, 132, 252, 0.6) !important;
+                background: rgba(192, 132, 252, 0.08) !important;
+                box-shadow: 0 0 16px rgba(192, 132, 252, 0.15);
             }
             .stat-card--mcs-pending {
-                border-color: rgba(100, 116, 139, 0.15); /* #64748b */
-                background: linear-gradient(180deg, rgba(100, 116, 139, 0.03) 0%, rgba(100, 116, 139, 0.01) 100%), var(--panel-bg);
+                border-color: rgba(100, 116, 139, 0.2);
+                background: linear-gradient(180deg, rgba(100, 116, 139, 0.04) 0%, rgba(100, 116, 139, 0.01) 100%), var(--panel-bg);
             }
             .stat-card--mcs-pending:hover, .stat-card--mcs-pending.active {
-                border-color: rgba(100, 116, 139, 0.5) !important;
-                background: rgba(100, 116, 139, 0.06) !important;
+                border-color: rgba(100, 116, 139, 0.6) !important;
+                background: rgba(100, 116, 139, 0.08) !important;
             }
             .stat-card--mcs-classic {
-                border-color: rgba(124, 58, 237, 0.15); /* #7c3aed */
-                background: linear-gradient(180deg, rgba(124, 58, 237, 0.03) 0%, rgba(124, 58, 237, 0.01) 100%), var(--panel-bg);
+                border-color: rgba(124, 58, 237, 0.2);
+                background: linear-gradient(180deg, rgba(124, 58, 237, 0.04) 0%, rgba(124, 58, 237, 0.01) 100%), var(--panel-bg);
             }
             .stat-card--mcs-classic:hover, .stat-card--mcs-classic.active {
-                border-color: rgba(124, 58, 237, 0.5) !important;
-                background: rgba(124, 58, 237, 0.06) !important;
+                border-color: rgba(124, 58, 237, 0.6) !important;
+                background: rgba(124, 58, 237, 0.08) !important;
+                box-shadow: 0 0 16px rgba(124, 58, 237, 0.15);
             }
             .stat-card--mcs-swing {
-                border-color: rgba(245, 158, 11, 0.15); /* #f59e0b */
-                background: linear-gradient(180deg, rgba(245, 158, 11, 0.03) 0%, rgba(245, 158, 11, 0.01) 100%), var(--panel-bg);
+                border-color: rgba(245, 158, 11, 0.2);
+                background: linear-gradient(180deg, rgba(245, 158, 11, 0.04) 0%, rgba(245, 158, 11, 0.01) 100%), var(--panel-bg);
             }
             .stat-card--mcs-swing:hover, .stat-card--mcs-swing.active {
-                border-color: rgba(245, 158, 11, 0.5) !important;
-                background: rgba(245, 158, 11, 0.06) !important;
+                border-color: rgba(245, 158, 11, 0.6) !important;
+                background: rgba(245, 158, 11, 0.08) !important;
+                box-shadow: 0 0 16px rgba(245, 158, 11, 0.15);
             }
             .stat-card--mcs-elite {
-                border-color: rgba(168, 85, 247, 0.15); /* #a855f7 */
-                background: linear-gradient(180deg, rgba(168, 85, 247, 0.03) 0%, rgba(168, 85, 247, 0.01) 100%), var(--panel-bg);
+                border-color: rgba(168, 85, 247, 0.25);
+                background: linear-gradient(180deg, rgba(168, 85, 247, 0.05) 0%, rgba(168, 85, 247, 0.01) 100%), var(--panel-bg);
             }
             .stat-card--mcs-elite:hover, .stat-card--mcs-elite.active {
-                border-color: rgba(168, 85, 247, 0.5) !important;
-                background: rgba(168, 85, 247, 0.06) !important;
+                border-color: rgba(168, 85, 247, 0.65) !important;
+                background: rgba(168, 85, 247, 0.1) !important;
+                box-shadow: 0 0 18px rgba(168, 85, 247, 0.2);
             }
             .stat-card--mcs-breakout {
-                border-color: rgba(34, 197, 94, 0.15); /* #22c55e */
-                background: linear-gradient(180deg, rgba(34, 197, 94, 0.03) 0%, rgba(34, 197, 94, 0.01) 100%), var(--panel-bg);
+                border-color: rgba(34, 197, 94, 0.25);
+                background: linear-gradient(180deg, rgba(34, 197, 94, 0.05) 0%, rgba(34, 197, 94, 0.01) 100%), var(--panel-bg);
             }
             .stat-card--mcs-breakout:hover, .stat-card--mcs-breakout.active {
-                border-color: rgba(34, 197, 94, 0.5) !important;
-                background: rgba(34, 197, 94, 0.06) !important;
+                border-color: rgba(34, 197, 94, 0.65) !important;
+                background: rgba(34, 197, 94, 0.1) !important;
+                box-shadow: 0 0 18px rgba(34, 197, 94, 0.2);
             }
 
-            /* ── Watchlist & Ticker ──────────────────────────────── */
+            /* ── Watchlist & Ticker Pills ────────────────────────── */
             .mcs-watchlist-btn {
                 border: none !important;
                 background: none !important;
@@ -2113,7 +2198,7 @@
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                border-radius: 4px;
+                border-radius: var(--radius-sm);
             }
             .mcs-watchlist-btn:hover {
                 color: #94a3b8 !important;
@@ -2121,33 +2206,27 @@
             }
             .mcs-ticker-link {
                 display: inline-block;
-                background: rgba(59, 130, 246, 0.1);
+                background: rgba(59, 130, 246, 0.12);
                 color: var(--accent-blue) !important;
-                padding: 0.2rem 0.5rem;
-                border-radius: var(--radius-md);
+                padding: 0.25rem 0.55rem;
+                border-radius: var(--radius-sm);
                 font-family: var(--font-display);
                 font-size: 0.8rem;
-                border: 1px solid rgba(59, 130, 246, 0.15);
+                border: 1px solid rgba(59, 130, 246, 0.2);
                 font-weight: 700;
-                transition: all 150ms ease;
+                transition: var(--transition-smooth);
                 cursor: pointer;
                 text-decoration: none !important;
+                letter-spacing: 0.02em;
             }
             .mcs-ticker-link:hover {
-                background: rgba(59, 130, 246, 0.18);
+                background: rgba(59, 130, 246, 0.22);
                 color: #93c5fd !important;
-                border-color: rgba(59, 130, 246, 0.3);
-                text-decoration: none !important;
-            }
-            .mcs-close-btn {
-                transition: color 150ms ease, transform 150ms ease;
-            }
-            .mcs-close-btn:hover {
-                color: var(--color-text-primary) !important;
-                transform: scale(1.1);
+                border-color: rgba(59, 130, 246, 0.4);
+                transform: translateY(-1px);
             }
 
-            /* ── Skeleton shimmer loader ────────────────────────── */
+            /* ── Skeleton Shimmer Loader ─────────────────────────── */
             @keyframes mcs-shimmer {
                 0%   { background-position: -600px 0; }
                 100% { background-position: 600px 0; }
@@ -2166,57 +2245,63 @@
                 animation: mcs-shimmer 1.4s infinite;
             }
 
-            /* ── Badge chips ─────────────────────────────────────── */
+            /* ── Harmonized Badge Chips ───────────────────────────── */
             .mcs-badge-chip {
                 display: inline-block;
-                font-size: 0.65rem;
+                font-family: var(--font-display);
+                font-size: 0.68rem;
                 font-weight: 600;
-                padding: 2px 7px;
-                border-radius: 20px;
-                margin: 1px;
+                padding: 2px 8px;
+                border-radius: var(--radius-sm);
+                margin: 2px 1px;
                 white-space: nowrap;
-                border: 1px solid rgba(168,85,247,0.2);
-                background: rgba(168,85,247,0.1);
+                border: 1px solid rgba(168, 85, 247, 0.25);
+                background: rgba(168, 85, 247, 0.12);
                 color: #c084fc;
-                letter-spacing: 0.01em;
+                letter-spacing: 0.02em;
             }
             .mcs-badge-chip.swing {
-                border-color: rgba(245,158,11,0.2);
-                background: rgba(245,158,11,0.1);
+                border-color: rgba(245, 158, 11, 0.3);
+                background: rgba(245, 158, 11, 0.12);
                 color: #fbbf24;
             }
+            .mcs-badge-chip.breakout {
+                border-color: rgba(34, 197, 94, 0.3);
+                background: rgba(34, 197, 94, 0.12);
+                color: #4ade80;
+            }
         </style>
-        <div class="bull-snort-workspace-wrapper glass-panel">
+        <div class="mcs-workspace-wrapper glass-panel">
 
-            <!-- Header -->
-            <div class="bull-snort-header-section" style="flex-wrap: wrap; gap: 0.75rem; align-items: flex-start;">
-                <div style="flex: 1; min-width: 200px;">
-                    <div class="bull-snort-header-title" style="display:flex; align-items:center; gap:0.6rem;">
-                        <i data-lucide="activity" style="width: 18px; height: 18px; color: #a855f7;"></i>
+            <!-- Header Section -->
+            <div class="workspace-header" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem;">
+                <div style="flex: 1; min-width: 240px;">
+                    <div class="mcs-header-title" style="display: flex; align-items: center; gap: 0.6rem;">
+                        <i data-lucide="activity" style="width: 20px; height: 20px; color: #a855f7;"></i>
                         <span>Momentum Confidence Score&#8482;</span>
                     </div>
-                    <div class="bull-snort-header-subtitle" style="margin-top: 2px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div class="mcs-header-subtitle" style="margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <span>Composite score 0&#8211;100 across 5 pillars &#xb7; Technical &#xb7; Fundamental &#xb7; Momentum &#xb7; Institutional &#xb7; Risk</span>
-                        <span id="mcs-last-run-timestamp" style="font-size: 0.75rem; color: #a855f7; font-weight: 600;">(Last Run: --)</span>
+                        <span id="mcs-last-run-timestamp" style="font-size: 0.75rem; color: #c084fc; font-weight: 600; font-family: var(--font-display);">(Last Run: --)</span>
                     </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
                     <!-- Classic / Swing mode toggle -->
                     <div id="mcs-mode-toggle">
                         <button id="mcs-mode-classic" class="mcs-mode-btn" onclick="window.setMCSMode('classic')">Classic</button>
                         <button id="mcs-mode-swing"   class="mcs-mode-btn" onclick="window.setMCSMode('swing')">&#9889; Swing</button>
                     </div>
-                    <select id="mcs-filter-min-score" class="bull-snort-select">
+                    <select id="mcs-filter-min-score" class="bull-snort-select" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: var(--radius-md); padding: 6px 12px; color: var(--color-text-primary); font-family: var(--font-display); font-size: 0.8rem;">
                          <option value="0" selected>All scores</option>
                          <option value="60">&#8805; 60</option>
                          <option value="75">&#8805; 75</option>
                          <option value="85">&#8805; 85</option>
                     </select>
-                    <button id="btn-calculate-all-mcs" class="bull-snort-run-btn" style="background:#7c3aed; color:#fff; border-color:#7c3aed;">
+                    <button id="btn-calculate-all-mcs">
                         <span class="btn-spinner hidden" id="mcs-calc-spinner"></span>
                         <span class="btn-text">Calculate All</span>
                     </button>
-                    <button id="btn-export-mcs" class="bull-snort-run-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--color-text-primary);">
+                    <button id="btn-export-mcs">
                         <span>Export CSV</span>
                     </button>
                 </div>
@@ -3395,16 +3480,19 @@
                 const swingCol   = hasSwing ? scoreColour(s.swing_score) : '#6b7280';
                 const swingText  = hasSwing ? s.swing_score : '—';
                 const swingHighlight = (mcsMode === 'swing' && hasSwing)
-                    ? `background:${swingCol}22; color:${swingCol}; padding:2px 8px; border-radius:6px; font-weight:700;`
-                    : `color:${swingCol}; font-weight:600;`;
+                    ? `background:${swingCol}20; color:${swingCol}; border:1px solid ${swingCol}40; padding:2px 8px; border-radius:var(--radius-sm); font-weight:700; font-family:var(--font-display);`
+                    : `color:${swingCol}; font-weight:600; font-family:var(--font-display);`;
 
-                const badges = (s.badges || []).map(b =>
-                    `<span class="mcs-badge-chip">${b}</span>`
-                ).join('');
+                const badges = (s.badges || []).map(b => {
+                    const isSwing = b.toLowerCase().includes('swing');
+                    const isBreakout = b.toLowerCase().includes('breakout');
+                    const badgeCls = isSwing ? 'swing' : isBreakout ? 'breakout' : '';
+                    return `<span class="mcs-badge-chip ${badgeCls}">${b}</span>`;
+                }).join('');
 
                 return `
             <tr style="cursor:pointer;" onclick="window.openMCSDrawer('${s.symbol}', '${s.exchange || 'NSE'}')">
-                <td style="color:var(--color-text-muted); font-size:0.8rem; text-align:left;">${s.date ?? '—'}</td>
+                <td style="color:var(--color-text-muted); font-size:0.78rem; text-align:left; font-family:var(--font-display);">${s.date ?? '—'}</td>
                 <td class="symbol-col">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; max-width: 140px;">
                         <span class="mcs-ticker-link" 
@@ -3418,10 +3506,10 @@
                     </div>
                 </td>
                 <td class="text-right">
-                    <span style="background:${col}22; color:${col};
-                                 padding:2px 8px; border-radius:6px;
-                                 font-weight:700;">${scoreText}</span>
-                    <span style="font-size:0.7rem; color:${col}; margin-left:4px;">${label}</span>
+                    <span style="background:${col}18; color:${col}; border:1px solid ${col}35;
+                                 padding:2px 8px; border-radius:var(--radius-sm);
+                                 font-weight:700; font-family:var(--font-display); font-size:0.85rem;">${scoreText}</span>
+                    <span style="font-size:0.7rem; color:${col}; margin-left:4px; font-family:var(--font-display); font-weight:600;">${label}</span>
                 </td>
                 <td class="text-right"><span style="${swingHighlight}">${swingText}</span></td>
                 <td class="text-right">${s.technical_score ?? '—'}</td>
@@ -3635,14 +3723,14 @@
                         detailsHtml = `
                             <div style="display:flex; flex-direction:column; gap:6px;">
                                 ${met.map(m => `
-                                    <div style="display:flex; align-items:flex-start; gap:6px; color:#22c55e; text-align:left;">
-                                        <span style="font-weight:700; line-height:1.2;">✓</span>
-                                        <span style="line-height:1.2;">${m}</span>
+                                    <div style="display:flex; align-items:flex-start; gap:6px; color:#22c55e; text-align:left; font-size:0.75rem;">
+                                        <i data-lucide="check" style="width:13px; height:13px; margin-top:2px; flex-shrink:0; color:#22c55e;"></i>
+                                        <span style="line-height:1.3; font-weight:500;">${m}</span>
                                     </div>`).join('')}
                                 ${unmet.map(u => `
-                                    <div style="display:flex; align-items:flex-start; gap:6px; color:var(--color-text-muted); opacity:0.65; text-align:left;">
-                                        <span style="font-weight:700; line-height:1.2;">•</span>
-                                        <span style="line-height:1.2;">${u}</span>
+                                    <div style="display:flex; align-items:flex-start; gap:6px; color:var(--color-text-muted); opacity:0.65; text-align:left; font-size:0.75rem;">
+                                        <i data-lucide="minus" style="width:13px; height:13px; margin-top:2px; flex-shrink:0; color:var(--color-text-muted);"></i>
+                                        <span style="line-height:1.3;">${u}</span>
                                     </div>`).join('')}
                             </div>
                         `;

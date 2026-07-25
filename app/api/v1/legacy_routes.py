@@ -16,6 +16,8 @@ def patched_connect(*args, **kwargs):
 sqlite3.connect = patched_connect
 
 import time
+import logging
+logger = logging.getLogger(__name__)
 from datetime import datetime, date, timedelta
 import json
 import re
@@ -129,7 +131,8 @@ def seed_ipo_listings():
     from datetime import datetime, timedelta
     cutoff = datetime.now() - timedelta(days=548)
 
-    conn = sqlite3.connect('scan_history.db')
+    conn = sqlite3.connect('scan_history.db', timeout=30.0)
+    conn.execute("PRAGMA busy_timeout = 30000")
     c = conn.cursor()
     # Remove stale entries older than 18 months
     c.execute(
@@ -315,8 +318,11 @@ from app.services.ep_service import (
 )
 
 
-init_db()
-seed_ipo_listings()
+try:
+    init_db()
+    seed_ipo_listings()
+except Exception as _e:
+    logger.warning(f"Skipped top-level IPO seeding due to DB lock or initialization error: {_e}")
 
 
 def classify_momentum_phase(days_since, current_vs_issue, current_vs_listing):
@@ -377,17 +383,26 @@ def _parse_volume_param(val_str):
         return None
 
 
+_ipo_db_lock = threading.Lock()
+
+
 def refresh_ipo_metrics():
     """
     Refreshes metrics for all IPO listings in parallel and updates the ipo_metrics_cache table.
     """
-    conn = sqlite3.connect('scan_history.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM ipo_metrics_cache WHERE ticker NOT IN (SELECT ticker FROM ipo_listings)")
-    conn.commit()
-    c.execute("SELECT ticker, company_name, listing_date, issue_price, listing_close, exchange, sector FROM ipo_listings")
-    listings = c.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect('scan_history.db', timeout=60.0)
+        conn.execute('PRAGMA busy_timeout = 60000')
+        conn.execute('PRAGMA journal_mode = WAL')
+        c = conn.cursor()
+        c.execute("DELETE FROM ipo_metrics_cache WHERE ticker NOT IN (SELECT ticker FROM ipo_listings)")
+        conn.commit()
+        c.execute("SELECT ticker, company_name, listing_date, issue_price, listing_close, exchange, sector FROM ipo_listings")
+        listings = c.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to read ipo_listings for refresh: {e}")
+        return
     
     from datetime import datetime
     import time
@@ -410,8 +425,6 @@ def refresh_ipo_metrics():
                 
             current_price = closes[-1]
             current_vol   = volumes[-1]
-            # lows/highs are always populated when closes is non-empty (same Yahoo response);
-            # the 'else' branch is a safety net for unexpected edge cases only.
             current_low  = lows[-1]  if lows  else current_price
             current_high = highs[-1] if highs else current_price
             avg_vol_20d  = sum(volumes[-20:]) / len(volumes[-20:]) if volumes else 1.0
@@ -424,8 +437,6 @@ def refresh_ipo_metrics():
             current_vs_issue_pct    = ((current_price - issue_price) / issue_price * 100) if issue_price else 0.0
             current_vs_listing_pct  = ((current_price - lst_close) / lst_close * 100) if lst_close else 0.0
             
-            # Days since listing
-            from datetime import datetime
             try:
                 lst_dt = datetime.strptime(listing_date, "%Y-%m-%d").date()
                 days_since = (datetime.now().date() - lst_dt).days
@@ -437,8 +448,6 @@ def refresh_ipo_metrics():
             above_listing_high = 1 if current_price >= max(closes) * 0.98 else 0
             drawdown_from_ath  = ((current_price - ath) / ath * 100) if ath else 0.0
             
-            # Calculate volume indicators
-            # 50-period Volume SMA
             vols = [float(h["volume"]) for h in history if h.get("volume") is not None]
             if len(vols) >= 50:
                 volume_sma_50 = sum(vols[-50:]) / 50.0
@@ -447,7 +456,6 @@ def refresh_ipo_metrics():
             else:
                 volume_sma_50 = 0.0
 
-            # Highest down-day volume of the last 10 down-days
             down_day_vols = []
             for i in range(1, len(history)):
                 current_close = float(history[i]["close"])
@@ -462,13 +470,11 @@ def refresh_ipo_metrics():
             else:
                 max_down_vol_10 = 0.0
 
-            # Determine bar flags
             is_up_day = closes[-1] > closes[-2] if len(closes) >= 2 else False
             is_blue = 1 if (is_up_day and max_down_vol_10 > 0 and current_vol > max_down_vol_10) else 0
             is_green = 1 if (is_up_day and volume_sma_50 > 0 and current_vol > volume_sma_50 and not is_blue) else 0
             is_orange = 1 if (volume_sma_50 > 0 and current_vol <= volume_sma_50 / 5.0) else 0
 
-            # Calculate actual indicators for swing score
             sma10 = sum(closes[-10:]) / len(closes[-10:]) if len(closes) >= 10 else current_price
             sma21 = sum(closes[-21:]) / len(closes[-21:]) if len(closes) >= 21 else current_price
             sma50 = sum(closes[-50:]) / len(closes[-50:]) if len(closes) >= 50 else current_price
@@ -478,11 +484,8 @@ def refresh_ipo_metrics():
             perf_1m  = ((closes[-1] - closes[-21]) / closes[-21] * 100) if len(closes) >= 21 else ((closes[-1] - closes[0]) / closes[0] * 100)
             perf_3m  = ((closes[-1] - closes[-63]) / closes[-63] * 100) if len(closes) >= 63 else ((closes[-1] - closes[0]) / closes[0] * 100)
             
-            # Bug #3 fix — use module-level _calculate_rsi() instead of a nested function
-            # Bug #7 note — key is 'RSI' (uppercase) to match compute_swing_score() lookup
             rsi = _calculate_rsi(closes)
             
-            # Bug #8 note — 'relative_volume' key matches the lookup in compute_swing_score()
             stock_dict = {
                 "ticker":             ticker,
                 "clean_ticker":       ticker.replace(".NS", "").replace(".BO", ""),
@@ -493,14 +496,14 @@ def refresh_ipo_metrics():
                 "price_52_week_high": max(highs) if highs else current_price,
                 "price_52_week_low":  min(lows)  if lows  else current_price,
                 "average_volume":     avg_vol_20d,
-                "relative_volume":    rvol_ratio,   # matches compute_swing_score() key
+                "relative_volume":    rvol_ratio,
                 "Recommend.All":      0.5,
                 "sector":             sector,
                 "Perf.W":             perf_w,
                 "Perf.1M":            perf_1m,
                 "Perf.3M":            perf_3m,
                 "change":             change,
-                "RSI":                rsi,           # uppercase — matches compute_swing_score() key
+                "RSI":                rsi,
             }
             
             swing_res   = compute_swing_score(stock_dict)
@@ -514,28 +517,31 @@ def refresh_ipo_metrics():
             
             phase = classify_momentum_phase(days_since, current_vs_issue_pct, current_vs_listing_pct)
             
-            # Write to cache
-            conn2 = sqlite3.connect('scan_history.db')
-            c2 = conn2.cursor()
-            c2.execute('''
-                INSERT OR REPLACE INTO ipo_metrics_cache (
+            # Write to cache (thread-safe with DB lock)
+            with _ipo_db_lock:
+                conn2 = sqlite3.connect('scan_history.db', timeout=60.0)
+                conn2.execute('PRAGMA busy_timeout = 60000')
+                conn2.execute('PRAGMA journal_mode = WAL')
+                c2 = conn2.cursor()
+                c2.execute('''
+                    INSERT OR REPLACE INTO ipo_metrics_cache (
+                        ticker, company_name, listing_date, exchange, sector, issue_price,
+                        listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
+                        rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
+                        momentum_phase, current_price, volume, change_pct, day_low, day_high,
+                        is_blue_bar, is_green_bar, is_orange_bar, cached_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ''', (
                     ticker, company_name, listing_date, exchange, sector, issue_price,
-                    listing_gain_pct, current_vs_issue_pct, current_vs_listing_pct, days_since_listing,
-                    rvol_ratio, above_listing_high, drawdown_from_ath, swing_score, pattern_name,
-                    momentum_phase, current_price, volume, change_pct, day_low, day_high,
-                    is_blue_bar, is_green_bar, is_orange_bar, cached_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ''', (
-                ticker, company_name, listing_date, exchange, sector, issue_price,
-                round(listing_gain_pct, 2), round(current_vs_issue_pct, 2), round(current_vs_listing_pct, 2), days_since,
-                round(rvol_ratio, 2), above_listing_high, round(drawdown_from_ath, 2), swing_score, pattern_name,
-                phase, current_price, current_vol, round(change, 2), round(current_low, 2), round(current_high, 2),
-                is_blue, is_green, is_orange
-            ))
-            conn2.commit()
-            conn2.close()
+                    round(listing_gain_pct, 2), round(current_vs_issue_pct, 2), round(current_vs_listing_pct, 2), days_since,
+                    round(rvol_ratio, 2), above_listing_high, round(drawdown_from_ath, 2), swing_score, pattern_name,
+                    phase, current_price, current_vol, round(change, 2), round(current_low, 2), round(current_high, 2),
+                    is_blue, is_green, is_orange
+                ))
+                conn2.commit()
+                conn2.close()
         except Exception as e:
-            print(f"Error computing IPO metrics for {ticker}: {e}")
+            logger.error(f"Error computing IPO metrics for {ticker}: {e}")
             
     # Run in parallel
     from concurrent.futures import ThreadPoolExecutor
@@ -745,6 +751,48 @@ def fetch_screener_fundamentals(symbol):
     except ImportError:
         pass
         
+    # 0. Try local database cache first to avoid rate-limiting and timeouts
+    try:
+        import sqlite3
+        from flask import current_app
+        db_path = 'scan_history.db'
+        try:
+            if current_app:
+                db_path = current_app.config.get('DATABASE', 'scan_history.db')
+        except Exception:
+            pass
+
+        conn = sqlite3.connect(db_path, timeout=1.0)
+        c = conn.cursor()
+        c.execute('''
+            SELECT result_date, quarter, revenue, net_profit, eps
+            FROM fundamentals
+            WHERE symbol = ?
+            ORDER BY result_date DESC, id DESC
+            LIMIT 8
+        ''', (symbol.upper().strip(),))
+        rows = c.fetchall()
+        conn.close()
+        
+        if rows and len(rows) >= 2:
+            db_quarters = []
+            for row in rows:
+                date_str = row[0]
+                db_quarters.append({
+                    "quarter": row[1] if row[1] else date_str,
+                    "date_key": date_str,
+                    "result_date": date_str,
+                    "revenue": float(row[2]) if row[2] is not None else None,
+                    "net_profit": float(row[3]) if row[3] is not None else None,
+                    "eps": float(row[4]) if row[4] is not None else None,
+                    "source": "Local DB Cache"
+                })
+            # Reverse to get chronological order (oldest to newest)
+            db_quarters.reverse()
+            return db_quarters
+    except Exception as db_e:
+        print(f"[Screener Ingest] Local DB fallback failed for {symbol}: {db_e}")
+
     import yfinance as yf
     import pandas as pd
     import datetime
@@ -1384,6 +1432,7 @@ def refresh_ep_screener():
     import requests
     import bisect
     import time
+    from datetime import datetime, timedelta
     
     telegram_alerts_queue = []
     
@@ -1462,6 +1511,31 @@ def refresh_ep_screener():
     # Limit to top 40 candidates to avoid rate-limiting
     candidates = sorted(candidates, key=lambda x: x[1], reverse=True)[:40]
     
+    global ep_refresh_status
+    if 'ep_refresh_status' in globals() and isinstance(ep_refresh_status, dict):
+        ep_refresh_status.update({
+            "progress_pct": 20,
+            "stage": "fetching_data",
+            "message": f"Found {len(candidates)} candidates. Fetching market and fundamental data...",
+            "total": len(candidates),
+            "processed": 0
+        })
+
+    # Fetch all corporate announcements once in a single batch to avoid parallel rate-limiting and timeouts
+    all_announcements = []
+    try:
+        all_announcements = fetch_nse_announcements(None) or []
+    except Exception as e:
+        print(f"[EP Refresh] Error fetching corporate announcements batch: {e}")
+
+    announcements_by_symbol = {}
+    if isinstance(all_announcements, list):
+        for ann in all_announcements:
+            sym = ann.get("symbol", "").upper().strip()
+            if sym not in announcements_by_symbol:
+                announcements_by_symbol[sym] = []
+            announcements_by_symbol[sym].append(ann)
+
     # Download latest Bhav Copy to get delivery data
     delivery_map = {}
     if candidates:
@@ -1476,7 +1550,9 @@ def refresh_ep_screener():
         except Exception as e:
             print(f"[EP Refresh] Failed to fetch first candidate history to determine date: {e}")
             
-    conn = sqlite3.connect('scan_history.db')
+    conn = sqlite3.connect('scan_history.db', timeout=60.0)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=60000")
     c = conn.cursor()
     
     def _fetch_candidate_data(cand):
@@ -1499,9 +1575,10 @@ def refresh_ep_screener():
         announcements = []
         if s['exchange'] == "NSE":
             try:
-                announcements = fetch_nse_announcements(s['ticker'])
+                sym_key = s['ticker'].upper().strip()
+                announcements = announcements_by_symbol.get(sym_key, [])
             except Exception as e:
-                print(f"[EP Parallel Fetch] Error fetching announcements for {s['ticker']}: {e}")
+                print(f"[EP Parallel Fetch] Error looking up announcements for {s['ticker']}: {e}")
                 
         return {
             "s": s,
@@ -1512,19 +1589,54 @@ def refresh_ep_screener():
             "announcements": announcements
         }
 
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     fetched_candidates = []
     if candidates:
+        total_cand_count = len(candidates)
+        completed_cands = 0
         with ThreadPoolExecutor(max_workers=8) as executor:
-            fetched_candidates = list(executor.map(_fetch_candidate_data, candidates))
+            future_map = {executor.submit(_fetch_candidate_data, cand): cand for cand in candidates}
+            for future in as_completed(future_map):
+                completed_cands += 1
+                cand_s, _ = future_map[future]
+                sym = cand_s['ticker']
+                try:
+                    res = future.result()
+                    if res:
+                        fetched_candidates.append(res)
+                except Exception as fe:
+                    print(f"[EP Parallel Fetch] Error for {sym}: {fe}")
+                
+                if 'ep_refresh_status' in globals() and isinstance(ep_refresh_status, dict):
+                    calc_pct = 20 + int((completed_cands / max(1, total_cand_count)) * 60)
+                    ep_refresh_status.update({
+                        "progress_pct": calc_pct,
+                        "stage": "fetching_data",
+                        "message": f"Fetching market & fundamental data ({completed_cands}/{total_cand_count}): {sym}",
+                        "processed": completed_cands,
+                        "total": total_cand_count,
+                        "current_symbol": sym
+                    })
 
-    for item in fetched_candidates:
+    total_candidates_count = max(1, len(fetched_candidates))
+    for proc_idx, item in enumerate(fetched_candidates, start=1):
         s = item["s"]
         rel_vol = item["rel_vol"]
         ticker = item["ticker"]
         history = item["history"]
         quarters_data = item["quarters_data"]
         announcements = item["announcements"]
+
+        if 'ep_refresh_status' in globals() and isinstance(ep_refresh_status, dict):
+            calc_pct = 80 + int((proc_idx / total_candidates_count) * 15)
+            ep_refresh_status.update({
+                "progress_pct": calc_pct,
+                "stage": "computing_features",
+                "message": f"Computing EP metrics ({proc_idx}/{total_candidates_count}): {s['ticker']}",
+                "processed": proc_idx,
+                "total": total_candidates_count,
+                "current_symbol": s['ticker']
+            })
         try:
             if not history or len(history) < 5:
                 continue
@@ -1558,6 +1670,7 @@ def refresh_ep_screener():
                     avg_vol_50_list[i] = sum(volumes[i-49:i+1]) / 50.0
             
             feature_date = history[-1]["date"]
+            feat_dt = datetime.strptime(feature_date, "%Y-%m-%d")
             
             # Save daily bars
             for i in range(1, len(history)):
@@ -1621,7 +1734,6 @@ def refresh_ep_screener():
                     ))
 
             # Ingest Announcements (NSE only)
-            from datetime import datetime, timedelta
             from flask import has_app_context, current_app
             import os
             if os.environ.get('PYTEST_CURRENT_TEST') or (has_app_context() and current_app.testing):
@@ -1657,10 +1769,29 @@ def refresh_ep_screener():
                                 WHERE symbol = ? AND event_date = ? AND headline = ?
                             ''', (s['ticker'], date_str, desc if desc else text[:200]))
                             existing = c.fetchone()
-                            
-                            if not existing or not existing[1] or existing[1] == existing[2]:
+                            is_placeholder = False
+                            if existing:
+                                summ, head = existing[1], existing[2]
+                                if not summ or summ == head or summ == "Regulatory action, penalty, or tax notice filed.":
+                                    is_placeholder = True
+                                else:
+                                    prefixes = [
+                                        "Dividend Action: ", "Stock Split/Sub-division: ", "Bonus Issue: ",
+                                        "Share Buyback: ", "Order/Contract Win: ", "Financial Results: ",
+                                        "M&A Activity: ", "Key Personnel/Auditor Update: ", "NSE Filing: ",
+                                        "Dividend/Distribution: ", "Stock Split: ", "Bonus Share Issue: ",
+                                        "Capex/Expansion: ", "Management Change: ", "Theme/Sector Catalyst: ",
+                                        "Regulatory Notice: "
+                                    ]
+                                    for p in prefixes:
+                                        if summ == p + head:
+                                            is_placeholder = True
+                                            break
+                                            
+                            if not existing or is_placeholder:
                                 from app.services.nlp_service import nlp_service
-                                enhanced_class = nlp_service.process_announcement(desc, text, item.get("attchmntFile", ""), s['ticker'])
+                                # Skip downloading full PDF files from NSE website during bulk scans to prevent socket hangs and rate-limiting
+                                enhanced_class = nlp_service.process_announcement(desc, text, "", s['ticker'])
                                 cat = enhanced_class['cat']
                                 cat_score = enhanced_class['catalyst_score']
                                 
@@ -1672,7 +1803,10 @@ def refresh_ep_screener():
                                 elif cat == "cat-governance":
                                     event_type_mapped = "MGMT_CHANGE"
                                 elif cat == "cat-regulatory":
-                                    event_type_mapped = "FRAUD_CONCERN"
+                                    if enhanced_class.get('sentiment') == -1:
+                                        event_type_mapped = "FRAUD_CONCERN"
+                                    else:
+                                        event_type_mapped = "UNKNOWN"
                                 else:
                                     event_type_mapped = "UNKNOWN"
                                     
@@ -1714,7 +1848,7 @@ def refresh_ep_screener():
             # Retrieve latest fundamentals
             c.execute('''
                 SELECT revenue_yoy_pct, revenue_qoq_pct, net_profit_yoy_pct,
-                       eps_yoy_pct, ebitda, ebitda_margin, consecutive_quarters_growth, surprise_type
+                       eps_yoy_pct, ebitda, ebitda_margin, consecutive_quarters_growth, surprise_type, result_date
                 FROM fundamentals
                 WHERE symbol = ? AND exchange = ?
                 ORDER BY result_date DESC, id DESC
@@ -1731,7 +1865,22 @@ def refresh_ep_screener():
                 ebitda = fund[4] if fund[4] is not None else 0.0
                 ebitda_margin = fund[5] if fund[5] is not None else 0.0
                 consec_growth = fund[6] if fund[6] is not None else 0
+                
+                # Check if result_date is within 7 days of the scan date
+                is_earnings_timely = False
+                result_date_str = fund[8]
+                if result_date_str:
+                    try:
+                        res_dt = datetime.strptime(result_date_str, "%Y-%m-%d")
+                        if feat_dt - timedelta(days=7) <= res_dt <= feat_dt:
+                            is_earnings_timely = True
+                    except Exception:
+                        pass
+                
                 surprise_type = fund[7] or "UNKNOWN"
+                if not is_earnings_timely:
+                    surprise_type = "UNKNOWN"
+                    
                 # ATTACH FUNDAMENTALS DATA TO STOCK OBJECT
                 s["revenue_growth"] = revenue_growth_yoy      # YoY
                 s["revenue_growth_qoq"] = revenue_growth_qoq  # QoQ
@@ -1940,19 +2089,19 @@ def refresh_ep_screener():
                     )
                     telegram_alerts_queue.append(alert_msg)
             
-            conn.commit()
         except Exception as e:
-            try:
-                conn.rollback()
-            except Exception:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-                conn = sqlite3.connect('scan_history.db')
-                c = conn.cursor()
             print(f"Error computing EP features for {ticker}: {e}")
             import traceback; traceback.print_exc()
+
+    # Commit all candidate features at once to eliminate DB locking
+    try:
+        conn.commit()
+    except Exception as commit_err:
+        print(f"[EP Refresh] Failed to commit EOD features batch: {commit_err}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
             
     # Nightly Delayed EP Trigger Checking
     try:
@@ -2033,7 +2182,6 @@ def refresh_ep_screener():
                             SET status = 'TRIGGERED', trigger_type = ?, entry_price = ?, entry_date = ?, updated_at = datetime('now')
                             WHERE id = ?
                         """, (trigger_type, today_close, today_bar["date"], w_id))
-                        conn.commit()
                         alert_msg = (
                             f"🔔 <b>EP Watchlist Triggered!</b>\n"
                             f"<b>Symbol:</b> {symbol}\n"
@@ -2050,6 +2198,17 @@ def refresh_ep_screener():
                 except Exception:
                     pass
                 print(f"[EP Watchlist check] Error checking triggers for {symbol}: {w_err}")
+
+        # Commit all trigger updates at once
+        try:
+            conn.commit()
+        except Exception as trigger_commit_err:
+            print(f"[EP Watchlist check] Failed to commit triggers: {trigger_commit_err}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
     except Exception as list_err:
         print(f"[EP Watchlist check] Failed to fetch active watchlist: {list_err}")
 
@@ -2892,6 +3051,69 @@ def fetch_historical_prices(ticker, range_str="6mo"):
         t_cached, cached_data = _historical_prices_cache[cache_key]
         if now - t_cached < _HIST_CACHE_TTL:
             return cached_data
+
+    # 0. Try local database daily_bars cache first to avoid slow Yahoo Finance network queries
+    try:
+        import sqlite3
+        from flask import current_app
+        db_path = 'scan_history.db'
+        try:
+            if current_app:
+                db_path = current_app.config.get('DATABASE', 'scan_history.db')
+        except Exception:
+            pass
+
+        clean_symbol = ticker.replace(".NS", "").replace(".BO", "").upper().strip()
+        
+        # Determine the number of days to load based on range_str
+        limit_days = 180
+        if "y" in range_str:
+            try:
+                limit_days = int(range_str.replace("y", "")) * 365
+            except ValueError:
+                pass
+        elif "mo" in range_str:
+            try:
+                limit_days = int(range_str.replace("mo", "")) * 30
+            except ValueError:
+                pass
+        elif "d" in range_str:
+            try:
+                limit_days = int(range_str.replace("d", ""))
+            except ValueError:
+                pass
+
+        conn = sqlite3.connect(db_path, timeout=1.0)
+        c = conn.cursor()
+        c.execute('''
+            SELECT trade_date, open, high, low, close, volume, prev_close
+            FROM daily_bars
+            WHERE symbol = ?
+            ORDER BY trade_date DESC
+            LIMIT ?
+        ''', (clean_symbol, limit_days))
+        rows = c.fetchall()
+        conn.close()
+
+        if rows and len(rows) >= 5:
+            db_history = []
+            for row in rows:
+                db_history.append({
+                    "date": row[0],
+                    "open": float(row[1]) if row[1] is not None else 0.0,
+                    "high": float(row[2]) if row[2] is not None else 0.0,
+                    "low": float(row[3]) if row[3] is not None else 0.0,
+                    "close": float(row[4]) if row[4] is not None else 0.0,
+                    "volume": int(row[5]) if row[5] is not None else 0,
+                    "prev_close": float(row[6]) if row[6] is not None else 0.0,
+                })
+            # Reverse to get oldest to newest order
+            db_history.reverse()
+            # Store in cache
+            _historical_prices_cache[cache_key] = (now, db_history)
+            return db_history
+    except Exception as db_e:
+        print(f"[Historical Fallback] Local DB fallback failed for {ticker}: {db_e}")
 
     import urllib.request
     import json
@@ -6042,10 +6264,23 @@ def save_snapshot():
                 
             # Save to scan_price_log
             try:
+                import json
+                tags_json = json.dumps(item.get("setupTags") or [])
+                candle_json = json.dumps(item.get("candlestick_patterns") or {})
                 c.execute('''
-                    INSERT INTO scan_price_log (date, ticker, close, swingband, setupLabel) 
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (today, ticker, item.get("close", 0), item.get("swingband", ""), item.get("setupLabel", "")))
+                    INSERT INTO scan_price_log (
+                        date, ticker, close, swingband, setupLabel,
+                        relative_volume, change, pe_ratio, RSI,
+                        relative_strength_rating, price_52_week_high, stage_label,
+                        setup_tags_json, mtf_score, vol_dry_up, is_inside_bar, candlestick_json
+                    ) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    today, ticker, item.get("close", 0), item.get("swingband", ""), item.get("setupLabel", ""),
+                    item.get("relative_volume"), item.get("change"), item.get("pe_ratio"), item.get("RSI"),
+                    item.get("relative_strength_rating") or item.get("rs_score"), item.get("price_52_week_high"), item.get("stage_label"),
+                    tags_json, item.get("mtfScore"), 1 if item.get("volDryUp") else 0, 1 if item.get("is_inside_bar") else 0, candle_json
+                ))
                 saved_count += 1
             except sqlite3.IntegrityError:
                 pass
@@ -6454,7 +6689,26 @@ def get_announcements():
                         ''', (sym, date_str, desc if desc else text[:200]))
                         existing = c.fetchone()
                         
-                        if not existing or not existing[1] or existing[1] == existing[2]:
+                        is_placeholder = False
+                        if existing:
+                            summ, head = existing[1], existing[2]
+                            if not summ or summ == head or summ == "Regulatory action, penalty, or tax notice filed.":
+                                is_placeholder = True
+                            else:
+                                prefixes = [
+                                    "Dividend Action: ", "Stock Split/Sub-division: ", "Bonus Issue: ",
+                                    "Share Buyback: ", "Order/Contract Win: ", "Financial Results: ",
+                                    "M&A Activity: ", "Key Personnel/Auditor Update: ", "NSE Filing: ",
+                                    "Dividend/Distribution: ", "Stock Split: ", "Bonus Share Issue: ",
+                                    "Capex/Expansion: ", "Management Change: ", "Theme/Sector Catalyst: ",
+                                    "Regulatory Notice: "
+                                ]
+                                for p in prefixes:
+                                    if summ == p + head:
+                                        is_placeholder = True
+                                        break
+                                        
+                        if not existing or is_placeholder:
                             from app.services.nlp_service import nlp_service
                             enhanced_class = nlp_service.process_announcement(desc, text, attchment, sym)
                             
@@ -6466,7 +6720,10 @@ def get_announcements():
                             elif cat == "cat-governance":
                                 event_type_mapped = "MGMT_CHANGE"
                             elif cat == "cat-regulatory":
-                                event_type_mapped = "FRAUD_CONCERN"
+                                if enhanced_class.get('sentiment') == -1:
+                                    event_type_mapped = "FRAUD_CONCERN"
+                                else:
+                                    event_type_mapped = "UNKNOWN"
                             else:
                                 event_type_mapped = "UNKNOWN"
                                 
@@ -6721,7 +6978,7 @@ DEALS_CACHE_TIMEOUT = 300  # 5 minutes (deals data refreshes during market hours
 
 
 def fetch_nse_block_deals():
-    """Fetch today's NSE bulk and block deals from snapshot-capital-market-largedeal."""
+    """Fetch today's NSE bulk and block deals with strict timeout and cache failure handling."""
     now = time.time()
     cache_key = "snapshot_deals"
 
@@ -6746,8 +7003,8 @@ def fetch_nse_block_deals():
                     return cache_data["data"]
             
             with requests.Session() as s:
-                s.get("https://www.nseindia.com/market-data/bulk-deal-watch", headers=headers, timeout=12)
-                res = s.get("https://www.nseindia.com/api/snapshot-capital-market-largedeal", headers=headers, timeout=12)
+                s.get("https://www.nseindia.com/market-data/bulk-deal-watch", headers=headers, timeout=3.0)
+                res = s.get("https://www.nseindia.com/api/snapshot-capital-market-largedeal", headers=headers, timeout=3.0)
             if res.status_code == 200:
                 raw = res.json()
                 DEALS_CACHE[cache_key] = {"timestamp": now, "data": raw}
@@ -6755,11 +7012,10 @@ def fetch_nse_block_deals():
             else:
                 print(f"NSE large-deal snapshot returned {res.status_code}")
     except Exception as ex:
-        print(f"Error fetching snapshot large deals: {ex}")
+        print(f"Error fetching snapshot large deals (timed out or blocked): {ex}")
 
-    # Stale cache fallback
-    if cache_key in DEALS_CACHE:
-        return DEALS_CACHE[cache_key]["data"]
+    # Cache empty/stale result on failure to prevent repeated hangs on subsequent scans
+    DEALS_CACHE[cache_key] = {"timestamp": now, "data": {}}
     return {}
 
 
