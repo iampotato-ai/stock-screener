@@ -13,6 +13,7 @@
     <!-- Cabinet Grotesk (headings) — Fontshare CDN -->
     <link rel="preconnect" href="https://api.fontshare.com">
     <link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/fear_greed.css">
 
     <!-- Geist Variable (body + data) — jsDelivr/Fontsource CDN -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
@@ -298,6 +299,9 @@
 
         <!-- Workspace View: Dashboard -->
         <div class="workspace-view active" id="view-dashboard">
+            <!-- Daily Morning Brief Widget -->
+            <div id="market-brief-widget" class="market-brief-container"></div>
+
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
@@ -328,6 +332,32 @@
               <div class="metric-group border-breadth">
                 <div class="metric-group-header"><span class="header-dot dot-breadth"></span>BREADTH</div>
                 <div class="metric-group-tiles">
+
+                  <!-- India Fear & Greed Index Tile (ui-ux-pro-max edition) -->
+                  <div class="breadth-metric metric-tile-card fg-tile-card" id="fg-tile-card">
+                    <div class="bm-label-wrap">
+                      <span class="bm-label">India Fear & Greed</span>
+                      <span class="fg-badge fg-label-neutral" id="fg-label-badge">Loading...</span>
+                    </div>
+                    <div class="bm-val-row" style="margin-top: 2px;">
+                      <span class="bm-big-val" id="fg-score-num">--</span>
+                      <span class="bm-sub-val" style="font-size:0.75rem; color:var(--color-text-muted, #64748b); font-weight:600;">/ 100</span>
+                    </div>
+                    <div class="mini-progress-wrap" style="margin-top: 4px;">
+                      <div class="mini-progress-fill fg-progress-fill" id="fg-progress-fill" style="width:50%; background:#eab308;"></div>
+                    </div>
+                    <span class="bm-sub-text" id="fg-sub-text">Hover for 5 sub-factors</span>
+
+                    <!-- Hover Details Tooltip -->
+                    <div class="fg-details-tooltip">
+                      <div class="fg-tooltip-header">Sub-Indicator Breakdown</div>
+                      <div class="fg-detail-row"><span>Nifty Momentum</span><span class="fg-detail-val" id="fg-detail-momentum">--</span></div>
+                      <div class="fg-detail-row"><span>52W Strength</span><span class="fg-detail-val" id="fg-detail-strength">--</span></div>
+                      <div class="fg-detail-row"><span>SMA50 Breadth</span><span class="fg-detail-val" id="fg-detail-breadth">--</span></div>
+                      <div class="fg-detail-row"><span>India VIX</span><span class="fg-detail-val" id="fg-detail-vix">--</span></div>
+                      <div class="fg-detail-row"><span>A/D Momentum</span><span class="fg-detail-val" id="fg-detail-ad">--</span></div>
+                    </div>
+                  </div>
                   
                   <!-- A / D Ratio -->
                   <div class="breadth-metric metric-tile-card">
@@ -454,7 +484,7 @@
             <canvas id="stage-distribution-chart"></canvas>
         </div>
         <!-- Right: Telemetry Legend Grid -->
-        <div class="stage-info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-xs);">
+        <div class="stage-info-grid">
             <div class="stage-card stage-card-1" onclick="window.filterScreenerByStage('Stage 1')">
                 <div class="stage-card-title">
                     <span>STAGE 1 · CONSOLIDATION</span>
@@ -2336,6 +2366,8 @@
                         <tr>
                             <th data-sort="date"         onclick="window.sortMCS('date')"          class="sortable text-left" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('date');event.preventDefault();}">Date</th>
                             <th data-sort="symbol"       onclick="window.sortMCS('symbol')" class="sortable" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('symbol');event.preventDefault();}">Symbol</th>
+                            <th data-sort="change"       onclick="window.sortMCS('change')"        class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('change');event.preventDefault();}">Chg %</th>
+                            <th data-sort="day_range_pct" onclick="window.sortMCS('day_range_pct')" class="sortable text-center" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('day_range_pct');event.preventDefault();}">Day Range</th>
                             <th data-sort="total_score"  onclick="window.sortMCS('total_score')"   class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('total_score');event.preventDefault();}">Score</th>
                             <th data-sort="swing_score"  onclick="window.sortMCS('swing_score')"   class="sortable text-right" title="Swing Velocity Score: Technical 45% + Momentum 45% + Risk 10%" style="color:#f59e0b;" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('swing_score');event.preventDefault();}">⚡ Swing</th>
                             <th data-sort="technical_score"    onclick="window.sortMCS('technical_score')"    class="sortable text-right" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){window.sortMCS('technical_score');event.preventDefault();}">Technical</th>
@@ -2351,6 +2383,8 @@
                             <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
                             <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 80px;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 60px; margin: 0 auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
@@ -2363,6 +2397,8 @@
                             <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
                             <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 60px; margin: 0 auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
@@ -2374,6 +2410,8 @@
                         <tr class="mcs-skeleton-row">
                             <td style="text-align:left;"><div class="mcs-skeleton-cell" style="width: 70px;"></div></td>
                             <td class="symbol-col"><div class="mcs-skeleton-cell" style="width: 90px;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
+                            <td><div class="mcs-skeleton-cell" style="width: 60px; margin: 0 auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 45px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 35px; margin-left: auto;"></div></td>
                             <td><div class="mcs-skeleton-cell" style="width: 30px; margin-left: auto;"></div></td>
@@ -3094,6 +3132,12 @@
                 </div>
             </section>
 
+            <!-- 360° AI Signal Score & Trade Levels -->
+            <div id="trade-drawer-signal-score" style="margin-top: 0.75rem;"></div>
+
+            <!-- Insider & Promoter Activity -->
+            <div id="trade-drawer-insider-activity" style="margin-top: 0.5rem;"></div>
+
             <!-- 1. Market & Regime Context Details -->
             <details class="drawer-section" open>
                 <summary>Market & Regime Context</summary>
@@ -3306,6 +3350,12 @@
         <div id="mcs-drawer-score-ring"
               style="text-align:center; padding:1.5rem 0 0.5rem;"></div>
 
+        <!-- AI Signal Score & Trade Levels -->
+        <div id="mcs-drawer-signal-score" style="padding:0 1.5rem 0.5rem;"></div>
+
+        <!-- Insider & Promoter Activity -->
+        <div id="mcs-drawer-insider-activity" style="padding:0 1.5rem 1rem;"></div>
+
         <!-- Pillar breakdown bars -->
         <div id="mcs-drawer-pillars" style="padding:0 1.5rem 1rem;"></div>
 
@@ -3320,7 +3370,7 @@
     <!-- App Script -->
     <script src="{{ url_for('static', filename='js/market-pulse.js') }}?v=1.0.54"></script>
     <script src="{{ url_for('static', filename='js/alerts.js') }}?v=1.0.55"></script>
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.0.81"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=1.1.5"></script>
     <script>
     // ─── Momentum Confidence Score™ Tab Logic ───────────────────────────────────
     (function () {
@@ -3409,10 +3459,17 @@
                 updateMCSBadge();
             } catch (err) {
                 document.getElementById('mcs-tbody').innerHTML =
-                    `<tr><td colspan="10" style="padding:2rem;text-align:center;color:#ef4444;">
+                    `<tr><td colspan="12" style="padding:2rem;text-align:center;color:#ef4444;">
                         Failed to load scores: ${err.message}
                     </td></tr>`;
             }
+        }
+
+        function formatScoreVal(val, decimals = 2) {
+            if (val === null || val === undefined || val === '') return '—';
+            const num = parseFloat(val);
+            if (isNaN(num)) return '—';
+            return num % 1 === 0 ? num.toString() : parseFloat(num.toFixed(decimals)).toString();
         }
 
         // ── Render table rows ───────────────────────────────────────────────────
@@ -3421,6 +3478,18 @@
             
             let filtered = [...mcsData];
             
+            // Pre-calculate day_range_pct for sorting & rendering
+            filtered.forEach(s => {
+                const high = (s.high !== null && s.high !== undefined) ? parseFloat(s.high) : null;
+                const low = (s.low !== null && s.low !== undefined) ? parseFloat(s.low) : null;
+                const closePrice = (s.close !== null && s.close !== undefined) ? parseFloat(s.close) : null;
+                if (high !== null && low !== null && closePrice !== null && !isNaN(high) && !isNaN(low) && !isNaN(closePrice) && high > low) {
+                    s.day_range_pct = Math.max(0, Math.min(100, ((closePrice - low) / (high - low)) * 100));
+                } else {
+                    s.day_range_pct = null;
+                }
+            });
+
             // Determine active score field based on mode
             const scoreField = mcsMode === 'swing' ? 'swing_score' : 'total_score';
             
@@ -3456,7 +3525,7 @@
             countEl.textContent = `${sorted.length} stock${sorted.length !== 1 ? 's' : ''} found`;
 
             if (!sorted.length) {
-                tbody.innerHTML = `<tr><td colspan="10" style="padding: 4rem 2rem; text-align: center;">
+                tbody.innerHTML = `<tr><td colspan="12" style="padding: 4rem 2rem; text-align: center;">
                     <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem; justify-content: center;">
                         <i data-lucide="search" style="width: 32px; height: 32px; opacity: 0.5; color: var(--color-text-muted);"></i>
                         <div style="font-weight: 700; font-size: 0.95rem; color: var(--color-text-primary);">No Stocks Found</div>
@@ -3473,15 +3542,49 @@
                 const hasScore = s.total_score !== null && s.total_score !== undefined;
                 const col    = hasScore ? scoreColour(s.total_score) : '#6b7280';
                 const label  = hasScore ? scoreLabel(s.total_score) : 'Pending';
-                const scoreText = hasScore ? s.total_score : '—';
+                const scoreText = hasScore ? formatScoreVal(s.total_score, 2) : '—';
 
                 // Swing score cell
                 const hasSwing   = s.swing_score !== null && s.swing_score !== undefined;
                 const swingCol   = hasSwing ? scoreColour(s.swing_score) : '#6b7280';
-                const swingText  = hasSwing ? s.swing_score : '—';
+                const swingText  = hasSwing ? formatScoreVal(s.swing_score, 2) : '—';
                 const swingHighlight = (mcsMode === 'swing' && hasSwing)
                     ? `background:${swingCol}20; color:${swingCol}; border:1px solid ${swingCol}40; padding:2px 8px; border-radius:var(--radius-sm); font-weight:700; font-family:var(--font-display);`
                     : `color:${swingCol}; font-weight:600; font-family:var(--font-display);`;
+
+                // Change % cell - check all possible keys (change, change_pct, price_change_pct)
+                const rawChange = s.change !== null && s.change !== undefined ? s.change : (s.change_pct !== null && s.change_pct !== undefined ? s.change_pct : s.price_change_pct);
+                const changeVal = (rawChange !== null && rawChange !== undefined) ? parseFloat(rawChange) : null;
+                let changeTd = `<td class="text-right" style="color:var(--color-text-muted); font-size:0.8rem; font-family:var(--font-display);">—</td>`;
+                if (changeVal !== null && !isNaN(changeVal)) {
+                    const changeClass = changeVal >= 0 ? 'val-up' : 'val-down';
+                    const changeSign = changeVal > 0 ? '+' : '';
+                    const arrow = changeVal >= 0 ? '▲' : '▼';
+                    changeTd = `
+                        <td class="text-right ${changeClass}" style="font-weight:600; font-size:0.8rem; font-family:var(--font-display);">
+                            <span class="colorblind-arrow">${arrow}</span>${changeSign}${changeVal.toFixed(2)}%
+                        </td>`;
+                }
+
+                // Day Range cell
+                const high = (s.high !== null && s.high !== undefined) ? parseFloat(s.high) : null;
+                const low = (s.low !== null && s.low !== undefined) ? parseFloat(s.low) : null;
+                const closePrice = (s.close !== null && s.close !== undefined) ? parseFloat(s.close) : null;
+                let rangeHtml = '<span style="color:var(--color-text-muted); font-size:0.8rem;">—</span>';
+
+                if (high !== null && low !== null && closePrice !== null && !isNaN(high) && !isNaN(low) && !isNaN(closePrice) && high > low) {
+                    const pct = s.day_range_pct !== null ? s.day_range_pct : Math.max(0, Math.min(100, ((closePrice - low) / (high - low)) * 100));
+
+                    rangeHtml = `
+                        <div class="day-range-container" title="Low: ₹${low.toFixed(2)} | High: ₹${high.toFixed(2)} | Close: ₹${closePrice.toFixed(2)}">
+                            <div class="day-range-bar">
+                                <div class="day-range-fill" style="width: ${pct.toFixed(1)}%;"></div>
+                                <div class="day-range-marker" style="left: ${pct.toFixed(1)}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+                const dayRangeTd = `<td class="text-center">${rangeHtml}</td>`;
 
                 const badges = (s.badges || []).map(b => {
                     const isSwing = b.toLowerCase().includes('swing');
@@ -3505,6 +3608,8 @@
                         </button>
                     </div>
                 </td>
+                ${changeTd}
+                ${dayRangeTd}
                 <td class="text-right">
                     <span style="background:${col}18; color:${col}; border:1px solid ${col}35;
                                  padding:2px 8px; border-radius:var(--radius-sm);
@@ -3512,11 +3617,11 @@
                     <span style="font-size:0.7rem; color:${col}; margin-left:4px; font-family:var(--font-display); font-weight:600;">${label}</span>
                 </td>
                 <td class="text-right"><span style="${swingHighlight}">${swingText}</span></td>
-                <td class="text-right">${s.technical_score ?? '—'}</td>
-                <td class="text-right">${s.fundamental_score ?? '—'}</td>
-                <td class="text-right">${s.momentum_score ?? '—'}</td>
-                <td class="text-right">${s.institutional_score ?? '—'}</td>
-                <td class="text-right">${s.risk_liquidity_score ?? '—'}</td>
+                <td class="text-right">${formatScoreVal(s.technical_score, 2)}</td>
+                <td class="text-right">${formatScoreVal(s.fundamental_score, 2)}</td>
+                <td class="text-right">${formatScoreVal(s.momentum_score, 2)}</td>
+                <td class="text-right">${formatScoreVal(s.institutional_score, 2)}</td>
+                <td class="text-right">${formatScoreVal(s.risk_liquidity_score, 2)}</td>
                 <td style="max-width:220px;">${badges || '<span style="color:var(--color-text-muted);font-size:0.75rem;">—</span>'}</td>
             </tr>`;
             }).join('');
@@ -3644,9 +3749,201 @@
             }
         };
 
+        // ── Render 360° Signal Score Card in Drawer ─────────────────────────────
+        window.renderSignalScoreCard = function(sig, container) {
+            if (!sig || !sig.success) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const score = sig.signal_score || 50;
+            const verdict = sig.signal_verdict || 'Hold';
+            const trend = sig.trend_status || 'Neutral';
+            const trade = sig.trade_levels || {};
+            const sr = sig.support_resistance || {};
+            const ma = sig.ma_alignment || {};
+            const risk = sig.risk_analytics || {};
+
+            const verdictColors = {
+                'Strong Buy': '#22c55e',
+                'Buy': '#10b981',
+                'Hold': '#f59e0b',
+                'Watch': '#3b82f6',
+                'Sell': '#f43f5e',
+                'Strong Sell': '#ef4444'
+            };
+            const vColor = verdictColors[verdict] || '#3b82f6';
+
+            const dirBadge = trade.direction === 'LONG'
+                ? '<span style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.7rem;">🚀 LONG</span>'
+                : trade.direction === 'SHORT'
+                    ? '<span style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.7rem;">🔻 SHORT</span>'
+                    : '<span style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); padding:2px 8px; border-radius:4px; font-weight:800; font-size:0.7rem;">⏸ NEUTRAL</span>';
+
+            const aiSummaryHtml = sig.ai_summary ? `
+                <div style="margin-top:0.75rem; padding:0.6rem 0.75rem; background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.2); border-radius:6px; font-size:0.73rem; color:var(--color-text-secondary); line-height:1.4;">
+                    <div style="font-weight:700; color:#60a5fa; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
+                        🤖 AI Signal Briefing
+                    </div>
+                    <div>${sig.ai_summary}</div>
+                    ${sig.ai_bull_factors && sig.ai_bull_factors.length ? `
+                        <div style="margin-top:6px; color:#22c55e; font-weight:600;">
+                            ${sig.ai_bull_factors.map(f => `<div>• ${f}</div>`).join('')}
+                        </div>` : ''}
+                    ${sig.ai_risk_factors && sig.ai_risk_factors.length ? `
+                        <div style="margin-top:4px; color:#f43f5e; font-weight:600;">
+                            ${sig.ai_risk_factors.map(f => `<div>• ${f}</div>`).join('')}
+                        </div>` : ''}
+                </div>
+            ` : '';
+
+            container.innerHTML = `
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:0.85rem 1rem;">
+                    <!-- Header: Verdict & Score -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.6rem;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--color-text-muted); letter-spacing:0.5px;">360° SIGNAL</span>
+                            <span style="background:${vColor}22; color:${vColor}; border:1px solid ${vColor}44; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:800;">${verdict}</span>
+                        </div>
+                        <div style="font-size:0.95rem; font-weight:900; color:${vColor};">
+                            ${score}<span style="font-size:0.65rem; color:var(--color-text-muted);">/100</span>
+                        </div>
+                    </div>
+
+                    <!-- Trade Levels & S/R Grid -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:0.5rem;">
+                        <!-- Trade Plan -->
+                        <div style="background:rgba(0,0,0,0.25); border-radius:6px; padding:0.5rem; border:1px solid rgba(255,255,255,0.04);">
+                            <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.68rem; margin-bottom:4px;">
+                                <span style="color:var(--color-text-muted); font-weight:600;">TRADE PLAN</span>
+                                ${dirBadge}
+                            </div>
+                            <div style="font-size:0.7rem; color:var(--color-text-secondary); display:flex; flex-direction:column; gap:2px;">
+                                <div>SL: <strong style="color:#ef4444;">₹${trade.stop_loss || '—'}</strong> <span style="font-size:0.62rem; opacity:0.7;">(-${trade.risk_amount_pct || 0}%)</span></div>
+                                <div>TP: <strong style="color:#22c55e;">₹${trade.take_profit || '—'}</strong> <span style="font-size:0.62rem; opacity:0.7;">(+${trade.reward_amount_pct || 0}%)</span></div>
+                                <div style="font-size:0.62rem; color:var(--color-text-muted); margin-top:2px;">R:R Ratio: <strong style="color:var(--color-text-primary);">${trade.risk_reward_ratio || 0}:1</strong></div>
+                            </div>
+                        </div>
+
+                        <!-- Support / Resistance -->
+                        <div style="background:rgba(0,0,0,0.25); border-radius:6px; padding:0.5rem; border:1px solid rgba(255,255,255,0.04);">
+                            <div style="font-size:0.68rem; color:var(--color-text-muted); font-weight:600; margin-bottom:4px;">LEVELS & TREND</div>
+                            <div style="font-size:0.7rem; color:var(--color-text-secondary); display:flex; flex-direction:column; gap:2px;">
+                                <div>Support: <strong style="color:#38bdf8;">₹${sr.nearest_support || '—'}</strong></div>
+                                <div>Resistance: <strong style="color:#fbbf24;">₹${sr.nearest_resistance || '—'}</strong></div>
+                                <div style="font-size:0.62rem; color:var(--color-text-muted); margin-top:2px;">Trend: <strong style="color:var(--color-text-primary);">${trend}</strong></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MA Alignment & Vol Badges -->
+                    <div style="display:flex; flex-wrap:wrap; gap:4px; font-size:0.65rem; color:var(--color-text-muted);">
+                        <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">MA: ${ma.alignment_label || 'Mixed'}</span>
+                        <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">ATR: ₹${risk.atr_14 || 0} (${risk.atr_14_pct || 0}%)</span>
+                        <span style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">Risk: ${risk.risk_label || 'Medium'}</span>
+                    </div>
+
+                    ${aiSummaryHtml}
+                </div>
+            `;
+        };
+
+        // ── Render Insider & Promoter Activity Card in Drawer ───────────────────
+        window.renderInsiderActivityCard = function(data, container) {
+            if (!data || !data.success || !container) return;
+
+            const metrics = data.metrics || {};
+            const badges = data.badges || [];
+            const txs = data.recent_transactions || [];
+            const net30 = metrics.net_promoter_buy_30d || 0;
+            const net90 = metrics.net_promoter_buy_90d || 0;
+            const bulkCount = metrics.bulk_deal_count_30d || 0;
+            const score = data.insider_score || 50;
+
+            const netColor = net30 > 0 ? '#22c55e' : (net30 < 0 ? '#ef4444' : 'var(--color-text-secondary)');
+            const netText = net30 > 0 ? `+₹${net30.toFixed(2)} Cr (Buy)` : (net30 < 0 ? `-₹${Math.abs(net30).toFixed(2)} Cr (Sell)` : 'Neutral (₹0 Cr)');
+
+            const badgesHtml = badges.map(b => {
+                let bg = 'rgba(255,255,255,0.08)';
+                let color = '#e2e8f0';
+                if (b.includes('BUY')) { bg = 'rgba(34,197,94,0.15)'; color = '#22c55e'; }
+                else if (b.includes('SELL')) { bg = 'rgba(239,68,68,0.15)'; color = '#ef4444'; }
+                else if (b.includes('BLOCK')) { bg = 'rgba(168,85,247,0.15)'; color = '#c084fc'; }
+                else if (b.includes('PLEDGE')) { bg = 'rgba(245,158,11,0.15)'; color = '#f59e0b'; }
+                return `<span style="background:${bg}; color:${color}; border:1px solid ${color}44; padding:2px 8px; border-radius:12px; font-size:0.68rem; font-weight:700;">${b}</span>`;
+            }).join(' ');
+
+            const txRows = txs.slice(0, 4).map(t => `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.03); font-size:0.68rem;">
+                    <td style="padding:4px 0; color:var(--color-text-secondary);">${t.transaction_date || '—'}</td>
+                    <td style="padding:4px 0; color:var(--color-text-primary); font-weight:600;">${t.insider_name}</td>
+                    <td style="padding:4px 0; font-weight:700; color:${t.transaction_type === 'BUY' ? '#22c55e' : '#ef4444'};">${t.transaction_type}</td>
+                    <td style="padding:4px 0; text-align:right; font-weight:700; color:var(--color-text-primary);">₹${(t.value_cr || 0).toFixed(2)} Cr</td>
+                </tr>
+            `).join('');
+
+            container.innerHTML = `
+                <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:0.85rem 1rem;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--color-text-muted); letter-spacing:0.5px;">INSIDER & PROMOTER</span>
+                            ${badgesHtml}
+                        </div>
+                        <div style="font-size:0.75rem; font-weight:700; color:var(--color-text-muted);">
+                            Score: <strong style="color:#a855f7;">${score}/100</strong>
+                        </div>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-bottom:0.5rem; text-align:center; background:rgba(0,0,0,0.25); border-radius:6px; padding:0.5rem; border:1px solid rgba(255,255,255,0.04);">
+                        <div>
+                            <div style="font-size:0.62rem; color:var(--color-text-muted); font-weight:600;">30D NET FLOW</div>
+                            <div style="font-size:0.75rem; font-weight:800; color:${netColor}; margin-top:2px;">${netText}</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.62rem; color:var(--color-text-muted); font-weight:600;">90D NET FLOW</div>
+                            <div style="font-size:0.75rem; font-weight:800; color:${net90 >= 0 ? '#22c55e' : '#ef4444'}; margin-top:2px;">₹${net90.toFixed(2)} Cr</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.62rem; color:var(--color-text-muted); font-weight:600;">BLOCK DEALS</div>
+                            <div style="font-size:0.75rem; font-weight:800; color:var(--color-text-primary); margin-top:2px;">${bulkCount} trade(s)</div>
+                        </div>
+                    </div>
+
+                    ${txs.length ? `
+                        <div style="font-size:0.65rem; font-weight:700; color:var(--color-text-muted); margin-bottom:4px; letter-spacing:0.5px;">RECENT DISCLOSURES</div>
+                        <table style="width:100%; border-collapse:collapse;">
+                            <tbody>${txRows}</tbody>
+                        </table>
+                    ` : ''}
+                </div>
+            `;
+        };
+
         // ── Side drawer ──────────────────────────────────────────────────────────
         window.openMCSDrawer = async function (symbol, exchange) {
             try {
+                // Initialize Signal Score container loading state
+                const sigContainer = document.getElementById('mcs-drawer-signal-score');
+                if (sigContainer) {
+                    sigContainer.innerHTML = `
+                        <div style="background:rgba(255,255,255,0.02); border:1px dashed rgba(255,255,255,0.08); border-radius:8px; padding:0.6rem; text-align:center; font-size:0.72rem; color:var(--color-text-muted);">
+                            Analyzing 360° Signal Score & Trade Levels...
+                        </div>`;
+                    fetch(`/api/v1/signal-score/${symbol}?exchange=${exchange || 'NSE'}&include_ai=true`)
+                        .then(r => r.ok ? r.json() : null)
+                        .then(sig => { if (sig) window.renderSignalScoreCard(sig, sigContainer); })
+                        .catch(() => { if (sigContainer) sigContainer.innerHTML = ''; });
+                }
+
+                // Initialize Insider Activity container loading state
+                const insContainer = document.getElementById('mcs-drawer-insider-activity');
+                if (insContainer) {
+                    fetch(`/api/v1/insider-transactions/${symbol}?exchange=${exchange || 'NSE'}`)
+                        .then(r => r.ok ? r.json() : null)
+                        .then(ins => { if (ins) window.renderInsiderActivityCard(ins, insContainer); })
+                        .catch(() => { if (insContainer) insContainer.innerHTML = ''; });
+                }
+
                 const res  = await fetch(`/api/v1/score/${symbol}?exchange=${exchange}&_=${Date.now()}`, { cache: 'no-store' });
                 if (!res.ok) {
                     throw new Error(`HTTP error! status: ${res.status}`);
@@ -3986,5 +4283,7 @@
     }());
 // ─── End MCS Tab ─────────────────────────────────────────────────────────────
     </script>
+    <script src="/static/js/fear_greed_gauge.js"></script>
+    <script src="/static/js/market_brief.js"></script>
 </body>
 </html>

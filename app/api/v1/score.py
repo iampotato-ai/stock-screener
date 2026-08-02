@@ -128,10 +128,10 @@ def get_top_scores():
                     continue
                 clean_ticker = ticker.replace("NSE:", "").replace("BSE:", "")
                 if clean_ticker in scores_by_symbol:
-                    top_stocks.append(scores_by_symbol[clean_ticker])
+                    item = dict(scores_by_symbol[clean_ticker])
                 else:
                     # Return pending/placeholder record matching screener ticker
-                    top_stocks.append({
+                    item = {
                         'symbol': clean_ticker,
                         'exchange': exchange,
                         'date': None,
@@ -143,10 +143,19 @@ def get_top_scores():
                         'institutional_score': None,
                         'risk_liquidity_score': None,
                         'badges': []
-                    })
+                    }
+                # Attach current price and day metrics from screener scan result s
+                item['close'] = s.get('close')
+                item['change'] = s.get('change') if s.get('change') is not None else s.get('change_pct')
+                item['high'] = s.get('high')
+                item['low'] = s.get('low')
+                top_stocks.append(item)
         else:
             # Fallback to general top stocks if no screener results are available yet
             top_stocks = service.get_top_stocks(limit, exchange)
+
+        # Enrich all stocks with market data (close, change, high, low)
+        top_stocks = _enrich_stocks_with_market_data(top_stocks)
 
         return jsonify({
             'stocks': top_stocks,
@@ -159,6 +168,70 @@ def get_top_scores():
         return jsonify({
             'error': str(e)
         }), 500
+
+
+def _enrich_stocks_with_market_data(stocks: list) -> list:
+    """Ensure every stock dictionary in stocks has close, change, high, and low populated.
+    Falls back to querying latest daily_bars records if missing from score/scan data.
+    """
+    if not stocks:
+        return stocks
+
+    missing_symbols = set()
+    for s in stocks:
+        sym = s.get('symbol') or s.get('ticker')
+        if not sym:
+            continue
+        clean_sym = sym.replace("NSE:", "").replace("BSE:", "")
+        # Mark symbols with any missing market metric for database lookup
+        if s.get('close') is None or s.get('change') is None or s.get('high') is None or s.get('low') is None:
+            missing_symbols.add(clean_sym)
+            missing_symbols.add(f"{clean_sym}.NS")
+            missing_symbols.add(f"{clean_sym}.BO")
+
+    if missing_symbols:
+        try:
+            from app.models import DailyBar
+            from app.extensions import db
+            subq = db.session.query(
+                DailyBar.symbol,
+                db.func.max(DailyBar.trade_date).label('max_date')
+            ).filter(DailyBar.symbol.in_(list(missing_symbols))).group_by(DailyBar.symbol).subquery()
+
+            bars = db.session.query(DailyBar).join(
+                subq,
+                (DailyBar.symbol == subq.c.symbol) & (DailyBar.trade_date == subq.c.max_date)
+            ).all()
+
+            bar_map = {}
+            for b in bars:
+                clean = b.symbol.replace('.NS', '').replace('.BO', '')
+                bar_map[clean] = b
+                bar_map[b.symbol] = b
+
+            for s in stocks:
+                sym = s.get('symbol') or s.get('ticker') or ''
+                clean_sym = sym.replace("NSE:", "").replace("BSE:", "")
+                bar = bar_map.get(clean_sym) or bar_map.get(f"{clean_sym}.NS") or bar_map.get(f"{clean_sym}.BO")
+
+                if s.get('close') is None and bar and bar.close is not None:
+                    s['close'] = float(bar.close)
+
+                if s.get('change') is None:
+                    if s.get('change_pct') is not None:
+                        s['change'] = float(s['change_pct'])
+                    elif bar and bar.price_change_pct is not None:
+                        s['change'] = float(bar.price_change_pct)
+
+                if s.get('high') is None and bar and bar.high is not None:
+                    s['high'] = float(bar.high)
+
+                if s.get('low') is None and bar and bar.low is not None:
+                    s['low'] = float(bar.low)
+        except Exception as err:
+            current_app.logger.warning(f"Error enriching stocks with market data: {err}")
+
+    return stocks
 
 @api_bp.route('/score/<string:symbol>/history', methods=['GET'])
 def get_score_history(symbol):

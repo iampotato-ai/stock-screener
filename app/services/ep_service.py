@@ -721,6 +721,235 @@ class EPService:
 
         return detail
 
+    # ------------------------------------------------------------------
+    # Granular detail sub-endpoints — called in parallel by the frontend
+    # ------------------------------------------------------------------
+
+    def _enrich_events_background(self, symbol_upper: str):
+        """Fire-and-forget NSE enrichment inside a daemon thread.
+
+        The caller does NOT wait for this; the events endpoint queries whatever
+        is already in the DB so it returns immediately.
+        """
+        import threading
+        from flask import current_app
+        app = current_app._get_current_object()
+
+        def _run():
+            with app.app_context():
+                try:
+                    self._enrich_events_for_symbol(symbol_upper)
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+    def get_ep_detail_base(self, symbol: str) -> Dict[str, Any]:
+        """Return scores, fundamentals, and watchlist data from the DB only.
+
+        This is the fast (~50 ms) payload that makes the modal feel instant.
+        Kicks off NSE event enrichment in a background thread so the next call
+        to get_ep_detail_events will benefit from fresher data without blocking
+        this request.
+        """
+        symbol_upper = symbol.upper().strip()
+
+        # Fire NSE enrichment in background — does not block this response
+        self._enrich_events_background(symbol_upper)
+
+        feat = EpFeature.query.filter_by(symbol=symbol_upper).order_by(EpFeature.feature_date.desc()).first()
+        if not feat:
+            wl_entry = EpWatchlist.query.filter_by(symbol=symbol_upper).order_by(EpWatchlist.id.desc()).first()
+            if not wl_entry:
+                raise ValueError(f"Symbol {symbol} not found in EP features or watchlist")
+            detail: Dict[str, Any] = {
+                "symbol": symbol_upper,
+                "exchange": wl_entry.exchange or "NSE",
+                "ep_type": wl_entry.ep_type or "Unknown",
+                "ep_score": wl_entry.ep_score,
+                "confidence": "—",
+                "feature_date": str(wl_entry.catalyst_date) if wl_entry.catalyst_date else None,
+                "catalyst_score": None, "neglect_score": None, "repricing_score": None,
+                "close_location": None, "rvol": None, "avg_volume": None,
+                "market_cap_cr": None, "mktcap_cr": None, "sector": None,
+                "watchlist_status": wl_entry.status,
+                "watchlist_stop": wl_entry.stop_price,
+                "watchlist_notes": wl_entry.notes,
+                "ep_score_prev": None,
+                "fundamentals": [],
+                "is_sugar_baby": 0,
+            }
+        else:
+            detail = feat.to_dict()
+            # Watchlist info
+            wl = EpWatchlist.query.filter_by(symbol=symbol_upper).order_by(EpWatchlist.id.desc()).first()
+            detail["watchlist_status"] = wl.status if wl else None
+            detail["watchlist_stop"] = wl.stop_price if wl else None
+            detail["watchlist_notes"] = wl.notes if wl else None
+
+        # Sugar baby
+        sb = SugarBaby.query.filter_by(symbol=symbol_upper, is_active=1).first()
+        detail["is_sugar_baby"] = 1 if sb else 0
+
+        # Fundamentals (DB only — may trigger lazy screener refresh for stale data)
+        funds = Fundamental.query.filter_by(symbol=symbol_upper).order_by(Fundamental.result_date.desc()).limit(8).all()
+        fundamentals = [f.to_dict() for f in funds]
+
+        # Stale fundamentals check: refresh from screener if missing or >180 days old
+        needs_refresh = not fundamentals
+        if fundamentals:
+            try:
+                latest_res_date = datetime.strptime(fundamentals[0]["result_date"], "%Y-%m-%d")
+                if (datetime.now() - latest_res_date).days > 180:
+                    needs_refresh = True
+            except Exception:
+                pass
+
+        if needs_refresh:
+            try:
+                from app.api.v1.legacy_routes import fetch_screener_fundamentals, compute_yoy_metrics
+                quarters_data = fetch_screener_fundamentals(symbol_upper)
+                if quarters_data:
+                    quarters_data = compute_yoy_metrics(quarters_data)
+                    Fundamental.query.filter_by(symbol=symbol_upper).delete()
+                    exchange = detail.get("exchange", "NSE")
+                    for q in quarters_data:
+                        new_f = Fundamental(
+                            symbol=symbol_upper,
+                            exchange=exchange,
+                            result_date=datetime.strptime(q.get("result_date") or q["date_key"], "%Y-%m-%d").date(),
+                            quarter=q["quarter"],
+                            revenue=q["revenue"],
+                            revenue_yoy_pct=q["revenue_yoy_pct"],
+                            net_profit=q["net_profit"],
+                            net_profit_yoy_pct=q["net_profit_yoy_pct"],
+                            eps=q["eps"],
+                            eps_yoy_pct=q.get("eps_yoy_pct"),
+                            surprise_type=q.get("surprise_type", "UNKNOWN"),
+                            consecutive_quarters_growth=q.get("consecutive_quarters_growth", 0),
+                            source=q.get("source", "unknown"),
+                        )
+                        db.session.add(new_f)
+                    db.session.commit()
+                    funds = Fundamental.query.filter_by(symbol=symbol_upper).order_by(Fundamental.result_date.desc()).limit(8).all()
+                    fundamentals = [f.to_dict() for f in funds]
+            except Exception as ref_ex:
+                current_app.logger.warning(f"[EP Base] Lazy fundamentals refresh failed for {symbol_upper}: {ref_ex}")
+
+        for f_dict in fundamentals:
+            rev_yoy = f_dict.get("revenue_yoy_pct")
+            prof_yoy = f_dict.get("net_profit_yoy_pct")
+            f_dict["revenue_trend"] = "▲" if (rev_yoy and rev_yoy > 0) else ("▼" if (rev_yoy and rev_yoy < 0) else "—")
+            f_dict["profit_trend"] = "▲" if (prof_yoy and prof_yoy > 0) else ("▼" if (prof_yoy and prof_yoy < 0) else "—")
+
+        detail["fundamentals"] = fundamentals
+        return detail
+
+    def get_ep_detail_history(self, symbol: str) -> Dict[str, Any]:
+        """Return 6-month OHLCV price history for charting.
+
+        Uses the in-memory 15-minute cache in fetch_historical_prices so
+        repeated calls are near-instant.
+        """
+        symbol_upper = symbol.upper().strip()
+        ticker = f"{symbol_upper}.NS"
+        history = fetch_historical_prices(ticker, range_str="6mo")
+        return {"symbol": symbol_upper, "history": history or []}
+
+    def get_ep_detail_events(self, symbol: str) -> Dict[str, Any]:
+        """Return corporate events from the DB (no blocking network call).
+
+        NSE enrichment is triggered in the background by get_ep_detail_base.
+        This endpoint simply reads whatever is already stored.
+        """
+        symbol_upper = symbol.upper().strip()
+        try:
+            rows = db.session.execute(
+                db.text(
+                    "SELECT id, symbol, exchange, event_date, event_type, headline, sentiment, "
+                    "catalyst_score, raw_url, nlp_sentiment_score, nlp_category, summary, impact_magnitude "
+                    "FROM corporate_events WHERE symbol = :s ORDER BY event_date DESC, id DESC LIMIT 10"
+                ),
+                {"s": symbol_upper},
+            ).fetchall()
+            events = [dict(r._mapping) for r in rows]
+        except Exception:
+            events = []
+        return {"symbol": symbol_upper, "corporate_events": events}
+
+    def get_ep_detail_thesis(self, symbol: str, feature_date: Optional[str] = None) -> Dict[str, Any]:
+        """Return cached AI thesis or generate a new one.
+
+        If a thesis is already in the on-disk JSON cache this returns in <10 ms.
+        Otherwise it calls the LLM (slow path) and caches the result.
+        The caller should pass `feature_date` (from the base response) so the
+        cache key matches what the legacy get_ep_detail would produce.
+        """
+        symbol_upper = symbol.upper().strip()
+        fd = feature_date or "no_date"
+        cache_key = f"{symbol_upper}_{fd}"
+
+        from app.services.ai_service import ai_service
+
+        cache = _load_ep_cache()
+        # Invalidate stale fallback responses
+        if cache_key in cache:
+            cached_reasoning = str(cache[cache_key].get("reasoning", ""))
+            cached_thesis = str(cache[cache_key].get("thesis", ""))
+            if any(
+                term in cached_reasoning or term in cached_thesis
+                for term in ["Default offline fallback", "API unavailability", "openai/gpt-oss-120b", "Default fallback"]
+            ):
+                del cache[cache_key]
+
+        if cache_key in cache:
+            return {
+                "symbol": symbol_upper,
+                "ai_thesis": cache[cache_key].get("thesis"),
+                "ai_reasoning": cache[cache_key].get("reasoning"),
+                "cached": True,
+            }
+
+        # Slow path: build context from DB and call LLM
+        feat = EpFeature.query.filter_by(symbol=symbol_upper).order_by(EpFeature.feature_date.desc()).first()
+        feat_dict = feat.to_dict() if feat else {}
+
+        technicals = {
+            "ep_score": feat_dict.get("ep_score"),
+            "neglect_score": feat_dict.get("neglect_score"),
+            "catalyst_score": feat_dict.get("catalyst_score"),
+            "repricing_score": feat_dict.get("repricing_score"),
+            "market_cap_cr": feat_dict.get("market_cap_cr") or feat_dict.get("mktcap_cr"),
+            "rel_volume": feat_dict.get("rel_volume") or feat_dict.get("rvol"),
+            "close_loc": feat_dict.get("close_loc") or feat_dict.get("close_location"),
+            "price_change_pct": feat_dict.get("price_change_pct"),
+        }
+        funds = Fundamental.query.filter_by(symbol=symbol_upper).order_by(Fundamental.result_date.desc()).limit(4).all()
+        financials = [f.to_dict() for f in funds]
+        try:
+            rows = db.session.execute(
+                db.text(
+                    "SELECT id, symbol, event_date, event_type, headline, sentiment FROM corporate_events "
+                    "WHERE symbol = :s ORDER BY event_date DESC LIMIT 5"
+                ),
+                {"s": symbol_upper},
+            ).fetchall()
+            announcements = [dict(r._mapping) for r in rows]
+        except Exception:
+            announcements = []
+
+        ai_res = ai_service.generate_thesis_and_reasoning(symbol_upper, technicals, financials, announcements)
+        cache[cache_key] = {"thesis": ai_res.get("thesis"), "reasoning": ai_res.get("reasoning")}
+        _save_ep_cache(cache)
+
+        return {
+            "symbol": symbol_upper,
+            "ai_thesis": ai_res.get("thesis"),
+            "ai_reasoning": ai_res.get("reasoning"),
+            "cached": False,
+        }
+
     def get_ep_themes(self, types_param: str = '') -> List[Dict[str, Any]]:
         """Group latest EP candidates into themes/sectors."""
         latest_date = db.session.query(db.func.max(EpFeature.feature_date)).scalar()

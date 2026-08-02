@@ -182,8 +182,8 @@ class MomentumAnalyzer:
             else:
                 details['criteria_not_met'].append('Weak Quant Signals')
 
-            # Ensure score doesn't exceed maximum
-            score = min(score, 20)
+            # Ensure score doesn't exceed maximum and round to 2 decimal places
+            score = round(min(score, 20), 2)
 
             details['total_score'] = score
             details['max_score'] = 20

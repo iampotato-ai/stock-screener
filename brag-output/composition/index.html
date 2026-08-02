@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0">
+  <title>MomentumScan Brag Video</title>
+  <style>
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: swap;
+      src: local('Inter'), local('Inter-Regular'), system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #0b0f19;
+      color: #f8fafc;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    #app {
+      width: 1920px;
+      height: 1080px;
+      position: relative;
+      background: #0b0f19;
+      overflow: hidden;
+    }
+
+    /* Ambient Background Effects */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.6;
+    }
+
+    .glow-aura {
+      position: absolute;
+      width: 800px;
+      height: 800px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(124, 58, 237, 0.05) 50%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      filter: blur(60px);
+    }
+
+    /* Header Nav Bar Mockup */
+    .app-header {
+      position: absolute;
+      top: 40px;
+      left: 80px;
+      right: 80px;
+      height: 70px;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      z-index: 10;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: #10b981;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #000000;
+      font-size: 20px;
+    }
+
+    .logo-text {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+
+    .logo-badge {
+      background: #064e3b;
+      color: #34d399;
+      border: 1px solid #10b981;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+      font-family: monospace;
+    }
+
+    .nav-items {
+      display: flex;
+      gap: 28px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+
+    .nav-item.active {
+      color: #34d399;
+      border-bottom: 2px solid #34d399;
+      padding-bottom: 4px;
+    }
+
+    /* Scene Containers */
+    .scene {
+      position: absolute;
+      inset: 0;
+      top: 130px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 80px;
+      opacity: 0;
+      transform: scale(0.96);
+      transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+    }
+
+    .scene.active {
+      display: flex;
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Scene 1: Hook & Speedometer */
+    .hook-title {
+      font-size: 64px;
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      color: #ffffff;
+      text-align: center;
+    }
+
+    .hook-subtitle {
+      font-size: 24px;
+      color: #34d399;
+      font-weight: 800;
+      margin-bottom: 48px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+
+    .dial-container {
+      width: 480px;
+      height: 280px;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .dial-svg {
+      width: 280px;
+      height: 150px;
+    }
+
+    .dial-score {
+      font-size: 54px;
+      font-weight: 900;
+      color: #34d399;
+      font-family: monospace;
+      margin-top: 10px;
+    }
+
+    .dial-label {
+      background: #064e3b;
+      color: #34d399;
+      border: 1px solid #10b981;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-top: 8px;
+    }
+
+    /* Scene 2: EP Screener & Bull Snort Scanner */
+    .scene-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      width: 100%;
+      max-width: 1500px;
+    }
+
+    .card {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      padding: 32px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stock-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: #1e293b;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      border-left: 4px solid #10b981;
+    }
+
+    .stock-symbol {
+      font-weight: 800;
+      font-size: 18px;
+      font-family: monospace;
+      color: #ffffff;
+    }
+
+    .stock-change {
+      color: #34d399;
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .tag-ep {
+      background: #064e3b;
+      color: #34d399;
+      border: 1px solid #10b981;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .volume-bar-item {
+      margin-top: 16px;
+    }
+
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #f8fafc;
+    }
+
+    .bar-track {
+      height: 14px;
+      background: #1e293b;
+      border-radius: 7px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 7px;
+    }
+
+    .fill-blue { background: #3b82f6; width: 85%; }
+    .fill-orange { background: #f97316; width: 22%; }
+    .fill-green { background: #10b981; width: 92%; }
+
+    /* Scene 3: EnsembleCast Multi-Model AI */
+    .ai-card {
+      width: 100%;
+      max-width: 1200px;
+      background: #0f172a;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      border-radius: 28px;
+      padding: 48px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+      text-align: center;
+    }
+
+    .ai-header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #3b0764;
+      color: #e9d5ff;
+      border: 1px solid #a855f7;
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 800;
+      margin-bottom: 20px;
+    }
+
+    .ai-title {
+      font-size: 42px;
+      font-weight: 900;
+      margin-bottom: 12px;
+      letter-spacing: -1px;
+      color: #ffffff;
+    }
+
+    .model-bar-container {
+      margin: 36px 0;
+    }
+
+    .model-bar {
+      height: 44px;
+      background: #1e293b;
+      border-radius: 12px;
+      display: flex;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-weight: 900;
+      font-size: 15px;
+    }
+
+    .segment-kronos { background: #c084fc; color: #000000; width: 45%; display: flex; align-items: center; justify-content: center; font-weight: 900; }
+    .segment-prophet { background: #fb923c; color: #000000; width: 35%; display: flex; align-items: center; justify-content: center; font-weight: 900; }
+    .segment-arima { background: #22d3ee; color: #000000; width: 20%; display: flex; align-items: center; justify-content: center; font-weight: 900; }
+
+    .conviction-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+      background: #064e3b;
+      border: 2px solid #10b981;
+      padding: 16px 36px;
+      border-radius: 16px;
+    }
+
+    .conviction-title {
+      font-size: 24px;
+      font-weight: 900;
+      color: #34d399;
+      letter-spacing: 1px;
+    }
+
+    .conviction-target {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      font-family: monospace;
+    }
+
+    /* Scene 4: Outro */
+    .outro-card {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .outro-logo-big {
+      width: 100px;
+      height: 100px;
+      background: #10b981;
+      border-radius: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 56px;
+      font-weight: 900;
+      color: #000000;
+      margin-bottom: 28px;
+    }
+
+    .outro-title {
+      font-size: 72px;
+      font-weight: 900;
+      letter-spacing: -2px;
+      margin-bottom: 16px;
+      color: #ffffff;
+    }
+
+    .outro-subtitle {
+      font-size: 28px;
+      color: #cbd5e1;
+      font-weight: 600;
+      margin-bottom: 40px;
+      max-width: 800px;
+    }
+
+    .cta-button {
+      background: #10b981;
+      color: #000000;
+      font-size: 22px;
+      font-weight: 900;
+      padding: 18px 48px;
+      border-radius: 14px;
+      border: none;
+      letter-spacing: 0.5px;
+    }
+  </style>
+</head>
+<body data-composition-id="brag-main" data-width="1920" data-height="1080" data-start="0" data-duration="18.0">
+
+  <!-- Root Composition Container -->
+  <div id="app">
+
+    <!-- Audio track -->
+    <audio id="bg-audio" data-start="0" src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"></audio>
+
+    <!-- Ambient BG -->
+    <div class="bg-grid"></div>
+    <div class="glow-aura"></div>
+
+    <!-- App Header -->
+    <div class="app-header">
+      <div class="logo-group">
+        <div class="logo-icon">M</div>
+        <div class="logo-text">MomentumScan</div>
+        <div class="logo-badge">NSE INDIA</div>
+      </div>
+      <div class="nav-items">
+        <div class="nav-item active">Regime Dashboard</div>
+        <div class="nav-item">Episodic Pivots</div>
+        <div class="nav-item">EnsembleCast AI</div>
+        <div class="nav-item">Bull Snort</div>
+        <div class="nav-item">RRG Rotation</div>
+      </div>
+    </div>
+
+    <!-- Scene 1: Hook & Speedometer -->
+    <div class="scene" id="scene-1">
+      <div class="hook-title">Stop Guessing NSE Breakouts</div>
+      <div class="hook-subtitle">Live Institutional Momentum Cockpit</div>
+      
+      <div class="dial-container">
+        <svg class="dial-svg" viewBox="0 0 200 110">
+          <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="18" stroke-linecap="round"/>
+          <path id="dial-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#10b981" stroke-width="18" stroke-dasharray="251.2" stroke-dashoffset="251.2" stroke-linecap="round"/>
+          <circle cx="100" cy="100" r="8" fill="#fff"/>
+          <line id="dial-needle" x1="100" y1="100" x2="35" y2="100" stroke="#fff" stroke-width="4" stroke-linecap="round" style="transform-origin: 100px 100px;"/>
+        </svg>
+        <div class="dial-score" id="score-counter">0</div>
+        <div class="dial-label">EXTREME GREED</div>
+      </div>
+    </div>
+
+    <!-- Scene 2: EP Screener & Bull Snort Scanner -->
+    <div class="scene" id="scene-2">
+      <div class="scene-grid">
+        <div class="card">
+          <div class="card-title">
+            <span>🚀 Episodic Pivot (EP) Screener</span>
+            <span class="tag-ep">LIVE BREADTH</span>
+          </div>
+          <div class="stock-row">
+            <div>
+              <div class="stock-symbol">TATAMOTORS</div>
+              <div style="font-size: 13px; color: #cbd5e1;">Volume 4.2x Avg • Post-Earnings Reprice</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="stock-change">+8.4%</div>
+              <div class="tag-ep">EP TRIGGERED</div>
+            </div>
+          </div>
+          <div class="stock-row">
+            <div>
+              <div class="stock-symbol">RELIANCE</div>
+              <div style="font-size: 13px; color: #cbd5e1;">Stage 2 Breakout • Sugar Baby</div>
+            </div>
+            <div style="text-align: right;">
+              <div class="stock-change">+4.1%</div>
+              <div class="tag-ep">EP TRIGGERED</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span>📈 Bull Snort Volume Scanner</span>
+            <span style="font-size: 14px; color: #cbd5e1;">Institutional Flow</span>
+          </div>
+          <div class="volume-bar-item">
+            <div class="bar-label">
+              <span>Institutional Accumulation (Blue Bar)</span>
+              <span style="color: #60a5fa;">85% Vol Surge</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill fill-blue"></div></div>
+          </div>
+          <div class="volume-bar-item">
+            <div class="bar-label">
+              <span>Supply Dry-Up (Orange Bar)</span>
+              <span style="color: #fb923c;">Low Vol Tight Base</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill fill-orange"></div></div>
+          </div>
+          <div class="volume-bar-item">
+            <div class="bar-label">
+              <span>50-Day DMA Expansion</span>
+              <span style="color: #34d399;">92% Conviction</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill fill-green"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 3: EnsembleCast AI Deep Dive -->
+    <div class="scene" id="scene-3">
+      <div class="ai-card">
+        <div class="ai-header-badge">🧠 ENSEMBLECAST MULTI-MODEL PREDICTOR</div>
+        <div class="ai-title">Kronos + Prophet + ARIMA Forecast</div>
+        <p style="color: #cbd5e1; font-size: 18px;">Rolling MAPE-Weighted Deep Learning & Time-Series Ensemble</p>
+
+        <div class="model-bar-container">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; font-weight: 700; color: #cbd5e1;">
+            <span>Kronos Deep Learning (45%)</span>
+            <span>Meta Prophet (35%)</span>
+            <span>ARIMA (20%)</span>
+          </div>
+          <div class="model-bar">
+            <div class="segment-kronos">KRONOS AI</div>
+            <div class="segment-prophet">PROPHET</div>
+            <div class="segment-arima">ARIMA</div>
+          </div>
+        </div>
+
+        <div class="conviction-box">
+          <div class="conviction-title">⚡ HIGH CONVICTION SIGNAL</div>
+          <div class="conviction-target">Target: +6.8% (5-Day Expected Move)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scene 4: Outro -->
+    <div class="scene" id="scene-4">
+      <div class="outro-card">
+        <div class="outro-logo-big">M</div>
+        <div class="outro-title">MomentumScan</div>
+        <div class="outro-subtitle">Institutional-Grade Swing & Intraday Stock Screener for NSE India</div>
+        <button class="cta-button">Launch Trading Cockpit</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const scenes = [
+      document.getElementById('scene-1'),
+      document.getElementById('scene-2'),
+      document.getElementById('scene-3'),
+      document.getElementById('scene-4')
+    ];
+
+    function renderAtTime(elapsedSeconds) {
+      if (elapsedSeconds < 4.0) {
+        scenes.forEach((s, i) => s.classList.toggle('active', i === 0));
+        const score = Math.min(84, Math.floor((elapsedSeconds / 3.0) * 84));
+        document.getElementById('score-counter').innerText = score;
+        
+        const offset = 251.2 * (1 - Math.min(0.84, (elapsedSeconds / 3.0) * 0.84));
+        document.getElementById('dial-arc').style.strokeDashoffset = offset;
+        
+        const angle = Math.min(151.2, (elapsedSeconds / 3.0) * 151.2);
+        document.getElementById('dial-needle').style.transform = `rotate(${angle}deg)`;
+      } else if (elapsedSeconds < 8.5) {
+        scenes.forEach((s, i) => s.classList.toggle('active', i === 1));
+      } else if (elapsedSeconds < 13.5) {
+        scenes.forEach((s, i) => s.classList.toggle('active', i === 2));
+      } else {
+        scenes.forEach((s, i) => s.classList.toggle('active', i === 3));
+      }
+    }
+
+    // Register Hyperframes timelines
+    window.__timelines = window.__timelines || {};
+    window.__timelines['brag-main'] = {
+      duration: 18.0,
+      seek: function(timeInSeconds) {
+        renderAtTime(timeInSeconds);
+      }
+    };
+
+    // Initial render at frame 0
+    renderAtTime(0);
+  </script>
+</body>
+</html>

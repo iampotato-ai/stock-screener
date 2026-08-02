@@ -19,4 +19,8 @@ from . import legacy_routes  # noqa: F401
 from . import score  # noqa: F401
 from . import events  # noqa: F401
 from . import ai_analysis  # noqa: F401
-# Add other modules as they are created
+from . import fear_greed  # noqa: F401
+from . import market_brief  # noqa: F401
+from . import signal_score  # noqa: F401
+from . import insider_transactions  # noqa: F401
+# Add other modules as they are created

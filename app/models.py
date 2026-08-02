@@ -148,6 +148,39 @@ class BreadthHistory(BaseModel):
         }
 
 
+class FearGreedHistory(BaseModel):
+    """India Fear & Greed Index history records."""
+    __tablename__ = 'fear_greed_history'
+
+    date = db.Column(db.Date, primary_key=True, default=datetime.utcnow)
+    time = db.Column(db.Time, primary_key=True, default=lambda: datetime.utcnow().time())
+    composite_score = db.Column(db.Integer, nullable=False)
+    label = db.Column(db.String(50), nullable=False)
+    momentum_score = db.Column(db.Float)
+    strength_score = db.Column(db.Float)
+    breadth_score = db.Column(db.Float)
+    volatility_score = db.Column(db.Float)
+    ad_score = db.Column(db.Float)
+    sub_indicators_json = db.Column(db.JSON)
+
+    def to_dict(self):
+        base_dict = super().to_dict()
+        return {
+            'date': base_dict.get('date'),
+            'time': base_dict.get('time'),
+            'score': self.composite_score,
+            'label': self.label,
+            'subIndicators': {
+                'momentum': self.momentum_score,
+                'strength': self.strength_score,
+                'breadth': self.breadth_score,
+                'volatility': self.volatility_score,
+                'adMomentum': self.ad_score,
+            },
+            'details': self.sub_indicators_json or {}
+        }
+
+
 class KronosForecast(BaseModel):
     """Kronos forecast predictions."""
     __tablename__ = 'kronos_forecasts'
@@ -574,3 +607,53 @@ class NewsFetchLog(BaseModel):
     error_message = db.Column(db.Text)
     records_count = db.Column(db.Integer, default=0)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class MarketBrief(BaseModel):
+    """SQLAlchemy model for daily pre-market brief summaries."""
+    __tablename__ = 'market_briefs'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    brief_date = db.Column(db.Date, nullable=False, unique=True, index=True)
+    regime_score = db.Column(db.Integer, default=50)
+    regime_band = db.Column(db.String(30), default='Neutral')
+    headline = db.Column(db.String(500), nullable=False)
+    macro_summary = db.Column(db.Text)
+    sector_catalysts = db.Column(db.JSON)
+    top_actionable_stocks = db.Column(db.JSON)
+    key_risks = db.Column(db.JSON)
+    is_fallback = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        d = super().to_dict()
+        d['brief_date'] = self.brief_date.strftime('%Y-%m-%d') if self.brief_date else None
+        d['created_at'] = self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None
+        return d
+
+
+class InsiderTransaction(BaseModel):
+    """SQLAlchemy model for insider and promoter transactions."""
+    __tablename__ = 'insider_transactions'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    symbol = db.Column(db.String(20), nullable=False, index=True)
+    exchange = db.Column(db.String(10), default='NSE')
+    insider_name = db.Column(db.String(150), nullable=False)
+    category = db.Column(db.String(50), default='Promoter')  # 'Promoter' | 'Director' | 'KMP' | 'Institutional'
+    transaction_type = db.Column(db.String(20), nullable=False)  # 'BUY' | 'SELL' | 'PLEDGE' | 'UNPLEDGE'
+    mode = db.Column(db.String(30), default='OPEN_MARKET')     # 'OPEN_MARKET' | 'OFF_MARKET' | 'BLOCK_DEAL' | 'PLEDGE'
+    num_shares = db.Column(db.BigInteger, default=0)
+    price = db.Column(db.Float, default=0.0)
+    value_cr = db.Column(db.Float, default=0.0)              # Transaction value in INR Crores
+    holding_post_pct = db.Column(db.Float, nullable=True)     # Holding % after transaction
+    transaction_date = db.Column(db.Date, nullable=False, index=True)
+    disclosure_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        d = super().to_dict()
+        d['transaction_date'] = self.transaction_date.strftime('%Y-%m-%d') if self.transaction_date else None
+        d['disclosure_date'] = self.disclosure_date.strftime('%Y-%m-%d') if self.disclosure_date else None
+        d['created_at'] = self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None
+        return d

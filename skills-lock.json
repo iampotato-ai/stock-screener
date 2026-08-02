@@ -7,6 +7,12 @@
       "skillPath": "skills/agent-browser/SKILL.md",
       "computedHash": "228f87d57035100d9dc6efcfc05aafd4b6e3962adacaa04b8217ab2fadb15dc8"
     },
+    "brag": {
+      "source": "latent-spaces/brag",
+      "sourceType": "github",
+      "skillPath": "skills/brag/SKILL.md",
+      "computedHash": "a7d58533309a1c45d70cde2782d51b641323e5d855f7da1c052d8dbd91f12b8a"
+    },
     "context7-cli": {
       "source": "upstash/context7",
       "sourceType": "github",

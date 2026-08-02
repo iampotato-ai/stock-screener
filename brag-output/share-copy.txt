@@ -1,0 +1,3 @@
+Introducing MomentumScan: The institutional-grade swing & intraday momentum stock screener for NSE India.
+Powered by Episodic Pivot scoring, Bull Snort institutional volume scanner, and EnsembleCast multi-model AI forecasts (Kronos, Prophet, ARIMA).
+Stop guessing breakouts — upgrade your trading cockpit.

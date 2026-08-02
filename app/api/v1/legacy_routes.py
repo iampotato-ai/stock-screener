@@ -7454,12 +7454,16 @@ ep_backtest_prep_status = {
 }
 ep_backtest_prep_lock = threading.Lock()
 
-def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date="2025-12-31"):
+def run_historical_backfill(symbols=None, start_date="2019-01-01", end_date=None):
     global ep_backtest_prep_status
     import sqlite3
     import time
     from datetime import datetime
-    
+
+    # Default end_date to today so we always cover up to the current date
+    if end_date is None:
+        end_date = datetime.now().strftime("%Y-%m-%d")
+
     try:
         # Determine symbols list
         conn = sqlite3.connect('scan_history.db')

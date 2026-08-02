@@ -105,6 +105,57 @@ def get_ep_detail(symbol):
         return jsonify(error=str(e)), 500
 
 
+@api_bp.route('/ep/<symbol>/detail/base', methods=['GET'])
+def get_ep_detail_base(symbol):
+    """Fast DB-only payload: scores, fundamentals, watchlist.
+    
+    Also fires NSE event enrichment as a background thread so events
+    will be fresher when the /events endpoint is queried shortly after.
+    """
+    try:
+        data = ep_service.get_ep_detail_base(symbol)
+        return jsonify(data)
+    except ValueError as e:
+        return jsonify(error=str(e)), 404
+    except Exception as e:
+        current_app.logger.error(f"Error getting EP detail base for {symbol}: {e}")
+        return jsonify(error=str(e)), 500
+
+
+@api_bp.route('/ep/<symbol>/detail/history', methods=['GET'])
+def get_ep_detail_history(symbol):
+    """Return 6-month OHLCV price history (Yahoo Finance, cached 15 min)."""
+    try:
+        data = ep_service.get_ep_detail_history(symbol)
+        return jsonify(data)
+    except Exception as e:
+        current_app.logger.error(f"Error getting EP price history for {symbol}: {e}")
+        return jsonify(error=str(e)), 500
+
+
+@api_bp.route('/ep/<symbol>/detail/events', methods=['GET'])
+def get_ep_detail_events(symbol):
+    """Return corporate events from DB (no blocking network call)."""
+    try:
+        data = ep_service.get_ep_detail_events(symbol)
+        return jsonify(data)
+    except Exception as e:
+        current_app.logger.error(f"Error getting EP events for {symbol}: {e}")
+        return jsonify(error=str(e)), 500
+
+
+@api_bp.route('/ep/<symbol>/detail/thesis', methods=['GET'])
+def get_ep_detail_thesis(symbol):
+    """Return AI thesis + reasoning. Cache-first; calls LLM only on miss."""
+    feature_date = request.args.get('feature_date', '').strip() or None
+    try:
+        data = ep_service.get_ep_detail_thesis(symbol, feature_date=feature_date)
+        return jsonify(data)
+    except Exception as e:
+        current_app.logger.error(f"Error getting EP thesis for {symbol}: {e}")
+        return jsonify(error=str(e)), 500
+
+
 @api_bp.route('/ep/themes', methods=['GET'])
 def get_ep_themes():
     """Get EP theme groupings."""

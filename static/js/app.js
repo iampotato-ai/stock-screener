@@ -6916,6 +6916,23 @@ function openTradeDrawerFromRRG(ticker) {
     
     document.getElementById('drawer-ticker').textContent = stub.clean_ticker;
     document.getElementById('drawer-name').textContent = `${stub.sector || 'Unknown Sector'} · Universe Stock`;
+
+    // Fetch and render 360° AI Signal Score
+    const sigContainer = document.getElementById('trade-drawer-signal-score');
+    if (sigContainer) {
+        sigContainer.innerHTML = `
+            <div style="background:rgba(255,255,255,0.02); border:1px dashed rgba(255,255,255,0.08); border-radius:8px; padding:0.6rem; text-align:center; font-size:0.72rem; color:var(--color-text-muted);">
+                Analyzing 360° Signal Score & Trade Levels...
+            </div>`;
+        fetch(`/api/v1/signal-score/${stub.clean_ticker}?exchange=NSE&include_ai=true`)
+            .then(r => r.ok ? r.json() : null)
+            .then(sig => {
+                if (sig && window.renderSignalScoreCard) {
+                    window.renderSignalScoreCard(sig, sigContainer);
+                }
+            })
+            .catch(() => { if (sigContainer) sigContainer.innerHTML = ''; });
+    }
     
     // Setup pill
     const pillEl = document.getElementById('drawer-setup-pill');
@@ -7671,6 +7688,86 @@ function renderPatternChips(signals, containerEl) {
 
 window.currentTradeStock = null;
 
+window.renderInsiderActivityCard = function(data, container) {
+    if (!data || !data.success || !container) return;
+
+    try {
+        const metrics = data.metrics || {};
+        const badges = Array.isArray(data.badges) ? data.badges : [];
+        const txs = Array.isArray(data.recent_transactions) ? data.recent_transactions : [];
+        const net30 = parseFloat(metrics.net_promoter_buy_30d) || 0;
+        const net90 = parseFloat(metrics.net_promoter_buy_90d) || 0;
+        const bulkCount = parseInt(metrics.bulk_deal_count_30d) || 0;
+        const score = data.insider_score || 50;
+
+        const netColor = net30 > 0 ? '#22c55e' : (net30 < 0 ? '#ef4444' : 'var(--color-text-secondary)');
+        const netText = net30 > 0 ? `+₹${net30.toFixed(2)} Cr (Buy)` : (net30 < 0 ? `-₹${Math.abs(net30).toFixed(2)} Cr (Sell)` : 'Neutral (₹0 Cr)');
+
+        const badgesHtml = badges.map(b => {
+            const bStr = String(b);
+            let bg = 'rgba(255,255,255,0.08)';
+            let color = '#e2e8f0';
+            if (bStr.includes('BUY')) { bg = 'rgba(34,197,94,0.15)'; color = '#22c55e'; }
+            else if (bStr.includes('SELL')) { bg = 'rgba(239,68,68,0.15)'; color = '#ef4444'; }
+            else if (bStr.includes('BLOCK')) { bg = 'rgba(168,85,247,0.15)'; color = '#c084fc'; }
+            else if (bStr.includes('PLEDGE')) { bg = 'rgba(245,158,11,0.15)'; color = '#f59e0b'; }
+            return `<span style="background:${bg}; color:${color}; border:1px solid ${color}44; padding:2px 8px; border-radius:12px; font-size:0.68rem; font-weight:700;">${bStr}</span>`;
+        }).join(' ');
+
+        const txRows = txs.slice(0, 4).map(t => `
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.03); font-size:0.68rem;">
+                <td style="padding:4px 0; color:var(--color-text-secondary);">${t.transaction_date || '—'}</td>
+                <td style="padding:4px 0; color:var(--color-text-primary); font-weight:600;">${t.insider_name || 'Promoter Group'}</td>
+                <td style="padding:4px 0; font-weight:700; color:${t.transaction_type === 'BUY' ? '#22c55e' : '#ef4444'};">${t.transaction_type || 'BUY'}</td>
+                <td style="padding:4px 0; text-align:right; font-weight:700; color:var(--color-text-primary);">₹${(parseFloat(t.value_cr) || 0).toFixed(2)} Cr</td>
+            </tr>
+        `).join('');
+
+        container.innerHTML = `
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:0.85rem 1rem;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-size:0.75rem; font-weight:700; color:var(--color-text-muted); letter-spacing:0.5px;">INSIDER & PROMOTER</span>
+                        ${badgesHtml}
+                    </div>
+                    <div style="font-size:0.75rem; font-weight:700; color:var(--color-text-muted);">
+                        Score: <strong style="color:#a855f7;">${score}/100</strong>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-bottom:0.5rem; text-align:center; background:rgba(0,0,0,0.25); border-radius:6px; padding:0.5rem; border:1px solid rgba(255,255,255,0.04);">
+                    <div>
+                        <div style="font-size:0.62rem; color:var(--color-text-muted); font-weight:600;">30D NET FLOW</div>
+                        <div style="font-size:0.75rem; font-weight:800; color:${netColor}; margin-top:2px;">${netText}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.62rem; color:var(--color-text-muted); font-weight:600;">90D NET FLOW</div>
+                        <div style="font-size:0.75rem; font-weight:800; color:${net90 >= 0 ? '#22c55e' : '#ef4444'}; margin-top:2px;">₹${net90.toFixed(2)} Cr</div>
+                    </div>
+                    <div>
+                        <div style="font-size:0.62rem; color:var(--color-text-muted); font-weight:600;">BLOCK DEALS</div>
+                        <div style="font-size:0.75rem; font-weight:800; color:var(--color-text-primary); margin-top:2px;">${bulkCount} trade(s)</div>
+                    </div>
+                </div>
+
+                ${txs.length ? `
+                    <div style="font-size:0.65rem; font-weight:700; color:var(--color-text-muted); margin-bottom:4px; letter-spacing:0.5px;">RECENT DISCLOSURES</div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <tbody>${txRows}</tbody>
+                    </table>
+                ` : `
+                    <div style="font-size:0.68rem; color:var(--color-text-muted); text-align:center; padding:6px 0; font-style:italic; border-top:1px solid rgba(255,255,255,0.04);">
+                        No promoter or insider disclosures filed in trailing 90 days
+                    </div>
+                `}
+            </div>
+        `;
+    } catch (e) {
+        console.error('Error rendering insider activity card:', e);
+        container.innerHTML = '';
+    }
+};
+
 function openTradeDrawer(ticker) {
     const stock = stocksData.find(s => s.clean_ticker === ticker);
     if (!stock) return;
@@ -7684,6 +7781,64 @@ function openTradeDrawer(ticker) {
     // Header
     document.getElementById('drawer-ticker').textContent = stock.clean_ticker;
     document.getElementById('drawer-name').textContent = stock.description;
+
+    // Fetch and render 360° AI Signal Score
+    const sigContainer = document.getElementById('trade-drawer-signal-score');
+    if (sigContainer) {
+        sigContainer.innerHTML = `
+            <div style="background:rgba(255,255,255,0.02); border:1px dashed rgba(255,255,255,0.08); border-radius:8px; padding:0.6rem; text-align:center; font-size:0.72rem; color:var(--color-text-muted);">
+                Analyzing 360° Signal Score & Trade Levels...
+            </div>`;
+        fetch(`/api/v1/signal-score/${stock.clean_ticker}?exchange=NSE&include_ai=true`)
+            .then(r => r.ok ? r.json() : null)
+            .then(sig => {
+                if (sig && window.renderSignalScoreCard) {
+                    window.renderSignalScoreCard(sig, sigContainer);
+                }
+            })
+            .catch(() => { if (sigContainer) sigContainer.innerHTML = ''; });
+    }
+
+    // Fetch and render Insider Activity
+    const insContainer = document.getElementById('trade-drawer-insider-activity');
+    if (insContainer) {
+        insContainer.innerHTML = `
+            <div style="background:rgba(255,255,255,0.02); border:1px dashed rgba(255,255,255,0.08); border-radius:8px; padding:0.6rem; text-align:center; font-size:0.72rem; color:var(--color-text-muted);">
+                Analyzing Insider & Promoter Activity...
+            </div>`;
+        fetch(`/api/v1/insider-transactions/${stock.clean_ticker}?exchange=NSE`)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+            })
+            .then(ins => {
+                if (ins && ins.success && window.renderInsiderActivityCard) {
+                    window.renderInsiderActivityCard(ins, insContainer);
+                } else {
+                    throw new Error('Invalid JSON payload');
+                }
+            })
+            .catch(err => {
+                console.warn('Insider activity fetch failed, rendering neutral fallback card:', err);
+                if (insContainer && window.renderInsiderActivityCard) {
+                    window.renderInsiderActivityCard({
+                        symbol: stock.clean_ticker,
+                        exchange: 'NSE',
+                        insider_score: 50.0,
+                        metrics: {
+                            net_promoter_buy_30d: 0.0,
+                            net_promoter_buy_90d: 0.0,
+                            bulk_deal_count_30d: 0,
+                            promoter_pledged_pct: 0.0,
+                            pledge_change_pct: 0.0
+                        },
+                        badges: [],
+                        recent_transactions: [],
+                        success: true
+                    }, insContainer);
+                }
+            });
+    }
     
     // Setup Pill
     const pillEl = document.getElementById('drawer-setup-pill');
@@ -12534,13 +12689,15 @@ function fetchEPListings(loadMore = false) {
 function openEPDetailModal(symbol) {
     const modal = document.getElementById('ep-detail-modal');
     if (!modal) return;
-    
+
+    // ── Reset header to "loading" state ─────────────────────────────────────
     document.getElementById('ep-detail-title-ticker').textContent = symbol;
     document.getElementById('ep-detail-type').textContent = 'Loading...';
     document.getElementById('ep-detail-score').textContent = '...';
     document.getElementById('ep-detail-confidence').textContent = '...';
     document.getElementById('ep-detail-mktcap').textContent = '';
-    
+
+    // Reset AI section
     const aiSection = document.getElementById('ep-detail-ai-section');
     if (aiSection) {
         aiSection.classList.add('hidden');
@@ -12548,7 +12705,6 @@ function openEPDetailModal(symbol) {
         const reasoningContent = document.getElementById('ep-detail-ai-reasoning-content');
         if (reasoningContent) reasoningContent.classList.add('hidden');
     }
-    
     const aiFundCard = document.getElementById('ep-detail-ai-fund-card');
     if (aiFundCard) {
         aiFundCard.classList.add('hidden');
@@ -12560,317 +12716,180 @@ function openEPDetailModal(symbol) {
         aiFundBtn.innerHTML = '<span>🤖</span> Analyze Fundamentals';
         aiFundBtn.disabled = false;
     }
-    
+
+    // ── Section loading skeletons ────────────────────────────────────────────
     const chartContainer = document.getElementById('ep-detail-chart');
     if (chartContainer) {
         chartContainer.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Loading chart...</div>';
     }
-    
     const fundTbody = document.getElementById('ep-detail-fundamentals-body');
     fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading financials...</td></tr>`;
-    
     const eventsContainer = document.getElementById('ep-detail-events-container');
     eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Loading events...</div>`;
-    
+
     modal.classList.remove('hidden');
-    
-    EP_API.get(`/api/ep/${symbol}/detail`)
-        .then(data => {
-            if (data.error) {
-                if (typeof showToast === 'function') showToast(`Failed to load details: ${data.error}`, 'error');
-                modal.classList.add('hidden');
-                return;
-            }
-            
-            document.getElementById('ep-detail-title-ticker').textContent = data.symbol;
-            document.getElementById('ep-detail-type').textContent = data.ep_type;
-            document.getElementById('ep-detail-score').textContent = data.ep_score ? data.ep_score.toFixed(2) : '-';
-            
-            const confEl = document.getElementById('ep-detail-confidence');
-            confEl.textContent = data.confidence || 'LOW';
-            confEl.style.color = data.confidence === 'HIGH' ? '#10b981' : data.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af';
-            
-            document.getElementById('ep-detail-mktcap').textContent = data.market_cap_cr ? `| Mkt Cap: ₹${data.market_cap_cr.toLocaleString('en-IN', {maximumFractionDigits:1})} Cr` : '';
-            
-            // Render Price Chart via Lightweight Charts
-            renderEPDetailChart(data.history || []);
 
-            // Populate Quarterly Fundamentals
-            if (!data.fundamentals || data.fundamentals.length === 0) {
-                fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No quarterly financial data available.</td></tr>`;
-            } else {
-                fundTbody.innerHTML = data.fundamentals.map(q => {
-                    const rev = q.revenue !== null ? q.revenue.toFixed(1) : '-';
-                    const revYoY = q.revenue_yoy_pct !== null ? `${q.revenue_yoy_pct > 0 ? '+' : ''}${q.revenue_yoy_pct.toFixed(1)}%` : '-';
-                    const revYoYStyle = q.revenue_yoy_pct !== null ? (q.revenue_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
-                    
-                    const revTrendColor = q.revenue_trend === '▲' ? 'color:#10b981;' : (q.revenue_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
-                    const revTrendBadge = `<span style="${revTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.revenue_trend || '—'}</span>`;
+    // ── Helper: render fundamentals table ───────────────────────────────────
+    function renderFundamentals(fundamentals) {
+        if (!fundamentals || fundamentals.length === 0) {
+            fundTbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No quarterly financial data available.</td></tr>`;
+            return;
+        }
+        fundTbody.innerHTML = fundamentals.map(q => {
+            const rev = q.revenue !== null ? q.revenue.toFixed(1) : '-';
+            const revYoY = q.revenue_yoy_pct !== null ? `${q.revenue_yoy_pct > 0 ? '+' : ''}${q.revenue_yoy_pct.toFixed(1)}%` : '-';
+            const revYoYStyle = q.revenue_yoy_pct !== null ? (q.revenue_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
+            const revTrendColor = q.revenue_trend === '▲' ? 'color:#10b981;' : (q.revenue_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
+            const revTrendBadge = `<span style="${revTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.revenue_trend || '—'}</span>`;
+            const prof = q.net_profit !== null ? q.net_profit.toFixed(1) : '-';
+            const profYoY = q.net_profit_yoy_pct !== null ? `${q.net_profit_yoy_pct > 0 ? '+' : ''}${q.net_profit_yoy_pct.toFixed(1)}%` : '-';
+            const profYoYStyle = q.net_profit_yoy_pct !== null ? (q.net_profit_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
+            const profTrendColor = q.profit_trend === '▲' ? 'color:#10b981;' : (q.profit_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
+            const profTrendBadge = `<span style="${profTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.profit_trend || '—'}</span>`;
+            const eps = q.eps !== null ? q.eps.toFixed(2) : '-';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
+                    <td style="padding: 8px; font-weight:600;">${q.quarter || '-'}</td>
+                    <td style="padding: 8px; color:var(--color-text-secondary);">${q.result_date || '-'}</td>
+                    <td style="padding: 8px; text-align:right;">${rev}</td>
+                    <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}${revTrendBadge}</td>
+                    <td style="padding: 8px; text-align:right;">${prof}</td>
+                    <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}${profTrendBadge}</td>
+                    <td style="padding: 8px; text-align:right;">${eps}</td>
+                </tr>
+            `;
+        }).join('');
+    }
 
-                    const prof = q.net_profit !== null ? q.net_profit.toFixed(1) : '-';
-                    const profYoY = q.net_profit_yoy_pct !== null ? `${q.net_profit_yoy_pct > 0 ? '+' : ''}${q.net_profit_yoy_pct.toFixed(1)}%` : '-';
-                    const profYoYStyle = q.net_profit_yoy_pct !== null ? (q.net_profit_yoy_pct >= 0 ? 'color: var(--color-success, #10b981);' : 'color: var(--color-error, #ef4444);') : '';
-                    
-                    const profTrendColor = q.profit_trend === '▲' ? 'color:#10b981;' : (q.profit_trend === '▼' ? 'color:#ef4444;' : 'color:#9ca3af;');
-                    const profTrendBadge = `<span style="${profTrendColor} font-size: 0.75rem; margin-left: 3px; font-weight:700;">${q.profit_trend || '—'}</span>`;
-
-                    const eps = q.eps !== null ? q.eps.toFixed(2) : '-';
-                    
-                    return `
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.03);">
-                            <td style="padding: 8px; font-weight:600;">${q.quarter || '-'}</td>
-                            <td style="padding: 8px; color:var(--color-text-secondary);">${q.result_date || '-'}</td>
-                            <td style="padding: 8px; text-align:right;">${rev}</td>
-                            <td style="padding: 8px; text-align:right; font-weight:500; ${revYoYStyle}">${revYoY}${revTrendBadge}</td>
-                            <td style="padding: 8px; text-align:right;">${prof}</td>
-                            <td style="padding: 8px; text-align:right; font-weight:500; ${profYoYStyle}">${profYoY}${profTrendBadge}</td>
-                            <td style="padding: 8px; text-align:right;">${eps}</td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-            
-            // Populate Corporate Announcements
-            if (!data.corporate_events || data.corporate_events.length === 0) {
-                eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No corporate events recorded in the last 6 months.</div>`;
-            } else {
-                eventsContainer.innerHTML = data.corporate_events.map(ev => {
-                    const sentClass = ev.sentiment === 1 ? 'sent-positive' : ev.sentiment === -1 ? 'sent-negative' : 'sent-neutral';
-                    const sentText = ev.sentiment === 1 ? '🟢 Positive' : ev.sentiment === -1 ? '🔴 Negative' : '🟡 Neutral';
-                    
-                    const score = ev.catalyst_score ? ev.catalyst_score.toFixed(2) : '-';
-                    const hasNlp = ev.nlp_sentiment_score !== null && ev.nlp_sentiment_score !== undefined;
-                    const nlpSentimentStr = hasNlp ? (ev.nlp_sentiment_score >= 0 ? `+${ev.nlp_sentiment_score.toFixed(2)}` : ev.nlp_sentiment_score.toFixed(2)) : null;
-                    const categoryBadgeText = ev.nlp_category ? ev.nlp_category.toUpperCase() : ev.event_type;
-                    
-                    return `
-                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
-                                <span style="font-weight:700; color:var(--color-text-muted);">${ev.event_date}</span>
-                                <div style="display:flex; gap:0.5rem; align-items:center;">
-                                    <span class="badge" style="background: rgba(255,255,255,0.06); font-size:0.7rem; padding: 1px 4px;">${categoryBadgeText}</span>
-                                    <span class="sentiment-badge ${sentClass}" style="font-size:0.7rem; padding: 1px 4px;">${sentText} ${nlpSentimentStr ? `(${nlpSentimentStr})` : ''}</span>
-                                    <span style="font-weight:600; color:var(--accent-blue);">Cat Score: ${score}</span>
-                                </div>
-                            </div>
-                            <div style="font-size:0.8rem; color:#fff; line-height:1.4;">${ev.headline || '-'}</div>
-                            ${ev.summary ? `<div style="font-size:0.75rem; color:var(--color-text-secondary); font-style:italic; margin-top:0.3rem; background: rgba(255,255,255,0.01); padding: 0.4rem; border-left: 2px solid var(--accent-blue); border-radius: 2px;"><b>Summary:</b> ${ev.summary}</div>` : ''}
-                            ${ev.raw_url ? `<a href="${ev.raw_url}" target="_blank" style="font-size:0.7rem; color:var(--accent-blue); text-decoration:none; align-self:flex-start;">🔗 View Attachment</a>` : ''}
+    // ── Helper: render events list ───────────────────────────────────────────
+    function renderEvents(corporateEvents) {
+        if (!corporateEvents || corporateEvents.length === 0) {
+            eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">No corporate events recorded in the last 6 months.</div>`;
+            return;
+        }
+        eventsContainer.innerHTML = corporateEvents.map(ev => {
+            const sentClass = ev.sentiment === 1 ? 'sent-positive' : ev.sentiment === -1 ? 'sent-negative' : 'sent-neutral';
+            const sentText = ev.sentiment === 1 ? '🟢 Positive' : ev.sentiment === -1 ? '🔴 Negative' : '🟡 Neutral';
+            const score = ev.catalyst_score ? ev.catalyst_score.toFixed(2) : '-';
+            const hasNlp = ev.nlp_sentiment_score !== null && ev.nlp_sentiment_score !== undefined;
+            const nlpSentimentStr = hasNlp ? (ev.nlp_sentiment_score >= 0 ? `+${ev.nlp_sentiment_score.toFixed(2)}` : ev.nlp_sentiment_score.toFixed(2)) : null;
+            const categoryBadgeText = ev.nlp_category ? ev.nlp_category.toUpperCase() : ev.event_type;
+            return `
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem;">
+                        <span style="font-weight:700; color:var(--color-text-muted);">${ev.event_date}</span>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <span class="badge" style="background: rgba(255,255,255,0.06); font-size:0.7rem; padding: 1px 4px;">${categoryBadgeText}</span>
+                            <span class="sentiment-badge ${sentClass}" style="font-size:0.7rem; padding: 1px 4px;">${sentText} ${nlpSentimentStr ? `(${nlpSentimentStr})` : ''}</span>
+                            <span style="font-weight:600; color:var(--accent-blue);">Cat Score: ${score}</span>
                         </div>
-                    `;
-                }).join('');
-            }
-            
-            // Populate AI Thesis & Reasoning
-            const aiSec = document.getElementById('ep-detail-ai-section');
-            if (aiSec) {
-                if (data.ai_thesis) {
-                    aiSec.classList.remove('hidden');
-                    document.getElementById('ep-detail-ai-thesis').textContent = data.ai_thesis;
-                    document.getElementById('ep-detail-ai-reasoning-content').textContent = data.ai_reasoning || 'No reasoning path recorded.';
-                    
-                    // Setup accordion toggle listener
-                    const reasoningToggle = document.getElementById('ep-detail-ai-reasoning-toggle');
-                    if (reasoningToggle) {
-                        const reasoningToggleCloned = reasoningToggle.cloneNode(true);
-                        reasoningToggle.parentNode.replaceChild(reasoningToggleCloned, reasoningToggle);
-                        reasoningToggleCloned.addEventListener('click', () => {
-                            const content = document.getElementById('ep-detail-ai-reasoning-content');
-                            if (content.classList.contains('hidden')) {
-                                content.classList.remove('hidden');
-                            } else {
-                                content.classList.add('hidden');
-                            }
-                        });
-                    }
-                } else {
-                    aiSec.classList.add('hidden');
-                }
-            }
-            
-            // Bind AI Fundamental Analysis Trigger
-            const aiFundTrigger = document.getElementById('btn-ep-detail-ai-fund');
-            if (aiFundTrigger) {
-                const aiFundTriggerCloned = aiFundTrigger.cloneNode(true);
-                aiFundTrigger.parentNode.replaceChild(aiFundTriggerCloned, aiFundTrigger);
-                
-                aiFundTriggerCloned.addEventListener('click', () => {
-                    const fundsData = data.fundamentals || [];
-                    if (fundsData.length === 0) {
-                        if (typeof showToast === 'function') showToast('No quarterly financials available to analyze', 'warning');
-                        return;
-                    }
-                    
-                    aiFundTriggerCloned.disabled = true;
-                    aiFundTriggerCloned.innerHTML = '<span>⏳</span> Analyzing...';
-                    
-                    // Reset card values
-                    const card = document.getElementById('ep-detail-ai-fund-card');
-                    card.classList.add('hidden');
-                    document.getElementById('ep-detail-ai-fund-verdict').textContent = '';
-                    document.getElementById('ep-detail-ai-fund-summary').textContent = '';
-                    
-                    EP_API.post('/api/v1/analyze/fundamentals', { metrics: { quarters: fundsData } })
-                        .then(res => {
-                            if (res.error) {
-                                if (typeof showToast === 'function') showToast(`Analysis failed: ${res.error}`, 'error');
-                            } else {
-                                card.classList.remove('hidden');
-                                document.getElementById('ep-detail-ai-fund-verdict').textContent = res.verdict || 'UNKNOWN';
-                                document.getElementById('ep-detail-ai-fund-summary').textContent = res.summary || 'No summary returned.';
-                                
-                                // Color code the verdict badge
-                                const verdictEl = document.getElementById('ep-detail-ai-fund-verdict');
-                                const v = (res.verdict || '').toUpperCase();
-                                if (v === 'UNDERVALUED' || v === 'GARP') {
-                                    verdictEl.style.background = 'rgba(16, 185, 129, 0.2)';
-                                    verdictEl.style.color = '#34d399';
-                                } else if (v === 'FAIRLY_VALUED') {
-                                    verdictEl.style.background = 'rgba(245, 158, 11, 0.2)';
-                                    verdictEl.style.color = '#fbbf24';
-                                } else {
-                                    verdictEl.style.background = 'rgba(239, 68, 68, 0.2)';
-                                    verdictEl.style.color = '#f87171';
-                                }
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error analyzing fundamentals:', err);
-                            if (typeof showToast === 'function') showToast('Network error during fundamental analysis', 'error');
-                        })
-                        .finally(() => {
-                            aiFundTriggerCloned.disabled = false;
-                            aiFundTriggerCloned.innerHTML = '<span>🤖</span> Analyze Fundamentals';
-                        });
-                });
-            }
-            
-            // Watchlist & Sugar Babies Controls - Fix Stale Closures (Clone Buttons)
-            const addWatchlistBtn = document.getElementById('btn-ep-detail-add-watchlist');
-            const triggerWatchlistBtn = document.getElementById('btn-ep-detail-trigger-watchlist');
-            const removeWatchlistBtn = document.getElementById('btn-ep-detail-remove-watchlist');
-            const addSugarBtn = document.getElementById('btn-ep-detail-add-sugar');
+                    </div>
+                    <div style="font-size:0.8rem; color:#fff; line-height:1.4;">${ev.headline || '-'}</div>
+                    ${ev.summary ? `<div style="font-size:0.75rem; color:var(--color-text-secondary); font-style:italic; margin-top:0.3rem; background: rgba(255,255,255,0.01); padding: 0.4rem; border-left: 2px solid var(--accent-blue); border-radius: 2px;"><b>Summary:</b> ${ev.summary}</div>` : ''}
+                    ${ev.raw_url ? `<a href="${ev.raw_url}" target="_blank" style="font-size:0.7rem; color:var(--accent-blue); text-decoration:none; align-self:flex-start;">🔗 View Attachment</a>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
 
-            let addWatchlistBtnCloned = null;
-            let triggerWatchlistBtnCloned = null;
-            let removeWatchlistBtnCloned = null;
-            let addSugarBtnCloned = null;
+    // ── Helper: bind watchlist & sugar baby buttons ─────────────────────────
+    function bindWatchlistButtons(data) {
+        const addWatchlistBtn = document.getElementById('btn-ep-detail-add-watchlist');
+        const triggerWatchlistBtn = document.getElementById('btn-ep-detail-trigger-watchlist');
+        const removeWatchlistBtn = document.getElementById('btn-ep-detail-remove-watchlist');
+        const addSugarBtn = document.getElementById('btn-ep-detail-add-sugar');
 
-            if (addWatchlistBtn) {
-                addWatchlistBtnCloned = addWatchlistBtn.cloneNode(true);
-                addWatchlistBtn.parentNode.replaceChild(addWatchlistBtnCloned, addWatchlistBtn);
-            }
-            if (triggerWatchlistBtn) {
-                triggerWatchlistBtnCloned = triggerWatchlistBtn.cloneNode(true);
-                triggerWatchlistBtn.parentNode.replaceChild(triggerWatchlistBtnCloned, triggerWatchlistBtn);
-            }
-            if (removeWatchlistBtn) {
-                removeWatchlistBtnCloned = removeWatchlistBtn.cloneNode(true);
-                removeWatchlistBtn.parentNode.replaceChild(removeWatchlistBtnCloned, removeWatchlistBtn);
-            }
-            if (addSugarBtn) {
-                addSugarBtnCloned = addSugarBtn.cloneNode(true);
-                addSugarBtn.parentNode.replaceChild(addSugarBtnCloned, addSugarBtn);
-            }
-            
-            document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
-            document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
+        let addWatchlistBtnCloned = null, triggerWatchlistBtnCloned = null;
+        let removeWatchlistBtnCloned = null, addSugarBtnCloned = null;
 
-            if (data.watchlist_status === 'ACTIVE') {
-                if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Update Watchlist';
-                if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'inline-block';
-                if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'inline-block';
-            } else {
-                if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Add to Watchlist';
-                if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'none';
-                if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'none';
-            }
-            
-            if (data.is_sugar_baby === 1) {
-                if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Remove Sugar Baby';
-            } else {
-                if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Add to Sugar Babies';
-            }
-            
-            // Re-bind listeners on fresh cloned buttons (using symbol from lexical scope)
-            if (addWatchlistBtnCloned) {
-                addWatchlistBtnCloned.addEventListener('click', () => {
-                    const stopVal = document.getElementById('ep-detail-stop-input').value;
-                    const notesVal = document.getElementById('ep-detail-notes-input').value;
-                    
-                    EP_API.post('/api/ep/watchlist', {
-                        symbol: symbol,
-                        stop_price: stopVal,
-                        notes: notesVal
-                    })
+        if (addWatchlistBtn) {
+            addWatchlistBtnCloned = addWatchlistBtn.cloneNode(true);
+            addWatchlistBtn.parentNode.replaceChild(addWatchlistBtnCloned, addWatchlistBtn);
+        }
+        if (triggerWatchlistBtn) {
+            triggerWatchlistBtnCloned = triggerWatchlistBtn.cloneNode(true);
+            triggerWatchlistBtn.parentNode.replaceChild(triggerWatchlistBtnCloned, triggerWatchlistBtn);
+        }
+        if (removeWatchlistBtn) {
+            removeWatchlistBtnCloned = removeWatchlistBtn.cloneNode(true);
+            removeWatchlistBtn.parentNode.replaceChild(removeWatchlistBtnCloned, removeWatchlistBtn);
+        }
+        if (addSugarBtn) {
+            addSugarBtnCloned = addSugarBtn.cloneNode(true);
+            addSugarBtn.parentNode.replaceChild(addSugarBtnCloned, addSugarBtn);
+        }
+
+        document.getElementById('ep-detail-stop-input').value = data.watchlist_stop || '';
+        document.getElementById('ep-detail-notes-input').value = data.watchlist_notes || '';
+
+        if (data.watchlist_status === 'ACTIVE') {
+            if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Update Watchlist';
+            if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'inline-block';
+            if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'inline-block';
+        } else {
+            if (addWatchlistBtnCloned) addWatchlistBtnCloned.textContent = 'Add to Watchlist';
+            if (triggerWatchlistBtnCloned) triggerWatchlistBtnCloned.style.display = 'none';
+            if (removeWatchlistBtnCloned) removeWatchlistBtnCloned.style.display = 'none';
+        }
+        if (data.is_sugar_baby === 1) {
+            if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Remove Sugar Baby';
+        } else {
+            if (addSugarBtnCloned) addSugarBtnCloned.textContent = 'Add to Sugar Babies';
+        }
+
+        if (addWatchlistBtnCloned) {
+            addWatchlistBtnCloned.addEventListener('click', () => {
+                const stopVal = document.getElementById('ep-detail-stop-input').value;
+                const notesVal = document.getElementById('ep-detail-notes-input').value;
+                EP_API.post('/api/ep/watchlist', { symbol, stop_price: stopVal, notes: notesVal })
                     .then(resData => {
                         if (resData.success) {
                             if (typeof showToast === 'function') showToast(resData.message, 'success');
                             openEPDetailModal(symbol);
-                            fetchEPWatchlist();
-                            fetchEPListings();
+                            fetchEPWatchlist(); fetchEPListings();
                         } else {
                             if (typeof showToast === 'function') showToast(resData.error || 'Failed to update watchlist', 'error');
                         }
                     })
-                    .catch(err => {
-                        console.error('Error adding/updating watchlist:', err);
-                        if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error');
-                    });
-                });
-            }
-            
-            if (removeWatchlistBtnCloned) {
-                removeWatchlistBtnCloned.addEventListener('click', () => {
-                    EP_API.post('/api/ep/watchlist/remove', { symbol: symbol })
+                    .catch(() => { if (typeof showToast === 'function') showToast('Network error updating watchlist', 'error'); });
+            });
+        }
+        if (removeWatchlistBtnCloned) {
+            removeWatchlistBtnCloned.addEventListener('click', () => {
+                EP_API.post('/api/ep/watchlist/remove', { symbol })
                     .then(resData => {
                         if (resData.success) {
                             if (typeof showToast === 'function') showToast(resData.message, 'success');
                             openEPDetailModal(symbol);
-                            fetchEPWatchlist();
-                            fetchEPListings();
+                            fetchEPWatchlist(); fetchEPListings();
                         } else {
                             if (typeof showToast === 'function') showToast(resData.error || 'Failed to remove watchlist', 'error');
                         }
                     })
-                    .catch(err => {
-                        console.error('Error deleting watchlist:', err);
-                        if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error');
-                    });
-                });
-            }
-            
-            if (triggerWatchlistBtnCloned) {
-                triggerWatchlistBtnCloned.addEventListener('click', () => {
-                    EP_API.post('/api/ep/watchlist/trigger', { symbol: symbol })
+                    .catch(() => { if (typeof showToast === 'function') showToast('Network error removing watchlist', 'error'); });
+            });
+        }
+        if (triggerWatchlistBtnCloned) {
+            triggerWatchlistBtnCloned.addEventListener('click', () => {
+                EP_API.post('/api/ep/watchlist/trigger', { symbol })
                     .then(resData => {
                         if (resData.success) {
                             if (typeof showToast === 'function') showToast(resData.message, 'success');
                             openEPDetailModal(symbol);
-                            fetchEPWatchlist();
-                            fetchEPListings();
+                            fetchEPWatchlist(); fetchEPListings();
                         } else {
                             if (typeof showToast === 'function') showToast(resData.error || 'Failed to trigger watchlist', 'error');
                         }
                     })
-                    .catch(err => {
-                        console.error('Error triggering watchlist:', err);
-                        if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error');
-                    });
-                });
-            }
-            
-            if (addSugarBtnCloned) {
-                addSugarBtnCloned.addEventListener('click', () => {
-                    const isCurrentlySugar = addSugarBtnCloned.textContent.includes('Remove');
-                    const is_active = isCurrentlySugar ? 0 : 1;
-                    const notesVal = document.getElementById('ep-detail-notes-input').value;
-                    
-                    EP_API.post('/api/ep/sugar-babies', {
-                        symbol: symbol,
-                        is_active: is_active,
-                        notes: notesVal
-                    })
+                    .catch(() => { if (typeof showToast === 'function') showToast('Network error triggering watchlist', 'error'); });
+            });
+        }
+        if (addSugarBtnCloned) {
+            addSugarBtnCloned.addEventListener('click', () => {
+                const isCurrentlySugar = addSugarBtnCloned.textContent.includes('Remove');
+                const is_active = isCurrentlySugar ? 0 : 1;
+                const notesVal = document.getElementById('ep-detail-notes-input').value;
+                EP_API.post('/api/ep/sugar-babies', { symbol, is_active, notes: notesVal })
                     .then(resData => {
                         if (resData.success) {
                             if (typeof showToast === 'function') showToast(resData.message, 'success');
@@ -12880,21 +12899,143 @@ function openEPDetailModal(symbol) {
                             if (typeof showToast === 'function') showToast(resData.error || 'Failed to update Sugar Babies', 'error');
                         }
                     })
-                    .catch(err => {
-                        console.error('Error updating Sugar Babies:', err);
-                        if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error');
-                    });
+                    .catch(() => { if (typeof showToast === 'function') showToast('Network error updating Sugar Babies', 'error'); });
+            });
+        }
+    }
+
+    // ── Parallel fetches — each section renders independently ───────────────
+    let _baseFeatureDate = null;  // shared between base → thesis
+
+    // 1. BASE — scores, fundamentals, watchlist (fast, DB only)
+    EP_API.get(`/api/ep/${symbol}/detail/base`)
+        .then(data => {
+            if (data.error) {
+                if (typeof showToast === 'function') showToast(`Failed to load details: ${data.error}`, 'error');
+                modal.classList.add('hidden');
+                return;
+            }
+            _baseFeatureDate = data.feature_date || null;
+
+            document.getElementById('ep-detail-title-ticker').textContent = data.symbol || symbol;
+            document.getElementById('ep-detail-type').textContent = data.ep_type || '-';
+            document.getElementById('ep-detail-score').textContent = data.ep_score ? data.ep_score.toFixed(2) : '-';
+
+            const confEl = document.getElementById('ep-detail-confidence');
+            confEl.textContent = data.confidence || 'LOW';
+            confEl.style.color = data.confidence === 'HIGH' ? '#10b981' : data.confidence === 'MEDIUM' ? '#3b82f6' : '#9ca3af';
+
+            document.getElementById('ep-detail-mktcap').textContent = data.market_cap_cr
+                ? `| Mkt Cap: ₹${data.market_cap_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 })} Cr`
+                : '';
+
+            renderFundamentals(data.fundamentals || []);
+            bindWatchlistButtons(data);
+
+            // Bind AI Fundamental Analysis button (needs fundamentals data in scope)
+            const aiFundTrigger = document.getElementById('btn-ep-detail-ai-fund');
+            if (aiFundTrigger) {
+                const aiFundTriggerCloned = aiFundTrigger.cloneNode(true);
+                aiFundTrigger.parentNode.replaceChild(aiFundTriggerCloned, aiFundTrigger);
+                aiFundTriggerCloned.addEventListener('click', () => {
+                    const fundsData = data.fundamentals || [];
+                    if (fundsData.length === 0) {
+                        if (typeof showToast === 'function') showToast('No quarterly financials available to analyze', 'warning');
+                        return;
+                    }
+                    aiFundTriggerCloned.disabled = true;
+                    aiFundTriggerCloned.innerHTML = '<span>⏳</span> Analyzing...';
+                    const card = document.getElementById('ep-detail-ai-fund-card');
+                    card.classList.add('hidden');
+                    document.getElementById('ep-detail-ai-fund-verdict').textContent = '';
+                    document.getElementById('ep-detail-ai-fund-summary').textContent = '';
+                    EP_API.post('/api/v1/analyze/fundamentals', { metrics: { quarters: fundsData } })
+                        .then(res => {
+                            if (res.error) {
+                                if (typeof showToast === 'function') showToast(`Analysis failed: ${res.error}`, 'error');
+                            } else {
+                                card.classList.remove('hidden');
+                                document.getElementById('ep-detail-ai-fund-verdict').textContent = res.verdict || 'UNKNOWN';
+                                document.getElementById('ep-detail-ai-fund-summary').textContent = res.summary || 'No summary returned.';
+                                const verdictEl = document.getElementById('ep-detail-ai-fund-verdict');
+                                const v = (res.verdict || '').toUpperCase();
+                                if (v === 'UNDERVALUED' || v === 'GARP') {
+                                    verdictEl.style.background = 'rgba(16, 185, 129, 0.2)'; verdictEl.style.color = '#34d399';
+                                } else if (v === 'FAIRLY_VALUED') {
+                                    verdictEl.style.background = 'rgba(245, 158, 11, 0.2)'; verdictEl.style.color = '#fbbf24';
+                                } else {
+                                    verdictEl.style.background = 'rgba(239, 68, 68, 0.2)'; verdictEl.style.color = '#f87171';
+                                }
+                            }
+                        })
+                        .catch(() => { if (typeof showToast === 'function') showToast('Network error during fundamental analysis', 'error'); })
+                        .finally(() => {
+                            aiFundTriggerCloned.disabled = false;
+                            aiFundTriggerCloned.innerHTML = '<span>🤖</span> Analyze Fundamentals';
+                        });
                 });
             }
         })
         .catch(err => {
-            console.error('Error fetching EP details:', err);
-            if (typeof showToast === 'function') showToast('Failed to load episodic pivot details', 'error');
+            console.error('Error fetching EP base details:', err);
+            if (typeof showToast === 'function') showToast('Failed to load EP details', 'error');
             modal.classList.add('hidden');
         });
+
+    // 2. HISTORY — price chart (Yahoo Finance, cached 15 min)
+    EP_API.get(`/api/ep/${symbol}/detail/history`)
+        .then(data => {
+            renderEPDetailChart(data.history || []);
+        })
+        .catch(err => {
+            console.error('Error fetching EP price history:', err);
+            if (chartContainer) {
+                chartContainer.innerHTML = '<div style="display:flex; align-items:center; justify-content:center; height:100%; color:var(--color-text-secondary); font-size:0.8rem;">Chart unavailable.</div>';
+            }
+        });
+
+    // 3. EVENTS — corporate announcements from DB (no blocking NSE call)
+    EP_API.get(`/api/ep/${symbol}/detail/events`)
+        .then(data => {
+            renderEvents(data.corporate_events || []);
+        })
+        .catch(err => {
+            console.error('Error fetching EP events:', err);
+            eventsContainer.innerHTML = `<div style="text-align:center; padding: 1.5rem; color:var(--color-text-secondary);">Could not load corporate events.</div>`;
+        });
+
+    // 4. THESIS — AI thesis + reasoning (cache-first; LLM only on miss)
+    //    We use a small delay so the base request usually has a chance to set
+    //    _baseFeatureDate before we build the thesis URL, but it works either way.
+    setTimeout(() => {
+        const fdParam = _baseFeatureDate ? `?feature_date=${encodeURIComponent(_baseFeatureDate)}` : '';
+        EP_API.get(`/api/ep/${symbol}/detail/thesis${fdParam}`)
+            .then(data => {
+                const aiSec = document.getElementById('ep-detail-ai-section');
+                if (aiSec && data.ai_thesis) {
+                    aiSec.classList.remove('hidden');
+                    document.getElementById('ep-detail-ai-thesis').textContent = data.ai_thesis;
+                    document.getElementById('ep-detail-ai-reasoning-content').textContent = data.ai_reasoning || 'No reasoning path recorded.';
+                    const reasoningToggle = document.getElementById('ep-detail-ai-reasoning-toggle');
+                    if (reasoningToggle) {
+                        const cloned = reasoningToggle.cloneNode(true);
+                        reasoningToggle.parentNode.replaceChild(cloned, reasoningToggle);
+                        cloned.addEventListener('click', () => {
+                            const content = document.getElementById('ep-detail-ai-reasoning-content');
+                            content.classList.toggle('hidden');
+                        });
+                    }
+                } else if (aiSec) {
+                    aiSec.classList.add('hidden');
+                }
+            })
+            .catch(err => {
+                console.error('Error fetching EP thesis:', err);
+                // Thesis failing is non-critical — leave section hidden
+            });
+    }, 100);
 }
 window.openEPDetailModal = openEPDetailModal;
-
 function renderEPDetailChart(history) {
     const container = document.getElementById('ep-detail-chart');
     if (!container) return;

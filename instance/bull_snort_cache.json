@@ -1,5 +1,29 @@
 {
-  "data": [],
-  "count": 0,
-  "refreshed": "2026-07-25T09:58:53.623570"
+  "data": [
+    {
+      "symbol": "BESTAGRO",
+      "date": "2026-07-31",
+      "open": 18.1,
+      "high": 19.65,
+      "low": 18.0,
+      "close": 19.12,
+      "prev_close": 16.6,
+      "pct_change": 15.18,
+      "volume": 38044658,
+      "avg_volume": 523581,
+      "vol_ratio": 72.662,
+      "close_position": 0.679,
+      "candle_range": 1.65,
+      "dma200": 19.36,
+      "current_gap_pct": 1.24,
+      "max_gap_6mo_pct": 89.77,
+      "dma_slope_norm": -0.2175,
+      "n_vol_pivots": 21,
+      "n_vol_surges": 10,
+      "accumulation_score": 100.0,
+      "final_score": 92.71
+    }
+  ],
+  "count": 1,
+  "refreshed": "2026-08-01T13:54:30.534431"
 }

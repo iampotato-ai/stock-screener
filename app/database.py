@@ -235,6 +235,22 @@ def _create_tables(conn):
             fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     ''')
+
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS fear_greed_history (
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            composite_score INTEGER NOT NULL,
+            label TEXT NOT NULL,
+            momentum_score REAL,
+            strength_score REAL,
+            breadth_score REAL,
+            volatility_score REAL,
+            ad_score REAL,
+            sub_indicators_json TEXT,
+            PRIMARY KEY (date, time)
+        )
+    ''')
     try:
         c.execute("ALTER TABLE watchlist_sections ADD COLUMN position INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
