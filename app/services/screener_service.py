@@ -127,6 +127,9 @@ class ScreenerService:
                                 stock['stage_label'] = inline_analysis['score'].get('stage', 'Unknown')
                             else:
                                 stock['stage_label'] = 'Unknown'
+
+                        # Compute IVF metrics for every stock regardless of data source
+                        self._compute_ivf(stock)
                     
                     if full_response:
                         return {
@@ -179,7 +182,10 @@ class ScreenerService:
                         stock['stage_label'] = inline_analysis['score'].get('stage', 'Unknown')
                     else:
                         stock['stage_label'] = stock.get('stage_label') or 'Unknown'
-                        
+
+                # Compute IVF metrics for every stock regardless of data source
+                self._compute_ivf(stock)
+
                 # Re-run setup tag enrichment to ensure stage & RS tags are complete
                 self._enrich_stock_metadata(stock)
             
@@ -202,10 +208,72 @@ class ScreenerService:
                 }
             return []
 
+    @staticmethod
+    def _compute_ivf(stock: Dict[str, Any]) -> None:
+        """Compute Institutional Volume Force (IVF) and Liquidity Tier metrics in-place.
+
+        Works for both live TradingView stocks and DB-cached stocks. Only writes
+        fields that are not already present so that backend-computed values win.
+        Falls back gracefully when intraday high/low are unavailable (cloc=0.5).
+        """
+        # Skip if already computed by scan_stocks() to avoid double-work
+        if stock.get('ivf_score') is not None:
+            return
+
+        close    = float(stock.get('close') or 0)
+        high_val = float(stock.get('high')  or close)
+        low_val  = float(stock.get('low')   or close)
+        avg_vol  = float(stock.get('average_volume') or stock.get('avg_volume') or 1)
+
+        # Use whichever relative-volume key is present
+        rvol_val = float(
+            stock.get('relative_volume') or
+            stock.get('relative_volume_10d_calc') or
+            stock.get('rvol_ratio') or
+            1.0
+        )
+
+        # Close Location Value (0.0 = closed at day low, 1.0 = closed at day high)
+        cloc = round((close - low_val) / (high_val - low_val), 4) if high_val > low_val else 0.5
+
+        # IVF Score
+        ivf_score = round(rvol_val * cloc * 100) / 100
+
+        if rvol_val >= 2.0 and cloc >= 0.7:
+            ivf_level, ivf_label = "Ultra-High", "Institutional Block Accumulation"
+        elif rvol_val >= 1.2 and cloc >= 0.6:
+            ivf_level, ivf_label = "High", "Active Institutional Accumulation"
+        elif rvol_val >= 0.8 and cloc >= 0.5:
+            ivf_level, ivf_label = "Above Average", "Steady Accumulation / Support"
+        elif rvol_val < 0.5:
+            ivf_level, ivf_label = "Anemic", "Anemic Order Flow"
+        else:
+            ivf_level, ivf_label = "Normal", "Retail Rotation"
+
+        # Liquidity tier based on average daily turnover in Crores
+        avg_turnover_cr = round((close * avg_vol) / 10_000_000, 2) if close > 0 and avg_vol > 1 else 0.0
+        if avg_turnover_cr >= 50:
+            liquidity_tier, liquidity_label = "Tier 1", "Ultra-Liquid (Mega Institutions)"
+        elif avg_turnover_cr >= 10:
+            liquidity_tier, liquidity_label = "Tier 2", "High Liquidity (Mid Institutions)"
+        elif avg_turnover_cr >= 2:
+            liquidity_tier, liquidity_label = "Tier 3", "Medium Liquidity (HNIs/Boutique)"
+        else:
+            liquidity_tier, liquidity_label = "Tier 4", "Low Liquidity (Retail)"
+
+        stock['cloc']            = cloc
+        stock['ivf_score']       = ivf_score
+        stock['ivf_level']       = ivf_level
+        stock['ivf_label']       = ivf_label
+        stock['avg_turnover_cr'] = avg_turnover_cr
+        stock['liquidity_tier']  = liquidity_tier
+        stock['liquidity_label'] = liquidity_label
+
     def _enrich_stock_metadata(self, stock: Dict[str, Any]) -> Dict[str, Any]:
         """Ensure deserialization of JSON tags and dynamic enrichment of setup tags for fallback data."""
         import json
         if isinstance(stock.get('setup_tags_json'), str) and stock['setup_tags_json']:
+
             try:
                 stock['setupTags'] = json.loads(stock['setup_tags_json'])
             except Exception:

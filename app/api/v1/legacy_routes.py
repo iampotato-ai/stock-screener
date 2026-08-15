@@ -1445,7 +1445,7 @@ def refresh_ep_screener():
         "options": {"lang": "en"},
         "symbols": {"query": {"types": []}, "tickers": []},
         "columns": [
-            "name", "description", "close", "change", "volume", "market_cap_basic", "average_volume", "sector"
+            "name", "description", "close", "change", "volume", "market_cap_basic", "average_volume", "sector", "open", "gap"
         ],
         "sort": {"sortBy": "market_cap_basic", "sortOrder": "desc"},
         "range": [0, 5000]
@@ -1469,7 +1469,7 @@ def refresh_ep_screener():
         exch = "BSE" if raw_ticker.startswith("BSE:") else "NSE"
         clean_ticker = raw_ticker.replace("NSE:", "").replace("BSE:", "")
         cols = item.get("d", [])
-        if len(cols) == 8:
+        if len(cols) >= 8:
             tv_stocks.append({
                 "ticker": clean_ticker,
                 "exchange": exch,
@@ -1480,7 +1480,9 @@ def refresh_ep_screener():
                 "volume": cols[4] or 0.0,
                 "market_cap_basic": cols[5] or 0.0,
                 "average_volume": cols[6] or 1.0,
-                "sector": cols[7] or "Unknown"
+                "sector": cols[7] or "Unknown",
+                "open": cols[8] if len(cols) > 8 and cols[8] is not None else None,
+                "gap": cols[9] if len(cols) > 9 and cols[9] is not None else None,
             })
             
     # Calculate sector average volumes for ranking
@@ -1685,8 +1687,17 @@ def refresh_ep_screener():
                 col = float(bar.get("close") or 0)
                 v = int(bar.get("volume") or 0)
                 prev_c = float(prev_bar.get("close") or 0)
-                gap = ((o - prev_c) / prev_c * 100) if prev_c else 0.0
-                chg = ((col - prev_c) / prev_c * 100) if prev_c else 0.0
+                
+                tv_close = float(s.get("close") or 0)
+                if i == len(history) - 1 and s.get("change") is not None and (tv_close == 0 or abs(col - tv_close) / max(col, 1.0) < 0.05):
+                    chg = float(s["change"])
+                    gap = float(s["gap"]) if s.get("gap") is not None else (((o - prev_c) / prev_c * 100) if prev_c else 0.0)
+                    if chg != 0:
+                        prev_c = col / (1.0 + chg / 100.0)
+                else:
+                    gap = ((o - prev_c) / prev_c * 100) if prev_c else 0.0
+                    chg = ((col - prev_c) / prev_c * 100) if prev_c else 0.0
+
                 close_loc = ((col - l) / (h - l)) if (h - l) > 0 else 1.0
                 intra_range = ((h - l) / prev_c * 100) if prev_c else 0.0
                 
@@ -1980,17 +1991,33 @@ def refresh_ep_screener():
             )
             
             # Calculate Repricing metrics
-            yesterday_close = closes[-2] if len(closes) >= 2 else closes[0]
             today_close = closes[-1]
-            today_open = float(history[-1].get("open") or today_close)
             today_high = highs[-1]
             today_low = lows[-1]
             today_vol = volumes[-1]
             
-            gap_pct = ((today_open - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
+            tv_close = float(s.get("close") or 0)
+            use_tv_override = (s.get("change") is not None) and (tv_close == 0 or abs(today_close - tv_close) / max(today_close, 1.0) < 0.05)
+
+            if use_tv_override:
+                price_change_pct = float(s["change"])
+            else:
+                yesterday_close = closes[-2] if len(closes) >= 2 else closes[0]
+                price_change_pct = ((today_close - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
+
+            if price_change_pct != 0 and use_tv_override:
+                implied_prev_close = today_close / (1.0 + price_change_pct / 100.0)
+            else:
+                implied_prev_close = closes[-2] if len(closes) >= 2 else closes[0]
+
+            if s.get("gap") is not None and use_tv_override:
+                gap_pct = float(s["gap"])
+            else:
+                today_open = float(history[-1].get("open") or (s.get("open") if s.get("open") is not None else today_close))
+                gap_pct = ((today_open - implied_prev_close) / implied_prev_close * 100) if implied_prev_close else 0.0
+
             close_loc = ((today_close - today_low) / (today_high - today_low)) if (today_high - today_low) > 0 else 1.0
-            price_change_pct = ((today_close - yesterday_close) / yesterday_close * 100) if yesterday_close else 0.0
-            intraday_range_pct = ((today_high - today_low) / yesterday_close * 100) if yesterday_close else 0.0
+            intraday_range_pct = ((today_high - today_low) / implied_prev_close * 100) if implied_prev_close else 0.0
             
             # Recalculate rel_volume_20 dynamically using avg_vol_20_list
             avg_vol_20 = avg_vol_20_list[-1] if avg_vol_20_list[-1] else (sum(volumes) / len(volumes))
@@ -5958,7 +5985,49 @@ def scan_stocks():
             stock["perf_w"] = round(float(stock["Perf.W"]), 2) if stock["Perf.W"] is not None else 0.0
             stock["perf_m"] = round(float(stock["Perf.1M"]), 2) if stock["Perf.1M"] is not None else 0.0
             stock["perf_3m"] = round(float(stock["Perf.3M"]), 2) if stock["Perf.3M"] is not None else 0.0
-            
+
+            # ── Institutional Volume Force (IVF) & Liquidity Tiering ──────────────
+            # Close Location Value: where price closed within today's high-low range (0.0–1.0)
+            high_val = float(stock.get("high") or close)
+            low_val  = float(stock.get("low")  or close)
+            cloc = round((close - low_val) / (high_val - low_val), 4) if high_val > low_val else 0.5
+
+            # IVF Score = RVOL × CLOC (higher means stronger institutional footprint)
+            rvol_val  = float(stock.get("relative_volume_10d_calc") or 1.0)
+            ivf_score = round(rvol_val * cloc * 100) / 100
+
+            # IVF Level classification
+            if rvol_val >= 2.0 and cloc >= 0.7:
+                ivf_level, ivf_label = "Ultra-High", "Institutional Block Accumulation"
+            elif rvol_val >= 1.2 and cloc >= 0.6:
+                ivf_level, ivf_label = "High", "Active Institutional Accumulation"
+            elif rvol_val >= 0.8 and cloc >= 0.5:
+                ivf_level, ivf_label = "Above Average", "Steady Accumulation / Support"
+            elif rvol_val < 0.5:
+                ivf_level, ivf_label = "Anemic", "Anemic Order Flow"
+            else:
+                ivf_level, ivf_label = "Normal", "Retail Rotation"
+
+            # Liquidity Tier: average daily turnover in Crores (reuses avg_vol already in scope)
+            avg_turnover_cr = round((close * avg_vol) / 10_000_000, 2)
+            if avg_turnover_cr >= 50:
+                liquidity_tier, liquidity_label = "Tier 1", "Ultra-Liquid (Mega Institutions)"
+            elif avg_turnover_cr >= 10:
+                liquidity_tier, liquidity_label = "Tier 2", "High Liquidity (Mid Institutions)"
+            elif avg_turnover_cr >= 2:
+                liquidity_tier, liquidity_label = "Tier 3", "Medium Liquidity (HNIs/Boutique)"
+            else:
+                liquidity_tier, liquidity_label = "Tier 4", "Low Liquidity (Retail)"
+
+            stock["cloc"]            = cloc
+            stock["ivf_score"]       = ivf_score
+            stock["ivf_level"]       = ivf_level
+            stock["ivf_label"]       = ivf_label
+            stock["avg_turnover_cr"] = avg_turnover_cr
+            stock["liquidity_tier"]  = liquidity_tier
+            stock["liquidity_label"] = liquidity_label
+            # ─────────────────────────────────────────────────────────────────────
+
             # Extract simple name (e.g. "RELIANCE" from "NSE:RELIANCE")
             stock["clean_ticker"] = stock["name"]
             

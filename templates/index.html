@@ -284,6 +284,15 @@
                     <i data-lucide="star" style="width: 14px; height: 14px; color: #fbbf24; fill: #fbbf24;"></i>
                     <span style="color: #fbbf24; font-weight: 700; text-shadow: 0 0 8px rgba(251, 191, 36, 0.25);">Bull Snort</span>
                 </button>
+                <button class="workspace-tab" data-view="multiyear-breakout" id="tab-multiyear-breakout">
+                    <i data-lucide="mountain" style="width: 14px; height: 14px;"></i>
+                    <span>Multiyear Breakout</span>
+                    <span id="myb-count-badge" class="badge"
+                          style="display:none; background:#10b981; color:#fff; border-radius:50%;
+                                 padding:var(--space-1) var(--space-2); font-size:0.7rem;
+                                 margin-left:var(--space-2); font-weight:bold;
+                                 box-shadow:0 0 8px rgba(16,185,129,0.6);">0</span>
+                </button>
                 <button class="workspace-tab" data-view="momentum-score" id="tab-momentum-score">
                     <i data-lucide="trending-up" style="width: 14px; height: 14px;"></i>
                     <span>MCS™</span>
@@ -299,9 +308,6 @@
 
         <!-- Workspace View: Dashboard -->
         <div class="workspace-view active" id="view-dashboard">
-            <!-- Daily Morning Brief Widget -->
-            <div id="market-brief-widget" class="market-brief-container"></div>
-
             <!-- Stats Section -->
             <div class="breadth-bar glass-panel" id="breadth-bar">
     
@@ -1994,6 +2000,80 @@
             </div>
         </div>
     </div>
+
+    <!-- Workspace View: Multiyear Breakout -->
+    <div class="workspace-view" id="view-multiyear-breakout">
+        <div class="myb-workspace-wrapper glass-panel">
+            <div class="myb-header-section">
+                <div>
+                    <div class="myb-header-title">
+                        <span>🏔️ Multiyear Breakout Scanner</span>
+                    </div>
+                    <div class="myb-header-subtitle" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>Identify NSE stocks breaking out to All-Time Highs after consolidating for 5+ years.</span>
+                        <span id="myb-last-run-timestamp" style="font-size: 0.75rem; color: #10b981; font-weight: 600;">(Last Run: --)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Parameters Bar -->
+            <div class="myb-params-bar glass-panel">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <label for="myb-min-base" class="myb-param-label">Min Base Length:</label>
+                    <select id="myb-min-base" class="myb-select">
+                        <option value="3">3+ Years</option>
+                        <option value="5" selected>5+ Years</option>
+                        <option value="7">7+ Years</option>
+                        <option value="10">10+ Years</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <label for="myb-window-days" class="myb-param-label">Breakout Window:</label>
+                    <select id="myb-window-days" class="myb-select">
+                        <option value="5">Within 5 Days</option>
+                        <option value="10" selected>Within 10 Days</option>
+                        <option value="15">Within 15 Days</option>
+                        <option value="20">Within 20 Days</option>
+                    </select>
+                </div>
+                <button id="btn-run-myb" class="myb-run-btn" style="margin-left: auto;">
+                    <span class="btn-spinner hidden" id="myb-scan-spinner"></span>
+                    <span class="btn-text">🔍 Run Scanner</span>
+                </button>
+            </div>
+
+            <div id="myb-results-count" style="font-weight: 600; font-size: 0.95rem; color: var(--color-text-primary); margin: 0.25rem 0;"></div>
+
+            <!-- Table Container -->
+            <div class="table-container" style="overflow-x: auto; margin-top: var(--space-2); max-height: 550px;">
+                <table class="screener-table" id="myb-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr>
+                            <th data-sort="symbol" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('symbol')">Symbol</th>
+                            <th class="text-right" data-sort="current_price" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('current_price')">Current Price</th>
+                            <th class="text-right" data-sort="prior_ath_price" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('prior_ath_price')">Prior ATH</th>
+                            <th class="text-center" data-sort="prior_ath_date" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('prior_ath_date')">Prior ATH Date</th>
+                            <th class="text-center" data-sort="breakout_date" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('breakout_date')">Breakout Date</th>
+                            <th class="text-right" data-sort="years_below_ath" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('years_below_ath')">Base Length</th>
+                            <th class="text-right" data-sort="pct_above_ath" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('pct_above_ath')">% Above ATH</th>
+                            <th class="text-center" data-sort="volume_confirmed" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('volume_confirmed')">Volume Confirmed</th>
+                            <th class="text-right" data-sort="consolidation_range_pct" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('consolidation_range_pct')">Base Range %</th>
+                            <th class="text-right" data-sort="market_cap_cr" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('market_cap_cr')">Mkt Cap (₹ Cr)</th>
+                            <th data-sort="sector" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('sector')">Sector</th>
+                            <th class="text-right" data-sort="rs_vs_nifty" onclick="window.multiyearBreakout && window.multiyearBreakout.sortBy('rs_vs_nifty')">RS vs Nifty</th>
+                        </tr>
+                    </thead>
+                    <tbody id="myb-tbody">
+                        <tr>
+                            <td colspan="12" style="padding: 2rem; text-align: center; color: var(--color-text-muted); font-style: italic;">
+                                Loading Multiyear Breakout signals...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     <!-- Workspace View: Momentum Confidence Score™ -->
     <div class="workspace-view" id="view-momentum-score">
         <style>
@@ -3138,7 +3218,19 @@
             <!-- Insider & Promoter Activity -->
             <div id="trade-drawer-insider-activity" style="margin-top: 0.5rem;"></div>
 
+            <!-- Institutional Order Flow — IVF & Liquidity Overlay -->
+            <details class="drawer-section" id="drawer-ivf-section" open>
+                <summary style="display:flex;align-items:center;gap:0.5rem;">
+                    <span style="font-size:1rem;">🏛️</span> Institutional Order Flow
+                </summary>
+                <div class="drawer-section-content" id="drawer-ivf-content">
+                    <!-- Populated by renderIvfPanel() in openTradeDrawer() -->
+                    <div style="font-size:0.8rem;color:var(--color-text-muted);text-align:center;padding:0.5rem 0;">Loading order flow data...</div>
+                </div>
+            </details>
+
             <!-- 1. Market & Regime Context Details -->
+
             <details class="drawer-section" open>
                 <summary>Market & Regime Context</summary>
                 <div class="drawer-section-content">
@@ -4284,6 +4376,6 @@
 // ─── End MCS Tab ─────────────────────────────────────────────────────────────
     </script>
     <script src="/static/js/fear_greed_gauge.js"></script>
-    <script src="/static/js/market_brief.js"></script>
+    <script src="/static/js/multiyear_breakout.js"></script>
 </body>
 </html>

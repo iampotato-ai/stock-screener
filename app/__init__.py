@@ -41,6 +41,17 @@ def create_app(config_name=None, overrides=None):
         except Exception as e:
             logger.error(f"Failed to load persisted Bull Snort cache: {e}")
 
+    # Load persisted Multiyear Breakout cache if exists
+    myb_cache_file = os.path.join(app.instance_path, 'multiyear_breakout_cache.json')
+    if os.path.exists(myb_cache_file):
+        try:
+            import json
+            with open(myb_cache_file, 'r', encoding='utf-8') as f:
+                app.config['MULTIYEAR_BREAKOUT_CACHE'] = json.load(f)
+            logger.info("Loaded persisted Multiyear Breakout cache from disk")
+        except Exception as e:
+            logger.error(f"Failed to load persisted Multiyear Breakout cache: {e}")
+
     # Initialize extensions
     init_extensions(app)
 

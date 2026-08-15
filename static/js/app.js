@@ -315,6 +315,7 @@ const masterColumnsConfig = {
         { id: 'mkt_cap_cr', name: 'Mkt Cap (Cr)', sortField: 'mkt_cap_cr', isVisible: false, align: 'right', canToggle: true },
         { id: 'atr_pct', name: 'ATR (%)', sortField: 'atr_pct', isVisible: true, align: 'right', canToggle: true },
         { id: 'relative_volume', name: 'RVOL (10d)', sortField: 'relative_volume', isVisible: false, align: 'right', canToggle: true, tooltip: 'Relative Volume (10d): Compares today\'s volume to the 10-day average. >1.5 indicates unusual volume activity.' },
+        { id: 'ivf_score', name: 'Volume Force', sortField: 'ivf_score', isVisible: false, align: 'center', canToggle: true, tooltip: 'Institutional Volume Force Score: RVOL × Close Location. Detects institutional accumulation vs retail fakeouts. Ultra-High = Institutional Block Accumulation.' },
         { id: 'intraday_score', name: 'IMS', sortField: 'intraday_score', isVisible: true, align: 'center', canToggle: true, tooltip: 'Intraday Momentum Score (IMS): Aggregated Proprietary NLP and tick volume velocity score. Rating 1 to 10.' },
         { id: 'swingscore', name: 'Swing', sortField: 'swingscore', isVisible: true, align: 'center', canToggle: true, tooltip: 'Swing Momentum Score: Daily swing alignment rating based on consolidation breaks and candle shapes. Rating 1 to 10.' },
         { id: 'gap', name: 'Gap (%)', sortField: 'gap', isVisible: false, align: 'right', canToggle: true },
@@ -3640,6 +3641,19 @@ function renderTable() {
                 html += `
                     <td data-column="turnover_m" class="text-right">₹${turnover_m.toFixed(1)} Cr</td>
                 `;
+            } else if (col.id === 'ivf_score') {
+                const ivfScore = stock.ivf_score ?? 0;
+                const ivfLevel = stock.ivf_level ?? 'Normal';
+                const ivfLabel = stock.ivf_label ?? '';
+                const ivfColorMap = {
+                    'Ultra-High':   { text: '#34d399', bg: 'rgba(16,185,129,0.20)', border: 'rgba(16,185,129,0.40)' },
+                    'High':         { text: '#4ade80', bg: 'rgba(74,222,128,0.12)', border: 'rgba(74,222,128,0.30)' },
+                    'Above Average':{ text: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.30)' },
+                    'Normal':       { text: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.20)' },
+                    'Anemic':       { text: '#f87171', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.35)' }
+                };
+                const ivfStyle = ivfColorMap[ivfLevel] || ivfColorMap['Normal'];
+                html += `<td data-column="ivf_score" class="text-center" title="${escapeHtml(ivfLabel)}"><span style="display:inline-block;background:${ivfStyle.bg};color:${ivfStyle.text};border:1px solid ${ivfStyle.border};border-radius:4px;padding:2px 7px;font-size:0.72rem;font-weight:700;letter-spacing:0.02em;white-space:nowrap;">${ivfLevel === 'Ultra-High' ? '⚡' : ivfLevel === 'High' ? '🏛️' : ivfLevel === 'Anemic' ? '🔴' : ''} ${ivfScore.toFixed(2)}</span></td>`;
             } else if (col.id === 'pe_ratio') {
                 const peClass = stock.pe_ratio != null
                     ? (stock.pe_ratio < 15 ? 'val-up' : stock.pe_ratio > 40 ? 'val-down' : '')
@@ -7799,8 +7813,82 @@ function openTradeDrawer(ticker) {
             .catch(() => { if (sigContainer) sigContainer.innerHTML = ''; });
     }
 
+    // ── Populate Institutional Order Flow panel (inline from stock data — no HTTP) ──
+    (function renderIvfPanel(s) {
+        const container = document.getElementById('drawer-ivf-content');
+        if (!container) return;
+
+        const ivfScore   = s.ivf_score       ?? 0;
+        const ivfLevel   = s.ivf_level        ?? 'Normal';
+        const ivfLabel   = s.ivf_label        ?? 'Retail Rotation';
+        const cloc       = s.cloc             ?? 0.5;
+        const tier       = s.liquidity_tier   ?? 'Tier 4';
+        const tierLabel  = s.liquidity_label  ?? 'Low Liquidity (Retail)';
+        const turnoverCr = s.avg_turnover_cr  ?? 0;
+        const rvol       = s.relative_volume  ?? 0;
+
+        const ivfColorMap = {
+            'Ultra-High':    { text: '#34d399', bg: 'rgba(16,185,129,0.20)',  border: 'rgba(16,185,129,0.40)',  icon: '⚡' },
+            'High':          { text: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.30)',  icon: '🏛️' },
+            'Above Average': { text: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.30)', icon: '📈' },
+            'Normal':        { text: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.20)', icon: '⬜' },
+            'Anemic':        { text: '#f87171', bg: 'rgba(248,113,113,0.15)', border: 'rgba(248,113,113,0.35)', icon: '🔴' }
+        };
+        const tierColorMap = {
+            'Tier 1': { text: '#34d399', bg: 'rgba(16,185,129,0.15)' },
+            'Tier 2': { text: '#60a5fa', bg: 'rgba(96,165,250,0.12)' },
+            'Tier 3': { text: '#fbbf24', bg: 'rgba(251,191,36,0.10)' },
+            'Tier 4': { text: '#94a3b8', bg: 'rgba(148,163,184,0.08)' }
+        };
+
+        const ivfStyle  = ivfColorMap[ivfLevel]  || ivfColorMap['Normal'];
+        const tierStyle = tierColorMap[tier]      || tierColorMap['Tier 4'];
+        const clocPct   = Math.round(cloc * 100);
+        const clocColor = clocPct >= 70 ? '#34d399' : clocPct >= 50 ? '#fbbf24' : '#f87171';
+
+        container.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:0.75rem;">
+
+            <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:0.65rem 0.9rem;">
+                <div>
+                    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-text-muted);font-weight:700;margin-bottom:0.2rem;">IVF Score</div>
+                    <div style="font-size:1.4rem;font-weight:800;color:${ivfStyle.text};font-variant-numeric:tabular-nums;">${ivfScore.toFixed(2)}</div>
+                    <div style="font-size:0.72rem;color:var(--color-text-muted);margin-top:0.15rem;">RVOL ${rvol.toFixed(2)}× · CLOC ${clocPct}%</div>
+                </div>
+                <span style="background:${ivfStyle.bg};color:${ivfStyle.text};border:1px solid ${ivfStyle.border};border-radius:6px;padding:4px 12px;font-size:0.8rem;font-weight:800;white-space:nowrap;">${ivfStyle.icon} ${ivfLevel}</span>
+            </div>
+
+            <div style="font-size:0.8rem;color:${ivfStyle.text};background:${ivfStyle.bg};border-left:3px solid ${ivfStyle.text};border-radius:0 4px 4px 0;padding:0.45rem 0.75rem;font-weight:600;">${ivfLabel}</div>
+
+            <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;">
+                    <span style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-muted);font-weight:700;">Close Location (CLOC)</span>
+                    <span style="font-size:0.82rem;font-weight:700;color:${clocColor};">${clocPct}%</span>
+                </div>
+                <div style="height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;">
+                    <div style="height:100%;width:${clocPct}%;background:linear-gradient(90deg,#f87171,#fbbf24,#34d399);border-radius:3px;transition:width 0.6s ease;"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--color-text-muted);margin-top:0.2rem;"><span>Day Low</span><span>Mid</span><span>Day High</span></div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px dashed rgba(255,255,255,0.07);padding-top:0.65rem;">
+                <div>
+                    <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--color-text-muted);font-weight:700;margin-bottom:0.2rem;">Liquidity Tier</div>
+                    <div style="font-size:0.8rem;color:var(--color-text-secondary);">${tierLabel}</div>
+                </div>
+                <div style="text-align:right;">
+                    <span style="background:${tierStyle.bg};color:${tierStyle.text};border-radius:5px;padding:3px 10px;font-size:0.8rem;font-weight:700;">${tier}</span>
+                    <div style="font-size:0.72rem;color:var(--color-text-muted);margin-top:0.2rem;">Avg \u20b9${turnoverCr.toFixed(1)} Cr/day</div>
+                </div>
+            </div>
+
+        </div>`;
+    })(stock);
+    // ─────────────────────────────────────────────────────────────────────────────
+
     // Fetch and render Insider Activity
     const insContainer = document.getElementById('trade-drawer-insider-activity');
+
     if (insContainer) {
         insContainer.innerHTML = `
             <div style="background:rgba(255,255,255,0.02); border:1px dashed rgba(255,255,255,0.08); border-radius:8px; padding:0.6rem; text-align:center; font-size:0.72rem; color:var(--color-text-muted);">

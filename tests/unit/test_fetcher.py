@@ -208,7 +208,7 @@ class TestStockDataFetcher:
             }
         }
 
-        result = self.fetcher.fetch_stock_data('RELIANCE', 'NSE')
+        result = self.fetcher.fetch_stock_data('RELIANCE', 'NSE', bypass_yahoo=False)
 
         # Check that we got data
         assert result['symbol'] == 'RELIANCE'
@@ -253,7 +253,7 @@ class TestStockDataFetcher:
         assert result['symbol'] == 'RELIANCE'
         assert result['price'] == 2500.50
         mock_fetcher_class.assert_called_once()
-        mock_instance.fetch_stock_data.assert_called_once_with('RELIANCE', 'NSE', None)
+        mock_instance.fetch_stock_data.assert_called_once_with('RELIANCE', 'NSE', None, True)
 
     @patch('app.services.scoring.fetcher.StockDataFetcher')
     def test_fetch_isolated_tv_data_convenience_function(self, mock_fetcher_class):

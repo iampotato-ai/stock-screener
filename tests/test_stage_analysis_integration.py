@@ -46,7 +46,7 @@ def test_stage_analysis_history_endpoint(app, monkeypatch):
         {"symbol": "RELIANCE", "trade_date": "2026-07-13", "close": 103.0},
         {"symbol": "RELIANCE", "trade_date": "2026-07-14", "close": 104.0},
     ]
-    monkeypatch.setattr("app.database.fetch_all", lambda sql: mock_db_rows)
+    monkeypatch.setattr("app.database.fetch_all", lambda sql, params=(): mock_db_rows)
     
     # Request the stage analyzer history endpoint
     with app.test_client() as client:

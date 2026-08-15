@@ -149,6 +149,24 @@ class TestCorporateEventsPipeline:
         db_path = "scan_history.db"
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS corporate_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol          TEXT NOT NULL,
+                exchange        TEXT NOT NULL,
+                event_date      TEXT NOT NULL,
+                event_type      TEXT,
+                headline        TEXT,
+                sentiment       INTEGER,
+                catalyst_score  REAL,
+                source          TEXT,
+                raw_url         TEXT,
+                nlp_sentiment_score REAL,
+                nlp_category    TEXT,
+                summary         TEXT,
+                impact_magnitude REAL
+            )
+        """)
         c.execute("DELETE FROM corporate_events WHERE symbol='TCS'")
         conn.commit()
         conn.close()
@@ -218,6 +236,24 @@ class TestCorporateEventsPipeline:
         db_path = "scan_history.db"
         conn = sqlite3.connect(db_path)
         c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS corporate_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol          TEXT NOT NULL,
+                exchange        TEXT NOT NULL,
+                event_date      TEXT NOT NULL,
+                event_type      TEXT,
+                headline        TEXT,
+                sentiment       INTEGER,
+                catalyst_score  REAL,
+                source          TEXT,
+                raw_url         TEXT,
+                nlp_sentiment_score REAL,
+                nlp_category    TEXT,
+                summary         TEXT,
+                impact_magnitude REAL
+            )
+        """)
         c.execute("DELETE FROM corporate_events WHERE symbol='INFY'")
         
         # Insert raw/un-enriched event

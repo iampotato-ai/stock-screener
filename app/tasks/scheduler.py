@@ -110,19 +110,6 @@ def init_scheduler(app: Flask):
             args=[app]
         )
 
-    # Add Daily Pre-Market Brief job - runs daily at 08:45 AM IST
-    scheduler.add_job(
-        func=generate_daily_market_brief_task,
-        trigger='cron',
-        hour=8,
-        minute=45,
-        timezone='Asia/Kolkata',
-        id='daily_market_brief_job',
-        name='Daily Pre-Market Morning Brief synthesis at 08:45 AM IST',
-        replace_existing=True,
-        args=[app]
-    )
-
     # Add Daily Momentum Confidence Score calculation job - runs after market close
     scheduler.add_job(
         func=calculate_all_scores,
@@ -255,6 +242,32 @@ def init_scheduler(app: Flask):
         replace_existing=True,
         args=[app]
     )
+
+    # Add Multiyear Breakout scanner daily job — runs at 16:45 IST
+    # (after daily_bars refresh at 16:15 and Bull Snort at 16:35)
+    if app.config.get('ENABLE_MULTIYEAR_BREAKOUT', True):
+        scheduler.add_job(
+            func=refresh_multiyear_breakout_task,
+            trigger='cron',
+            hour=16,
+            minute=45,
+            timezone='Asia/Kolkata',
+            id='multiyear_breakout_daily',
+            name='Daily Multiyear Breakout scanner',
+            replace_existing=True,
+            args=[app]
+        )
+
+        # One-shot startup warm-up: load persisted cache or run scan
+        scheduler.add_job(
+            func=startup_multiyear_breakout_warmup,
+            trigger='date',
+            run_date=datetime.now() + timedelta(seconds=25),
+            id='startup_multiyear_breakout_warmup',
+            name='One-shot Multiyear Breakout cache warm-up on server start',
+            replace_existing=True,
+            args=[app]
+        )
 
     # Start the scheduler
     scheduler.start()
@@ -513,7 +526,7 @@ def refresh_daily_bars_universe(app: Flask):
 
             logger.info(
                 f"Starting EOD daily_bars universe refresh for {len(symbols)} symbols "
-                f"({start} → {today})"
+                f"({start} -> {today})"
             )
             run_historical_backfill(symbols=symbols, start_date=start, end_date=today)
             logger.info("EOD daily_bars universe refresh complete.")
@@ -608,16 +621,67 @@ def refresh_fear_greed_task(app: Flask):
         logger.error(f"Error in background Fear & Greed task: {e}")
 
 
-def generate_daily_market_brief_task(app: Flask):
-    """Background task to synthesize and persist today's Daily Market Brief at 08:45 AM IST."""
+def refresh_multiyear_breakout_task(app: Flask):
+    """Background task to run the Multiyear Breakout scanner and cache results."""
     try:
         with app.app_context():
-            from app.services.market_brief_service import market_brief_service
-            logger.info("Starting scheduled Daily Market Brief generation task (08:45 AM IST)...")
-            brief = market_brief_service.get_or_create_daily_brief(force_refresh=True)
-            logger.info("Scheduled Daily Market Brief task completed: %s", brief.get("headline"))
+            from app.database import get_nse_symbols_by_marketcap
+            from app.services.multiyear_breakout_service import scan_multiyear_breakouts
+            import pandas as pd
+
+            logger.info("Starting background Multiyear Breakout scan...")
+
+            symbols = get_nse_symbols_by_marketcap(min_marketcap_inr=10_000_000_000)
+            if not symbols:
+                logger.warning("refresh_multiyear_breakout_task: no symbols from market_cap_cache, skipping")
+                return
+
+            min_base_years = app.config.get('MULTIYEAR_BREAKOUT_MIN_BASE_YEARS', 5)
+            breakout_window_days = app.config.get('MULTIYEAR_BREAKOUT_WINDOW_DAYS', 10)
+
+            results = scan_multiyear_breakouts(
+                symbols=symbols,
+                min_base_years=min_base_years,
+                breakout_window_days=breakout_window_days,
+            )
+
+            cache_data = {
+                'data': results,
+                'count': len(results),
+                'refreshed': pd.Timestamp.now().isoformat(),
+            }
+            app.config['MULTIYEAR_BREAKOUT_CACHE'] = cache_data
+
+            # Persist cache to disk
+            cache_file = os.path.join(app.instance_path, 'multiyear_breakout_cache.json')
+            try:
+                os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(cache_data, f, indent=2)
+                logger.info("Saved Multiyear Breakout cache to disk")
+            except Exception as e:
+                logger.error(f"Failed to save Multiyear Breakout cache to disk: {e}")
+
+            logger.info(f"Multiyear Breakout background scan completed: {len(results)} breakouts found")
     except Exception as e:
-        logger.error(f"Error in background Daily Market Brief task: {e}")
+        logger.error(f"Error in background Multiyear Breakout task: {e}")
+
+
+def startup_multiyear_breakout_warmup(app: Flask):
+    """One-shot startup job: check if Multiyear Breakout cache is empty and log status."""
+    try:
+        with app.app_context():
+            cache = app.config.get('MULTIYEAR_BREAKOUT_CACHE')
+            if cache and 'data' in cache and len(cache.get('data', [])) > 0:
+                logger.info(
+                    "Startup warm-up: Multiyear Breakout cache has %d entries (refreshed: %s), no warm-up needed.",
+                    len(cache['data']), cache.get('refreshed', 'unknown'),
+                )
+            else:
+                logger.info("Startup warm-up: Multiyear Breakout cache is empty. "
+                            "Will be populated at 16:45 IST or via manual refresh.")
+    except Exception as e:
+        logger.error(f"Error in startup Multiyear Breakout warm-up: {e}")
 
 
 # For direct execution (testing)

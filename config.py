@@ -122,6 +122,11 @@ class Config:
     EP_MODEL_TRAINING_DRY_RUN = os.environ.get('EP_MODEL_TRAINING_DRY_RUN', 'True').lower() == 'true'
     EP_STALENESS_DAYS = int(os.environ.get('EP_STALENESS_DAYS', '180'))
 
+    # Multiyear Breakout scanner configuration
+    ENABLE_MULTIYEAR_BREAKOUT = os.environ.get('ENABLE_MULTIYEAR_BREAKOUT', 'True').lower() == 'true'
+    MULTIYEAR_BREAKOUT_MIN_BASE_YEARS = int(os.environ.get('MULTIYEAR_BREAKOUT_MIN_BASE_YEARS', '5'))
+    MULTIYEAR_BREAKOUT_WINDOW_DAYS = int(os.environ.get('MULTIYEAR_BREAKOUT_WINDOW_DAYS', '10'))
+
     @staticmethod
     def init_app(app):
         pass

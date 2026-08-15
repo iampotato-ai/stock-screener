@@ -480,51 +480,6 @@ class AIService:
 
         return result
 
-    def generate_daily_market_brief(self, context: dict) -> Optional[dict]:
-        """
-        Generate a structured daily pre-market brief via Google Gemini API (gemini-2.5-flash / GEMINI_MODEL).
-        Returns a dict matching the requested JSON schema or None if AI is unavailable.
-        """
-        gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-        
-        regime = context.get("regime", {})
-        news = context.get("news", [])
-        movers = context.get("movers", [])
-
-        news_str = "\n".join([f"- {n.get('title', '')} ({n.get('source', '')}): {n.get('summary', '')}" for n in news[:8]])
-        movers_str = "\n".join([f"- {m.get('ticker', '')}: {m.get('setupLabel', 'Breakout')}, Score: {m.get('score', '')}" for m in movers[:6]])
-
-        prompt = (
-            "You are an elite Indian market quantitative strategist. Synthesize a pre-market daily brief for NSE India traders.\n\n"
-            f"Market Regime Score: {regime.get('score', 50)}/100 ({regime.get('band', 'Neutral')})\n"
-            f"Advances/Declines: {regime.get('advances', 0)} / {regime.get('declines', 0)}\n"
-            f"Pct Above 21D MA: {regime.get('pct_sma21', 0)}%\n\n"
-            f"Top Overnight News/Filings:\n{news_str or 'No major corporate actions.'}\n\n"
-            f"Top Momentum Movers (Episodic Pivots / Bull Snort):\n{movers_str or 'None.'}\n\n"
-            "Return ONLY a valid JSON object with EXACTLY these keys:\n"
-            '1) "headline": a sharp 1-line morning market summary headline.\n'
-            '2) "regime_summary": a 2-sentence macro analysis explaining current market breadth and sentiment.\n'
-            '3) "sector_catalysts": array of objects `[{"sector": str, "bias": "Bullish"|"Neutral"|"Bearish", "driver": str}]` (max 3 items).\n'
-            '4) "actionable_stocks": array of objects `[{"symbol": str, "reason": str}]` (max 4 items).\n'
-            '5) "key_risks": array of strings (max 2 items).\n\n'
-            "Do NOT include markdown formatting or backticks. Return pure JSON."
-        )
-
-        try:
-            gemini_text = self._call_gemini(gemini_model, prompt)
-            if gemini_text:
-                clean_content = re.sub(r"```json|```", "", gemini_text).strip()
-                import json
-                parsed = json.loads(clean_content)
-                if "headline" in parsed and "regime_summary" in parsed:
-                    return parsed
-        except Exception as e:
-            if current_app:
-                current_app.logger.warning(f"Gemini Daily Market Brief failed: {e}")
-
-        return None
-
-
 # Singleton instance
 ai_service = AIService()
 

@@ -609,28 +609,6 @@ class NewsFetchLog(BaseModel):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
-class MarketBrief(BaseModel):
-    """SQLAlchemy model for daily pre-market brief summaries."""
-    __tablename__ = 'market_briefs'
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    brief_date = db.Column(db.Date, nullable=False, unique=True, index=True)
-    regime_score = db.Column(db.Integer, default=50)
-    regime_band = db.Column(db.String(30), default='Neutral')
-    headline = db.Column(db.String(500), nullable=False)
-    macro_summary = db.Column(db.Text)
-    sector_catalysts = db.Column(db.JSON)
-    top_actionable_stocks = db.Column(db.JSON)
-    key_risks = db.Column(db.JSON)
-    is_fallback = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def to_dict(self):
-        d = super().to_dict()
-        d['brief_date'] = self.brief_date.strftime('%Y-%m-%d') if self.brief_date else None
-        d['created_at'] = self.created_at.strftime('%Y-%m-%d %H:%M:%S') if self.created_at else None
-        return d
-
 
 class InsiderTransaction(BaseModel):
     """SQLAlchemy model for insider and promoter transactions."""

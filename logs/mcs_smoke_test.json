@@ -2,131 +2,146 @@
   {
     "symbol": "RELIANCE",
     "exchange": "NSE",
-    "date": "2026-07-06",
-    "total_score": 29,
+    "date": "2026-08-03",
+    "total_score": 38,
     "pillar_scores": {
-      "technical": 4,
-      "fundamental": 7,
-      "momentum": 3,
-      "institutional": 7,
+      "technical": 11,
+      "fundamental": 8,
+      "momentum": 8.09,
+      "institutional": 3,
       "risk_liquidity": 8
     },
     "weighted_scores": {
-      "technical": 4.0,
-      "fundamental": 7.0,
-      "momentum": 3.0,
-      "institutional": 7.0,
+      "technical": 11.0,
+      "fundamental": 8.0,
+      "momentum": 8.09,
+      "institutional": 3.0,
       "risk_liquidity": 8.0
     },
-    "badges": [
-      "\ud83d\udcb0 Smart Money Buying"
-    ],
-    "explanation": "RELIANCE\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 29/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Healthy RSI\n\u2713 Positive Cash Flow\n\u2713 No Promoter Pledge\n\u2713 FII Buying Activity\n\u2713 High Liquidity\n\u2713 Low Bid-Ask Spread\n\nBadges\n\ud83d\udcb0 Smart Money Buying\n\n[Analyze]",
-    "calculated_at": "2026-07-06T08:40:08.325565",
+    "badges": [],
+    "explanation": "RELIANCE\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 38/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Price above 50 EMA\n\u2713 Higher Highs Pattern\n\u2713 Healthy RSI\n\u2713 No Promoter Pledge\n\u2713 VCP Pattern Detected\n\u2713 High Liquidity\n\n[Analyze]",
+    "calculated_at": "2026-08-03T11:07:34.830486",
     "success": true,
     "error": null,
+    "swing_score": 43,
+    "fused_market_penalty_applied": false,
+    "correlation_regime": "NORMAL",
+    "correlation_regime_score": 0.0,
     "technical_details": {
       "criteria_met": [
+        "Price above 50 EMA",
         "Moderately near 52 Week High (within 20%)",
-        "Healthy RSI (RSI: 51.3)"
+        "Higher Highs Pattern",
+        "Healthy RSI (RSI: 43.0)"
       ],
       "criteria_not_met": [
         "Price below 200 EMA",
-        "Price below 50 EMA",
         "No Golden Cross (50 EMA <= 200 EMA)",
-        "No Higher Highs Pattern",
-        "ADX <= 20 (ADX: 13.3)",
+        "ADX <= 20 (ADX: 15.9)",
         "No Supertrend Buy Signal",
         "Weak/Choppy Market (ADX <= 20)"
       ],
       "points_breakdown": {
         "above_200_ema": 0,
-        "above_50_ema": 0,
+        "above_50_ema": 3,
         "golden_cross": 0,
         "near_52w_high": 2,
-        "higher_highs": 0,
+        "higher_highs": 4,
         "adx_gt_25": 0,
         "supertrend_buy": 0,
         "healthy_rsi": 2,
         "atr_stable": 0
       },
-      "total_score": 4,
+      "total_score": 11,
       "max_score": 30
     },
     "fundamental_details": {
       "criteria_met": [
-        "Moderate Debt (D/E: 0.37)",
-        "Positive Operating Cash Flow",
-        "Moderate Promoter Holding (51.2%)",
+        "Positive Revenue Growth (0.0%)",
+        "Positive Profit Growth (0.0%)",
+        "Moderate Debt (D/E: 0.50)",
+        "Moderate Promoter Holding (50.0%)",
         "No Promoter Shares Pledged"
       ],
       "criteria_not_met": [
-        "Negative Revenue Growth (-2.6%)",
-        "Negative Profit Growth (-4.2%)",
-        "Poor ROCE (3.7%)",
-        "Low ROE (9.1%)"
+        "Poor ROCE (0.0%)",
+        "Low ROE (0.0%)",
+        "Negative or Zero Operating Cash Flow"
       ],
       "points_breakdown": {
-        "revenue_growth": 0,
-        "profit_growth": 0,
+        "revenue_growth": 2,
+        "profit_growth": 2,
         "roce": 0,
         "roe": 0,
         "debt_low": 1,
-        "positive_cash_flow": 3,
+        "positive_cash_flow": 0,
         "promoter_holding": 1,
         "no_pledge": 2
       },
-      "total_score": 7,
+      "total_score": 8,
       "max_score": 25
     },
     "momentum_details": {
       "criteria_met": [
         "Average Relative Strength (RS: 50.0)",
-        "Moderately Near 52-Week High (81.8%)"
+        "Moderately Near 52-Week High (81.8%)",
+        "VCP Pattern Detected",
+        "Strong Quant Signals (9 factors, +2.1pt)"
       ],
       "criteria_not_met": [
-        "Below Average Volume (0.4x avg)",
-        "No VCP Pattern",
+        "Below Average Volume (0.5x avg)",
         "No Fresh Breakout",
-        "Low Momentum Acceleration (0.5%)"
+        "Low Momentum Acceleration (3.8%)"
       ],
       "points_breakdown": {
         "relative_strength": 2,
         "volume_breakout": 0,
         "near_52w_high": 1,
-        "vcp_pattern": 0,
+        "vcp_pattern": 3,
         "fresh_breakout": 0,
-        "momentum_acceleration": 0
+        "momentum_acceleration": 0,
+        "quant_factors": 2.09
       },
-      "total_score": 3,
+      "quant_signals": {
+        "gtja001_intraday_return": 0.0,
+        "gtja006_buying_pressure": -0.0,
+        "gtja032_close_location": 0.0,
+        "alpha012_vol_signed_return": -1.0,
+        "alpha041_illiquidity_inv": 1.0,
+        "gtja026_vol_consistency": 0.8763,
+        "gtja_trend_5d": -0.1629,
+        "alpha001_vwap_deviation": -0.1369,
+        "alpha006_open_vol_corr": -0.1732
+      },
+      "total_score": 8.09,
       "max_score": 20
     },
     "institutional_details": {
       "criteria_met": [
         "MF Holding Stable/Increased (+0.0%)",
-        "Strong FII Presence (Holding: 29.0%)",
         "Promoter Holding Steady"
       ],
       "criteria_not_met": [
+        "FII Selling or Negligible (Holding: 0.0%)",
         "No Significant Block Deal Buying (0 deals)"
       ],
       "points_breakdown": {
         "mf_increased": 2,
-        "fii_buying": 4,
+        "fii_buying": 0,
         "promoter_buying": 1,
         "positive_block_deals": 0
       },
-      "total_score": 7,
+      "total_score": 3,
       "max_score": 15
     },
     "risk_details": {
       "criteria_met": [
-        "Very High Liquidity (15,291,525 shares/day)",
+        "Very High Liquidity (12,733,718 shares/day)",
         "Very Low Spread (0.05%)",
         "Low Operator/Risk Promoter"
       ],
       "criteria_not_met": [
-        "Below Average Volume (0.4x average)"
+        "Below Average Volume (0.5x average)"
       ],
       "points_breakdown": {
         "high_liquidity": 4,
@@ -141,91 +156,96 @@
   {
     "symbol": "TCS",
     "exchange": "NSE",
-    "date": "2026-07-06",
-    "total_score": 37,
+    "date": "2026-08-03",
+    "total_score": 44,
     "pillar_scores": {
-      "technical": 7,
-      "fundamental": 15,
-      "momentum": 2,
-      "institutional": 5,
+      "technical": 12,
+      "fundamental": 16,
+      "momentum": 5.42,
+      "institutional": 3,
       "risk_liquidity": 8
     },
     "weighted_scores": {
-      "technical": 7.0,
-      "fundamental": 15.0,
-      "momentum": 2.0,
-      "institutional": 5.0,
+      "technical": 12.0,
+      "fundamental": 16.0,
+      "momentum": 5.42,
+      "institutional": 3.0,
       "risk_liquidity": 8.0
     },
     "badges": [],
-    "explanation": "TCS\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 37/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 ADX > 25\n\u2713 Healthy RSI\n\u2713 ATR Stable\n\u2713 Good ROE\n\u2713 Positive Cash Flow\n\u2713 High Promoter Holding\n\n[Analyze]",
-    "calculated_at": "2026-07-06T08:40:11.893042",
+    "explanation": "TCS\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 44/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Price above 50 EMA\n\u2713 Higher Highs Pattern\n\u2713 Supertrend Buy Signal\n\u2713 Excellent ROCE\n\u2713 Good ROE\n\u2713 No Promoter Pledge\n\n[Analyze]",
+    "calculated_at": "2026-08-03T11:07:39.292712",
     "success": true,
     "error": null,
+    "swing_score": 38,
+    "fused_market_penalty_applied": false,
+    "correlation_regime": "NORMAL",
+    "correlation_regime_score": 0.0,
     "technical_details": {
       "criteria_met": [
-        "ADX > 25 (ADX: 28.2)",
-        "Healthy RSI (RSI: 40.1)",
-        "Trending Market (ADX > 20 proxy for stability)"
+        "Price above 50 EMA",
+        "Higher Highs Pattern",
+        "Supertrend Buy Signal",
+        "Healthy RSI (RSI: 62.8)"
       ],
       "criteria_not_met": [
         "Price below 200 EMA",
-        "Price below 50 EMA",
         "No Golden Cross (50 EMA <= 200 EMA)",
         "Far from 52 Week High (<80% of high)",
-        "No Higher Highs Pattern",
-        "No Supertrend Buy Signal"
+        "ADX <= 20 (ADX: 16.7)",
+        "Weak/Choppy Market (ADX <= 20)"
       ],
       "points_breakdown": {
         "above_200_ema": 0,
-        "above_50_ema": 0,
+        "above_50_ema": 3,
         "golden_cross": 0,
         "near_52w_high": 0,
-        "higher_highs": 0,
-        "adx_gt_25": 3,
-        "supertrend_buy": 0,
+        "higher_highs": 4,
+        "adx_gt_25": 0,
+        "supertrend_buy": 3,
         "healthy_rsi": 2,
-        "atr_stable": 2
+        "atr_stable": 0
       },
-      "total_score": 7,
+      "total_score": 12,
       "max_score": 30
     },
     "fundamental_details": {
       "criteria_met": [
-        "Good ROCE (24.4%)",
-        "Excellent ROE (48.4%)",
+        "Positive Revenue Growth (0.0%)",
+        "Positive Profit Growth (0.0%)",
+        "Excellent ROCE (58.9%)",
+        "Excellent ROE (48.0%)",
         "Low Debt (D/E: 0.10)",
-        "Positive Operating Cash Flow",
-        "High Promoter Holding (71.8%)",
+        "Moderate Promoter Holding (50.0%)",
         "No Promoter Shares Pledged"
       ],
       "criteria_not_met": [
-        "Negative Revenue Growth (-6.4%)",
-        "Negative Profit Growth (-8.2%)"
+        "Negative or Zero Operating Cash Flow"
       ],
       "points_breakdown": {
-        "revenue_growth": 0,
-        "profit_growth": 0,
-        "roce": 3,
+        "revenue_growth": 2,
+        "profit_growth": 2,
+        "roce": 4,
         "roe": 3,
         "debt_low": 2,
-        "positive_cash_flow": 3,
-        "promoter_holding": 2,
+        "positive_cash_flow": 0,
+        "promoter_holding": 1,
         "no_pledge": 2
       },
-      "total_score": 15,
+      "total_score": 16,
       "max_score": 25
     },
     "momentum_details": {
       "criteria_met": [
-        "Average Relative Strength (RS: 50.0)"
+        "Average Relative Strength (RS: 50.0)",
+        "Moderate Momentum Acceleration (17.2%)",
+        "Strong Quant Signals (9 factors, +2.4pt)"
       ],
       "criteria_not_met": [
-        "Below Average Volume (0.3x avg)",
-        "Far from 52-Week High (60.0%)",
+        "Below Average Volume (0.8x avg)",
+        "Far from 52-Week High (73.8%)",
         "No VCP Pattern",
-        "No Fresh Breakout",
-        "Low Momentum Acceleration (-3.7%)"
+        "No Fresh Breakout"
       ],
       "points_breakdown": {
         "relative_strength": 2,
@@ -233,37 +253,49 @@
         "near_52w_high": 0,
         "vcp_pattern": 0,
         "fresh_breakout": 0,
-        "momentum_acceleration": 0
+        "momentum_acceleration": 1,
+        "quant_factors": 2.42
       },
-      "total_score": 2,
+      "quant_signals": {
+        "gtja001_intraday_return": 0.0,
+        "gtja006_buying_pressure": -0.0,
+        "gtja032_close_location": 0.0,
+        "alpha012_vol_signed_return": -1.0,
+        "alpha041_illiquidity_inv": 1.0,
+        "gtja026_vol_consistency": 0.7291,
+        "gtja_trend_5d": 0.0988,
+        "alpha001_vwap_deviation": 0.6986,
+        "alpha006_open_vol_corr": 0.3439
+      },
+      "total_score": 5.42,
       "max_score": 20
     },
     "institutional_details": {
       "criteria_met": [
         "MF Holding Stable/Increased (+0.0%)",
-        "Some FII Presence (Holding: 17.6%)",
         "Promoter Holding Steady"
       ],
       "criteria_not_met": [
+        "FII Selling or Negligible (Holding: 0.0%)",
         "No Significant Block Deal Buying (0 deals)"
       ],
       "points_breakdown": {
         "mf_increased": 2,
-        "fii_buying": 2,
+        "fii_buying": 0,
         "promoter_buying": 1,
         "positive_block_deals": 0
       },
-      "total_score": 5,
+      "total_score": 3,
       "max_score": 15
     },
     "risk_details": {
       "criteria_met": [
-        "Very High Liquidity (5,300,310 shares/day)",
+        "Very High Liquidity (4,799,477 shares/day)",
         "Very Low Spread (0.05%)",
         "Low Operator/Risk Promoter"
       ],
       "criteria_not_met": [
-        "Below Average Volume (0.3x average)"
+        "Below Average Volume (0.8x average)"
       ],
       "points_breakdown": {
         "high_liquidity": 4,
@@ -278,93 +310,98 @@
   {
     "symbol": "INFY",
     "exchange": "NSE",
-    "date": "2026-07-06",
-    "total_score": 34,
+    "date": "2026-08-03",
+    "total_score": 46,
     "pillar_scores": {
-      "technical": 7,
-      "fundamental": 10,
-      "momentum": 2,
-      "institutional": 7,
+      "technical": 12,
+      "fundamental": 17,
+      "momentum": 5.76,
+      "institutional": 3,
       "risk_liquidity": 8
     },
     "weighted_scores": {
-      "technical": 7.0,
-      "fundamental": 10.0,
-      "momentum": 2.0,
-      "institutional": 7.0,
+      "technical": 12.0,
+      "fundamental": 17.0,
+      "momentum": 5.76,
+      "institutional": 3.0,
       "risk_liquidity": 8.0
     },
     "badges": [
-      "\ud83d\udcb0 Smart Money Buying"
+      "\u2b50 Debt Free"
     ],
-    "explanation": "INFY\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 34/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 ADX > 25\n\u2713 Healthy RSI\n\u2713 ATR Stable\n\u2713 Good ROE\n\u2713 Positive Cash Flow\n\u2713 No Promoter Pledge\n\nBadges\n\ud83d\udcb0 Smart Money Buying\n\n[Analyze]",
-    "calculated_at": "2026-07-06T08:40:13.641553",
+    "explanation": "INFY\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 46/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Price above 50 EMA\n\u2713 Higher Highs Pattern\n\u2713 Supertrend Buy Signal\n\u2713 Excellent ROCE\n\u2713 Good ROE\n\u2713 Low Debt Levels\n\nBadges\n\u2b50 Debt Free\n\n[Analyze]",
+    "calculated_at": "2026-08-03T11:07:40.499955",
     "success": true,
     "error": null,
+    "swing_score": 39,
+    "fused_market_penalty_applied": false,
+    "correlation_regime": "NORMAL",
+    "correlation_regime_score": 0.0,
     "technical_details": {
       "criteria_met": [
-        "ADX > 25 (ADX: 26.8)",
-        "Healthy RSI (RSI: 40.1)",
-        "Trending Market (ADX > 20 proxy for stability)"
+        "Price above 50 EMA",
+        "Higher Highs Pattern",
+        "Supertrend Buy Signal",
+        "Healthy RSI (RSI: 50.4)"
       ],
       "criteria_not_met": [
         "Price below 200 EMA",
-        "Price below 50 EMA",
         "No Golden Cross (50 EMA <= 200 EMA)",
         "Far from 52 Week High (<80% of high)",
-        "No Higher Highs Pattern",
-        "No Supertrend Buy Signal"
+        "ADX <= 20 (ADX: 10.5)",
+        "Weak/Choppy Market (ADX <= 20)"
       ],
       "points_breakdown": {
         "above_200_ema": 0,
-        "above_50_ema": 0,
+        "above_50_ema": 3,
         "golden_cross": 0,
         "near_52w_high": 0,
-        "higher_highs": 0,
-        "adx_gt_25": 3,
-        "supertrend_buy": 0,
+        "higher_highs": 4,
+        "adx_gt_25": 0,
+        "supertrend_buy": 3,
         "healthy_rsi": 2,
-        "atr_stable": 2
+        "atr_stable": 0
       },
-      "total_score": 7,
+      "total_score": 12,
       "max_score": 30
     },
     "fundamental_details": {
       "criteria_met": [
-        "Moderate ROCE (15.1%)",
-        "Excellent ROE (31.4%)",
-        "Positive Operating Cash Flow",
+        "Positive Revenue Growth (0.0%)",
+        "Positive Profit Growth (0.0%)",
+        "Excellent ROCE (36.9%)",
+        "Excellent ROE (32.6%)",
+        "Very Low Debt (D/E: 0.10)",
+        "Moderate Promoter Holding (50.0%)",
         "No Promoter Shares Pledged"
       ],
       "criteria_not_met": [
-        "Negative Revenue Growth (-1.9%)",
-        "Negative Profit Growth (-5.9%)",
-        "High Debt (D/E: 9.83)",
-        "Low Promoter Holding (16.4%)"
+        "Negative or Zero Operating Cash Flow"
       ],
       "points_breakdown": {
-        "revenue_growth": 0,
-        "profit_growth": 0,
-        "roce": 2,
+        "revenue_growth": 2,
+        "profit_growth": 2,
+        "roce": 4,
         "roe": 3,
-        "debt_low": 0,
-        "positive_cash_flow": 3,
-        "promoter_holding": 0,
+        "debt_low": 3,
+        "positive_cash_flow": 0,
+        "promoter_holding": 1,
         "no_pledge": 2
       },
-      "total_score": 10,
+      "total_score": 17,
       "max_score": 25
     },
     "momentum_details": {
       "criteria_met": [
-        "Average Relative Strength (RS: 50.0)"
+        "Average Relative Strength (RS: 50.0)",
+        "Moderate Momentum Acceleration (10.7%)",
+        "Strong Quant Signals (9 factors, +2.8pt)"
       ],
       "criteria_not_met": [
-        "Below Average Volume (0.3x avg)",
-        "Far from 52-Week High (59.8%)",
+        "Below Average Volume (1.2x avg)",
+        "Far from 52-Week High (68.3%)",
         "No VCP Pattern",
-        "No Fresh Breakout",
-        "Low Momentum Acceleration (-8.4%)"
+        "No Fresh Breakout"
       ],
       "points_breakdown": {
         "relative_strength": 2,
@@ -372,37 +409,49 @@
         "near_52w_high": 0,
         "vcp_pattern": 0,
         "fresh_breakout": 0,
-        "momentum_acceleration": 0
+        "momentum_acceleration": 1,
+        "quant_factors": 2.76
       },
-      "total_score": 2,
+      "quant_signals": {
+        "gtja001_intraday_return": 0.0,
+        "gtja006_buying_pressure": -0.0,
+        "gtja032_close_location": 0.0,
+        "alpha012_vol_signed_return": 1.0,
+        "alpha041_illiquidity_inv": 1.0,
+        "gtja026_vol_consistency": 0.7519,
+        "gtja_trend_5d": -0.0363,
+        "alpha001_vwap_deviation": 0.2056,
+        "alpha006_open_vol_corr": 0.5199
+      },
+      "total_score": 5.76,
       "max_score": 20
     },
     "institutional_details": {
       "criteria_met": [
         "MF Holding Stable/Increased (+0.0%)",
-        "Strong FII Presence (Holding: 51.8%)",
         "Promoter Holding Steady"
       ],
       "criteria_not_met": [
+        "FII Selling or Negligible (Holding: 0.0%)",
         "No Significant Block Deal Buying (0 deals)"
       ],
       "points_breakdown": {
         "mf_increased": 2,
-        "fii_buying": 4,
+        "fii_buying": 0,
         "promoter_buying": 1,
         "positive_block_deals": 0
       },
-      "total_score": 7,
+      "total_score": 3,
       "max_score": 15
     },
     "risk_details": {
       "criteria_met": [
-        "Very High Liquidity (15,201,662 shares/day)",
+        "Very High Liquidity (14,102,221 shares/day)",
         "Very Low Spread (0.05%)",
         "Low Operator/Risk Promoter"
       ],
       "criteria_not_met": [
-        "Below Average Volume (0.3x average)"
+        "Below Average Volume (1.2x average)"
       ],
       "points_breakdown": {
         "high_liquidity": 4,
@@ -417,132 +466,146 @@
   {
     "symbol": "HDFCBANK",
     "exchange": "NSE",
-    "date": "2026-07-06",
-    "total_score": 43,
+    "date": "2026-08-03",
+    "total_score": 27,
     "pillar_scores": {
-      "technical": 19,
-      "fundamental": 3,
-      "momentum": 6,
-      "institutional": 7,
+      "technical": 5,
+      "fundamental": 7,
+      "momentum": 4.37,
+      "institutional": 3,
       "risk_liquidity": 8
     },
     "weighted_scores": {
-      "technical": 19.0,
-      "fundamental": 3.0,
-      "momentum": 6.0,
-      "institutional": 7.0,
+      "technical": 5.0,
+      "fundamental": 7.0,
+      "momentum": 4.37,
+      "institutional": 3.0,
       "risk_liquidity": 8.0
     },
-    "badges": [
-      "\ud83d\ude80 Fresh Breakout",
-      "\ud83d\udcb0 Smart Money Buying"
-    ],
-    "explanation": "HDFCBANK\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 43/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Price above 50 EMA\n\u2713 Higher Highs Pattern\n\u2713 ADX > 25\n\u2713 No Promoter Pledge\n\u2713 Fresh Breakout Detected\n\u2713 FII Buying Activity\n\nBadges\n\ud83d\ude80 Fresh Breakout\n\ud83d\udcb0 Smart Money Buying\n\n[Analyze]",
-    "calculated_at": "2026-07-06T08:40:15.356873",
+    "badges": [],
+    "explanation": "HDFCBANK\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 27/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 ADX > 25\n\u2713 ATR Stable\n\u2713 No Promoter Pledge\n\u2713 High Liquidity\n\u2713 Low Bid-Ask Spread\n\n[Analyze]",
+    "calculated_at": "2026-08-03T11:07:41.776228",
     "success": true,
     "error": null,
+    "swing_score": 25,
+    "fused_market_penalty_applied": false,
+    "correlation_regime": "NORMAL",
+    "correlation_regime_score": 0.0,
     "technical_details": {
       "criteria_met": [
-        "Price above 50 EMA",
-        "Moderately near 52 Week High (within 20%)",
-        "Higher Highs Pattern",
-        "ADX > 25 (ADX: 27.2)",
-        "Supertrend Buy Signal",
-        "Healthy RSI (RSI: 70.7)",
+        "ADX > 25 (ADX: 28.4)",
         "Trending Market (ADX > 20 proxy for stability)"
       ],
       "criteria_not_met": [
         "Price below 200 EMA",
-        "No Golden Cross (50 EMA <= 200 EMA)"
+        "Price below 50 EMA",
+        "No Golden Cross (50 EMA <= 200 EMA)",
+        "Far from 52 Week High (<80% of high)",
+        "No Higher Highs Pattern",
+        "No Supertrend Buy Signal",
+        "RSI too low (RSI: 32.5)"
       ],
       "points_breakdown": {
         "above_200_ema": 0,
-        "above_50_ema": 3,
+        "above_50_ema": 0,
         "golden_cross": 0,
-        "near_52w_high": 2,
-        "higher_highs": 4,
+        "near_52w_high": 0,
+        "higher_highs": 0,
         "adx_gt_25": 3,
-        "supertrend_buy": 3,
-        "healthy_rsi": 2,
+        "supertrend_buy": 0,
+        "healthy_rsi": 0,
         "atr_stable": 2
       },
-      "total_score": 19,
+      "total_score": 5,
       "max_score": 30
     },
     "fundamental_details": {
       "criteria_met": [
-        "Moderate Debt (D/E: 0.50)",
+        "Positive Revenue Growth (0.0%)",
+        "Positive Profit Growth (0.0%)",
+        "Moderate Promoter Holding (50.0%)",
         "No Promoter Shares Pledged"
       ],
       "criteria_not_met": [
-        "Negative Revenue Growth (-15.4%)",
-        "Negative Profit Growth (-22.1%)",
-        "Poor ROCE (1.7%)",
+        "Poor ROCE (0.0%)",
         "Low ROE (13.8%)",
-        "Negative or Zero Operating Cash Flow",
-        "Low Promoter Holding (0.2%)"
+        "High Debt (D/E: 0.93)",
+        "Negative or Zero Operating Cash Flow"
       ],
       "points_breakdown": {
-        "revenue_growth": 0,
-        "profit_growth": 0,
+        "revenue_growth": 2,
+        "profit_growth": 2,
         "roce": 0,
         "roe": 0,
-        "debt_low": 1,
+        "debt_low": 0,
         "positive_cash_flow": 0,
-        "promoter_holding": 0,
+        "promoter_holding": 1,
         "no_pledge": 2
       },
-      "total_score": 3,
+      "total_score": 7,
       "max_score": 25
     },
     "momentum_details": {
       "criteria_met": [
         "Average Relative Strength (RS: 50.0)",
-        "Slight Volume Increase (1.4x avg)",
-        "Moderately Near 52-Week High (81.3%)",
-        "Fresh Breakout Detected"
+        "Strong Quant Signals (9 factors, +2.4pt)"
       ],
       "criteria_not_met": [
+        "Below Average Volume (0.9x avg)",
+        "Far from 52-Week High (73.8%)",
         "No VCP Pattern",
-        "Low Momentum Acceleration (7.3%)"
+        "No Fresh Breakout",
+        "Low Momentum Acceleration (-5.3%)"
       ],
       "points_breakdown": {
         "relative_strength": 2,
-        "volume_breakout": 1,
-        "near_52w_high": 1,
+        "volume_breakout": 0,
+        "near_52w_high": 0,
         "vcp_pattern": 0,
-        "fresh_breakout": 2,
-        "momentum_acceleration": 0
+        "fresh_breakout": 0,
+        "momentum_acceleration": 0,
+        "quant_factors": 2.37
       },
-      "total_score": 6,
+      "quant_signals": {
+        "gtja001_intraday_return": 0.0,
+        "gtja006_buying_pressure": -0.0,
+        "gtja032_close_location": 0.0,
+        "alpha012_vol_signed_return": 1.0,
+        "alpha041_illiquidity_inv": 1.0,
+        "gtja026_vol_consistency": 0.805,
+        "gtja_trend_5d": -0.2447,
+        "alpha001_vwap_deviation": -0.7132,
+        "alpha006_open_vol_corr": -0.1626
+      },
+      "total_score": 4.37,
       "max_score": 20
     },
     "institutional_details": {
       "criteria_met": [
         "MF Holding Stable/Increased (+0.0%)",
-        "Strong FII Presence (Holding: 57.9%)",
         "Promoter Holding Steady"
       ],
       "criteria_not_met": [
+        "FII Selling or Negligible (Holding: 0.0%)",
         "No Significant Block Deal Buying (0 deals)"
       ],
       "points_breakdown": {
         "mf_increased": 2,
-        "fii_buying": 4,
+        "fii_buying": 0,
         "promoter_buying": 1,
         "positive_block_deals": 0
       },
-      "total_score": 7,
+      "total_score": 3,
       "max_score": 15
     },
     "risk_details": {
       "criteria_met": [
-        "Very High Liquidity (36,851,137 shares/day)",
+        "Very High Liquidity (32,824,304 shares/day)",
         "Very Low Spread (0.05%)",
         "Low Operator/Risk Promoter"
       ],
       "criteria_not_met": [
-        "Below Average Volume (1.4x average)"
+        "Below Average Volume (0.9x average)"
       ],
       "points_breakdown": {
         "high_liquidity": 4,
@@ -557,27 +620,31 @@
   {
     "symbol": "TATAMOTORS",
     "exchange": "NSE",
-    "date": "2026-07-06",
-    "total_score": 19,
+    "date": "2026-08-03",
+    "total_score": 22,
     "pillar_scores": {
       "technical": 2,
       "fundamental": 8,
-      "momentum": 2,
+      "momentum": 4.5,
       "institutional": 3,
       "risk_liquidity": 4
     },
     "weighted_scores": {
       "technical": 2.0,
       "fundamental": 8.0,
-      "momentum": 2.0,
+      "momentum": 4.5,
       "institutional": 3.0,
       "risk_liquidity": 4.0
     },
     "badges": [],
-    "explanation": "TATAMOTORS\n\nMomentum Confidence\n\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 19/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Healthy RSI\n\u2713 No Promoter Pledge\n\u2713 Low Bid-Ask Spread\n\u2713 Low Operator Risk\n\n[Analyze]",
-    "calculated_at": "2026-07-06T08:40:17.712339",
+    "explanation": "TATAMOTORS\n\nMomentum Confidence\n\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 22/100\n\u2605\u2605\u2605\u2605\u2605 Weak\n\nTop Reasons\n\u2713 Healthy RSI\n\u2713 No Promoter Pledge\n\u2713 Low Bid-Ask Spread\n\u2713 Low Operator Risk\n\n[Analyze]",
+    "calculated_at": "2026-08-03T11:07:42.860300",
     "success": true,
     "error": null,
+    "swing_score": 17,
+    "fused_market_penalty_applied": false,
+    "correlation_regime": "NORMAL",
+    "correlation_regime_score": 0.0,
     "technical_details": {
       "criteria_met": [
         "Healthy RSI (RSI: 50.0)"
@@ -634,7 +701,8 @@
     },
     "momentum_details": {
       "criteria_met": [
-        "Average Relative Strength (RS: 50.0)"
+        "Average Relative Strength (RS: 50.0)",
+        "Strong Quant Signals (2 factors, +2.5pt)"
       ],
       "criteria_not_met": [
         "Below Average Volume (1.0x avg)",
@@ -649,9 +717,14 @@
         "near_52w_high": 0,
         "vcp_pattern": 0,
         "fresh_breakout": 0,
-        "momentum_acceleration": 0
+        "momentum_acceleration": 0,
+        "quant_factors": 2.5
       },
-      "total_score": 2,
+      "quant_signals": {
+        "gtja026_vol_consistency": 0.5,
+        "gtja_trend_5d": 0.0
+      },
+      "total_score": 4.5,
       "max_score": 20
     },
     "institutional_details": {
