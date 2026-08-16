@@ -273,7 +273,12 @@
                 return `
                     <tr class="myb-table-row">
                         <td style="font-weight: 700; color: var(--color-text-primary); font-family: var(--font-mono);">
-                            <span class="myb-symbol-pill" onclick="window.openTradingView && window.openTradingView('${symbol}')" title="Click to view chart">${symbol}</span>
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                                <span class="myb-symbol-pill" onclick="event.stopPropagation(); window.openTradingView && window.openTradingView('${symbol}')" title="Click to view chart">${symbol}</span>
+                                <button class="table-action-icon-btn" onclick="event.stopPropagation(); typeof addToWatchlist === 'function' ? addToWatchlist('${symbol}', event) : (window.addToWatchlist && window.addToWatchlist('${symbol}', event))" title="Add to Watchlist">
+                                    <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
+                                </button>
+                            </div>
                         </td>
                         <td class="text-right" style="font-weight: 600; font-family: var(--font-mono);">${currentPrice}</td>
                         <td class="text-right" style="font-family: var(--font-mono); color: var(--color-text-secondary);">${priorAth}</td>
@@ -291,6 +296,9 @@
             }).join('');
 
             tbody.innerHTML = html;
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
         }
 
         renderError(msg) {

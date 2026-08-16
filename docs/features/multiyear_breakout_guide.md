@@ -123,39 +123,77 @@ Multiyear All-Time High Breakout Scanner
 Author: Antigravity AI
 """
 
-import yfinance as yf
+import urllib.request
+import urllib.error
+import json
+import time
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
 
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-def fetch_symbol_history(symbol: str) -> Optional[List[Dict[str, Any]]]:
-    """Fetch maximum available daily history from Yahoo Finance."""
+
+def fetch_symbol_history(symbol: str, retries: int = 2) -> Optional[List[Dict[str, Any]]]:
+    """Fetch maximum available daily history directly via Yahoo Finance v8 chart API (bypasses 429 rate limits)."""
     ticker_str = symbol if symbol.endswith((".NS", ".BO", "^NSEI")) else f"{symbol}.NS"
-    try:
-        ticker = yf.Ticker(ticker_str)
-        df = ticker.history(period="max", auto_adjust=True)
-        if df is None or df.empty or len(df) < 252 * 3:
-            return None
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_str}?interval=1d&range=max"
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
 
-        rows = []
-        for idx, row in df.iterrows():
-            close_val = float(row.get("Close", 0))
-            if close_val <= 0:
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+
+            if not data.get('chart') or not data['chart'].get('result'):
+                return None
+
+            result = data['chart']['result'][0]
+            timestamps = result.get('timestamp')
+            if not timestamps:
+                return None
+
+            indicators = result.get('indicators', {}).get('quote', [{}])[0]
+            opens = indicators.get('open', [])
+            highs = indicators.get('high', [])
+            lows = indicators.get('low', [])
+            closes = indicators.get('close', [])
+            volumes = indicators.get('volume', [])
+
+            rows = []
+            for i in range(len(timestamps)):
+                c = closes[i] if i < len(closes) else None
+                if c is None or c <= 0:
+                    continue
+                o = opens[i] if i < len(opens) and opens[i] is not None else c
+                h = highs[i] if i < len(highs) and highs[i] is not None else c
+                l = lows[i] if i < len(lows) and lows[i] is not None else c
+                v = volumes[i] if i < len(volumes) and volumes[i] is not None else 0
+
+                rows.append({
+                    "date": datetime.fromtimestamp(timestamps[i]).strftime("%Y-%m-%d"),
+                    "open": float(o),
+                    "high": float(h),
+                    "low": float(l),
+                    "close": float(c),
+                    "volume": int(v),
+                })
+            return rows if len(rows) > 0 else None
+        except urllib.error.HTTPError as http_err:
+            if http_err.code == 429 and attempt < retries:
+                time.sleep(1.0 * (attempt + 1))
                 continue
-            rows.append({
-                "date": idx.strftime("%Y-%m-%d"),
-                "open": float(row.get("Open", 0)),
-                "high": float(row.get("High", 0)),
-                "low": float(row.get("Low", 0)),
-                "close": close_val,
-                "volume": int(row.get("Volume", 0)),
-            })
-        return rows if len(rows) > 0 else None
-    except Exception as e:
-        return None
+            break
+        except Exception:
+            if attempt < retries:
+                time.sleep(0.5)
+                continue
+            break
+
+    return None
 
 
 def evaluate_multiyear_breakout(

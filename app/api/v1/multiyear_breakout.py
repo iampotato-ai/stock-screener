@@ -63,14 +63,27 @@ def get_multiyear_breakout():
     is_default = (min_base_years == default_base and breakout_window_days == default_window)
 
     # Serve from cache if available and not forced
-    if not force and is_default:
+    if not force:
         cache = current_app.config.get('MULTIYEAR_BREAKOUT_CACHE')
+        if not cache or not cache.get('data'):
+            # Try reading from disk
+            cache_file = os.path.join(current_app.instance_path, 'multiyear_breakout_cache.json')
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, 'r', encoding='utf-8') as f:
+                        cache = json.load(f)
+                        current_app.config['MULTIYEAR_BREAKOUT_CACHE'] = cache
+                except Exception:
+                    pass
+
         if cache and 'data' in cache:
-            # Apply client-side filter for min_base_years (in case user changes it)
-            data = cache['data']
+            filtered_data = [
+                item for item in cache['data']
+                if item.get('years_below_ath', 0) >= min_base_years
+            ]
             return jsonify({
-                "data": data,
-                "count": len(data),
+                "data": filtered_data,
+                "count": len(filtered_data),
                 "total_scanned": cache.get('total_scanned', 1367),
                 "refreshed": cache.get('refreshed'),
             }), 200

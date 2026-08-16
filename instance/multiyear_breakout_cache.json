@@ -13,11 +13,46 @@
       "avg_volume_20d": 454484,
       "consolidation_range_pct": 93.85,
       "base_low": 15.7,
-      "market_cap_cr": null,
+      "market_cap_cr": 1988.2,
       "sector": "Healthcare",
-      "rs_vs_nifty": null
+      "rs_vs_nifty": 0.8979
+    },
+    {
+      "symbol": "SONACOMS",
+      "current_price": 792.0,
+      "prior_ath_price": 801.69,
+      "prior_ath_date": "2021-12-13",
+      "breakout_date": "2026-08-05",
+      "years_below_ath": 4.7,
+      "pct_above_ath": -1.21,
+      "volume_confirmed": true,
+      "breakout_volume": 3622373,
+      "avg_volume_20d": 3072582,
+      "consolidation_range_pct": 51.19,
+      "base_low": 391.32,
+      "market_cap_cr": 48881.73,
+      "sector": "Consumer Cyclical",
+      "rs_vs_nifty": 0.3075
+    },
+    {
+      "symbol": "APCOTEXIND",
+      "current_price": 599.5,
+      "prior_ath_price": 611.27,
+      "prior_ath_date": "2022-06-01",
+      "breakout_date": "2026-07-29",
+      "years_below_ath": 4.2,
+      "pct_above_ath": -1.93,
+      "volume_confirmed": true,
+      "breakout_volume": 5645793,
+      "avg_volume_20d": 116201,
+      "consolidation_range_pct": 54.09,
+      "base_low": 280.61,
+      "market_cap_cr": 3201.94,
+      "sector": "Basic Materials",
+      "rs_vs_nifty": 0.1297
     }
   ],
-  "count": 1,
-  "refreshed": "2026-08-15T20:27:55.387810"
+  "count": 3,
+  "total_scanned": 1367,
+  "refreshed": "2026-08-16T19:05:33.782247"
 }

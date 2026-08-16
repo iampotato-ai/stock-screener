@@ -33,45 +33,120 @@ MIN_HISTORY_YEARS = 5  # skip stocks with < 5 years of data
 
 
 # ---------------------------------------------------------------------------
-# yfinance helper
+# High-speed Yahoo Finance v8 Chart Helper (with retry & rate-limit resilience)
 # ---------------------------------------------------------------------------
 
-def _fetch_max_history(symbol: str) -> Optional[List[Dict[str, Any]]]:
-    """Fetch full price history for *symbol* from Yahoo Finance (``max`` range).
+YAHOO_V8_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1=0&period2=9999999999&interval=1d"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
+
+def _fetch_max_history(symbol: str, retries: int = 2) -> Optional[List[Dict[str, Any]]]:
+    """Fetch full multi-decade price history for *symbol* using direct Yahoo Finance v8 chart API.
 
     Returns a list of dicts with keys ``date``, ``open``, ``high``, ``low``,
     ``close``, ``volume`` sorted ascending by date, or ``None`` on failure.
     """
+    import urllib.request
+    import urllib.error
+    import json
+
+    ticker_str = symbol
+    if not ticker_str.endswith(".NS") and not ticker_str.endswith(".BO") and not ticker_str.startswith("^"):
+        ticker_str = f"{ticker_str}.NS"
+
+    url = YAHOO_V8_CHART_URL.format(symbol=ticker_str)
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=8) as response:
+                data = json.loads(response.read().decode('utf-8'))
+
+            if not data.get('chart') or not data['chart'].get('result') or not data['chart']['result']:
+                return None
+
+            result = data['chart']['result'][0]
+            timestamps = result.get('timestamp')
+            if not timestamps:
+                return None
+
+            quote = result.get('indicators', {}).get('quote', [{}])[0]
+            adj_list = result.get('indicators', {}).get('adjclose', [{}])[0].get('adjclose', [])
+
+            opens = quote.get('open', [])
+            highs = quote.get('high', [])
+            lows = quote.get('low', [])
+            closes = quote.get('close', [])
+            volumes = quote.get('volume', [])
+
+            rows: List[Dict[str, Any]] = []
+            for i in range(len(timestamps)):
+                raw_c = closes[i] if i < len(closes) else None
+                if raw_c is None or raw_c <= 0:
+                    continue
+
+                adj_c = adj_list[i] if i < len(adj_list) and adj_list[i] is not None and adj_list[i] > 0 else raw_c
+                adj_factor = adj_c / raw_c if raw_c > 0 else 1.0
+
+                raw_o = opens[i] if i < len(opens) and opens[i] is not None else raw_c
+                raw_h = highs[i] if i < len(highs) and highs[i] is not None else raw_c
+                raw_l = lows[i] if i < len(lows) and lows[i] is not None else raw_c
+                v = volumes[i] if i < len(volumes) and volumes[i] is not None else 0
+
+                dt_str = datetime.fromtimestamp(timestamps[i]).strftime('%Y-%m-%d')
+                rows.append({
+                    "date": dt_str,
+                    "open": round(float(raw_o) * adj_factor, 2),
+                    "high": round(float(raw_h) * adj_factor, 2),
+                    "low": round(float(raw_l) * adj_factor, 2),
+                    "close": round(float(adj_c), 2),
+                    "volume": int(v),
+                })
+            return rows if len(rows) > 0 else None
+
+        except urllib.error.HTTPError as http_err:
+            if http_err.code == 429 and attempt < retries:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            logger.debug("HTTP %s fetching max-history for %s", http_err.code, symbol)
+            break
+        except Exception as exc:
+            if attempt < retries:
+                time.sleep(0.5)
+                continue
+            logger.debug("Fetch failed for %s: %s", symbol, exc)
+            break
+
+    # Fallback to yfinance if direct v8 endpoint failed
     try:
         import yfinance as yf
-
-        ticker_str = symbol
-        if not ticker_str.endswith(".NS") and not ticker_str.endswith(".BO"):
-            ticker_str = f"{ticker_str}.NS"
-
         ticker = yf.Ticker(ticker_str)
         df = ticker.history(period="max", auto_adjust=True)
-        if df is None or df.empty:
-            return None
+        if df is not None and not df.empty:
+            rows = []
+            for idx, row in df.iterrows():
+                dt = idx.to_pydatetime() if hasattr(idx, "to_pydatetime") else idx
+                close_val = float(row.get("Close", 0))
+                if close_val <= 0:
+                    continue
+                rows.append({
+                    "date": dt.strftime("%Y-%m-%d"),
+                    "open": float(row.get("Open", 0)),
+                    "high": float(row.get("High", 0)),
+                    "low": float(row.get("Low", 0)),
+                    "close": close_val,
+                    "volume": int(row.get("Volume", 0)),
+                })
+            return rows if len(rows) > 0 else None
+    except Exception:
+        pass
 
-        rows: List[Dict[str, Any]] = []
-        for idx, row in df.iterrows():
-            dt = idx.to_pydatetime() if hasattr(idx, "to_pydatetime") else idx
-            close_val = float(row.get("Close", 0))
-            if close_val <= 0:
-                continue
-            rows.append({
-                "date": dt.strftime("%Y-%m-%d"),
-                "open": float(row.get("Open", 0)),
-                "high": float(row.get("High", 0)),
-                "low": float(row.get("Low", 0)),
-                "close": close_val,
-                "volume": int(row.get("Volume", 0)),
-            })
-        return rows if len(rows) > 0 else None
-    except Exception as exc:
-        logger.warning("yfinance max-history fetch failed for %s: %s", symbol, exc)
-        return None
+    return None
 
 
 def _fetch_nifty_history() -> Optional[List[Dict[str, Any]]]:
@@ -273,10 +348,11 @@ def scan_multiyear_breakouts(
             if rows:
                 for row in rows:
                     ticker = row["ticker"]
-                    cap_inr = row.get("market_cap_inr", 0)
-                    market_caps[ticker] = round(cap_inr / 1e7, 2) if cap_inr else None  # Convert to Crores
-    except Exception:
-        pass
+                    cap_inr = row["market_cap_inr"]
+                    if cap_inr:
+                        market_caps[ticker] = round(float(cap_inr) / 1e7, 2)  # Convert to Crores
+    except Exception as e:
+        logger.warning("Failed to load market_cap_cache: %s", e)
 
     results: List[Dict[str, Any]] = []
     processed = 0
@@ -287,26 +363,35 @@ def scan_multiyear_breakouts(
         if not history:
             return None
 
-        # Try to get sector info from yfinance
-        sector = sectors.get(sym)
-        if not sector:
-            try:
-                import yfinance as yf
-                ticker_str = f"{sym}.NS" if not sym.endswith((".NS", ".BO")) else sym
-                info = yf.Ticker(ticker_str).info or {}
-                sector = info.get("sector", "N/A")
-            except Exception:
-                sector = "N/A"
-
-        return compute_single_breakout(
+        res = compute_single_breakout(
             symbol=sym,
             history=history,
             nifty_history=nifty_history,
             min_base_years=min_base_years,
             breakout_window_days=breakout_window_days,
             market_cap_cr=market_caps.get(sym),
-            sector=sector,
+            sector=sectors.get(sym, "General"),
         )
+        if res is None:
+            return None
+
+        # Only fetch sector & market cap info from Yahoo for candidates that actually qualify
+        if res.get("sector") in (None, "General", "N/A") or res.get("market_cap_cr") is None:
+            try:
+                import yfinance as yf
+                ticker_str = f"{sym}.NS" if not sym.endswith((".NS", ".BO")) else sym
+                info = yf.Ticker(ticker_str).info or {}
+                if res.get("sector") in (None, "General", "N/A"):
+                    res["sector"] = info.get("sector", "General")
+                if res.get("market_cap_cr") is None:
+                    cap = info.get("marketCap")
+                    if cap:
+                        res["market_cap_cr"] = round(float(cap) / 1e7, 2)
+            except Exception:
+                if not res.get("sector"):
+                    res["sector"] = "General"
+
+        return res
 
     effective_workers = min(max_workers, max(1, len(symbols)))
 

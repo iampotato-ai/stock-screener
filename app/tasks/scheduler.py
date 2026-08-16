@@ -648,6 +648,7 @@ def refresh_multiyear_breakout_task(app: Flask):
             cache_data = {
                 'data': results,
                 'count': len(results),
+                'total_scanned': len(symbols),
                 'refreshed': pd.Timestamp.now().isoformat(),
             }
             app.config['MULTIYEAR_BREAKOUT_CACHE'] = cache_data
